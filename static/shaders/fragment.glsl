@@ -2,11 +2,11 @@
 
 precision lowp float;
 in float normal;
+in vec2 texture_coord;
 
-uniform vec4 coordinates;
+uniform sampler2D texture;
 uniform vec4 color;
 
-// we need to declare an output for the fragment shader
 out vec4 outColor;
 
 void main() {
