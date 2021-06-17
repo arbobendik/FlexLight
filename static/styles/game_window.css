@@ -1,0 +1,14 @@
+html {
+  background-color: #000;
+}
+body {
+  line-height: 0;
+  margin: 0;
+}
+div {
+  position: fixed;
+  top: 15px;
+  right: 0;
+  color: #fff;
+  font-size: 30px;
+}
