@@ -71,9 +71,9 @@ async def init(pkg, s):
     tp.last_response = time.time()
     # Send information about all existing players to new player.
     for key, p in this_game.active_players.items():
-        print(p.jsonify())
+        print(p.to_json())
         if not p == tp:
-            await connections.emit('add_player', p.jsonify(), s)
+            await connections.emit('add_player', p.to_json(), s)
 
 
 async def vector(pkg, s):
@@ -108,7 +108,7 @@ async def sync_game(pkg, s, **kwargs):
         p.last_response = time.time()
     # Give information about all other players back.
     await connections.emit('sync_game', {
-        'players': [op.jsonify() for keys, op in this_game.active_players.items() if not op == p]
+        'players': [op.to_json() for keys, op in this_game.active_players.items() if not op == p]
     }, s)
 
 # Initialize api global to handle socket communication.

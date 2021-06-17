@@ -77,7 +77,7 @@ class game:
         if not this_database.player_exists(p.ip, p.keys):
             this_database.add_player(p)
         # Inform all existing players that new player has joined.
-        await connections.broadcast('add_player', p.jsonify(), socket)
+        await connections.broadcast('add_player', p.to_json(), socket)
 
     async def remove_player(self, connections, socket, p):
         # Remove p from active_players dictionary and tell all other players that p is gone.
