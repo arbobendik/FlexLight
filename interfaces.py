@@ -9,30 +9,30 @@ from cryptography.fernet import Fernet
 class connection_manager:
     def __init__(self):
         # Keep track of active connections.
-        self.active_connections: List[WebSocket] = []
+        self.active_connections = []
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+    async def connect(self, web_socket: WebSocket):
+        await web_socket.accept()
+        self.active_connections.append(web_socket)
 
-    def disconnect(self, websocket: WebSocket):
+    def disconnect(self, web_socket: WebSocket):
         print("disconnect from connection_manager")
-        self.active_connections.remove(websocket)
+        self.active_connections.remove(web_socket)
 
     @staticmethod
-    async def emit(event, package, websocket: WebSocket):
+    async def emit(event, package, web_socket: WebSocket):
         # Set target event.
         package['event'] = event
         # Convert object to json.
-        await websocket.send_text(json.dumps(package))
+        await web_socket.send_text(json.dumps(package))
 
-    async def broadcast(self, event, package, websocket: WebSocket):
+    async def broadcast(self, event, package, web_socket: WebSocket):
         # Set target event.
         package['event'] = event
 
         for connection in self.active_connections:
             # Skip broadcasting user.
-            if not connection == websocket:
+            if not connection == web_socket:
                 # Convert object to json.
                 await connection.send_text(json.dumps(package))
 
@@ -47,7 +47,8 @@ class db:
         self.name = name
         # Create Neuron object table.
         self.execute_query(
-            'CREATE TABLE IF NOT EXISTS players (ip VARCHAR, private_key VARCHAR, public_key VARCHAR, x MEDIUMINT, y MEDIUMINT, name VARCHAR);'
+            'CREATE TABLE IF NOT EXISTS players ('
+            'ip VARCHAR, private_key VARCHAR, public_key VARCHAR, x MEDIUMINT, y MEDIUMINT, name VARCHAR);'
         )
 
     def encrypt(self, val):

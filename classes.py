@@ -1,10 +1,7 @@
-import sqlite3
 import os
 import time
 import binascii
-import base64
-from fastapi import WebSocket
-from interfaces import connection_manager, db
+from interfaces import db
 
 
 class player:
@@ -30,21 +27,37 @@ class player:
         # Encrypt keys.
         self.keys = keys
 
-    def jsonify(self, **kwargs):
-        # Jsonify player without coordinates.
-        if kwargs.get("nocords", False):
-            return {'player': self.keys['public'], 'name': self.name, 'last_vector': self.last_vector, 'dx': self.dx, 'dy': self.dy}
-        # Jsonify in default format.
-        return {'player': self.keys['public'], 'name': self.name, 'last_vector': self.last_vector, 'dx': self.dx, 'dy': self.dy, 'x': self.x, 'y': self.y}
+    def to_json(self, **kwargs):
+        # To_json player without coordinates.
+        if kwargs.get("no_cords", False):
+            return {
+                'player': self.keys['public'],
+                'name': self.name,
+                'last_vector': self.last_vector,
+                'dx': self.dx,
+                'dy': self.dy
+            }
+        # To_json in default format.
+        return {
+            'player': self.keys['public'],
+            'name': self.name,
+            'last_vector': self.last_vector,
+            'dx': self.dx,
+            'dy': self.dy,
+            'x': self.x,
+            'y': self.y
+        }
 
     @staticmethod
     def generate_new_keys(this_database):
         # Key generation function.
-        random_key = lambda : str(binascii.hexlify(os.urandom(12)))
-        keys = {}
+        random_key: () = lambda: str(binascii.hexlify(os.urandom(12)))
         while True:
             # Generate new key pair.
-            keys = {'private': random_key(), 'public': random_key() }
+            keys = {
+                'private': random_key(),
+                'public': random_key()
+            }
             # Check if Keys are unique and break if they are.
             if not this_database.keys_duplicate(keys):
                 break
@@ -56,7 +69,7 @@ class game:
     active_players: list = {}
 
     def __init__(self):
-        return None
+        pass
 
     async def add_player(self, connections, socket, this_database, p):
         self.active_players[p.keys['public']] = p
@@ -69,32 +82,35 @@ class game:
     async def remove_player(self, connections, socket, p):
         # Remove p from active_players dictionary and tell all other players that p is gone.
         self.active_players.pop(p.keys['public'])
-        await connections.broadcast('remove_player', {'player' :p.keys['public']}, socket)
+        await connections.broadcast('remove_player', {'player': p.keys['public']}, socket)
 
-    def identify_player(self, this_database, ip, keys):
+    def identify_player(self, ip, keys):
         # Encrypt keys to compare to database.
-        if self.active_players[keys['public']].keys['private'] == keys['private'] and self.active_players[keys['public']].ip == ip:
+        if self.active_players[keys['public']].keys['private'] == keys['private'] \
+                and self.active_players[keys['public']].ip == ip:
             return self.active_players[keys['public']]
 
     def update(self, p, x, y, dx, dy, **kwargs):
         # Test if p even exists.
-        if p == None:
+        if p is None:
             return False
         # Determine if player moved to fast since last test.
-        test_speed = lambda x, t: x / t <= self.speed * 100
+        test_speed: () = lambda lx, lt: lx / lt <= self.speed * 100
         # Test if deltaX or deltaY values are correct.
         t = round((time.time() - p.last_response)*100)/100
         # Test if movement vectors are not too large.
-        test_delta = lambda x: abs(x) == self.speed or x == 0
+        test_delta: () = lambda lx: abs(lx) == self.speed or lx == 0
 
         # Test if user should be allowed to sync position.
         if kwargs.get('asynchronous', False):
             try:
-                allowed: bool = t <= 0.5 and test_delta(dx) and test_delta(dy) and test_speed(abs(p.lx-x), t) and test_speed(abs(p.ly-y), t) and p.responsive
+                allowed: bool = t <= 0.5 and test_delta(dx) and test_delta(dy) and test_speed(abs(p.lx-x), t)\
+                    and test_speed(abs(p.ly-y), t) and p.responsive
             except ZeroDivisionError:
                 allowed: bool = False
         else:
-            allowed: bool = t <= 0.5 and t >= 0.49 and test_delta(dx) and test_delta(dy) and test_speed(abs(p.lx-x), t) and test_speed(abs(p.ly-y), t) and p.responsive
+            allowed: bool = 0.5 >= t >= 0.49 and test_delta(dx) and test_delta(dy) and test_speed(abs(p.lx - x), t)\
+                    and test_speed(abs(p.ly - y), t) and p.responsive
         # Update real positions if allowed.
         if allowed:
             # Update position.
@@ -113,15 +129,16 @@ class game:
         return allowed
 
 
-class map:
+class game_map:
     struct = []
     file: str
 
-    def __init__(self, file_location):
+    def __init__(self):
         # Load map.
-        return None
+        pass
 
-    def request_map(self, square_x, square_y):
+    @staticmethod
+    def request_map():
         # Return square and all surrounding squares.
         return None
 
@@ -133,38 +150,53 @@ class db_interactions:
 
     def keys_duplicate(self, keys):
         # Check if object is even available.
-        if keys == None:
+        if keys is None:
             return False
         # Encrypt keys.
-        encr_keys = self.encrypt_keys(keys.copy())
+        encrypt_keys = self.encrypt_keys(keys.copy())
         # Execute search query to test if either private or public are already in use.
-        output = self.db.execute_query('SELECT public_key FROM players WHERE private_key="{}" OR public_key="{}";'.format(encr_keys['private'], encr_keys['public']))
+        output = self.db.execute_query(
+            'SELECT public_key FROM players WHERE private_key="{}" OR public_key="{}";'.format(
+                encrypt_keys['private'], encrypt_keys['public']
+            )
+        )
         # Return False if keys are not in use.
-        return not (output == None)
+        return not (output is None)
 
     def player_exists(self, ip, keys):
         # Check if object is even available.
-        if keys == None or ip == None:
+        if keys is None or ip is None:
             return False
         # Encrypt keys.
-        encr_keys = self.encrypt_keys(keys.copy())
+        encrypt_keys = self.encrypt_keys(keys.copy())
         # Test if player exists.
-        output = self.db.execute_query('SELECT public_key FROM players WHERE ip="{}" AND private_key="{}" AND public_key="{}";'.format(ip, encr_keys['private'], encr_keys['public']))
+        output = self.db.execute_query(
+            'SELECT public_key FROM players WHERE ip="{}" AND private_key="{}" AND public_key="{}";'.format(
+                ip, encrypt_keys['private'], encrypt_keys['public']
+            )
+        )
         # Return False if none such player exists.
-        return not (output == None)
-
+        return not (output is None)
 
     def add_player(self, p):
         # Encrypt keys.
-        encr_keys = self.encrypt_keys(p.keys.copy())
+        encrypt_keys = self.encrypt_keys(p.keys.copy())
         # Write keys and ip into database.
-        self.db.execute_query('INSERT INTO players (ip, private_key, public_key, name) VALUES ("{}", "{}", "{}", "{}");'.format(p.ip, encr_keys['private'], encr_keys['public'], p.name))
+        self.db.execute_query(
+            'INSERT INTO players (ip, private_key, public_key, name) VALUES ("{}", "{}", "{}", "{}");'.format(
+                p.ip, encrypt_keys['private'], encrypt_keys['public'], p.name
+            )
+        )
 
     def update_position(self, p):
         # Encrypt keys.
-        encr_keys = self.encrypt_keys(p.keys.copy())
+        encrypt_keys = self.encrypt_keys(p.keys.copy())
         # Update position of player in database.
-        self.db.execute_query('UPDATE players SET x = {}, y = {} WHERE public_key = "{}"'.format(p.x, p.y, encr_keys['public']))
+        self.db.execute_query(
+            'UPDATE players SET x = {}, y = {} WHERE public_key = "{}"'.format(
+                p.x, p.y, encrypt_keys['public']
+            )
+        )
 
     def encrypt_keys(self, keys):
         keys['private'] = self.db.encrypt(keys['private'])
