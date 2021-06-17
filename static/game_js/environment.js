@@ -26,11 +26,11 @@ async function initMovement()
     PointerLocked = !PointerLocked;
   });
 
-  document.body.addEventListener ("click", function (event) {
+  document.body.addEventListener("click", function (event) {
       event.target.requestPointerLock ();
   });
 
-  document.addEventListener ("mousemove", function (event) {
+  document.addEventListener("mousemove", function (event) {
       if (PointerLocked)
       {
         Fx -= Mouse_x * event.movementX;
@@ -46,6 +46,7 @@ async function initMovement()
     });
     X += DeltaX * Math.cos(Fx) + DeltaY * Math.sin(Fx);
     Y += DeltaY * Math.cos(Fx) - DeltaX * Math.sin(Fx);
+    Z += DeltaZ;
   }, 10);
   // Send actual possition to server with 2Hz. Vector motion is reported event based.
   // This function is used to measure the client-server-client latency in ms either.
@@ -59,18 +60,20 @@ async function initMovement()
 
 async function evalKeys()
 {
-  let x = 0, y = 0;
+  let [x, y, z] = [0, 0, 0];
   KeyMap.forEach((item, i) => {
-    if (KeysPressed.includes(item[0]))
+    if (KeysPressed.includes(item[0].toLowerCase()))
     {
       x += item[1] * Speed;
       y += item[2] * Speed;
+      z += item[3] * Speed;
     }
   });
-  if (x !== DeltaX || y !== DeltaY)
+  if (x !== DeltaX || y !== DeltaY || z !== DeltaZ)
   {
     DeltaX = x;
     DeltaY = y;
+    DeltaZ = z;
     // Test if socket is still open.
     if (WS.open) {
       WS.send(JSON.stringify({event: "vector", keys: KEYS, dx: DeltaX, dy: DeltaY, x: X, y: Y}));

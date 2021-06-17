@@ -7,6 +7,7 @@ var Gl = Canvas.getContext("webgl2", {antialias: true});
 // Transition in x and y direction
 var X = 0;
 var Y = 0;
+var Z = 0;
 // Create resize event to resize canvas.
 var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
@@ -21,6 +22,7 @@ var Fov = Math.PI;
 var Ratio = window.innerWidth / window.innerHeight;
 // Interneal GL objects.
 var Program;
+var PlayerPosition;
 var Perspective;
 var RenderConf;
 var RenderColor;
@@ -33,12 +35,14 @@ var VAO = Gl.createVertexArray();
 
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
-var KeyMap = [["w", 0, 1], ["s", 0, -1], ["a", 1, 0], ["d", -1, 0]];
+var KeyMap = [["w", 0, 1, 0], ["s", 0, -1, 0], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 0, 1], ["Shift", 0, 0, -1]];
 // Speed is handled on the backend.
 var Pull = 500;
 var Speed = 0.02;
+
 var DeltaX = 0;
 var DeltaY = 0;
+var DeltaZ = 0;
 // Store pressed keys in this to handle multikey input
 var KeysPressed = [];
 // List of other players.

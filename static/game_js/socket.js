@@ -52,30 +52,18 @@ function initSocket() {
 
   WS.event["add_player"] = async (pkg) => {
     console.log(pkg);
-    let thisPlayer = player(pkg.x, pkg.y);
-    thisPlayer = await drawDynamic(thisPlayer);
-    thisPlayer.meta = pkg;
-    thisPlayer.meta.last_update = window.performance.now();
-    Players.push(thisPlayer);
     return false;
   };
 
   WS.event["remove_player"] = async (pkg) => {
     console.log("remove: "+pkg.player);
-    Players.forEach((item, i) => {
-      if (item.meta.player === pkg.player){
-        // Make player visually disappear and remove player from Players global.
-        Players[i].delete();
-        Players = Players.splice(i, 1);
-      }
-    });
     return false;
   };
 
   WS.event["sync_game"] = async (pkg) => {
     pkg.players.forEach((elem, i) => {
       // Don't update position if player is moving too prevent stuttering.
-      if(elem.dx === 0 && elem.dy ===0 && elem.last_vector >= 0.5)
+      /*if(elem.dx === 0 && elem.dy ===0 && elem.last_vector >= 0.5)
       {
         console.log(Players[i].transform.y - ((window.performance.now() - Players[i].meta.last_update) * (- Players[i].meta.dy)) / (100/6));
         Players[i].transform.x = - elem.x;
@@ -84,13 +72,13 @@ function initSocket() {
       // Sync vector if vector is not too fast.
       let notTooFast = (x) => Math.abs(x) <= Speed;
       if (notTooFast(elem.dx) && notTooFast(elem.dy)) Players[i].meta = elem;
-      Players[i].meta.last_update = window.performance.now();
+      Players[i].meta.last_update = window.performance.now();*/
     });
   };
 
   WS.event["player_vector_change"] = async (pkg) => {
     // If player is new or changed append it to Players.
-    Players.forEach((item, i) => {
+    /*Players.forEach((item, i) => {
       if (item.meta.player === pkg.player)
       {
         // Sync vector if vector is not too fast.
@@ -99,6 +87,6 @@ function initSocket() {
         Players[i].meta.last_update = window.performance.now();
       }
     });
-    return false;
+    return false;*/
   };
 }

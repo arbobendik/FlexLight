@@ -2,18 +2,20 @@
 
 in vec3 position_3d;
 in vec3 normal_3d;
+in vec2 texture_3d;
 
-uniform vec4 perspective;
+uniform vec3 player_position;
+uniform vec2 perspective;
 uniform vec4 conf;
 
-// varying to pass the normal to the fragment shader
 out float normal;
+out vec2 texture_coord;
 
 void main() {
   vec3 move_3d = vec3(
-    position_3d.x + perspective.z,
-    position_3d.y,
-    position_3d.z - perspective.w
+    position_3d.x + player_position.x,
+    position_3d.y - player_position.z,
+    position_3d.z - player_position.y
   );
 
   vec2 translate_px = vec2(
@@ -34,7 +36,6 @@ void main() {
       conf.x * atan(translate_py.x / translate_py.y)
     );
 
-    // Show position_2d on screen.
     gl_Position = vec4(
       translate_2d,
       1.0 / (1.0 + exp(- translate_py.y)),
@@ -48,5 +49,7 @@ void main() {
       + normal_3d.z * cos(perspective.x) * cos(perspective.y)
       )
       + 0.1;
+
+    texture_coord = texture_3d;
   }
 }

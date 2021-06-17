@@ -11,6 +11,7 @@ async function initEngine()
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
 	// Bind uniforms to Program.
+  PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   RenderColor = Gl.getUniformLocation(Program, "color");
@@ -70,7 +71,8 @@ function renderFrame()
     Gl.enableVertexAttribArray(Normal);
     Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
     // Set uniforms for shaders.
-    Gl.uniform4f(Perspective, Fx, Fy, X, Y);
+    Gl.uniform3f(PlayerPosition, X, Y, Z);
+    Gl.uniform2f(Perspective, Fx, Fy);
     Gl.uniform4f(RenderConf, Fov, Ratio, 0.05, 1);
     Gl.uniform4f(RenderColor, item.color[0], item.color[1], item.color[2], item.color[3]);
     // Actual drawcall.
