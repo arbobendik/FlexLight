@@ -14,8 +14,8 @@ out vec2 texture_coord;
 void main() {
   vec3 move_3d = vec3(
     position_3d.x + player_position.x,
-    position_3d.y - player_position.z,
-    position_3d.z - player_position.y
+    position_3d.y - player_position.y,
+    position_3d.z - player_position.z
   );
 
   vec2 translate_px = vec2(
@@ -38,17 +38,11 @@ void main() {
 
     gl_Position = vec4(
       translate_2d,
-      1.0 / (1.0 + exp(- translate_py.y)),
+      0.99 / (1.0 + exp(- translate_py.y)),
       1
     );
 
-    normal =
-      abs (
-        normal_3d.x * sin(perspective.x)
-      + normal_3d.y * sin(perspective.y)
-      + normal_3d.z * cos(perspective.x) * cos(perspective.y)
-      )
-      + 0.1;
+    normal = dot(normalize(vec3(- move_3d.xy, move_3d.z)) ,normal_3d);
 
     texture_coord = texture_3d;
   }

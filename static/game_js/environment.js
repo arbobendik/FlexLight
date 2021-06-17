@@ -6,14 +6,14 @@ async function initMovement()
   window.addEventListener("keydown", function(event){
     if(!KeysPressed.includes(event.key))
     {
-      KeysPressed.push(event.key);
+      KeysPressed.push(event.key.toLowerCase());
       evalKeys();
     }
   });
   // Remove keys from list if they are not longer pressed.
   window.addEventListener("keyup", function(event){
     KeysPressed.forEach((item, i) => {
-      if (item === event.key)
+      if (item === event.key.toLowerCase())
       {
         KeysPressed.splice(i, 1);
         evalKeys();
@@ -24,10 +24,11 @@ async function initMovement()
   // Change perspective on mouse movement and lock pointer to screen.
   document.addEventListener('pointerlockchange', function(){
     PointerLocked = !PointerLocked;
+    KeysPressed = [];
   });
 
   document.body.addEventListener("click", function (event) {
-      event.target.requestPointerLock ();
+      event.target.requestPointerLock();
   });
 
   document.addEventListener("mousemove", function (event) {
@@ -44,9 +45,9 @@ async function initMovement()
       item.transform.x -= item.meta.dx;
       item.transform.y -= item.meta.dy;
     });
-    X += DeltaX * Math.cos(Fx) + DeltaY * Math.sin(Fx);
-    Y += DeltaY * Math.cos(Fx) - DeltaX * Math.sin(Fx);
-    Z += DeltaZ;
+    X += DeltaX * Math.cos(Fx) + DeltaZ * Math.sin(Fx);
+    Y += DeltaY;
+    Z += DeltaZ * Math.cos(Fx) - DeltaX * Math.sin(Fx);
   }, 10);
   // Send actual possition to server with 2Hz. Vector motion is reported event based.
   // This function is used to measure the client-server-client latency in ms either.
@@ -60,23 +61,26 @@ async function initMovement()
 
 async function evalKeys()
 {
-  let [x, y, z] = [0, 0, 0];
-  KeyMap.forEach((item, i) => {
-    if (KeysPressed.includes(item[0].toLowerCase()))
-    {
-      x += item[1] * Speed;
-      y += item[2] * Speed;
-      z += item[3] * Speed;
-    }
-  });
-  if (x !== DeltaX || y !== DeltaY || z !== DeltaZ)
+  if (PointerLocked)
   {
-    DeltaX = x;
-    DeltaY = y;
-    DeltaZ = z;
-    // Test if socket is still open.
-    if (WS.open) {
-      WS.send(JSON.stringify({event: "vector", keys: KEYS, dx: DeltaX, dy: DeltaY, x: X, y: Y}));
+    let [x, y, z] = [0, 0, 0];
+    KeyMap.forEach((item, i) => {
+      if (KeysPressed.includes(item[0]))
+      {
+        x += item[1] * Speed;
+        y += item[2] * Speed;
+        z += item[3] * Speed;
+      }
+    });
+    if (x !== DeltaX || y !== DeltaY || z !== DeltaZ)
+    {
+      DeltaX = x;
+      DeltaY = y;
+      DeltaZ = z;
+      // Test if socket is still open.
+      if (WS.open) {
+        WS.send(JSON.stringify({event: "vector", keys: KEYS, dx: DeltaX, dy: DeltaY, x: X, y: Y}));
+      }
     }
   }
 }
