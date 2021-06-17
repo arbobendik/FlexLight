@@ -35,7 +35,7 @@ var VAO = Gl.createVertexArray();
 
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
-var KeyMap = [["w", 0, 1, 0], ["s", 0, -1, 0], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 0, 1], ["Shift", 0, 0, -1]];
+var KeyMap = [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]];
 // Speed is handled on the backend.
 var Pull = 500;
 var Speed = 0.02;
