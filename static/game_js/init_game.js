@@ -64,7 +64,7 @@ var KEYS;
 // Websocket must be initialized before it is open.
 var WS = {open: false };
 
-window.addEventListener ("load", async function (){
+window.addEventListener("load", async function (){
 	// Wait until all images are loaded.
 	await preloadImages();
   // Create canvas element.
