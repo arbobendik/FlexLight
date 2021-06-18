@@ -52,4 +52,4 @@ async function fetchShader(url)
     QUEUE.push(rect);
     // Remove first element if there are more or equal then 250.
     if (QUEUE.length > 100) QUEUE.shift();
-  }, 1000);
+  }, 10);

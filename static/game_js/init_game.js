@@ -22,6 +22,8 @@ var Fov = Math.PI;
 var Ratio = window.innerWidth / window.innerHeight;
 // Interneal GL objects.
 var Program;
+var PositionBuffer;
+var NormalBuffer;
 var PlayerPosition;
 var Perspective;
 var RenderConf;
