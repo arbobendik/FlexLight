@@ -38,7 +38,7 @@ void main() {
 
     gl_Position = vec4(
       translate_2d,
-      0.99 / (1.0 + exp(- translate_py.y)),
+      0.99 / (1.0 + exp(- length(move_3d))),
       1
     );
 
