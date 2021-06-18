@@ -48,7 +48,7 @@ async function initMovement()
     X += DeltaX * Math.cos(Fx) + DeltaZ * Math.sin(Fx);
     Y += DeltaY;
     Z += DeltaZ * Math.cos(Fx) - DeltaX * Math.sin(Fx);
-  }, 10);
+  }, 100/6);
   // Send actual possition to server with 2Hz. Vector motion is reported event based.
   // This function is used to measure the client-server-client latency in ms either.
   setInterval(async function(){
