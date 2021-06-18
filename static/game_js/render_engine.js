@@ -54,7 +54,6 @@ function frameCycle()
   }
 	// Request the browser to render frame with hardware accelerated rendering.
 	requestAnimationFrame(frameCycle);
-  if (Frame >= 29) console.log("reached end!");
 }
 
 function renderFrame()
