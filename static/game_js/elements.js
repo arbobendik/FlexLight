@@ -2,10 +2,10 @@
 
 // Element facories that could be used for Text / Images / Objects, etc
 const rect_prism = new Element(function(item){
-  // Set default value for each optional argument if it isn't set.
-  optArgs(item, {height: 1, width: 1, depth: 1, color: [1, 1, 1, 1]})
   // Test if all necessary arguments are provided.
   reqArgs(item, {x: item.x}, {y: item.y}, {z: item.z});
+  // Set default value for each optional argument if it isn't set.
+  optArgs(item, {height: 1, width: 1, depth: 1, color: [1, 1, 1, 1]})
   // Set normals.
   item.normals = [0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0];
   // Predefine properties of vertices.

@@ -13,7 +13,6 @@ async function buildProgram(shaders)
     if (Gl.getShaderParameter(shader, Gl.COMPILE_STATUS))
     {
       Gl.attachShader(Program, shader);
-      return shader;
     }
     else
     {
@@ -22,16 +21,14 @@ async function buildProgram(shaders)
       Gl.deleteShader(shader);
     }
   });
-
   Gl.linkProgram(Program);
   // Return Program if it links successfully.
-  if (Gl.getProgramParameter(Program, Gl.LINK_STATUS))
+  if (!Gl.getProgramParameter(Program, Gl.LINK_STATUS))
   {
-    return;
+    // Log debug info and delete Program if Program fails to link.
+    console.log(Gl.getProgramInfoLog(Program));
+    Gl.deleteProgram(Program);
   }
-  // Log debug info and delete Program if Program fails to link.
-  console.log(Gl.getProgramInfoLog(Program));
-  Gl.deleteProgram(Program);
 }
 
 async function fetchShader(url)
