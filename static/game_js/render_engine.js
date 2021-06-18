@@ -26,6 +26,10 @@ async function initEngine()
   // Create global vertex array object (VAO).
   VAO = Gl.createVertexArray();
   Gl.bindVertexArray(VAO);
+  // Prepare position buffer for coordinates array.
+  PositionBuffer = Gl.createBuffer();
+  // Create a buffer for normals.
+  NormalBuffer = Gl.createBuffer();
   // Begin frame cycle.
   frameCycle();
 }
@@ -50,6 +54,7 @@ function frameCycle()
   }
 	// Request the browser to render frame with hardware accelerated rendering.
 	requestAnimationFrame(frameCycle);
+  if (Frame >= 29) console.log("reached end!");
 }
 
 function renderFrame()
@@ -57,16 +62,12 @@ function renderFrame()
   // Iterate through render queue and create frame.
   QUEUE.forEach((item, i) => {
 		// Pass the item itself to be able to access all the set properties correctly in the inner closure.
-    // Prepare position buffer for coordinates array.
-    var positionBuffer = Gl.createBuffer();
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, positionBuffer);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.vertices), Gl.DYNAMIC_DRAW);
     Gl.enableVertexAttribArray(Position);
     Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
     Gl.bindVertexArray(VAO);
-    // Create a buffer for normals.
-    var normalBuffer = Gl.createBuffer();
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, normalBuffer);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.normals), Gl.DYNAMIC_DRAW);
     Gl.enableVertexAttribArray(Normal);
     Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
