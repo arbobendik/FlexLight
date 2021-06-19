@@ -20,17 +20,21 @@ var Micros = window.performance.now();
 // Set Fov for RENDER_ENGINE
 var Fov = Math.PI;
 var Ratio = window.innerWidth / window.innerHeight;
-// Interneal GL objects.
+// Internal GL objects.
 var Program;
 var PositionBuffer;
 var NormalBuffer;
+var WorldTexBuffer;
+var WorldTexCoord;
 var PlayerPosition;
 var Perspective;
 var RenderConf;
 var RenderColor;
+var WorldTex;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
+const WorldTexPos = 2;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();
@@ -38,9 +42,9 @@ var VAO = Gl.createVertexArray();
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
 var KeyMap = [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]];
-// Speed is handled on the backend.
-var Pull = 500;
-var Speed = 0.02;
+// Speed is handled on the backend as well.
+const Pull = 500;
+const Speed = 0.02;
 
 var DeltaX = 0;
 var DeltaY = 0;

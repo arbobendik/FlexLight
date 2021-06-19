@@ -10,12 +10,14 @@ async function initEngine()
 	// Bind Attribute varying to their respective shader locations.
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
+  Gl.bindAttribLocation(Program, WorldTexCoord, "world_tex_pos");
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   RenderColor = Gl.getUniformLocation(Program, "color");
-	// Set pixel density in canvas correctly.
+  WorldTex = Gl.getUniformLocation(Program, "world_tex");
+  // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
   Gl.enable(Gl.DEPTH_TEST);
@@ -30,6 +32,8 @@ async function initEngine()
   PositionBuffer = Gl.createBuffer();
   // Create a buffer for normals.
   NormalBuffer = Gl.createBuffer();
+  // Create a buffer for order of all elements in world space.
+  WorldTexBuffer = Gl.createBuffer();
   // Begin frame cycle.
   frameCycle();
 }
@@ -60,6 +64,7 @@ function renderFrame()
 {
   // Iterate through render queue and create frame.
   QUEUE.forEach((item, i) => {
+    Gl.uniform1i(WorldTex, 0);
 		// Pass the item itself to be able to access all the set properties correctly in the inner closure.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.vertices), Gl.DYNAMIC_DRAW);
