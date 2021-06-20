@@ -18,8 +18,6 @@ async function initEngine()
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
-  // Set texture
-  worldTextureBuilder();
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -41,6 +39,10 @@ async function initEngine()
   ColorBuffer = Gl.createBuffer();
   // Create a buffer for triangles.
   TriangleBuffer = Gl.createBuffer();
+  // Create a texture.
+  WorldTexture = Gl.createTexture();
+  Gl.activeTexture(Gl.TEXTURE0 + 0);
+  Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
   // Begin frame cycle.
   frameCycle();
 }
@@ -69,6 +71,7 @@ function frameCycle()
 
 function renderFrame()
 {
+  // Set Texture.
   worldTextureBuilder();
   // Set uniforms for shaders.
   Gl.uniform3f(PlayerPosition, X, Y, Z);

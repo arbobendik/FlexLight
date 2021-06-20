@@ -33,6 +33,7 @@ var NormalBuffer;
 var TexBuffer;
 var ColorBuffer;
 var TriangleBuffer;
+var WorldTexture;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;

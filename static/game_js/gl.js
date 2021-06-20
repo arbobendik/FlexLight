@@ -38,10 +38,6 @@ async function fetchShader(url)
 
 function worldTextureBuilder()
 {
-  // Create a texture.
-  var texture = Gl.createTexture();
-  Gl.activeTexture(Gl.TEXTURE0 + 0);
-  Gl.bindTexture(Gl.TEXTURE_2D, texture);
   // Reset old world space texture.
   Data = [];
   // Fill texture with data pixels.
