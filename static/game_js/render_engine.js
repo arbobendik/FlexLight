@@ -17,6 +17,8 @@ async function initEngine()
   RenderConf = Gl.getUniformLocation(Program, "conf");
   RenderColor = Gl.getUniformLocation(Program, "color");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
+  // Set texture
+  worldTextureBuilder();
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -32,7 +34,7 @@ async function initEngine()
   PositionBuffer = Gl.createBuffer();
   // Create a buffer for normals.
   NormalBuffer = Gl.createBuffer();
-  // Create a buffer for order of all elements in world space.
+  // Create a buffer for tex_coords of all elements in world space.
   WorldTexBuffer = Gl.createBuffer();
   // Begin frame cycle.
   frameCycle();
@@ -66,15 +68,23 @@ function renderFrame()
   QUEUE.forEach((item, i) => {
     Gl.uniform1i(WorldTex, 0);
 		// Pass the item itself to be able to access all the set properties correctly in the inner closure.
+    // Set PositionBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.vertices), Gl.DYNAMIC_DRAW);
     Gl.enableVertexAttribArray(Position);
     Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
     Gl.bindVertexArray(VAO);
+    // Set NormalBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.normals), Gl.DYNAMIC_DRAW);
     Gl.enableVertexAttribArray(Normal);
     Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
+    Gl.bindVertexArray(VAO);
+    // Set WorldTexBuffer
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, WorldTexBuffer);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);
+    Gl.enableVertexAttribArray(WorldTexCoord);
+    Gl.vertexAttribPointer(WorldTexCoord, 2, Gl.FLOAT, true, 0, 0);
     // Set uniforms for shaders.
     Gl.uniform3f(PlayerPosition, X, Y, Z);
     Gl.uniform2f(Perspective, Fx, Fy);
