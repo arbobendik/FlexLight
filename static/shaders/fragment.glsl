@@ -15,13 +15,13 @@ out vec4 outColor;
 
 bool shadowTrace(vec3 n, vec3 l, vec3 p, mat3 t)
 {
-  r = normalize(l - p);
+  vec3 r = normalize(l - p);
   if(dot(n, r) == 0.0)
   {
     return false;
   }
-  s = (n.x * t[0].x + n.y * t[0].y + n.z * t[0].z) / (n.x * r.x + n.y * r.y + n.z * r.z);
-  d = s * r;
+  float s = (n.x * t[0].x + n.y * t[0].y + n.z * t[0].z) / (n.x * r.x + n.y * r.y + n.z * r.z);
+  vec3 d = s * r;
   return true;
 }
 
