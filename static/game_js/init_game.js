@@ -25,7 +25,6 @@ var Program;
 var PositionBuffer;
 var NormalBuffer;
 var WorldTexBuffer;
-var WorldTexCoord;
 var PlayerPosition;
 var Perspective;
 var RenderConf;
@@ -34,7 +33,7 @@ var WorldTex;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
-const WorldTexPos = 2;
+const WorldTexCoord = 2;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();

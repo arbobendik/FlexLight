@@ -47,15 +47,19 @@ function worldTextureBuilder()
   // fill texture with 3x2 pixels
   {
     const level = 0;
-    const internalFormat = Gl.R8;
+    const internalFormat = Gl.RGBA8UI;
     const width = 3;
     const height = 2;
     const border = 0;
-    const format = Gl.RED;
+    const format = Gl.RGBA8UI;
     const type = Gl.UNSIGNED_BYTE;
     const data = new Uint8Array([
-      128,  64, 128,
-        0, 192,   0,
+      128, 128, 128, 255,
+      64, 64, 64, 255,
+      128, 128, 128, 255,
+      0, 0, 0, 255,
+      192, 192, 192, 255,
+      0, 0, 0, 255
     ]);
     Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
     Gl.texImage2D(Gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
