@@ -5,9 +5,9 @@
 var Canvas = document.createElement("canvas");
 var Gl = Canvas.getContext("webgl2", {antialias: true});
 // Transition in x and y direction
-var X = 0;
-var Y = 0;
-var Z = 0;
+var X = 1;
+var Y = 4;
+var Z = 1;
 // Create resize event to resize canvas.
 var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
@@ -33,6 +33,7 @@ var NormalBuffer;
 var TexBuffer;
 var ColorBuffer;
 var TriangleBuffer;
+var WorldTexHeight;
 var WorldTexture;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
@@ -42,6 +43,7 @@ const Color = 3;
 const Triangle = 4;
 // List of all vertices currently in world space.
 var Data = [];
+var DataHeight = 0;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();

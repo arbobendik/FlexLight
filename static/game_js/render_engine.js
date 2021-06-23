@@ -18,6 +18,7 @@ async function initEngine()
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
+  WorldTexHeight = Gl.getUniformLocation(Program, "world_tex_height");
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -74,6 +75,7 @@ function renderFrame()
   // Set Texture.
   worldTextureBuilder();
   // Set uniforms for shaders.
+  Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);
   Gl.uniform2f(Perspective, Fx, Fy);
   Gl.uniform4f(RenderConf, Fov, Ratio, 0.05, 1);
