@@ -25,7 +25,7 @@ const rect_prism = new Element(function(item){
   item.triangles = [];
   let v = item.vertices;
   for(let i = 0; i < 108; i += 9){
-    item.triangles.push(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8]);
+    item.triangles.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8]);
   }
   // Set default arrayLength for this object.
   item.arrayLength = 36;
