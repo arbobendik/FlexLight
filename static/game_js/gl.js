@@ -113,6 +113,7 @@ setTimeout(function(){
     plane = plane(plane);
     QUEUE.push(plane);
   }
+  worldTextureBuilder();
 },1000);
 
 /*
