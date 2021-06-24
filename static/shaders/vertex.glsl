@@ -4,7 +4,6 @@ in vec3 position_3d;
 in vec3 normal_3d;
 in vec2 tex_pos;
 in vec4 color_3d;
-in mat3 triangle_3d;
 
 uniform vec3 player_position;
 uniform vec2 perspective;
@@ -15,7 +14,7 @@ out vec3 position;
 out vec3 normal;
 out vec2 tex_coord;
 out vec4 color;
-out mat3 triangle;
+out vec3 clip_space;
 
 void main(){
   vec3 move_3d = position_3d + vec3(player_position.x, - player_position.yz);
@@ -29,12 +28,14 @@ void main(){
   );
   if (translate_py.y > 0.0){
     vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y) / translate_py.y;
+    // Set final clip space position.
     gl_Position = vec4(translate_2d, 0.99 / (1.0 + exp(- length(move_3d / 100.0))), 1.0 );
+    // Pass clip space coords to fragment shader for frustum culling before raytracing.
+    clip_space = vec3(translate_2d, translate_py.y);
     player = player_position;
     position = position_3d;
     normal = normal_3d;
     tex_coord = tex_pos;
     color = color_3d;
-    triangle = triangle_3d;
   }
 }

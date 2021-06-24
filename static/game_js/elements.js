@@ -21,12 +21,6 @@ const rect_prism = new Element(function(item){
     item.colors.push(c);
   }
   item.colors = item.colors.flat();
-  // Set triangle.
-  item.triangles = [];
-  let v = item.vertices;
-  for(let i = 0; i < 108; i += 9){
-    item.triangles.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8]);
-  }
   // Set default arrayLength for this object.
   item.arrayLength = 36;
   // Return itself.

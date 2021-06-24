@@ -12,7 +12,6 @@ async function initEngine()
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
   Gl.bindAttribLocation(Program, TexCoord, "tex_pos");
   Gl.bindAttribLocation(Program, Color, "color_3d");
-  Gl.bindAttribLocation(Program, Triangle, "triangle_3d");
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
@@ -38,8 +37,6 @@ async function initEngine()
   //TexBuffer = Gl.createBuffer();
   // Create a buffer for colors.
   ColorBuffer = Gl.createBuffer();
-  // Create a buffer for triangles.
-  TriangleBuffer = Gl.createBuffer();
   // Create a texture.
   WorldTexture = Gl.createTexture();
   Gl.activeTexture(Gl.TEXTURE0 + 0);
@@ -73,7 +70,6 @@ function frameCycle()
 function renderFrame()
 {
   // Set Texture.
-  worldTextureBuilder();
   // Set uniforms for shaders.
   Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);
@@ -102,11 +98,6 @@ function renderFrame()
     Gl.enableVertexAttribArray(Color);
     Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
     Gl.bindVertexArray(VAO);
-    // Set TriangleBuffer.
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, TriangleBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.triangles), Gl.DYNAMIC_DRAW);
-    Gl.enableVertexAttribArray(Triangle);
-    Gl.vertexAttribPointer(Triangle, 3, Gl.FLOAT, false, 36, 0);
     /* Set TexBuffer
     Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
     Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);
