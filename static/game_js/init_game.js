@@ -40,7 +40,6 @@ const Position = 0;
 const Normal = 1;
 const TexCoord = 2;
 const Color = 3;
-const Triangle = 4;
 // List of all vertices currently in world space.
 var Data = [];
 var DataHeight = 0;
