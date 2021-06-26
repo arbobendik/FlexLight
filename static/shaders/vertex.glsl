@@ -27,11 +27,9 @@ void main(){
     translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
   );
   if (translate_py.y > 0.0){
-    vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y) / translate_py.y;
+    vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y);
     // Set final clip space position.
-    gl_Position = vec4(translate_2d, 0.99 / (1.0 + exp(- length(move_3d / 100.0))), 1.0 );
-    // Pass clip space coords to fragment shader for frustum culling before raytracing.
-    clip_space = vec3(translate_2d, translate_py.y);
+    gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 100.0))), translate_py.y);
     player = player_position;
     position = position_3d;
     normal = normal_3d;

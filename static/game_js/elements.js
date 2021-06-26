@@ -16,10 +16,7 @@ const rect_prism = new Element(function(item){
   // Set color.
   let c = [0, 0, 0].map((item) => Math.random()).concat([1]);
   item.colors = [];
-  for(let i = 0; i < 36; i++)
-  {
-    item.colors.push(c);
-  }
+  for(let i = 0; i < 36; i++) item.colors.push(c);
   item.colors = item.colors.flat();
   // Set default arrayLength for this object.
   item.arrayLength = 36;

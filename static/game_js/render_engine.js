@@ -11,7 +11,7 @@ async function initEngine()
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
   Gl.bindAttribLocation(Program, TexCoord, "tex_pos");
-  Gl.bindAttribLocation(Program, Color, "color_3d");
+  Gl.bindAttribLocation(Program, Color, "color_3d");Gl.enableVertexAttribArray (Position);
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
@@ -70,45 +70,54 @@ function frameCycle()
 function renderFrame()
 {
   // Set Texture.
+  worldTextureBuilder();
   // Set uniforms for shaders.
   Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);
   Gl.uniform2f(Perspective, Fx, Fy);
-  Gl.uniform4f(RenderConf, Fov, Ratio, 0.05, 1);
+  Gl.uniform4f(RenderConf, Fov, Ratio, 1, 1);
+  // Pass whole current world space as data structure to GPU.
+  Gl.uniform1i(WorldTex, 0);
+  var vertices = [];
+  var normals = [];
+  var colors = [];
+  var length = 0;
   // Iterate through render queue and create frame.
   QUEUE.forEach((item, i) => {
-    // Pass whole current world space as data structure to GPU.
-    Gl.uniform1i(WorldTex, 0);
-		// Pass the item itself to be able to access all the set properties correctly in the inner closure.
-    // Set PositionBuffer.
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.vertices), Gl.DYNAMIC_DRAW);
-    Gl.enableVertexAttribArray(Position);
-    Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
-    Gl.bindVertexArray(VAO);
-    // Set NormalBuffer.
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.normals), Gl.DYNAMIC_DRAW);
-    Gl.enableVertexAttribArray(Normal);
-    Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
-    Gl.bindVertexArray(VAO);
-    // Set ColorBuffer.
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.colors), Gl.DYNAMIC_DRAW);
-    Gl.enableVertexAttribArray(Color);
-    Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
-    Gl.bindVertexArray(VAO);
-    /* Set TexBuffer
-    Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);
-    Gl.enableVertexAttribArray(TexCoord);
-    Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
-    */
-    // Actual drawcall.
-    Gl.drawArrays(Gl.TRIANGLES, 0, item.arrayLength);
+    vertices.push(item.vertices);
+    normals.push(item.normals);
+    colors.push(item.colors);
+    length += item.arrayLength;
   });
-}
+  // Pass the item itself to be able to access all the set properties correctly in the inner closure.
+  // Set PositionBuffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(vertices.flat()), Gl.DYNAMIC_DRAW);
+  Gl.enableVertexAttribArray(Position);
+  Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
+  Gl.bindVertexArray(VAO);
+  // Set NormalBuffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(normals.flat()), Gl.DYNAMIC_DRAW);
+  Gl.enableVertexAttribArray(Normal);
+  Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
+  Gl.bindVertexArray(VAO);
+  // Set ColorBuffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(colors.flat()), Gl.DYNAMIC_DRAW);
+  Gl.enableVertexAttribArray(Color);
+  Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
+  Gl.bindVertexArray(VAO);
+  /* Set TexBuffer
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);
+  Gl.enableVertexAttribArray(TexCoord);
+  Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
+  */
+  // Actual drawcall.
+  Gl.drawArrays(Gl.TRIANGLES, 0, length);
 
+}
 // General purpose element prototype.
 function Element(foo)
 {
