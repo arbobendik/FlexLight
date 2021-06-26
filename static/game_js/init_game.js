@@ -5,9 +5,9 @@
 var Canvas = document.createElement("canvas");
 var Gl = Canvas.getContext("webgl2", {antialias: true});
 // Transition in x and y direction
-var X = 0;
-var Y = 0;
-var Z = 0;
+var X = 1;
+var Y = 4;
+var Z = 1;
 // Create resize event to resize canvas.
 var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
@@ -20,17 +20,29 @@ var Micros = window.performance.now();
 // Set Fov for RENDER_ENGINE
 var Fov = Math.PI;
 var Ratio = window.innerWidth / window.innerHeight;
-// Interneal GL objects.
+// Internal GL objects.
 var Program;
-var PositionBuffer;
-var NormalBuffer;
 var PlayerPosition;
 var Perspective;
 var RenderConf;
 var RenderColor;
+var WorldTex;
+// Init Buffers.
+var PositionBuffer;
+var NormalBuffer;
+var TexBuffer;
+var ColorBuffer;
+var TriangleBuffer;
+var WorldTexHeight;
+var WorldTexture;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
+const TexCoord = 2;
+const Color = 3;
+// List of all vertices currently in world space.
+var Data = [];
+var DataHeight = 0;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();
@@ -38,9 +50,9 @@ var VAO = Gl.createVertexArray();
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
 var KeyMap = [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]];
-// Speed is handled on the backend.
-var Pull = 500;
-var Speed = 0.02;
+// Speed is handled on the backend as well.
+const Pull = 500;
+const Speed = 0.02;
 
 var DeltaX = 0;
 var DeltaY = 0;
