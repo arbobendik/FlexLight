@@ -17,7 +17,7 @@ async function buildProgram(shaders)
     else
     {
       // Log debug info and delete shader if shader fails to compile.
-      console.log(Gl.getShaderInfoLog(shader));
+      console.warn(Gl.getShaderInfoLog(shader));
       Gl.deleteShader(shader);
     }
   });
@@ -26,7 +26,7 @@ async function buildProgram(shaders)
   if (!Gl.getProgramParameter(Program, Gl.LINK_STATUS))
   {
     // Log debug info and delete Program if Program fails to link.
-    console.log(Gl.getProgramInfoLog(Program));
+    console.warn(Gl.getProgramInfoLog(Program));
     Gl.deleteProgram(Program);
   }
 }
@@ -113,7 +113,6 @@ setTimeout(function(){
     plane = plane(plane);
     QUEUE.push(plane);
   }
-  worldTextureBuilder();
 },1000);
 
 /*
