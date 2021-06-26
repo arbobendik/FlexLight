@@ -4,7 +4,7 @@ async function initMovement()
 {
   // Listen for keyboard input.
   window.addEventListener("keydown", function(event){
-    if(!KeysPressed.includes(event.key))
+    if(!KeysPressed.includes(event.key.toLowerCase()))
     {
       KeysPressed.push(event.key.toLowerCase());
       evalKeys();
@@ -31,7 +31,7 @@ async function initMovement()
       event.target.requestPointerLock();
   });
 
-  document.addEventListener("mousemove", function (event) {
+  document.addEventListener("pointermove", function (event) {
       if (PointerLocked)
       {
         Fx -= Mouse_x * event.movementX;
