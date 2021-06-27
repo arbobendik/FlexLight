@@ -112,6 +112,21 @@ setTimeout(function(){
   rect.depth = 1;
   rect = rect(rect);
   QUEUE.push(rect);
+
+  var c=[{v:0,n:3},{v:0,n:3},{v:0,n:3}];
+    setInterval(function(){
+      c.forEach((e,i)=>{
+        if(e.v+e.n>=255||e.v+e.n<=0)
+        {
+          e.n=(Math.random()**2+1.1)*-20*e.n/Math.abs(e.n);
+        }
+        e.v+=e.n*0.1;
+      });
+      let color =[];
+      let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
+      for(let i = 0; i < 36; i++) color.push(co);
+      QUEUE[25].colors = color.flat();
+    },(100/6));
 },1000);
 
 /*

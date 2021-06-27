@@ -7,6 +7,9 @@ async function initEngine()
     {source:await fetchShader("static/shaders/vertex.glsl"),type:Gl.VERTEX_SHADER},
     {source:await fetchShader("static/shaders/fragment.glsl"),type:Gl.FRAGMENT_SHADER}
   ]);
+    // Create global vertex array object (VAO).
+  VAO = Gl.createVertexArray();
+  Gl.bindVertexArray(VAO);
 	// Bind Attribute varying to their respective shader locations.
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
@@ -24,11 +27,10 @@ async function initEngine()
   Gl.enable(Gl.DEPTH_TEST);
 	// Cull (exclude from rendering) hidden vertices at the other side of objects.
   Gl.enable(Gl.CULL_FACE);
+  // Set clear color for canvas.
+	Gl.clearColor(0, 0, 0, 0);
 	// Define Program with its currently bound shaders as the program to use for the webgl2 context.
   Gl.useProgram(Program);
-  // Create global vertex array object (VAO).
-  VAO = Gl.createVertexArray();
-  Gl.bindVertexArray(VAO);
   // Prepare position buffer for coordinates array.
   PositionBuffer = Gl.createBuffer();
   // Create a buffer for normals.
@@ -41,14 +43,30 @@ async function initEngine()
   WorldTexture = Gl.createTexture();
   Gl.activeTexture(Gl.TEXTURE0 + 0);
   Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
+  // Bind and set buffer parameters.
+  // Bind position buffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
+  Gl.enableVertexAttribArray(Position);
+  Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
+  // Bind normal buffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
+  Gl.enableVertexAttribArray(Normal);
+  Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
+  // Bind color buffer.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
+  Gl.enableVertexAttribArray(Color);
+  Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
+  /* Set TexBuffer
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
+  Gl.enableVertexAttribArray(TexCoord);
+  Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
+  */
   // Begin frame cycle.
   frameCycle();
 }
 
 function frameCycle()
 {
-	// Clear Canvas after each frame.
-	Gl.clearColor(0, 0, 0, 0);
   Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
 	// Render new Image, work through QUEUE.
 	renderFrame();
@@ -93,27 +111,15 @@ function renderFrame()
   // Set PositionBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(vertices.flat()), Gl.DYNAMIC_DRAW);
-  Gl.enableVertexAttribArray(Position);
-  Gl.vertexAttribPointer(Position, 3, Gl.FLOAT, false, 0, 0);
-  Gl.bindVertexArray(VAO);
   // Set NormalBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(normals.flat()), Gl.DYNAMIC_DRAW);
-  Gl.enableVertexAttribArray(Normal);
-  Gl.vertexAttribPointer(Normal, 3, Gl.FLOAT, false, 0, 0);
-  Gl.bindVertexArray(VAO);
   // Set ColorBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(colors.flat()), Gl.DYNAMIC_DRAW);
-  Gl.enableVertexAttribArray(Color);
-  Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
-  Gl.bindVertexArray(VAO);
-  /* Set TexBuffer
+  /* Set TexBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
-  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);
-  Gl.enableVertexAttribArray(TexCoord);
-  Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
-  */
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);*/
   // Actual drawcall.
   Gl.drawArrays(Gl.TRIANGLES, 0, length);
 
