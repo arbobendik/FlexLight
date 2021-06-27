@@ -97,13 +97,6 @@ async function fillData(item)
 }
 
 setTimeout(function(){
-  let rect = rect_prism(0.2, 1.5, 0.2);
-  rect.width = 1;
-  rect.height = 1;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
-
   for (let i = 0; i < 25; i++)
   {
     let plane = rect_prism(-10 + 4*(i%5), -1, -10 + 4*Math.floor(i / 5));
@@ -113,6 +106,12 @@ setTimeout(function(){
     plane = plane(plane);
     QUEUE.push(plane);
   }
+  let rect = rect_prism(0.2, 1.5, 0.2);
+  rect.width = 1;
+  rect.height = 1;
+  rect.depth = 1;
+  rect = rect(rect);
+  QUEUE.push(rect);
 },1000);
 
 /*
