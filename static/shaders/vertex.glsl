@@ -14,7 +14,6 @@ out vec3 position;
 out vec3 normal;
 out vec2 tex_coord;
 out vec4 color;
-out vec3 clip_space;
 
 void main(){
   vec3 move_3d = position_3d + vec3(player_position.x, - player_position.yz);
@@ -32,7 +31,7 @@ void main(){
     gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 100.0))), translate_py.y);
     player = player_position;
     position = position_3d;
-    normal = normal_3d;
+    normal = normalize(normal_3d);
     tex_coord = tex_pos;
     color = color_3d;
   }

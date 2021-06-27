@@ -7,7 +7,8 @@ in vec3 normal;
 in vec2 tex_coord;
 in vec4 color;
 
-vec3 light = vec3(0.0, 3.0, 0.0);
+vec3 light = vec3(0.0, 3.5, 0.0);
+float strength = 3.0;
 uniform sampler2D world_tex;
 
 out vec4 outColor;
@@ -32,8 +33,8 @@ void main(){
   bool in_shadow = false;
   vec3 ray = normalize(light - position);
 
-  for(int i = 0; !in_shadow && i < 180; i++){
-    vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
+  for(int i = 0; i < size.y; i++){
+    vec3 n = normalize(texelFetch(world_tex, ivec2(4, i), 0).xyz);
     // Test if ray or surface face in different direction.
     if(sign(n) == sign(ray)) continue;
     // If surfaces point in same direction intersection is not possible.
@@ -43,16 +44,17 @@ void main(){
     vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
     vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
     in_shadow = shadowTrace(light, ray, position, a, b, c, n);
+    if(in_shadow) break;
   }
-
+  float intensity = strength / (1.0 + length(light - position) / strength);
   if (in_shadow){
-    outColor = vec4(0.2 * color.xyz, color.w);
+    outColor = vec4(0.0 * color.xyz, color.w);
   }else{
-    outColor = vec4(
-      dot(
-        normalize(vec3(-1.0, -1.0, 1.0) * position + vec3(-1.0, 1.0, -1.0) * light),
-        normal
-      ) * color.xyz, color.w
-    );
+    vec3 view = normalize(vec3(-player.x, player.yz) - position);
+    vec3 halfVector = normalize(ray + view);
+    float l = dot(normalize(vec3(-light.x - position.x, ray.y, -light.z + position.z)), normal);
+    float specular = pow(dot(normal, halfVector), 50.0 * strength);
+    outColor = vec4(color.xyz * l * intensity, color.w);
+    if (specular > 0.0) outColor.rgb += specular * intensity;
   }
 }
