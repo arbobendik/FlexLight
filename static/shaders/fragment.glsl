@@ -15,17 +15,27 @@ out vec4 outColor;
 
 // normal, light source, pixel position, triangle.
 bool shadowTrace(vec3 l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
+  float dnr = dot(n, r);
   // Test if ray and plane are parallel.
-  if(dot(n, r) == 0.0) return false;
-  float s = dot(n , a - p) / dot(n, r);
+  if(dnr == 0.0) return false;
+  float s = dot(n , a - p) / dnr;
   // Ensure that ray triangle intersection is between light source and texture.
   if (s > length(l - p) || s <= 0.0) return false;
   // Calculate intersection point.
   vec3 d = (s * r) + p;
   // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
-  if (dot(cross(c-b, d-b), cross(c-b, a-b)) < 0.0) return false;
-  if (dot(cross(c-a, d-a), cross(c-a, b-a)) < 0.0) return false;
-  return dot(cross(b-a, d-a), cross(b-a, c-a)) >= 0.0;
+  vec3 v0 = c - a;
+  vec3 v1 = b - a;
+  vec3 v2 = d - a;
+  float dot00 = dot(v0, v0);
+  float dot01 = dot(v0, v1);
+  float dot02 = dot(v0, v2);
+  float dot11 = dot(v1, v1);
+  float dot12 = dot(v1, v2);
+  float invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01);
+  float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+  float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+  return (u >= 0.0) && (v >= 0.0) && (u + v < 1.0);
 }
 
 void main(){
@@ -35,10 +45,10 @@ void main(){
 
   for(int i = 0; i < size.y; i++){
     vec3 n = normalize(texelFetch(world_tex, ivec2(4, i), 0).xyz);
-    // Test if ray or surface face in different direction.
-    if(sign(n) == sign(ray)) continue;
     // If surfaces point in same direction intersection is not possible.
     if(n == normal) continue;
+    // Test if ray or surface face in same direction.
+    if(sign(n) == sign(ray)) continue;
     // Fetch triangle coordinates from world texture.
     vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
     vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
