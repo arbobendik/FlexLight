@@ -4,7 +4,7 @@
 // Initialize Canvas and Gl-Context.
 var Canvas = document.createElement("canvas");
 var Gl = Canvas.getContext("webgl2", {antialias: true});
-// Transition in x and y direction
+// Transition in x and y direction.
 var X = 1;
 var Y = 4;
 var Z = 1;
@@ -57,13 +57,13 @@ const Speed = 0.02;
 var DeltaX = 0;
 var DeltaY = 0;
 var DeltaZ = 0;
-// Store pressed keys in this to handle multikey input
+// Store pressed keys in this to handle multikey input.
 var KeysPressed = [];
 // List of other players.
 var Players = [];
 // current pointer lock state.
 var PointerLocked = false;
-// Current player frustum rotation
+// Current player frustum rotation.
 var Fx = 0;
 var Fy = 0;
 // Mouse Speed.
