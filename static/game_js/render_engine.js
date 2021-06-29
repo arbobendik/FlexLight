@@ -122,7 +122,6 @@ function renderFrame()
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);*/
   // Actual drawcall.
   Gl.drawArrays(Gl.TRIANGLES, 0, length);
-
 }
 // General purpose element prototype.
 function Element(foo)

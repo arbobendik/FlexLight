@@ -120,7 +120,7 @@ setTimeout(function(){
         {
           e.n=(Math.random()**2+1.1)*-20*e.n/Math.abs(e.n);
         }
-        e.v+=e.n*0.1;
+        e.v+=e.n*0.7;
       });
       let color =[];
       let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
