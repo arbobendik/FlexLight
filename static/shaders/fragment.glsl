@@ -49,32 +49,22 @@ bool rayTriangle(vec3 l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
   return (u > 0.0) && (v > 0.0) && (u + v < 1.0);
 }
 
-// Licht, Ray , Pixel-Position, x, x2,
-bool rayCuboid(vec3 l, vec3 r, vec3 p, vec3 mini, vec3 maxi){
-  // Calculate multiples of ray for each max and min value per dimension.
-  /*
-  r.x * s.lx = mini.x
-  r.y * s.ly = mini.y
-  r.z * s.lz = mini.z
-
-  r.x * s.ux = max.x
-  r.y * s.uy = max.y
-  r.z * s.uz = max.z
-
-  s.u > s.l
-
-  */
-  vec3 lower_s = (mini - p) / r;
-  vec3 upper_s = (maxi - p) / r;
-  // Test if ranges are overlapping.
+bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
+  vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
+  vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
+  vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
+  float lowest = max(max(min(v1.x, v1.y), min(v2.x, v2.y)), min(v3.x, v3.y));
+  float highest = min(min(max(v1.x, v1.y), max(v2.x, v2.y)), max(v3.x, v3.y));
+  // Cuboid is behind ray.
+  if (highest < 0.0) return false;
+  // Ray points in cuboid direction, but doesn't intersect.
+  if (lowest > highest) return false;
   return true;
-  return greaterThan(upper_s, lower_s) == bvec3(true, true, true); //&&
-         //greaterThan(upper_s, lower_s.zzy) == bvec3(true, true, true) &&
-         //greaterThan(lower_s, null) == bvec3(true, true, true) &&
-         //greaterThan(l, lower_s) == bvec3(true, true, true);
 }
 
 bool lightTrace(sampler2D tex, vec3 ray, vec3 light){
+  // Precompute inverse of ray for AABB cuboid intersection test.
+  vec3 inv_ray = 1.0 / ray;
   // Get texture size as max iteration value.
   ivec2 size = textureSize(world_tex, 0);
   // Test if pixel is in shadow or not.
@@ -98,7 +88,7 @@ bool lightTrace(sampler2D tex, vec3 ray, vec3 light){
       // Test if Ray intersects bounding volume.
       // a = x x2 y
       // b = y2 z z2
-      if(!rayCuboid(light, ray, position, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
+      if(!rayCuboid(inv_ray, position, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
         vec3 c = texelFetch(tex, ivec2(2, i), 0).xyz;
         // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
         i += 12;
