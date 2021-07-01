@@ -84,34 +84,61 @@ Gl.bindTexture(Gl.TEXTURE_2D, texture);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 }
 */
+// Build simple AABB tree (Axis aligned bounding box).
 async function fillData(item)
 {
-  let v = item.vertices;
-  let c = item.colors;
-  let n = item.normals;
-  let len = item.arrayLength * 3;
-  for(let i = 0; i < len; i += 9){
-    // a, b, c, color, normal
-    Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2]);
+  let b = item.bounding;
+  if(Array.isArray(item))
+  {
+    let len = 25 * 13;
+    // Begin bounding volume array.
+    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len,0,0,0,0,0,0,0,0);
+    // Iterate over all sub elements.
+    item.forEach((item, i) => {
+      // Push sub elements in QUEUE.
+      len += fillData(item);
+    });
+    return len;
+  }
+  else
+  {
+    // Create extra bounding volume for each object.
+    let v = item.vertices;
+    let c = item.colors;
+    let n = item.normals;
+    let len = item.arrayLength;
+    // Declare bounding volume of object.
+    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0);
+    for(let i = 0; i < len * 3; i += 9){
+      // a, b, c, color, normal
+      Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2]);
+    }
+    return len / 3;
   }
 }
 
 setTimeout(function(){
+  let surface = [];
+  surface.bounding = [-10, 10, -1, -0.9, -10, 10];
   for (let i = 0; i < 25; i++)
   {
-    let plane = rect_prism(-10 + 4*(i%5), -1, -10 + 4*Math.floor(i / 5));
+    let plane = cuboid(-10 + 4*(i%5), -1, -10 + 4*Math.floor(i / 5));
     plane.width = 4;
     plane.height = 0.1;
     plane.depth = 4;
     plane = plane(plane);
-    QUEUE.push(plane);
+    surface.push(plane);
   }
-  let rect = rect_prism(0.2, 1.5, 0.2);
+  QUEUE.push(surface);
+
+  let rect = cuboid(0.2, 1.5, 0.2);
   rect.width = 1;
   rect.height = 1;
   rect.depth = 1;
   rect = rect(rect);
   QUEUE.push(rect);
+
+  worldTextureBuilder();
 
   var c=[{v:0,n:3},{v:0,n:3},{v:0,n:3}];
     setInterval(function(){
@@ -125,7 +152,7 @@ setTimeout(function(){
       let color =[];
       let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
       for(let i = 0; i < 36; i++) color.push(co);
-      QUEUE[25].colors = color.flat();
+      QUEUE[1].colors = color.flat();
     },(100/6));
 },1000);
 
