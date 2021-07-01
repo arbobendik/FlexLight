@@ -88,7 +88,7 @@ function frameCycle()
 function renderFrame()
 {
   // Set Texture.
-  worldTextureBuilder();
+  //worldTextureBuilder();
   // Set uniforms for shaders.
   Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);
@@ -101,12 +101,23 @@ function renderFrame()
   var colors = [];
   var length = 0;
   // Iterate through render queue and create frame.
-  QUEUE.forEach((item, i) => {
-    vertices.push(item.vertices);
-    normals.push(item.normals);
-    colors.push(item.colors);
-    length += item.arrayLength;
-  });
+  var flattenQUEUE = (elem) => {
+    if (Array.isArray(elem))
+    {
+      elem.forEach((item, i) => {
+        flattenQUEUE(item);
+      });
+    }
+    else
+    {
+      vertices.push(elem.vertices);
+      normals.push(elem.normals);
+      colors.push(elem.colors);
+      length += elem.arrayLength;
+    }
+  };
+  // Start recursion.
+  flattenQUEUE(QUEUE);
   // Pass the item itself to be able to access all the set properties correctly in the inner closure.
   // Set PositionBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
@@ -123,6 +134,7 @@ function renderFrame()
   // Actual drawcall.
   Gl.drawArrays(Gl.TRIANGLES, 0, length);
 }
+
 // General purpose element prototype.
 function Element(foo)
 {
