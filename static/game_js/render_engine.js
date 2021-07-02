@@ -88,7 +88,7 @@ function frameCycle()
 function renderFrame()
 {
   // Set Texture.
-  //worldTextureBuilder();
+  worldTextureBuilder();
   // Set uniforms for shaders.
   Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);

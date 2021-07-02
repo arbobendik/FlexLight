@@ -62,7 +62,7 @@ bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
   return true;
 }
 
-bool lightTrace(sampler2D tex, vec3 ray, vec3 light){
+bool shadowTest(sampler2D tex, vec3 ray, vec3 light){
   // Precompute inverse of ray for AABB cuboid intersection test.
   vec3 inv_ray = 1.0 / ray;
   // Get texture size as max iteration value.
@@ -99,6 +99,24 @@ bool lightTrace(sampler2D tex, vec3 ray, vec3 light){
   return in_shadow;
 }
 
+vec3 lightTrace(sampler2D tex, vec3 ray, vec3 light, int bounces){
+  // Use additive color mixing technique, so start with black.
+  vec3 color = vec3(0.0, 0.0, 0.0);
+  // Ray currently traced.
+  vec3 active_ray = ray;
+  // Triangle ray lastly intersected with.
+  mat3 last_triangle = mat3(0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0);
+  // Iterate over each bounce and modify color accordingly.
+  for(int i = 0; i < bounces; i++){
+    bool in_shadow = shadowTest(tex, active_ray, light);
+    active_ray = active_ray;
+  }
+  // Return final pixel color.
+  return color;
+}
+
 void main(){
   // Test if pixel is in shadow or not.
   bool in_shadow = false;
@@ -107,7 +125,7 @@ void main(){
   // Iterate over traingles in scene.
   if(dot(ray, normal) > 0.0){
     // Start hybrid ray tracing.
-    in_shadow = lightTrace(world_tex, ray, light);
+    in_shadow = shadowTest(world_tex, ray, light);
   }
 
   float intensity = strength / (1.0 + length(light - position) / strength);
