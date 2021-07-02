@@ -1,7 +1,7 @@
 "use strict";
 
 // Element facories that could be used for Text / Images / Objects, etc
-const rect_prism = new Element(function(item){
+const cuboid = new Element(function(item){
   // Test if all necessary arguments are provided.
   reqArgs(item, {x: item.x}, {y: item.y}, {z: item.z});
   // Set default value for each optional argument if it isn't set.
@@ -13,6 +13,8 @@ const rect_prism = new Element(function(item){
   let [x2, y2, z2] = [x + item.width, y + item.height, z + item.depth];
   // Set vertices.
   item.vertices = [x,y,z,x2,y,z,x,y2,z,x,y2,z,x2,y,z,x2,y2,z,x2,y,z,x2,y,z2,x2,y2,z,x2,y,z2,x2,y2,z2,x2,y2,z,x,y2,z,x2,y2,z,x,y2,z2,x2,y2,z,x2,y2,z2,x,y2,z2,x,y,z2,x,y2,z2,x2,y,z2,x,y2,z2,x2,y2,z2,x2,y,z2,x,y,z,x,y2,z,x,y,z2,x,y,z2,x,y2,z,x,y2,z2,x2,y,z,x,y,z,x,y,z2,x2,y,z,x,y,z2,x2,y,z2];
+  // Define maximum bounding volume of cuboid.
+  item.bounding = [x, x2, y, y2, z, z2];
   // Set color.
   let c = [0, 0, 0].map((item) => Math.random()).concat([1]);
   item.colors = [];
