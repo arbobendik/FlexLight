@@ -90,15 +90,19 @@ async function fillData(item)
   let b = item.bounding;
   if(Array.isArray(item))
   {
-    let len = 25 * 13;
+    // Save position of len variable in array.
+    let len_pos = Data.length;
     // Begin bounding volume array.
-    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len,0,0,0,0,0,0,0,0);
+    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0);
     // Iterate over all sub elements.
     item.forEach((item, i) => {
       // Push sub elements in QUEUE.
-      len += fillData(item);
+      fillData(item);
     });
-    return len;
+    let len = Data.length - len_pos;
+    // Set now calculated vertices length of bounding box
+    // to skip if ray doesn't intersect with it.
+    Data[len_pos] = len;
   }
   else
   {
@@ -113,7 +117,6 @@ async function fillData(item)
       // a, b, c, color, normal
       Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2]);
     }
-    return len / 3;
   }
 }
 
