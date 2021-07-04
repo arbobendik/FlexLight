@@ -5,6 +5,10 @@ body {
   line-height: 0;
   margin: 0;
 }
+canvas {
+  width: 100vw;
+  height: 100vh;
+}
 div {
   position: fixed;
   top: 15px;

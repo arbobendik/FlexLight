@@ -100,7 +100,7 @@ function renderFrame()
   var normals = [];
   var colors = [];
   var length = 0;
-  // Iterate through render queue and create frame.
+  // Iterate through render queue and build arrays for GPU.
   var flattenQUEUE = (elem) => {
     if (Array.isArray(elem))
     {

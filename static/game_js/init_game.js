@@ -91,8 +91,8 @@ window.addEventListener("load", async function (){
 }, {capture: false, once: true});
 
 window.addEventListener ("resize", function (){
-	Canvas.width = window.innerWidth;
-	Canvas.height = window.innerHeight;
+	Canvas.width = Canvas.clientWidth;
+	Canvas.height = Canvas.clientHeight;
 	Ratio = window.innerWidth / window.innerHeight;
 	Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 });
