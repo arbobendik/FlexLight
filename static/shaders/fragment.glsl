@@ -20,7 +20,7 @@ out vec4 outColor;
 
 
 // Test if ray intersects triangle and return intersection.
-vec3 rayTriangle(vec3 l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
+vec3 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
   float dnr = dot(n, r);
   // Test if ray or surface face in same direction.
   if(sign(n) == sign(r)) return null;
@@ -29,7 +29,7 @@ vec3 rayTriangle(vec3 l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
   // Get distance to intersection point.
   float s = dot(n , a - p) / dnr;
   // Ensure that ray triangle intersection is between light source and texture.
-  if(s > length(l - p) || s <= 0.0) return null;
+  if(s > l || s < 0.0) return null;
   // Calculate intersection point.
   vec3 d = (s * r) + p;
   // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
@@ -71,7 +71,7 @@ bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
 // Test for closest ray triangle intersection.
 // Return intersection position in world space (rayTracer.xyz).
 // Return index of target triangle in world_tex (rayTracer.w).
-vec4 rayTracer(vec3 ray, vec3 light, vec3 origin){
+vec4 rayTracer(vec3 ray, vec3 origin){
   // Precompute inverse of ray for AABB cuboid intersection test.
   vec3 inv_ray = 1.0 / ray;
   // Get texture size as max iteration value.
@@ -87,32 +87,32 @@ vec4 rayTracer(vec3 ray, vec3 light, vec3 origin){
     // Read point a and normal from traingle.
     vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
     vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
+    vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
     // Fetch triangle coordinates from world texture.
     //  Three cases:
     //   - normal is not 0 0 0 --> normal vertex
     //   - normal is 0 0 0 --> beginning of new bounding volume
     if(n != null){
-      vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
       vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
       // Test if triangle intersects ray.
-      vec3 current_intersection = rayTriangle(light, ray, origin, a, b, c, n);
+      vec3 current_intersection = rayTriangle(50.0, ray, origin, a, b, c, n);
       // Test if ray even intersects.
       if(current_intersection == null) continue;
       // Calculate length to origin.
       float len = length(current_intersection - origin);
       // Test if this intersection is the closest.
-      if(len < min_len){
+      if(len < min_len || min_len == - 1.0){
         min_len = len;
+        target_triangle = i;
         intersection = current_intersection;
       }
     }else{
-      vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
       // Test if Ray intersects bounding volume.
       // a = x x2 y
       // b = y2 z z2
       if(!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
         vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
-        // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
+        // If it doesn't intersect, skip shadow test for all elements in bounding volume.
         i += int(c.x);
       }
     }
@@ -134,77 +134,90 @@ bool shadowTest(vec3 ray, vec3 light, vec3 origin){
     // Read point a and normal from traingle.
     vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
     vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
+    vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
     // Fetch triangle coordinates from world texture.
     //  Three cases:
     //   - normal is not 0 0 0 --> normal vertex
     //   - normal is 0 0 0 --> beginning of new bounding volume
     if(n != null){
-      vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
       vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
       // Test if triangle intersects ray.
-      in_shadow = (rayTriangle(light, ray, position, a, b, c, n) != null);
-    }else{
-      vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
+      in_shadow = (rayTriangle(length(light - position), ray, position, a, b, c, n) != null);
+    }else if(!rayCuboid(inv_ray, position, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
       // Test if Ray intersects bounding volume.
       // a = x x2 y
       // b = y2 z z2
-      if(!rayCuboid(inv_ray, position, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
-        vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
-        // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
-        i += int(c.x);
-      }
+      vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
+      // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
+      i += int(c.x);
     }
   }
   // Return if pixel is in shadow or not.
   return in_shadow;
 }
 
-vec4 forwardTrace(vec4 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
+vec3 forwardTrace(vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
   // Calculate intensity of light reflection.
   float intensity = strength / (1.0 + length(light - position) / strength);
   // Process specularity of ray in view from origin's perspective.
-  vec3 view = normalize(vec3(- origin.x, origin.yz) - position);
+  vec3 view = normalize(origin - position);
   vec3 halfVector = normalize(ray + view);
   float l = dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal);
   float specular = pow(dot(normal, halfVector), 50.0 * strength);
   // Determine final color and return it.
-  vec4 l_color = vec4(color.xyz * l * intensity, 1.0);
+  vec3 l_color = color * l * intensity;
   if (specular > 0.0) l_color.rgb += specular * intensity;
   return l_color;
 }
 
-vec3 lightTrace(sampler2D world_tex, vec3 ray, vec3 light, vec3 origin, int bounces){
+vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 normal, vec3 color, int bounces, float strength){
   // Use additive color mixing technique, so start with black.
-  vec3 color = vec3(0.0, 0.0, 0.0);
+  vec3 final_color = vec3(0.0, 0.0, 0.0);
+  float importancy = 0.5;
+  // Test if coordinate is in shadow.
+  bool in_shadow = false;
   // Ray currently traced.
-  vec3 active_ray = ray;
+  vec3 active_ray = normalize(position - origin);
+  // Ray from last_position to light source.
+  vec3 active_light_ray = normalize(light - position);
+  vec3 last_origin = origin;
+  // Triangle ray lastly intersected with is last_position.w.
+  vec3 last_position = position;
+  vec3 last_normal = normal;
+  // Remember color of triangle ray intersected lastly.
+  vec3 last_color = color;
+
   // Iterate over each bounce and modify color accordingly.
   for(int i = 0; i < bounces; i++){
-    vec4 intersection = rayTracer(active_ray, light, origin);
+    // Assemble color.
+    in_shadow = shadowTest(active_light_ray, light, last_position);
+    // Update pixel color if coordinate is not in shadow.
+    if(!in_shadow){
+      final_color = forwardTrace(last_color, active_light_ray, light, last_origin, last_position, strength) * importancy;
+    }
+    if(i == 1) break;
+    // Calculate reflecting ray.
+    active_ray = reflect(active_ray, last_normal);
+    // Calculate next intersection.
+    vec4 intersection = rayTracer(active_ray, last_position);
     // Stop loop if there is no intersection and ray goes in the void.
     if(intersection.xyz == null) break;
-    // Otherwise assemble color.
-    bool in_shadow = shadowTest(active_ray, light, intersection.xyz);
-    active_ray = active_ray;
+    // Update parameters.
+    // Read triangle normal.
+    last_origin = last_position;
+    last_position = intersection.xyz;
+    active_light_ray = normalize(light - last_position);
+    last_normal = texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz;
+    last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
+    // importancy *= 0.5;
   }
   // Return final pixel color.
-  return color;
+  return final_color;
 }
 
 void main(){
   // Test if pixel is in shadow or not.
-  bool in_shadow = false;
   if(clip_space.z < 0.0) return;
-  vec3 ray = normalize(light - position);
-  // Iterate over traingles in scene.
-  if(dot(ray, normal) > 0.0){
-    // Start hybrid ray tracing.
-    in_shadow = shadowTest(ray, light, position);
-  }
-
-  if(in_shadow){
-    outColor = vec4(0.0 * color.xyz, color.w);
-  }else{
-    outColor = forwardTrace(color, ray, light, player, position, strength);
-  }
+  // Start hybrid ray tracing per light source.
+  outColor = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, color.xyz, 2, 3.0), 1.0);
 }

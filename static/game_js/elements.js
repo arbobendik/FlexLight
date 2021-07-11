@@ -16,7 +16,7 @@ const cuboid = new Element(function(item){
   // Define maximum bounding volume of cuboid.
   item.bounding = [x, x2, y, y2, z, z2];
   // Set color.
-  let c = [0, 0, 0].map((item) => Math.random()).concat([1]);
+  let c = [0, 0, 0].map((item) => 1).concat([1]);
   item.colors = [];
   for(let i = 0; i < 36; i++) item.colors.push(c);
   item.colors = item.colors.flat();
