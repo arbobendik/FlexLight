@@ -148,10 +148,10 @@ setTimeout(function(){
 
   worldTextureBuilder();
 
-  var c=[{v:0,n:0.3},{v:0,n:0.3},{v:0,n:0.3}];
+  var c=[{v:255,n:0},{v:255,n:0},{v:255,n:0}];
     setInterval(function(){
       c.forEach((e,i)=>{
-        if(e.v+e.n>=255||e.v+e.n<=0)
+        if(e.v+e.n>255||e.v+e.n<0)
         {
           e.n=((Math.random()**2+1.1)*-20*e.n/Math.abs(e.n))/10;
         }

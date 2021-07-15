@@ -10,6 +10,7 @@ in vec3 clip_space;
 
 // Declare null vector as constant.
 const vec3 null = vec3(0.0, 0.0, 0.0);
+const float shadow_bias = 0.00001;
 
 vec3 light = vec3(0.0, 3.2, 0.0);
 float strength = 3.0;
@@ -47,7 +48,7 @@ vec3 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
   float u = (d11 * d02 - d01 * d12) * i;
   float v = (d00 * d12 - d01 * d02) * i;
   // Return if ray intersects triangle or not.
-  if((u > 0.0) && (v > 0.0) && (u + v < 1.0)){
+  if((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0)){
     return d;
   }else{
     return null;
@@ -62,7 +63,7 @@ bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
   float lowest = max(max(min(v1.x, v1.y), min(v2.x, v2.y)), min(v3.x, v3.y));
   float highest = min(min(max(v1.x, v1.y), max(v2.x, v2.y)), max(v3.x, v3.y));
   // Cuboid is behind ray.
-  if (highest <= 0.0) return false;
+  if (highest <= shadow_bias) return false;
   // Ray points in cuboid direction, but doesn't intersect.
   if (lowest > highest) return false;
   return true;
@@ -142,8 +143,8 @@ bool shadowTest(vec3 ray, vec3 light, vec3 origin){
     if(n != null){
       vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
       // Test if triangle intersects ray.
-      in_shadow = (rayTriangle(length(light - position), ray, position, a, b, c, n) != null);
-    }else if(!rayCuboid(inv_ray, position, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
+      in_shadow = (rayTriangle(length(light - origin), ray, origin, a, b, c, n) != null);
+    }else if(!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
       // Test if Ray intersects bounding volume.
       // a = x x2 y
       // b = y2 z z2
@@ -156,7 +157,7 @@ bool shadowTest(vec3 ray, vec3 light, vec3 origin){
   return in_shadow;
 }
 
-vec3 forwardTrace(vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
+vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
   // Calculate intensity of light reflection.
   float intensity = strength / (1.0 + length(light - position) / strength);
   // Process specularity of ray in view from origin's perspective.
@@ -179,7 +180,6 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   // Ray currently traced.
   vec3 active_ray = normalize(position - origin);
   // Ray from last_position to light source.
-  vec3 active_light_ray = normalize(light - position);
   vec3 last_origin = origin;
   // Triangle ray lastly intersected with is last_position.w.
   vec3 last_position = position;
@@ -189,24 +189,26 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
 
   // Iterate over each bounce and modify color accordingly.
   for(int i = 0; i < bounces; i++){
+    vec3 active_light_ray = normalize(light - last_position);
     // Assemble color.
     in_shadow = shadowTest(active_light_ray, light, last_position);
     // Update pixel color if coordinate is not in shadow.
     if(!in_shadow){
-      final_color = forwardTrace(last_color, active_light_ray, light, last_origin, last_position, strength) * importancy;
+      final_color += forwardTrace(last_normal, last_color, active_light_ray, light, last_origin, last_position, strength)
+      * pow(importancy, float(i));
     }
-    if(i == 1) break;
     // Calculate reflecting ray.
     active_ray = reflect(active_ray, last_normal);
     // Calculate next intersection.
     vec4 intersection = rayTracer(active_ray, last_position);
     // Stop loop if there is no intersection and ray goes in the void.
     if(intersection.xyz == null) break;
+    //final_color = vec3(1.0, 0.0, 0.0);
+    //break;
     // Update parameters.
     // Read triangle normal.
     last_origin = last_position;
     last_position = intersection.xyz;
-    active_light_ray = normalize(light - last_position);
     last_normal = texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz;
     last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
     // importancy *= 0.5;
@@ -219,5 +221,5 @@ void main(){
   // Test if pixel is in shadow or not.
   if(clip_space.z < 0.0) return;
   // Start hybrid ray tracing per light source.
-  outColor = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, color.xyz, 2, 3.0), 1.0);
+  outColor = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, color.xyz, 5, 3.0), 1.0);
 }
