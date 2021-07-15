@@ -121,8 +121,7 @@ async function fillData(item)
 }
 
 setTimeout(function(){
-  let surface = [];
-  surface.bounding = [-10, 10, -1, -0.9, -10, 10];
+  let surface = [[],[],[],[],[]];
   for (let i = 0; i < 25; i++)
   {
     let plane = cuboid(-10 + 4*(i%5), -1, -10 + 4*Math.floor(i / 5));
@@ -130,8 +129,14 @@ setTimeout(function(){
     plane.height = 0.1;
     plane.depth = 4;
     plane = plane(plane);
-    surface.push(plane);
+    surface[i%5].push(plane);
   }
+  surface.bounding = [-10, 10, -1, -0.9, -10, 10];
+  surface[0].bounding = [-10 , -6, -1, 0.9, -10, 10];
+  surface[1].bounding = [-6 , -2, -1, 0.9, -10, 10];
+  surface[2].bounding = [-2 , 2, -1, 0.9, -10, 10];
+  surface[3].bounding = [2 , 6, -1, 0.9, -10, 10];
+  surface[4].bounding = [6 , 10, -1, 0.9, -10, 10];
   QUEUE.push(surface);
 
   let rect = cuboid(0.2, 1.5, 0.2);
@@ -143,12 +148,12 @@ setTimeout(function(){
 
   worldTextureBuilder();
 
-  var c=[{v:0,n:3},{v:0,n:3},{v:0,n:3}];
+  var c=[{v:255,n:0},{v:255,n:0},{v:255,n:0}];
     setInterval(function(){
       c.forEach((e,i)=>{
-        if(e.v+e.n>=255||e.v+e.n<=0)
+        if(e.v+e.n>255||e.v+e.n<0)
         {
-          e.n=(Math.random()**2+1.1)*-20*e.n/Math.abs(e.n);
+          e.n=((Math.random()**2+1.1)*-20*e.n/Math.abs(e.n))/10;
         }
         e.v+=e.n*0.7;
       });
