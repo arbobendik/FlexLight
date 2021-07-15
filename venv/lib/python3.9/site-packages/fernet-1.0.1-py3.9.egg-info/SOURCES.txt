@@ -1,0 +1,9 @@
+MANIFEST.in
+fernet.py
+setup.cfg
+setup.py
+fernet.egg-info/PKG-INFO
+fernet.egg-info/SOURCES.txt
+fernet.egg-info/dependency_links.txt
+fernet.egg-info/requires.txt
+fernet.egg-info/top_level.txt
