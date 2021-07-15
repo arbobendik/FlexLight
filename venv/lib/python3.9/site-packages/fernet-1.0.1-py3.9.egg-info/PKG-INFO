@@ -1,0 +1,16 @@
+Metadata-Version: 1.1
+Name: fernet
+Version: 1.0.1
+Summary: A simple python fernet implementation
+Home-page: https://github.com/oz123/python-fernet
+Author: Oz N Tiram
+Author-email: oz.tiram@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: any
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Topic :: Security :: Cryptography
