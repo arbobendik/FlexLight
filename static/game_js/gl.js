@@ -131,6 +131,7 @@ setTimeout(function(){
     plane = plane(plane);
     surface[i%5].push(plane);
   }
+
   surface.bounding = [-10, 10, -1, -0.9, -10, 10];
   surface[0].bounding = [-10 , -6, -1, 0.9, -10, 10];
   surface[1].bounding = [-6 , -2, -1, 0.9, -10, 10];
@@ -139,16 +140,37 @@ setTimeout(function(){
   surface[4].bounding = [6 , 10, -1, 0.9, -10, 10];
   QUEUE.push(surface);
 
-  let rect = cuboid(0.2, 1.5, 0.2);
+  let rect = cuboid(-1.5, -1, 1);
+  rect.width = 3;
+  rect.height = 3;
+  rect.depth = 1;
+  rect = rect(rect);
+  QUEUE.push(rect);
+
+  rect = cuboid(-1.5, -1, -2);
+  rect.width = 3;
+  rect.height = 3;
+  rect.depth = 1;
+  rect = rect(rect);
+  QUEUE.push(rect);
+
+  rect = cuboid(0.5, -1, -1);
   rect.width = 1;
-  rect.height = 1;
+  rect.height = 3;
+  rect.depth = 1;
+  rect = rect(rect);
+  QUEUE.push(rect);
+
+  rect = cuboid(-1.5, -1, - 1);
+  rect.width = 1;
+  rect.height = 3;
   rect.depth = 1;
   rect = rect(rect);
   QUEUE.push(rect);
 
   worldTextureBuilder();
 
-  var c=[{v:255,n:0},{v:255,n:0},{v:255,n:0}];
+  /*var c=[{v:255,n:0.3},{v:255,n:0.3},{v:255,n:0.3}];
     setInterval(function(){
       c.forEach((e,i)=>{
         if(e.v+e.n>255||e.v+e.n<0)
@@ -161,7 +183,7 @@ setTimeout(function(){
       let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
       for(let i = 0; i < 36; i++) color.push(co);
       QUEUE[1].colors = color.flat();
-    },(100/6));
+    },(100/6));*/
 },1000);
 
 /*

@@ -3,7 +3,7 @@
 ///////////////////////////////////////// RENDER_ENGINE
 // Initialize Canvas and Gl-Context.
 var Canvas = document.createElement("canvas");
-var Gl = Canvas.getContext("webgl2", {antialias: true});
+var Gl = Canvas.getContext("webgl2");
 // Transition in x and y direction.
 var X = 1;
 var Y = 4;

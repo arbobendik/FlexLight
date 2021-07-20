@@ -27,6 +27,9 @@ async function initEngine()
   Gl.enable(Gl.DEPTH_TEST);
 	// Cull (exclude from rendering) hidden vertices at the other side of objects.
   Gl.enable(Gl.CULL_FACE);
+  // Set antialiasing quality
+  Gl.enable(Gl.SAMPLE_COVERAGE);
+  Gl.sampleCoverage(0.9, false);
   // Set clear color for canvas.
 	Gl.clearColor(0, 0, 0, 0);
 	// Define Program with its currently bound shaders as the program to use for the webgl2 context.

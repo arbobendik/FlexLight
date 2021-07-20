@@ -10,11 +10,11 @@ in vec3 clip_space;
 
 // Declare null vector as constant.
 const vec3 null = vec3(0.0, 0.0, 0.0);
-const float shadow_bias = 0.00001;
+const float shadow_bias = 0.0001;
 
-vec3 light = vec3(0.0, 3.2, 0.0);
+vec3 light = vec3(2.0, 5.0, 1.0);
 float strength = 3.0;
-
+float reflectiveness = 0.5;
 uniform sampler2D world_tex;
 
 out vec4 outColor;
@@ -186,6 +186,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   vec3 last_normal = normal;
   // Remember color of triangle ray intersected lastly.
   vec3 last_color = color;
+  vec3 color_sum = color;
 
   // Iterate over each bounce and modify color accordingly.
   for(int i = 0; i < bounces; i++){
@@ -194,8 +195,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     in_shadow = shadowTest(active_light_ray, light, last_position);
     // Update pixel color if coordinate is not in shadow.
     if(!in_shadow){
-      final_color += forwardTrace(last_normal, last_color, active_light_ray, light, last_origin, last_position, strength)
-      * pow(importancy, float(i));
+        final_color += forwardTrace(last_normal, last_color, active_light_ray, light, last_origin, last_position, strength) * pow(importancy, float(i)) * color_sum / float(i + 1);
     }
     // Calculate reflecting ray.
     active_ray = reflect(active_ray, last_normal);
@@ -203,15 +203,13 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     vec4 intersection = rayTracer(active_ray, last_position);
     // Stop loop if there is no intersection and ray goes in the void.
     if(intersection.xyz == null) break;
-    //final_color = vec3(1.0, 0.0, 0.0);
-    //break;
     // Update parameters.
     // Read triangle normal.
     last_origin = last_position;
     last_position = intersection.xyz;
     last_normal = texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz;
     last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
-    // importancy *= 0.5;
+    color_sum += last_color;
   }
   // Return final pixel color.
   return final_color;
