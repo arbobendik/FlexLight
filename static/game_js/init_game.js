@@ -27,14 +27,17 @@ var Perspective;
 var RenderConf;
 var RenderColor;
 var WorldTex;
+var RandomTex;
 // Init Buffers.
 var PositionBuffer;
 var NormalBuffer;
 var TexBuffer;
 var ColorBuffer;
+var SurfaceBuffer;
 var TriangleBuffer;
-var WorldTexHeight;
+// Init Texture elements.
 var WorldTexture;
+var RandomTexture;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;

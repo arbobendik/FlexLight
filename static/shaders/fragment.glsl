@@ -10,14 +10,18 @@ in vec3 clip_space;
 
 // Declare null vector as constant.
 const vec3 null = vec3(0.0, 0.0, 0.0);
-const float shadow_bias = 0.0001;
+const float shadow_bias = 0.00001;
 
-vec3 light = vec3(2.0, 5.0, 1.0);
-float strength = 3.0;
-float reflectiveness = 0.5;
+vec3 light = vec3(5.0, 5.0, 3.0);
+float strength = 15.0;
+float reflectiveness = 0.3;
+
+// Texture with information about all triangles in scene.
 uniform sampler2D world_tex;
+// Random 512x512 texture to multiply with normal map to simulate rough surfaces.
+uniform sampler2D random;
 
-out vec4 outColor;
+out vec4 out_color;
 
 
 // Test if ray intersects triangle and return intersection.
@@ -158,6 +162,7 @@ bool shadowTest(vec3 ray, vec3 light, vec3 origin){
 }
 
 vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
+  light = light * vec3(-1.0, 1.0, 1.0);
   // Calculate intensity of light reflection.
   float intensity = strength / (1.0 + length(light - position) / strength);
   // Process specularity of ray in view from origin's perspective.
@@ -173,7 +178,7 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
 
 vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 normal, vec3 color, int bounces, float strength){
   // Use additive color mixing technique, so start with black.
-  vec3 final_color = vec3(0.0, 0.0, 0.0);
+  vec3 final_color = null;
   float importancy = 0.5;
   // Test if coordinate is in shadow.
   bool in_shadow = false;
@@ -216,8 +221,9 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
 }
 
 void main(){
+  vec3 roughness = vec3(texture(random, tex_coord, 0.0));
   // Test if pixel is in shadow or not.
   if(clip_space.z < 0.0) return;
   // Start hybrid ray tracing per light source.
-  outColor = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, color.xyz, 5, 3.0), 1.0);
+  out_color = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normalize(normal + 0.05 * roughness), color.xyz, 3, 3.0), 1.0);
 }
