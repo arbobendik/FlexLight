@@ -3,7 +3,7 @@
 async function buildProgram(shaders)
 {
   // Create Program, compile and append vertex and fragment shader to it.
-  Program = Gl.createProgram();
+  let program = Gl.createProgram();
   // Compile GLSL shaders.
   await shaders.forEach(async (item, i) => {
     let shader = Gl.createShader(item.type);
@@ -12,7 +12,7 @@ async function buildProgram(shaders)
     // Append shader to Program if GLSL compiled successfully.
     if (Gl.getShaderParameter(shader, Gl.COMPILE_STATUS))
     {
-      Gl.attachShader(Program, shader);
+      Gl.attachShader(program, shader);
     }
     else
     {
@@ -21,13 +21,17 @@ async function buildProgram(shaders)
       Gl.deleteShader(shader);
     }
   });
-  Gl.linkProgram(Program);
+  Gl.linkProgram(program);
   // Return Program if it links successfully.
-  if (!Gl.getProgramParameter(Program, Gl.LINK_STATUS))
+  if (!Gl.getProgramParameter(program, Gl.LINK_STATUS))
   {
     // Log debug info and delete Program if Program fails to link.
-    console.warn(Gl.getProgramInfoLog(Program));
-    Gl.deleteProgram(Program);
+    console.warn(Gl.getProgramInfoLog(program));
+    Gl.deleteProgram(program);
+  }
+  else
+  {
+    return program;
   }
 }
 
@@ -38,52 +42,38 @@ async function fetchShader(url)
 
 function worldTextureBuilder()
 {
+
+  Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
   // Reset old world space texture.
   Data = [];
   // Fill texture with data pixels.
-  for(let q = 0; q < QUEUE.length; q++)fillData(QUEUE[q]);
+  for(let i = 0; i < QUEUE.length; i++)fillData(QUEUE[i]);
+  // Calculate DataHeight.
+  DataHeight = Data.length / 15;
   // Tell webgl to use 4 bytes per value for the 32 bit floats.
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 4);
-
-  DataHeight = Data.length / 15;
   // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
   Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 5, DataHeight, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Data));
-  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
 }
-/*
-// Create a texture.
-var texture = Gl.createTexture();
-// use texture unit 0
-Gl.activeTexture(Gl.TEXTURE0 + 0);
-// bind to the TEXTURE_2D bind point of texture unit 0
-Gl.bindTexture(Gl.TEXTURE_2D, texture);
-// fill texture with 3x2 pixels
+
+function randomTextureBuilder()
 {
-  const level = 0;
-  const internalFormat = Gl.RGBA8;
-  const width = 3;
-  const height = 2;
-  const border = 0;
-  const format = Gl.RGBA;
-  const type = Gl.UNSIGNED_BYTE;
-  const data = new Uint8Array([
-    128, 128, 128, 255,
-    64, 64, 64, 255,
-    128, 128, 128, 255,
-    0, 0, 0, 255,
-    192, 192, 192, 255,
-    0, 0, 0, 255
-  ]);
-  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-  Gl.texImage2D(Gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
-  // set the filtering so we don't need mips
+  RandomTexture = Gl.createTexture();
+  Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
+  // Build random texture.
+  let Random = [];
+  // Fill texture with random pixels.
+  for(let i = 0; i < 12582912; i++)Random.push(Math.random());
+  // Tell webgl to use 4 bytes per value for the 32 bit floats.
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 4);
+  // Set data texture details and tell webgl, that no mip maps are required.
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 2048, 2048, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Random));
 }
-*/
+
 // Build simple AABB tree (Axis aligned bounding box).
 async function fillData(item)
 {
@@ -140,37 +130,37 @@ setTimeout(function(){
   surface[4].bounding = [6 , 10, -1, 0.9, -10, 10];
   QUEUE.push(surface);
 
-  let rect = cuboid(-1.5, -1, 1);
-  rect.width = 3;
-  rect.height = 3;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
-
-  rect = cuboid(-1.5, -1, -2);
-  rect.width = 3;
-  rect.height = 3;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
-
-  rect = cuboid(0.5, -1, -1);
-  rect.width = 1;
-  rect.height = 3;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
-
-  rect = cuboid(-1.5, -1, - 1);
-  rect.width = 1;
-  rect.height = 3;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
+  let room = [];
+  let rect0 = cuboid(-1.5, -1, 1.5);
+  rect0.width = 3;
+  rect0.height = 3;
+  rect0.depth = 1;
+  rect0 = rect0(rect0);
+  room.push(rect0);
+  let rect1 = cuboid(-1.5, -1, -2);
+  rect1.width = 3;
+  rect1.height = 3;
+  rect1.depth = 1;
+  rect1 = rect1(rect1);
+  room.push(rect1);
+  let rect2 = cuboid(0.5, -1, -1);
+  rect2.width = 1;
+  rect2.height = 3;
+  rect2.depth = 1;
+  rect2 = rect2(rect2);
+  room.push(rect2);
+  let rect3 = cuboid(-1.5, -1, - 1);
+  rect3.width = 1;
+  rect3.height = 3;
+  rect3.depth = 1;
+  rect3 = rect3(rect3);
+  room.push(rect3);
+  room.bounding = [-1.5, -1, -2, 3, 2, 2.5];
+  QUEUE.push(room);
 
   worldTextureBuilder();
 
-  /*var c=[{v:255,n:0.3},{v:255,n:0.3},{v:255,n:0.3}];
+  var c=[{v:255,n:0.3},{v:255,n:0.3},{v:255,n:0.3}];
     setInterval(function(){
       c.forEach((e,i)=>{
         if(e.v+e.n>255||e.v+e.n<0)
@@ -182,21 +172,6 @@ setTimeout(function(){
       let color =[];
       let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
       for(let i = 0; i < 36; i++) color.push(co);
-      QUEUE[1].colors = color.flat();
-    },(100/6));*/
+      QUEUE[1][0].colors = color.flat();
+    },(100/6));
 },1000);
-
-/*
-  setInterval(function()
-  {
-    let rand = () => 1 - 2 * Math.random();
-    let rect = rect_prism(rand(), rand(), rand());
-    rect.width = 0.5 * Math.random();
-    rect.height = 0.5 * Math.random();
-    rect.depth = 0.5 * Math.random();
-    rect = rect(rect);
-    QUEUE.push(rect);
-    // Remove first element if there are more or equal then 250.
-    if (QUEUE.length > 20) QUEUE.shift();
-  }, 1000);
-*/

@@ -1,2 +1,6 @@
-fastapi~=0.65.1
-cryptography~=3.4.7
+fastapi
+aiofiles
+websockets
+uvicorn
+uvloop
+cryptography
