@@ -3,7 +3,7 @@
 async function initEngine()
 {
 	// Compile shaders and link them into Program global.
-  await buildProgram([
+  Program = await buildProgram([
     {source:await fetchShader("static/shaders/vertex.glsl"),type:Gl.VERTEX_SHADER},
     {source:await fetchShader("static/shaders/fragment.glsl"),type:Gl.FRAGMENT_SHADER}
   ]);
@@ -14,13 +14,14 @@ async function initEngine()
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
   Gl.bindAttribLocation(Program, TexCoord, "tex_pos");
-  Gl.bindAttribLocation(Program, Color, "color_3d");Gl.enableVertexAttribArray (Position);
+  Gl.bindAttribLocation(Program, Color, "color_3d");
+  Gl.enableVertexAttribArray (Position);
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
-  WorldTexHeight = Gl.getUniformLocation(Program, "world_tex_height");
+  RandomTex = Gl.getUniformLocation(Program, "random");
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -39,13 +40,13 @@ async function initEngine()
   // Create a buffer for normals.
   NormalBuffer = Gl.createBuffer();
   // Create a buffer for tex_coords.
-  //TexBuffer = Gl.createBuffer();
+  TexBuffer = Gl.createBuffer();
   // Create a buffer for colors.
   ColorBuffer = Gl.createBuffer();
-  // Create a texture.
+  // Create a world texture containing all information about world space.
   WorldTexture = Gl.createTexture();
-  Gl.activeTexture(Gl.TEXTURE0 + 0);
-  Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
+  // Create random texture.
+  randomTextureBuilder();
   // Bind and set buffer parameters.
   // Bind position buffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
@@ -59,11 +60,10 @@ async function initEngine()
   Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
   Gl.enableVertexAttribArray(Color);
   Gl.vertexAttribPointer(Color, 4, Gl.FLOAT, false, 0, 0);
-  /* Set TexBuffer
+  //Set TexBuffer
   Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
   Gl.enableVertexAttribArray(TexCoord);
   Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
-  */
   // Begin frame cycle.
   frameCycle();
 }
@@ -90,18 +90,25 @@ function frameCycle()
 
 function renderFrame()
 {
-  // Set Texture.
+  // Set world-texture.
   worldTextureBuilder();
+
+  Gl.activeTexture(Gl.TEXTURE0);
+  Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
+  Gl.activeTexture(Gl.TEXTURE1);
+  Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
   // Set uniforms for shaders.
-  Gl.uniform1i(WorldTexHeight, DataHeight);
   Gl.uniform3f(PlayerPosition, X, Y, Z);
   Gl.uniform2f(Perspective, Fx, Fy);
   Gl.uniform4f(RenderConf, Fov, Ratio, 1, 1);
   // Pass whole current world space as data structure to GPU.
   Gl.uniform1i(WorldTex, 0);
+  // Pass random texture to GPU.
+  Gl.uniform1i(RandomTex, 1);
   var vertices = [];
   var normals = [];
   var colors = [];
+  var textureCoords = [];
   var length = 0;
   // Iterate through render queue and build arrays for GPU.
   var flattenQUEUE = (elem) => {
@@ -116,6 +123,7 @@ function renderFrame()
       vertices.push(elem.vertices);
       normals.push(elem.normals);
       colors.push(elem.colors);
+      textureCoords.push(elem.texCorners)
       length += elem.arrayLength;
     }
   };
@@ -131,11 +139,13 @@ function renderFrame()
   // Set ColorBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(colors.flat()), Gl.DYNAMIC_DRAW);
-  /* Set TexBuffer.
+  // Set TexBuffer.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
-  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(item.worldTex), Gl.STATIC_DRAW);*/
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(textureCoords.flat()), Gl.STATIC_DRAW);
   // Actual drawcall.
   Gl.drawArrays(Gl.TRIANGLES, 0, length);
+
+  // Apply post processing.
 }
 
 // General purpose element prototype.
