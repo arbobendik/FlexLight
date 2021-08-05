@@ -15,13 +15,15 @@ async function initEngine()
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
   Gl.bindAttribLocation(Program, TexCoord, "tex_pos");
   Gl.bindAttribLocation(Program, Color, "color_3d");
-  Gl.enableVertexAttribArray (Position);
+  Gl.enableVertexAttribArray(Position);
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
   RandomTex = Gl.getUniformLocation(Program, "random");
+  NormalTex = Gl.getUniformLocation(Program, "normal_tex");
+  Tex = Gl.getUniformLocation(Program, "tex");
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -97,6 +99,10 @@ function renderFrame()
   Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
   Gl.activeTexture(Gl.TEXTURE1);
   Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
+  Gl.activeTexture(Gl.TEXTURE2);
+  Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
+  Gl.activeTexture(Gl.TEXTURE3);
+  Gl.bindTexture(Gl.TEXTURE_2D, Texture);
   // Set uniforms for shaders.
   Gl.uniform3f(PlayerPosition, X, Y, Z);
   Gl.uniform2f(Perspective, Fx, Fy);
@@ -105,6 +111,10 @@ function renderFrame()
   Gl.uniform1i(WorldTex, 0);
   // Pass random texture to GPU.
   Gl.uniform1i(RandomTex, 1);
+  // Pass normal texture to GPU.
+  Gl.uniform1i(NormalTex, 2);
+  // Pass texture to GPU.
+  Gl.uniform1i(Tex, 3);
   var vertices = [];
   var normals = [];
   var colors = [];
@@ -124,6 +134,8 @@ function renderFrame()
       normals.push(elem.normals);
       colors.push(elem.colors);
       textureCoords.push(elem.texCorners)
+      normalTextureBuilder(elem);
+      textureBuilder(elem);
       length += elem.arrayLength;
     }
   };
@@ -144,7 +156,6 @@ function renderFrame()
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(textureCoords.flat()), Gl.STATIC_DRAW);
   // Actual drawcall.
   Gl.drawArrays(Gl.TRIANGLES, 0, length);
-
   // Apply post processing.
 }
 

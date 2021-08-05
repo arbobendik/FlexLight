@@ -15,7 +15,7 @@ const float shadow_bias = 0.00001;
 vec3 light = vec3(5.0, 5.0, 3.0);
 float strength = 50.0;
 float reflectiveness = 0.3;
-float brightness = 3.0;
+
 // Texture with information about all triangles in scene.
 uniform sampler2D world_tex;
 // Random 512x512 texture to multiply with normal map to simulate rough surfaces.
@@ -177,9 +177,9 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
   return l_color;
 }
 
-vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 normal, vec3 color, float roughness, int bounces, float strength){
+vec4 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 normal, vec3 color, int bounces, float strength){
   // Use additive color mixing technique, so start with black.
-  vec3 final_color = null;
+  vec4 final_color = vec4(null, 0.0);
   float importancy = 0.5;
   // Test if coordinate is in shadow.
   bool in_shadow = false;
@@ -191,9 +191,8 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   vec3 last_position = position;
   vec3 last_normal = normal;
   // Remember color of triangle ray intersected lastly.
-  vec3 last_color = color;
-  vec3 color_sum = color;
-  float last_roughness = 0.0;
+  vec3 last_color = null;
+  vec3 color_sum = null;
 
   // Iterate over each bounce and modify color accordingly.
   for(int i = 0; i < bounces; i++){
@@ -201,8 +200,8 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     // Assemble color.
     in_shadow = shadowTest(active_light_ray, light, last_position);
     // Update pixel color if coordinate is not in shadow.
-    if(!in_shadow){
-        final_color += forwardTrace(last_normal, last_color, active_light_ray, light, last_origin, last_position, strength) * pow(importancy, float(i)) * color_sum / float(i + 1) * (1.0 - last_roughness) * brightness;
+    if(!in_shadow || i == 0){
+        final_color += vec4(forwardTrace(last_normal, last_color, active_light_ray, light, last_origin, last_position, strength) * pow(importancy, float(i)) * color_sum / float(i + 1), 0.0);
     }
     // Calculate reflecting ray.
     active_ray = reflect(active_ray, last_normal);
@@ -216,7 +215,6 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     last_position = intersection.xyz;
     last_normal = texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz;
     last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
-    last_roughness = roughness;
     color_sum += last_color;
   }
   // Return final pixel color.
@@ -224,15 +222,13 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
 }
 
 void main(){
-  vec2 random_coord = ((clip_space.xy / clip_space.z) + 1.0) * 200.0;
-  vec3 random = (texture(random, random_coord).xyz - 0.5) * 1.0;
-  float roughness = texture(normal_tex, tex_coord).x;
+  vec3 roughness = vec3(texture(random, tex_coord * 10.24)) - 0.5;
   // Alter normal and color according to texture and normal texture.
-  vec3 surface = random * roughness;
-  vec3 normal = normalize(normal + surface);
-  vec4 tex_color = color * texture(tex, tex_coord, clip_space.z);
+  // roughness = texture(normal_tex, tex_coord, clip_space.z) * roughness;
+  vec3 normal = normalize(normal + 0.1 * roughness);
+  // color += texture(tex, tex_coord, clip_space.z);
   // Test if pixel is in shadow or not.
   if(clip_space.z < 0.0) return;
   // Start hybrid ray tracing per light source.
-  out_color = vec4(lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, tex_color.xyz, roughness, 3, 3.0), 1.0);
+  out_color = lightTrace(world_tex, light, player * vec3(-1.0, 1.0, 1.0), position, normal, color.xyz, 5, 3.0);
 }

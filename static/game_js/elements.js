@@ -14,7 +14,7 @@ const cuboid = new Element(function(item){
   // Set vertices.
   item.vertices = [x,y,z,x2,y,z,x,y2,z,x,y2,z,x2,y,z,x2,y2,z,x2,y,z,x2,y,z2,x2,y2,z,x2,y,z2,x2,y2,z2,x2,y2,z,x,y2,z,x2,y2,z,x,y2,z2,x2,y2,z,x2,y2,z2,x,y2,z2,x,y,z2,x,y2,z2,x2,y,z2,x,y2,z2,x2,y2,z2,x2,y,z2,x,y,z,x,y2,z,x,y,z2,x,y,z2,x,y2,z,x,y2,z2,x2,y,z,x,y,z,x,y,z2,x2,y,z,x,y,z2,x2,y,z2];
   // Set texture corners.
-  item.texCorners = [0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1];
+  item.texCorners = [0,0,0,1,1,0,1,0,0,1,1,1,0,0,0,1,1,0,0,1,1,1,1,0,0,0,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,0,0,1,0,1,1,0,0,0,0,1,1,0,1,0,0,0,1,1,0,1,0,0,1,1,1];
   // Define maximum bounding volume of cuboid.
   item.bounding = [x, x2, y, y2, z, z2];
   // Set color.
@@ -22,6 +22,18 @@ const cuboid = new Element(function(item){
   item.colors = [];
   for(let i = 0; i < 36; i++) item.colors.push(c);
   item.colors = item.colors.flat();
+  // Set roughness texture.
+  item.normalTexture = [200,200,200,200,200,
+                        200,100,100,100,200,
+                        200,100,  0,100,200,
+                        200,100,100,100,200,
+                        200,200,200,200,200];
+  item.normalTextureWidth = 5;
+  item.normalTextureHeight = 5;
+  // Set texture.
+  item.texture = [255, 255, 255];
+  item.textureWidth = 1;
+  item.textureHeight = 1;
   // Set default arrayLength for this object.
   item.arrayLength = 36;
   // Return itself.
