@@ -13,7 +13,7 @@ var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
 // Initialize performance metric globals.
 var FpsCounter = document.createElement("div");
-var Scale = 1;
+var Scale = 2;
 var Fps = 0;
 var Frame = 0;
 // The micros variable is needed to calculate fps.
