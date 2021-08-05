@@ -63,15 +63,65 @@ function randomTextureBuilder()
   RandomTexture = Gl.createTexture();
   Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
   // Build random texture.
-  let Random = [];
-  // Fill texture with random pixels.
-  for(let i = 0; i < 12582912; i++)Random.push(Math.random());
+  // Fill texture with pseudo random pixels.
+  let Random = [ 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                 255,   0,   0,   0,   0,   0, 0, 255, 255,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0, 255, 255,  255, 255, 255,  0,   0,   0,
+                   0,   0,   0, 255,   0,   0, 255,   0, 255,
+                 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                   0,   0, 255,   0, 255,   0, 255, 255,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0,   0,   0, 255,   0,   0, 255,   0, 255,
+                   0, 255, 255,  255, 255, 255,  0,   0,   0,
+                 255,   0,   0,   0,   0,   0,   0, 255, 255,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255,
+                   0, 255, 255, 255,   0,   0,   0,   0,   0,
+                 255, 255,   0,   0,   0, 255,   0, 255,   0,
+                   0,   0,   0, 255, 255, 255, 255,   0, 255 ];
   // Tell webgl to use 4 bytes per value for the 32 bit floats.
-  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 4);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB8, 9, 9, 0, Gl.RGB, Gl.UNSIGNED_BYTE, new Uint8Array(Random));
+  Gl.generateMipmap(Gl.TEXTURE_2D);
+}
+
+function normalTextureBuilder(item)
+{
+  NormalTexture = Gl.createTexture();
+  Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
   // Set data texture details and tell webgl, that no mip maps are required.
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 2048, 2048, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Random));
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.R8, item.normalTextureWidth, item.normalTextureHeight, 0, Gl.RED, Gl.UNSIGNED_BYTE, new Uint8Array(item.normalTexture));
+  //Gl.generateMipmap(Gl.TEXTURE_2D);
+}
+
+function textureBuilder(item)
+{
+  Texture = Gl.createTexture();
+  Gl.bindTexture(Gl.TEXTURE_2D, Texture);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB8, item.textureWidth, item.textureHeight, 0, Gl.RGB, Gl.UNSIGNED_BYTE, new Uint8Array(item.texture));
+  Gl.generateMipmap(Gl.TEXTURE_2D);
 }
 
 // Build simple AABB tree (Axis aligned bounding box).
@@ -158,6 +208,13 @@ setTimeout(function(){
   room.bounding = [-1.5, -1, -2, 3, 2, 2.5];
   QUEUE.push(room);
 
+  let re = cuboid(5.5, 1.5, 5.5);
+  re.width = 1;
+  re.height = 1;
+  re.depth = 1;
+  re = re(re);
+  QUEUE.push(re);
+
   worldTextureBuilder();
 
   var c=[{v:255,n:0.3},{v:255,n:0.3},{v:255,n:0.3}];
@@ -173,5 +230,10 @@ setTimeout(function(){
       let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
       for(let i = 0; i < 36; i++) color.push(co);
       QUEUE[1][0].colors = color.flat();
+      let [x, y, z] = [QUEUE[1][0].x, QUEUE[1][0].y, QUEUE[1][0].z];
+      let [x2, y2, z2] = [x + 1 + c[0].v/32, y + QUEUE[1][0].height, z + QUEUE[1][0].depth];
+      // Set vertices.
+      QUEUE[1][0].vertices = [x,y,z,x2,y,z,x,y2,z,x,y2,z,x2,y,z,x2,y2,z,x2,y,z,x2,y,z2,x2,y2,z,x2,y,z2,x2,y2,z2,x2,y2,z,x,y2,z,x2,y2,z,x,y2,z2,x2,y2,z,x2,y2,z2,x,y2,z2,x,y,z2,x,y2,z2,x2,y,z2,x,y2,z2,x2,y2,z2,x2,y,z2,x,y,z,x,y2,z,x,y,z2,x,y,z2,x,y2,z,x,y2,z2,x2,y,z,x,y,z,x,y,z2,x2,y,z,x,y,z2,x2,y,z2];
+      QUEUE[1][0].bounding = [x, x2, y, y2, z, z2];
     },(100/6));
 },1000);
