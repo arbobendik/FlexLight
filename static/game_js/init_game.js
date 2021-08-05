@@ -13,6 +13,7 @@ var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
 // Initialize performance metric globals.
 var FpsCounter = document.createElement("div");
+var Scale = 1;
 var Fps = 0;
 var Frame = 0;
 // The micros variable is needed to calculate fps.
@@ -28,6 +29,8 @@ var RenderConf;
 var RenderColor;
 var WorldTex;
 var RandomTex;
+var NormalTex;
+var Tex;
 // Init Buffers.
 var PositionBuffer;
 var NormalBuffer;
@@ -38,6 +41,8 @@ var TriangleBuffer;
 // Init Texture elements.
 var WorldTexture;
 var RandomTexture;
+var NormalTexture;
+var Texture;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
@@ -94,10 +99,11 @@ window.addEventListener("load", async function (){
 }, {capture: false, once: true});
 
 window.addEventListener ("resize", function (){
-	Canvas.width = Canvas.clientWidth;
-	Canvas.height = Canvas.clientHeight;
+	Canvas.width = Canvas.clientWidth * Scale;
+	Canvas.height = Canvas.clientHeight * Scale;
 	Ratio = window.innerWidth / window.innerHeight;
 	Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
+	randomTextureBuilder();
 });
 
 // Preload most textures to prevent lags.
