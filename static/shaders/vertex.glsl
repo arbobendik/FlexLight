@@ -30,7 +30,7 @@ void main(){
   // Set final clip space position.
   gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 100.0))), translate_py.y);
   clip_space = vec3(translate_2d, translate_py.y);
-  player = player_position;
+  player = player_position * vec3(-1.0, 1.0, 1.0);
   position = position_3d;
   normal = normalize(normal_3d);
   tex_coord = tex_pos;

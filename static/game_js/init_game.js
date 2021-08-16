@@ -5,15 +5,17 @@
 var Canvas = document.createElement("canvas");
 var Gl = Canvas.getContext("webgl2");
 // Transition in x and y direction.
-var X = 1;
-var Y = 4;
-var Z = 1;
+var X = -12;
+var Y = 5;
+var Z = -18;
 // Create resize event to resize canvas.
 var RESIZE = document.createEvent("UIEvent");
 RESIZE.initUIEvent ("resize", false, false);
 // Initialize performance metric globals.
 var FpsCounter = document.createElement("div");
-var Scale = 2;
+var Samples = 1;
+var Scale = 0.4;
+var Reflections = 3;
 var Fps = 0;
 var Frame = 0;
 // The micros variable is needed to calculate fps.
@@ -26,7 +28,8 @@ var Program;
 var PlayerPosition;
 var Perspective;
 var RenderConf;
-var RenderColor;
+var SamplesLocation;
+var ReflectionsLocation;
 var WorldTex;
 var RandomTex;
 var NormalTex;
@@ -43,6 +46,7 @@ var WorldTexture;
 var RandomTexture;
 var NormalTexture;
 var Texture;
+var Random;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
@@ -51,9 +55,18 @@ const Color = 3;
 // List of all vertices currently in world space.
 var Data = [];
 var DataHeight = 0;
+// Post Program.
+var Framebuffer;
+var PostProgram;
+var PostPosition = 0;
+var PostVertexBuffer;
+var RenderTexture;
+var RenderTex;
+var DepthTexture;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();
+var POST_VAO = Gl.createVertexArray();
 
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
@@ -72,8 +85,8 @@ var Players = [];
 // current pointer lock state.
 var PointerLocked = false;
 // Current player frustum rotation.
-var Fx = 0;
-var Fy = 0;
+var Fx = 0.440;
+var Fy = 0.235;
 // Mouse Speed.
 var Mouse_y = 1 / 200;
 var Mouse_x = 1 / 200;
@@ -103,7 +116,12 @@ window.addEventListener ("resize", function (){
 	Canvas.height = Canvas.clientHeight * Scale;
 	Ratio = window.innerWidth / window.innerHeight;
 	Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
+	// Build random texture.
+	Random = [];
+	for (let i =0; i < Gl.canvas.width * Gl.canvas.height * 3; i++) Random.push(Math.random() * 256);
+	// Rebuild textures on every resize.
 	randomTextureBuilder();
+	renderTextureBuilder();
 });
 
 // Preload most textures to prevent lags.
