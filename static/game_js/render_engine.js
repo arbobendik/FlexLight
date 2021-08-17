@@ -12,6 +12,11 @@ async function initEngine()
     {source:await fetchShader("static/shaders/post_vertex.glsl"),type:Gl.VERTEX_SHADER},
     {source:await fetchShader("static/shaders/post_fragment.glsl"),type:Gl.FRAGMENT_SHADER}
   ]);
+  // Compile shaders and link them into KenrelProgram global.
+  KernelProgram = await buildProgram([
+    {source:await fetchShader("static/shaders/post_vertex.glsl"),type:Gl.VERTEX_SHADER},
+    {source:await fetchShader("static/shaders/kernel.glsl"),type:Gl.FRAGMENT_SHADER}
+  ]);
     // Create global vertex array object (VAO).
   Gl.bindVertexArray(VAO);
 	// Bind Attribute varying to their respective shader locations.
@@ -25,6 +30,7 @@ async function initEngine()
   RenderConf = Gl.getUniformLocation(Program, "conf");
   SamplesLocation = Gl.getUniformLocation(Program, "samples");
   ReflectionsLocation = Gl.getUniformLocation(Program, "reflections");
+  FilterLocation = Gl.getUniformLocation(Program, "use_filter");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
   RandomTex = Gl.getUniformLocation(Program, "random");
   NormalTex = Gl.getUniformLocation(Program, "normal_tex");
@@ -86,6 +92,20 @@ async function initEngine()
   Gl.bindBuffer(Gl.ARRAY_BUFFER, PostVertexBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), Gl.DYNAMIC_DRAW);
 
+  PostFramebuffer = Gl.createFramebuffer();
+  postRenderTextureBuilder();
+  // Create post program buffers and uniforms.
+  Gl.bindVertexArray(KERNEL_VAO);
+  Gl.useProgram(KernelProgram);
+
+  KernelVertexBuffer = Gl.createBuffer();
+
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, KernelVertexBuffer);
+  Gl.enableVertexAttribArray(KernelPosition);
+  Gl.vertexAttribPointer(KernelPosition, 2, Gl.FLOAT, false, 0, 0);
+  // Fill buffer with data for two verices.
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, KernelVertexBuffer);
+  Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), Gl.DYNAMIC_DRAW);
   // Begin frame cycle.
   frameCycle();
 }
@@ -114,10 +134,17 @@ function renderFrame()
 {
   {
     // Configure where the final image should go.
-    Gl.bindFramebuffer(Gl.FRAMEBUFFER, Framebuffer);
-    // Configure framebuffer for color and depth.
-    Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, RenderTexture, 0);
-    Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, DepthTexture, 0);
+    if(Filter)
+    {
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, Framebuffer);
+      // Configure framebuffer for color and depth.
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, RenderTexture, 0);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, DepthTexture, 0);
+    }
+    else
+    {
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
+    }
     // Clear depth and color buffers from last frame.
     Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
 
@@ -145,6 +172,8 @@ function renderFrame()
     Gl.uniform1i(SamplesLocation, Samples);
     // Set max reflections per ray.
     Gl.uniform1i(ReflectionsLocation, Reflections);
+    // Instuct shader to render for filter or not.
+    Gl.uniform1i(FilterLocation, Filter);
     // Pass whole current world space as data structure to GPU.
     Gl.uniform1i(WorldTex, 0);
     // Pass random texture to GPU.
@@ -197,21 +226,46 @@ function renderFrame()
     Gl.drawArrays(Gl.TRIANGLES, 0, length);
   }
   // Apply post processing.
+  if(Filter)
   {
-    // Render to canvas now.
-    Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
-    // Make pre rendered texture TEXTURE0.
-    Gl.activeTexture(Gl.TEXTURE0);
-    Gl.bindTexture(Gl.TEXTURE_2D, RenderTexture);
-    // Switch program and VAO.
-    Gl.useProgram(PostProgram);
-    Gl.bindVertexArray(POST_VAO);
-    // Pass pre rendered texture to shader.
-    Gl.uniform1i(RenderTex, 0);
-    // Pass random texture to GPU.
-    // Gl.uniform1i(PostRandomTex, 1);
-    // Post processing drawcall.
-    Gl.drawArrays(Gl.TRIANGLES, 0, 6);
+    {
+      // Configure where the final image should go.
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, PostFramebuffer);
+      // Configure framebuffer for color and depth.
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, KernelTexture, 0);
+      // Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, PostDepthTexture, 0);
+      // Clear depth and color buffers from last frame.
+      Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
+      // Make pre rendered texture TEXTURE0.
+      Gl.activeTexture(Gl.TEXTURE0);
+      Gl.bindTexture(Gl.TEXTURE_2D, RenderTexture);
+      // Switch program and VAO.
+      Gl.useProgram(PostProgram);
+      Gl.bindVertexArray(POST_VAO);
+      // Pass pre rendered texture to shader.
+      Gl.uniform1i(RenderTex, 0);
+      // Pass random texture to GPU.
+      // Gl.uniform1i(PostRandomTex, 1);
+      // Post processing drawcall.
+      Gl.drawArrays(Gl.TRIANGLES, 0, 6);
+    }
+    // Apply kernel convolution matrix.
+    {
+      // Render to canvas now.
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
+      // Make pre rendered texture TEXTURE0.
+      Gl.activeTexture(Gl.TEXTURE0);
+      Gl.bindTexture(Gl.TEXTURE_2D, KernelTexture);
+      // Switch program and VAO.
+      Gl.useProgram(KernelProgram);
+      Gl.bindVertexArray(KERNEL_VAO);
+      // Pass pre rendered texture to shader.
+      Gl.uniform1i(KernelTex, 0);
+      // Pass random texture to GPU.
+      // Gl.uniform1i(PostRandomTex, 1);
+      // Post processing drawcall.
+      Gl.drawArrays(Gl.TRIANGLES, 0, 6);
+    }
   }
 }
 

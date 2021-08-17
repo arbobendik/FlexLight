@@ -6,7 +6,6 @@ body {
   margin: 0;
 }
 canvas {
-  filter: blur(1px);
   width: 100vw;
   height: 100vh;
 }
