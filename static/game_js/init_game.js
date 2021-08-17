@@ -14,10 +14,11 @@ RESIZE.initUIEvent ("resize", false, false);
 // Initialize performance metric globals.
 var FpsCounter = document.createElement("div");
 var Samples = 1;
-var Scale = 0.4;
+var Scale = 1.0;
 var Reflections = 3;
 var Fps = 0;
 var Frame = 0;
+var Filter = true;
 // The micros variable is needed to calculate fps.
 var Micros = window.performance.now();
 // Set Fov for RENDER_ENGINE
@@ -30,6 +31,7 @@ var Perspective;
 var RenderConf;
 var SamplesLocation;
 var ReflectionsLocation;
+var FilterLocation;
 var WorldTex;
 var RandomTex;
 var NormalTex;
@@ -57,16 +59,23 @@ var Data = [];
 var DataHeight = 0;
 // Post Program.
 var Framebuffer;
+var PostFramebuffer;
 var PostProgram;
+var KernelProgram;
 var PostPosition = 0;
+var KernelPosition = 0;
 var PostVertexBuffer;
+var KernelVertexBuffer;
 var RenderTexture;
+var KernelTexture;
 var RenderTex;
+var KernelTex;
 var DepthTexture;
 // Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
 var QUEUE = [];
 var VAO = Gl.createVertexArray();
 var POST_VAO = Gl.createVertexArray();
+var KERNEL_VAO = Gl.createVertexArray();
 
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
@@ -122,6 +131,7 @@ window.addEventListener ("resize", function (){
 	// Rebuild textures on every resize.
 	randomTextureBuilder();
 	renderTextureBuilder();
+	postRenderTextureBuilder();
 });
 
 // Preload most textures to prevent lags.

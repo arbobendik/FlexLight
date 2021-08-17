@@ -114,6 +114,16 @@ function renderTextureBuilder(){
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 }
+
+function postRenderTextureBuilder(){
+  KernelTexture = Gl.createTexture();
+  Gl.bindTexture(Gl.TEXTURE_2D, KernelTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+}
 // Build simple AABB tree (Axis aligned bounding box).
 async function fillData(item)
 {
@@ -192,7 +202,7 @@ setTimeout(function(){
   // Pack objects on surface together in some bounding structure.
   let objects = [
     [-1.5, 6.5, -1, 2.5, -2, 6.5],
-    [[-1.5, 4.5, -1, 2, -2, 2], r0, r1, r2, r3],
+    [[-1.5, 4.5, -1, 2, -2, 2.5], r0, r1, r2, r3],
     dice
   ];
   // Append surface and objects to QUEUE.

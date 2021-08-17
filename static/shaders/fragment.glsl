@@ -10,6 +10,7 @@ in vec3 clip_space;
 
 uniform int samples;
 uniform int reflections;
+uniform int use_filter;
 // Texture with information about all triangles in scene.
 uniform sampler2D world_tex;
 // Random 512x512 texture to multiply with normal map to simulate rough surfaces.
@@ -250,7 +251,7 @@ void main(){
   int samples = samples;
   if (roughness == 1.0 || roughness == 0.0) samples = 1;
   // Generate multiple samples.
-  for (int i = 0; i < samples; i++){
+  for(int i = 0; i < samples; i++){
     if(mod(float(i), 2.0) == float(i)){
       vec2 random_coord = vec2(i, i) + ((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1);
       random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
@@ -264,6 +265,10 @@ void main(){
     // Calculate pixel for specific normal.
     final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, tex_color.xyz, roughness, reflections, 3.0);
   }
-  vec3 n = normalize(normal + normalize(tex_color.xyz) + (1.01 / (roughness + 0.01)) * float(first_in_shadow)) * vec3(1.0, 0.125, 1.0/ 64.0);
-  out_color = vec4(final_color / float(samples), n.x+n.y+n.z);
+  if(use_filter == 1){
+    vec3 n = normalize((normal + normalize(tex_color.xyz)) + float(first_in_shadow)) * vec3(1.0, 0.125, 1.0/ 64.0) * roughness + 0.01;
+    out_color = vec4(final_color / float(samples), n.x+n.y+n.z);
+  }else{
+    out_color = vec4(final_color / float(samples), 1.0);
+  }
 }
