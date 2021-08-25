@@ -1,4 +1,10 @@
-This project will be converted into a javascript library later for the moment it runs on a small FastAPI backend
+This project will be converted into a javascript library later. For the moment it runs on a small FastAPI backend
+
+Screenshots:
+
+![alt text](https://github.com/arbobendik/web-ray-tracer/blob/master/scrrenshots/screen0.png)
+![alt text](https://github.com/arbobendik/web-ray-tracer/blob/master/scrrenshots/screen1.png)
+
 
 Install instructions:
 
