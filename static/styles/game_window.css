@@ -11,8 +11,8 @@ canvas {
 }
 div {
   position: fixed;
-  top: 15px;
+  top: 1.9vh;
   right: 0;
   color: #fff;
-  font-size: 30px;
+  font-size: 4vh;
 }

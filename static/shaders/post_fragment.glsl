@@ -2,32 +2,48 @@
 
 precision highp float;
 in vec2 clip_space;
-uniform sampler2D pre_render;
+
+uniform sampler2D pre_render_color;
+uniform sampler2D pre_render_normal;
+uniform sampler2D pre_render_original_color;
+uniform sampler2D pre_render_id;
+
 out vec4 out_color;
 
 void main(){
 
   // Get texture size.
-  vec2 texel = vec2(textureSize(pre_render, 0)) * clip_space;
+  ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
 
-  vec4 original_color = texelFetch(pre_render, ivec2(texel), 0);
-  vec4 color = vec4(0.0, 0.0, 0.0, 0.0);
-  float count = 0.0;
-  int increment = 1;
-  int radius = 1 + int(float(textureSize(pre_render, 0).x) * 0.08 * original_color.w);
+  vec4 center_color = texelFetch(pre_render_color, texel, 0);
+  vec4 center_normal = texelFetch(pre_render_normal, texel, 0);
+  vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+  vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-  // Apply 3x3 kernel on image.
+  vec4 color = center_color;
+  float count = 1.0;
+  int increment = 3;
+  int radius = 1 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.015 * center_original_color.w);
+
+  // Apply blur filter on image.
   for(int i = 0; i < radius; i++){
     for(int j = 0; j < radius; j++){
-      vec4 next_color = texelFetch(pre_render, ivec2(texel + vec2(i, j) * float(increment) - float(radius * increment / 2)), 0);
-      if (original_color.w == next_color.w){
+
+      ivec2 coords = ivec2(vec2(texel) + vec2(i, j) * float(increment) - float(radius * increment / 2));
+      vec4 next_color = texelFetch(pre_render_color, coords, 0);
+      vec4 normal = texelFetch(pre_render_normal, coords, 0);
+      vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
+      vec4 id = texelFetch(pre_render_id, coords, 0);
+
+      if (normal == center_normal && original_color.w == center_original_color.w){
         color += next_color;
         count ++;
       }
     }
   }
   if (color.w > 0.0){
-    out_color = vec4((color.xyz / count), 1.0);
+    // Multiply with
+    out_color = vec4((color.xyz / count) * center_original_color.xyz, 1.0);
   }else{
     out_color = vec4(0.0, 0.0, 0.0, 0.0);
   }

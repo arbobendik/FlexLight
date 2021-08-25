@@ -8,10 +8,10 @@ out vec4 out_color;
 void main(){
 
   int kernel[12] = int[12](
-       1,3,1,
-       3,9,3,
-       1,3,1,
-       0,0,0
+       1, 2, 1,
+       2, 4, 2,
+       1, 2, 1,
+       0, 0, 0
   );
 
   // Get texture size.
@@ -27,8 +27,8 @@ void main(){
   for(int i = 0; i < radius; i++){
     for(int j = 0; j < radius; j++){
       vec4 next_color = texelFetch(pre_render, ivec2(texel + vec2(i, j) - float(radius/2)), 0);
-        color += next_color * float(kernel[i%7+j]);
-        count += float(kernel[i%7+j]);
+        color += next_color * float(kernel[i%3+j]);
+        count += float(kernel[i%3+j]);
     }
   }
   if(original_color.w != 0.0){
