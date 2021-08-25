@@ -17,13 +17,14 @@ async function initEngine()
     {source:await fetchShader("static/shaders/post_vertex.glsl"),type:Gl.VERTEX_SHADER},
     {source:await fetchShader("static/shaders/kernel.glsl"),type:Gl.FRAGMENT_SHADER}
   ]);
-    // Create global vertex array object (VAO).
+  // Create global vertex array object (VAO).
   Gl.bindVertexArray(VAO);
 	// Bind Attribute varying to their respective shader locations.
 	Gl.bindAttribLocation(Program, Position, "position_3d");
   Gl.bindAttribLocation(Program, Normal, "normal_3d");
   Gl.bindAttribLocation(Program, TexCoord, "tex_pos");
   Gl.bindAttribLocation(Program, Color, "color_3d");
+  Gl.bindAttribLocation(Program, TexNum, "texture_nums_3d");
 	// Bind uniforms to Program.
   PlayerPosition = Gl.getUniformLocation(Program, "player_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
@@ -34,7 +35,7 @@ async function initEngine()
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
   RandomTex = Gl.getUniformLocation(Program, "random");
   NormalTex = Gl.getUniformLocation(Program, "normal_tex");
-  Tex = Gl.getUniformLocation(Program, "tex");
+  ColorTex = Gl.getUniformLocation(Program, "tex");
   // Set pixel density in canvas correctly.
   Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Enable depth buffer and therefore overlapping vertices.
@@ -52,10 +53,18 @@ async function initEngine()
   NormalBuffer = Gl.createBuffer();
   // Create a buffer for tex_coords.
   TexBuffer = Gl.createBuffer();
+  // Create buffer for texture sizes.
+  TexSizeBuffer = Gl.createBuffer();
+  // Create buffer for textur IDs.
+  TexNumBuffer = Gl.createBuffer();
   // Create a buffer for colors.
   ColorBuffer = Gl.createBuffer();
   // Create a world texture containing all information about world space.
   WorldTexture = Gl.createTexture();
+  // Create Textures for primary render.
+  RandomTexture = Gl.createTexture();
+  NormalTexture = Gl.createTexture();
+  ColorTexture = Gl.createTexture();
   // Create random texture.
   randomTextureBuilder();
   // Bind and set buffer parameters.
@@ -76,12 +85,28 @@ async function initEngine()
   Gl.enableVertexAttribArray(TexCoord);
   Gl.vertexAttribPointer(TexCoord, 2, Gl.FLOAT, true, 0, 0);
 
+  Gl.bindBuffer(Gl.ARRAY_BUFFER, TexNumBuffer);
+  Gl.enableVertexAttribArray(TexNum);
+  Gl.vertexAttribPointer(TexNum, 2, Gl.FLOAT, true, 0, 0);
   // Create frame buffer and texteure to be rendered to.
   Framebuffer = Gl.createFramebuffer();
+  ColorRenderTexture = Gl.createTexture();
+  NormalRenderTexture = Gl.createTexture();
+  OriginalRenderTexture = Gl.createTexture();
+  IdRenderTexture = Gl.createTexture();
+
+  DepthTexture = Gl.createTexture();
+
   renderTextureBuilder();
   // Create post program buffers and uniforms.
   Gl.bindVertexArray(POST_VAO);
   Gl.useProgram(PostProgram);
+
+  // Bind uniforms.
+  ColorRenderTex = Gl.getUniformLocation(PostProgram, "pre_render_color");
+  NormalRenderTex = Gl.getUniformLocation(PostProgram, "pre_render_normal");
+  OriginalRenderTex = Gl.getUniformLocation(PostProgram, "pre_render_original_color");
+  IdRenderTex = Gl.getUniformLocation(PostProgram, "pre_render_id");
 
   PostVertexBuffer = Gl.createBuffer();
 
@@ -93,6 +118,8 @@ async function initEngine()
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), Gl.DYNAMIC_DRAW);
 
   PostFramebuffer = Gl.createFramebuffer();
+  KernelTexture = Gl.createTexture();
+
   postRenderTextureBuilder();
   // Create post program buffers and uniforms.
   Gl.bindVertexArray(KERNEL_VAO);
@@ -114,6 +141,7 @@ function frameCycle()
 {
   Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
 	// Render new Image, work through QUEUE.
+  requestAnimationFrame(frameCycle);
 	renderFrame();
   // Calculate fps by measuring the time it takes to render 30 frames.
   Frame++;
@@ -123,11 +151,10 @@ function frameCycle()
 		// Calculate Fps.
     Fps = 30000 / (performance.now() - Micros);
 		// Update FpsCounter.
-		FpsCounter.innerHTML = Math.round(Fps);
+		FpsCounter.textContent = Math.round(Fps);
 		Micros = window.performance.now();
   }
 	// Request the browser to render frame with hardware accelerated rendering.
-	requestAnimationFrame(frameCycle);
 }
 
 function renderFrame()
@@ -137,8 +164,17 @@ function renderFrame()
     if(Filter)
     {
       Gl.bindFramebuffer(Gl.FRAMEBUFFER, Framebuffer);
+      Gl.drawBuffers([
+        Gl.COLOR_ATTACHMENT0,
+        Gl.COLOR_ATTACHMENT1,
+        Gl.COLOR_ATTACHMENT2,
+        Gl.COLOR_ATTACHMENT3
+      ]);
       // Configure framebuffer for color and depth.
-      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, RenderTexture, 0);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, ColorRenderTexture, 0);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, NormalRenderTexture, 0);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, OriginalRenderTexture, 0);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT3, Gl.TEXTURE_2D, IdRenderTexture, 0);
       Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, DepthTexture, 0);
     }
     else
@@ -158,9 +194,9 @@ function renderFrame()
     Gl.activeTexture(Gl.TEXTURE1);
     Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
     Gl.activeTexture(Gl.TEXTURE2);
-    Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
+    Gl.bindTexture(Gl.TEXTURE_3D, NormalTexture);
     Gl.activeTexture(Gl.TEXTURE3);
-    Gl.bindTexture(Gl.TEXTURE_2D, Texture);
+    Gl.bindTexture(Gl.TEXTURE_3D, ColorTexture);
     // Set uniforms for shaders.
     // Set 3d camera position.
     Gl.uniform3f(PlayerPosition, X, Y, Z);
@@ -181,12 +217,14 @@ function renderFrame()
     // Pass normal texture to GPU.
     Gl.uniform1i(NormalTex, 2);
     // Pass texture to GPU.
-    Gl.uniform1i(Tex, 3);
-    var vertices = [];
-    var normals = [];
-    var colors = [];
-    var textureCoords = [];
-    var length = 0;
+    Gl.uniform1i(ColorTex, 3);
+
+    let vertices = [];
+    let normals = [];
+    let colors = [];
+    let uvs = [];
+    let texNums = [];
+    let length = 0;
     // Iterate through render queue and build arrays for GPU.
     var flattenQUEUE = (item) => {
       if (Array.isArray(item))
@@ -202,26 +240,32 @@ function renderFrame()
         vertices.push(item.vertices);
         normals.push(item.normals);
         colors.push(item.colors);
-        textureCoords.push(item.texCorners)
-        normalTextureBuilder(item);
-        textureBuilder(item);
+        uvs.push(item.uvs);
+        texNums.push(item.textureNums);
+        //console.log(item.textureNums);
         length += item.arrayLength;
       }
     };
+    // Push textures.
+    normalTextureBuilder();
+    colorTextureBuilder();
     // Start recursion.
     QUEUE.forEach((item, i) => {flattenQUEUE(item)});
     // Set PositionBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, PositionBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(vertices.flat()), Gl.DYNAMIC_DRAW);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(vertices.flat()), Gl.STATIC_DRAW);
     // Set NormalBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, NormalBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(normals.flat()), Gl.DYNAMIC_DRAW);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(normals.flat()), Gl.STATIC_DRAW);
     // Set ColorBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, ColorBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(colors.flat()), Gl.DYNAMIC_DRAW);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(colors.flat()), Gl.STATIC_DRAW);
     // Set TexBuffer.
     Gl.bindBuffer(Gl.ARRAY_BUFFER, TexBuffer);
-    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(textureCoords.flat()), Gl.STATIC_DRAW);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(uvs.flat()), Gl.STATIC_DRAW);
+    // Pass texture IDs to GPU.
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, TexNumBuffer);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(texNums.flat()), Gl.STATIC_DRAW);
     // Actual drawcall.
     Gl.drawArrays(Gl.TRIANGLES, 0, length);
   }
@@ -236,16 +280,29 @@ function renderFrame()
       // Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, PostDepthTexture, 0);
       // Clear depth and color buffers from last frame.
       Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
-      // Make pre rendered texture TEXTURE0.
+      // Make pre rendered image TEXTURE0.
       Gl.activeTexture(Gl.TEXTURE0);
-      Gl.bindTexture(Gl.TEXTURE_2D, RenderTexture);
+      Gl.bindTexture(Gl.TEXTURE_2D, ColorRenderTexture);
+      // Make pre rendered normal map TEXTURE1.
+      Gl.activeTexture(Gl.TEXTURE1);
+      Gl.bindTexture(Gl.TEXTURE_2D, NormalRenderTexture);
+      // Make pre rendered map of original colors TEXTURE2.
+      Gl.activeTexture(Gl.TEXTURE2);
+      Gl.bindTexture(Gl.TEXTURE_2D, OriginalRenderTexture);
+
+      Gl.activeTexture(Gl.TEXTURE3);
+      Gl.bindTexture(Gl.TEXTURE_2D, IdRenderTexture);
       // Switch program and VAO.
       Gl.useProgram(PostProgram);
       Gl.bindVertexArray(POST_VAO);
       // Pass pre rendered texture to shader.
-      Gl.uniform1i(RenderTex, 0);
-      // Pass random texture to GPU.
-      // Gl.uniform1i(PostRandomTex, 1);
+      Gl.uniform1i(ColorRenderTex, 0);
+      // Pass normal texture to GPU.
+      Gl.uniform1i(NormalRenderTex, 1);
+      // Pass original color texture to GPU.
+      Gl.uniform1i(OriginalRenderTex, 2);
+      // Pass vertex_id texture to GPU.
+      Gl.uniform1i(IdRenderTex, 3);
       // Post processing drawcall.
       Gl.drawArrays(Gl.TRIANGLES, 0, 6);
     }
@@ -261,20 +318,8 @@ function renderFrame()
       Gl.bindVertexArray(KERNEL_VAO);
       // Pass pre rendered texture to shader.
       Gl.uniform1i(KernelTex, 0);
-      // Pass random texture to GPU.
-      // Gl.uniform1i(PostRandomTex, 1);
       // Post processing drawcall.
       Gl.drawArrays(Gl.TRIANGLES, 0, 6);
     }
   }
-}
-
-// General purpose element prototype.
-function Element(foo)
-{
-  return (x, y, z) => Object.assign(foo.bind({}), {
-		x: x,
-		y: y,
-		z: z
-	});
 }
