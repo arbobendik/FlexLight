@@ -2,8 +2,8 @@ This project will be converted into a javascript library later. For the moment i
 
 Screenshots:
 
-!(https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen0.png?raw=true)
-!(https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen1.png?raw=true)
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen0.png?raw=true)
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen1.png?raw=true)
 
 Install instructions:
 
