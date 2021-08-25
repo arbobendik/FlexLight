@@ -3,7 +3,7 @@
 async function buildProgram(shaders)
 {
   // Create Program, compile and append vertex and fragment shader to it.
-  Program = Gl.createProgram();
+  let program = Gl.createProgram();
   // Compile GLSL shaders.
   await shaders.forEach(async (item, i) => {
     let shader = Gl.createShader(item.type);
@@ -12,7 +12,7 @@ async function buildProgram(shaders)
     // Append shader to Program if GLSL compiled successfully.
     if (Gl.getShaderParameter(shader, Gl.COMPILE_STATUS))
     {
-      Gl.attachShader(Program, shader);
+      Gl.attachShader(program, shader);
     }
     else
     {
@@ -21,13 +21,17 @@ async function buildProgram(shaders)
       Gl.deleteShader(shader);
     }
   });
-  Gl.linkProgram(Program);
+  Gl.linkProgram(program);
   // Return Program if it links successfully.
-  if (!Gl.getProgramParameter(Program, Gl.LINK_STATUS))
+  if (!Gl.getProgramParameter(program, Gl.LINK_STATUS))
   {
     // Log debug info and delete Program if Program fails to link.
-    console.warn(Gl.getProgramInfoLog(Program));
-    Gl.deleteProgram(Program);
+    console.warn(Gl.getProgramInfoLog(program));
+    Gl.deleteProgram(program);
+  }
+  else
+  {
+    return program;
   }
 }
 
@@ -38,143 +42,146 @@ async function fetchShader(url)
 
 function worldTextureBuilder()
 {
+  Gl.bindTexture(Gl.TEXTURE_2D, WorldTexture);
   // Reset old world space texture.
   Data = [];
   // Fill texture with data pixels.
-  for(let q = 0; q < QUEUE.length; q++)fillData(QUEUE[q]);
+  for(let i = 0; i < QUEUE.length; i++) fillData(QUEUE[i]);
+  // Calculate DataHeight.
+  DataHeight = Data.length / 24;
   // Tell webgl to use 4 bytes per value for the 32 bit floats.
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 4);
-
-  DataHeight = Data.length / 15;
   // Set data texture details and tell webgl, that no mip maps are required.
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 5, DataHeight, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Data));
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 8, DataHeight, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Data));
 }
-/*
-// Create a texture.
-var texture = Gl.createTexture();
-// use texture unit 0
-Gl.activeTexture(Gl.TEXTURE0 + 0);
-// bind to the TEXTURE_2D bind point of texture unit 0
-Gl.bindTexture(Gl.TEXTURE_2D, texture);
-// fill texture with 3x2 pixels
+
+function randomTextureBuilder()
 {
-  const level = 0;
-  const internalFormat = Gl.RGBA8;
-  const width = 3;
-  const height = 2;
-  const border = 0;
-  const format = Gl.RGBA;
-  const type = Gl.UNSIGNED_BYTE;
-  const data = new Uint8Array([
-    128, 128, 128, 255,
-    64, 64, 64, 255,
-    128, 128, 128, 255,
-    0, 0, 0, 255,
-    192, 192, 192, 255,
-    0, 0, 0, 255
-  ]);
+  Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
+  // Fill texture with pseudo random pixels.
+  // Tell webgl to use 1 byte per value for the 8 bit ints.
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-  Gl.texImage2D(Gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
-  // set the filtering so we don't need mips
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB8, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGB, Gl.UNSIGNED_BYTE, new Uint8Array(Random));
+  Gl.generateMipmap(Gl.TEXTURE_2D);
+}
+
+function normalTextureBuilder()
+{
+  Gl.bindTexture(Gl.TEXTURE_3D, NormalTexture);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texImage3D(Gl.TEXTURE_3D, 0, Gl.R8, NORMAL_TEXTURE[0].width, NORMAL_TEXTURE[0].height, NORMAL_TEXTURE.length, 0, Gl.RED, Gl.UNSIGNED_BYTE, new Uint8Array(NORMAL_TEXTURE.map(item => item.normals).flat()));
+}
+
+function colorTextureBuilder()
+{
+  Gl.bindTexture(Gl.TEXTURE_3D, ColorTexture);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+
+  let [width, height] = [TEXTURE[0].width, TEXTURE[0].height];
+
+  Gl.texImage3D(
+    Gl.TEXTURE_3D, 0,
+    Gl.RGBA, width, height, TEXTURE.length,
+    0, Gl.RGBA, Gl.UNSIGNED_BYTE,
+    new Uint8Array(new Array(width * height * TEXTURE.length * 4).fill(255))
+  );
+
+  TEXTURE.forEach((item, i) => {
+    Gl.texSubImage3D(Gl.TEXTURE_3D, 0, 0, 0, 0, item.width, item.height, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, item);
+  });
+}
+
+function renderTextureBuilder(){
+  Gl.bindTexture(Gl.TEXTURE_2D, ColorRenderTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  Gl.bindTexture(Gl.TEXTURE_2D, NormalRenderTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  Gl.bindTexture(Gl.TEXTURE_2D, OriginalRenderTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  Gl.bindTexture(Gl.TEXTURE_2D, IdRenderTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  Gl.bindTexture(Gl.TEXTURE_2D, DepthTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.DEPTH_COMPONENT24, Gl.canvas.width, Gl.canvas.height, 0, Gl.DEPTH_COMPONENT, Gl.UNSIGNED_INT, null);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 }
-*/
+
+function postRenderTextureBuilder(){
+  Gl.bindTexture(Gl.TEXTURE_2D, KernelTexture);
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.canvas.width, Gl.canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+}
 // Build simple AABB tree (Axis aligned bounding box).
 async function fillData(item)
 {
-  let b = item.bounding;
   if(Array.isArray(item))
   {
+    let b = item[0];
     // Save position of len variable in array.
     let len_pos = Data.length;
     // Begin bounding volume array.
-    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0);
-    // Iterate over all sub elements.
-    item.forEach((item, i) => {
+    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    // Iterate over all sub elements and skip bounding (item[0]).
+    for (let i = 1; i < item.length; i++){
       // Push sub elements in QUEUE.
-      fillData(item);
-    });
-    let len = Data.length - len_pos;
+      fillData(item[i]);
+    }
+    let len = Math.floor((Data.length - len_pos) / 24);
+    // console.log(len);
     // Set now calculated vertices length of bounding box
     // to skip if ray doesn't intersect with it.
-    Data[len_pos] = len;
+    Data[len_pos + 6] = len;
+    // console.log(item.slice(1));
   }
   else
   {
+    let b = item.bounding;
     // Create extra bounding volume for each object.
     let v = item.vertices;
     let c = item.colors;
     let n = item.normals;
+    let t = item.textureNums;
+    let uv = item.uvs;
     let len = item.arrayLength;
     // Declare bounding volume of object.
-    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0);
+    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
     for(let i = 0; i < len * 3; i += 9){
-      // a, b, c, color, normal
-      Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2]);
+      let j = i/3*2
+      // 1 vertex = 1 line in world texture.
+      // a, b, c, color, normal, texture_nums, UVs1, UVs2.
+      Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2],t[j],t[j+1],0,uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
     }
   }
 }
-
-setTimeout(function(){
-  let surface = [[],[],[],[],[]];
-  for (let i = 0; i < 25; i++)
-  {
-    let plane = cuboid(-10 + 4*(i%5), -1, -10 + 4*Math.floor(i / 5));
-    plane.width = 4;
-    plane.height = 0.1;
-    plane.depth = 4;
-    plane = plane(plane);
-    surface[i%5].push(plane);
-  }
-  surface.bounding = [-10, 10, -1, -0.9, -10, 10];
-  surface[0].bounding = [-10 , -6, -1, 0.9, -10, 10];
-  surface[1].bounding = [-6 , -2, -1, 0.9, -10, 10];
-  surface[2].bounding = [-2 , 2, -1, 0.9, -10, 10];
-  surface[3].bounding = [2 , 6, -1, 0.9, -10, 10];
-  surface[4].bounding = [6 , 10, -1, 0.9, -10, 10];
-  QUEUE.push(surface);
-
-  let rect = cuboid(0.2, 1.5, 0.2);
-  rect.width = 1;
-  rect.height = 1;
-  rect.depth = 1;
-  rect = rect(rect);
-  QUEUE.push(rect);
-
-  worldTextureBuilder();
-
-  var c=[{v:255,n:0},{v:255,n:0},{v:255,n:0}];
-    setInterval(function(){
-      c.forEach((e,i)=>{
-        if(e.v+e.n>255||e.v+e.n<0)
-        {
-          e.n=((Math.random()**2+1.1)*-20*e.n/Math.abs(e.n))/10;
-        }
-        e.v+=e.n*0.7;
-      });
-      let color =[];
-      let co = [c[0].v/255, c[1].v/255, c[2].v/255, 1];
-      for(let i = 0; i < 36; i++) color.push(co);
-      QUEUE[1].colors = color.flat();
-    },(100/6));
-},1000);
-
-/*
-  setInterval(function()
-  {
-    let rand = () => 1 - 2 * Math.random();
-    let rect = rect_prism(rand(), rand(), rand());
-    rect.width = 0.5 * Math.random();
-    rect.height = 0.5 * Math.random();
-    rect.depth = 0.5 * Math.random();
-    rect = rect(rect);
-    QUEUE.push(rect);
-    // Remove first element if there are more or equal then 250.
-    if (QUEUE.length > 20) QUEUE.shift();
-  }, 1000);
-*/
