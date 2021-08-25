@@ -35,44 +35,61 @@ var FilterLocation;
 var WorldTex;
 var RandomTex;
 var NormalTex;
-var Tex;
+var ColorTex;
 // Init Buffers.
 var PositionBuffer;
 var NormalBuffer;
 var TexBuffer;
 var ColorBuffer;
+var TexSizeBuffer;
+var TexNumBuffer;
 var SurfaceBuffer;
 var TriangleBuffer;
 // Init Texture elements.
 var WorldTexture;
 var RandomTexture;
 var NormalTexture;
-var Texture;
+var ColorTexture;
 var Random;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
 const Normal = 1;
 const TexCoord = 2;
 const Color = 3;
+const TexNum = 4;
 // List of all vertices currently in world space.
 var Data = [];
 var DataHeight = 0;
+// List of all textures currently used.
+var Texture = [];
+var RoughnessTexture = [];
 // Post Program.
 var Framebuffer;
-var PostFramebuffer;
 var PostProgram;
-var KernelProgram;
 var PostPosition = 0;
-var KernelPosition = 0;
 var PostVertexBuffer;
-var KernelVertexBuffer;
-var RenderTexture;
-var KernelTexture;
-var RenderTex;
-var KernelTex;
+var ColorRenderTexture;
+var ColorRenderTex;
+var NormalRenderTexture;
+var NormalRenderTex;
+var OriginalRenderTexture;
+var OriginalRenderTex;
+var IdRenderTexture;
+var IdRenderTex;
 var DepthTexture;
-// Create renderQueue QUEUE for MAIN canvas. In this variable stores all currently displayed objects.
+// Convolution-kernel program.
+var PostFramebuffer;
+var KernelProgram;
+var KernelPosition = 0;
+var KernelVertexBuffer;
+var KernelTexture;
+var KernelTex;
+// Create render queue QUEUE for all elemnts that exist in the scene. This variable stores all currently displayed objects.
 var QUEUE = [];
+// Globals to store all currently used textures / normal maps.
+var TEXTURE = [];
+var NORMAL_TEXTURE = [];
+// Create different VAOs for different rendering/filtering steps in pipeline.
 var VAO = Gl.createVertexArray();
 var POST_VAO = Gl.createVertexArray();
 var KERNEL_VAO = Gl.createVertexArray();
@@ -127,7 +144,7 @@ window.addEventListener ("resize", function (){
 	Gl.viewport(0, 0, Gl.canvas.width, Gl.canvas.height);
 	// Build random texture.
 	Random = [];
-	for (let i =0; i < Gl.canvas.width * Gl.canvas.height * 3; i++) Random.push(Math.random() * 256);
+	for (let i = 0; i < Gl.canvas.width * Gl.canvas.height * 3; i++) Random.push(Math.random() * 256);
 	// Rebuild textures on every resize.
 	randomTextureBuilder();
 	renderTextureBuilder();
@@ -137,7 +154,8 @@ window.addEventListener ("resize", function (){
 // Preload most textures to prevent lags.
 var ImageURL = [
 	"static/textures/stone.svg",
-	"static/textures/gras.jpg"
+	"static/textures/gras.jpg",
+	"static/textures/dirt_side.jpg"
 ];
 
 var IMAGE = [];
@@ -148,5 +166,6 @@ async function preloadImages()
 		IMAGE[item]=new Image();
     IMAGE[item].src=item;
 	});
+	TEXTURE.push(IMAGE["static/textures/dirt_side.jpg"]);
 	// Push images in local storage
 }
