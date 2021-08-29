@@ -35,7 +35,7 @@ void main(){
       vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
       vec4 id = texelFetch(pre_render_id, coords, 0);
 
-      if (normal == center_normal && original_color.w == center_original_color.w){
+      if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color == center_original_color){
         color += next_color;
         count ++;
       }
@@ -43,7 +43,7 @@ void main(){
   }
   if (color.w > 0.0){
     // Multiply with
-    out_color = vec4((color.xyz / count) * center_original_color.xyz, 1.0);
+    out_color = vec4(color.xyz / count, 1.0); // * center_original_color.xyz
   }else{
     out_color = vec4(0.0, 0.0, 0.0, 0.0);
   }
