@@ -133,6 +133,9 @@ async function initEngine()
   // Fill buffer with data for two verices.
   Gl.bindBuffer(Gl.ARRAY_BUFFER, KernelVertexBuffer);
   Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), Gl.DYNAMIC_DRAW);
+  // Load existing textures.
+  updateNormal();
+  updateTexture();
   // Begin frame cycle.
   frameCycle();
 }
@@ -194,9 +197,9 @@ function renderFrame()
     Gl.activeTexture(Gl.TEXTURE1);
     Gl.bindTexture(Gl.TEXTURE_2D, RandomTexture);
     Gl.activeTexture(Gl.TEXTURE2);
-    Gl.bindTexture(Gl.TEXTURE_3D, NormalTexture);
+    Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
     Gl.activeTexture(Gl.TEXTURE3);
-    Gl.bindTexture(Gl.TEXTURE_3D, ColorTexture);
+    Gl.bindTexture(Gl.TEXTURE_2D, ColorTexture);
     // Set uniforms for shaders.
     // Set 3d camera position.
     Gl.uniform3f(PlayerPosition, X, Y, Z);
@@ -246,9 +249,6 @@ function renderFrame()
         length += item.arrayLength;
       }
     };
-    // Push textures.
-    normalTextureBuilder();
-    colorTextureBuilder();
     // Start recursion.
     QUEUE.forEach((item, i) => {flattenQUEUE(item)});
     // Set PositionBuffer.

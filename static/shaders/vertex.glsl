@@ -34,7 +34,7 @@ void main(){
   );
   vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y);
   // Set final clip space position.
-  gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 100.0))), translate_py.y);
+  gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 1000000000.0))), translate_py.y);
   vertex_id = gl_VertexID;
   clip_space = vec3(translate_2d, translate_py.y);
   player = player_position * vec3(-1.0, 1.0, 1.0);

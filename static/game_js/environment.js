@@ -39,24 +39,12 @@ async function initMovement()
       }
   });
 
-  // Update client side movement with 60Hz.
+  // Update movement with 60Hz.
   setInterval(async function(){
-    Players.forEach((item, i) => {
-      item.transform.x -= item.meta.dx;
-      item.transform.y -= item.meta.dy;
-    });
     X += DeltaX * Math.cos(Fx) + DeltaZ * Math.sin(Fx);
     Y += DeltaY;
     Z += DeltaZ * Math.cos(Fx) - DeltaX * Math.sin(Fx);
   }, 100/6);
-  // Send actual possition to server with 2Hz. Vector motion is reported event based.
-  // This function is used to measure the client-server-client latency in ms either.
-  setInterval(async function(){
-    // Test if socket is still open.
-    if (WS.open) {
-      WS.send(JSON.stringify({event: "sync_game", keys: KEYS, x: X, y: Y, dx: DeltaX, dy: DeltaY}));
-    }
-  }, 500);
 }
 
 async function evalKeys()
@@ -77,10 +65,6 @@ async function evalKeys()
       DeltaX = x;
       DeltaY = y;
       DeltaZ = z;
-      // Test if socket is still open.
-      if (WS.open) {
-        WS.send(JSON.stringify({event: "vector", keys: KEYS, dx: DeltaX, dy: DeltaY, x: X, y: Y}));
-      }
     }
   }
 }
