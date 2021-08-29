@@ -1,7 +1,7 @@
 #version 300 es
 
 precision highp float;
-precision highp sampler3D;
+precision highp sampler2D;
 
 in vec3 position;
 in vec2 tex_coord;
@@ -19,11 +19,10 @@ uniform int use_filter;
 // Texture with information about all triangles in scene.
 uniform sampler2D world_tex;
 // Random texture to multiply with normal map to simulate rough surfaces.
-
 uniform sampler2D random;
 
-uniform sampler3D normal_tex;
-uniform sampler3D tex;
+uniform sampler2D normal_tex;
+uniform sampler2D tex;
 
 layout(location = 0) out vec4 render_color;
 layout(location = 1) out vec4 render_normal;
@@ -36,14 +35,20 @@ const vec3 null = vec3(0.0, 0.0, 0.0);
 const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
 const float shadow_bias = 0.00001;
 
-vec3 light = vec3(5.0, 5.0, 3.0);
-float strength = 50.0;
-float reflectiveness = 0.3;
-float brightness = 3.0;
+vec3 light = vec3(3.0, 5.0, 2.0);
+float strength = 3.0;
+float brightness = 2.0;
 
 // Prevent blur over shadow border.
-float in_shadow = 0.0;
-float ray_length = 0.0;
+float first_in_shadow = 0.0;
+
+// Lookup values for texture atlases.
+vec4 lookup(sampler2D atlas, vec3 coords){
+  float atlas_scale_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y);
+  vec2 atlas_coords = vec2(coords.x, (coords.y + coords.z) * atlas_scale_factor);
+  // Return texel on requested location.
+  return texture(atlas, atlas_coords);
+}
 
 float triangleSurface(mat3 vertices){
   vec3 ab = vertices[1] - vertices[0];
@@ -174,7 +179,7 @@ bool shadowTest(vec3 ray, vec3 light, vec3 origin){
     if(n != null){
       vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
       // Test if triangle intersects ray.
-      in_shadow = (rayTriangle(length(light - origin), ray, origin, a, b, c, n) != vec4_null);
+      in_shadow = (rayTriangle(length(light - origin), ray, origin, a, b, c, n).xyz != null);
     }else if(!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
       // Test if Ray intersects bounding volume.
       // a = x x2 y
@@ -194,7 +199,7 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
   // Process specularity of ray in view from origin's perspective.
   vec3 view = normalize(origin - position);
   vec3 halfVector = normalize(ray + view);
-  float l = dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal);
+  float l = abs(dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal));
   float specular = pow(dot(normal, halfVector), 50.0 * strength);
   // Determine final color and return it.
   vec3 l_color = color * l * intensity;
@@ -202,13 +207,14 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
   return l_color;
 }
 
-vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 rough_normal, vec3 normal, vec3 color, float roughness, int bounces, float strength){
+vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 random_vec,vec3 rough_normal, vec3 normal, vec3 color, float roughness, int bounces, float strength){
   vec3 inv_light = light * vec3(-1.0, 1.0, 1.0);
   // Use additive color mixing technique, so start with black.
   vec3 final_color = null;
   vec3 importancy_factor = null;
   // Ray currently traced.
-  vec3 active_ray = normalize(position - origin);
+  vec3 active_ray = normalize(random_vec * roughness + normalize(position - origin));
+  if(dot(normalize(active_ray), normal) >= 0.0) active_ray *= -1.0;
   // Ray from last_position to light source.
   vec3 last_origin = origin;
   // Triangle ray lastly intersected with is last_position.w.
@@ -219,7 +225,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
   vec3 last_color = color;
   vec3 color_sum = color;
-  float last_roughness = 0.0;
+  float last_roughness = roughness;
   // Iterate over each bounce and modify color accordingly.
   for(int i = 0; i < bounces; i++){
     // Precalculate importancy_factor of this iteration.
@@ -228,24 +234,27 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     vec3 active_light_ray = normalize(light - last_position);
     // Update pixel color if coordinate is not in shadow.
     if(!shadowTest(active_light_ray, light, last_position)){
-      final_color += forwardTrace(last_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
+      final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
     }else if(i == 0){
-      in_shadow = 1.0;
+      first_in_shadow = 1.0;
     }
     // Break out of the loop after color is calculated if i was the last iteration.
     if(i == bounces - 1) break;
+    // Generate pseudo random vector.
+    vec2 random_coord = vec2(i, i) + ((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1);
+    vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
     // Calculate reflecting ray.
-    active_ray = reflect(active_ray, last_rough_normal);
+    active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal));
+    if(dot(normalize(active_ray), last_normal) <= 0.0) active_ray *= -1.0;
     // Calculate next intersection.
     vec4 intersection = rayTracer(active_ray, last_position);
-
-    if(i == 0) ray_length += length(last_position - intersection.xyz);
     // Stop loop if there is no intersection and ray goes in the void.
     if(intersection.xyz == null) break;
     // Calculate barycentric coordinates to map textures.
     // Read UVs of vertices.
     vec3 v_uvs_1 = texelFetch(world_tex, ivec2(6, int(intersection.w)), 0).xyz;
     vec3 v_uvs_2 = texelFetch(world_tex, ivec2(7, int(intersection.w)), 0).xyz;
+
     mat3x2 vertex_uvs = mat3x2(vec2(v_uvs_1.xy), vec2(v_uvs_1.z, v_uvs_2.x), vec2(v_uvs_2.yz));
     // Get vertices of triangle.
     mat3 vertices = mat3(
@@ -263,25 +272,22 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     float surface_sum = sub_surfaces.x + sub_surfaces.y + sub_surfaces.z;
     sub_surfaces = sub_surfaces / surface_sum;
     // Interpolate final barycentric coordinates.
-    vec2 barycentric = vertex_uvs * sub_surfaces;//.x * vertex_uvs[0] + sub_surfaces.y + vertex_uvs
-    // Generate pseudo random vector.
-    vec2 random_coord = vec2(i, i) + ((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1);
-    vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
+    vec2 barycentric = vertex_uvs * sub_surfaces;
     // Read triangle normal.
     vec2 tex_nums = texelFetch(world_tex, ivec2(5, int(intersection.w)), 0).xy;
     // Default last_color to color of target triangle.
     last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
     // Multiply with texture value if available.
-    if(tex_nums.x != -1.0) last_color *= texture(tex, vec3(barycentric, tex_nums.x), 0.0).xyz;
+    if(tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
     // Default last_roughness to 0.5.
-    last_roughness = 0.0;
+    last_roughness = 0.5;
     // Use roughness from texture if available.
-    if(tex_nums.y != -1.0) last_roughness = texture(normal_tex, vec3(barycentric, tex_nums.y), 0.0).x;
+    if(tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
     // Update parameters.
     last_origin = last_position;
     last_position = intersection.xyz;
-    last_normal = texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz;
-    last_rough_normal = normalize(last_normal + random_vec * last_roughness);
+    last_normal = normalize(texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz);
+    last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
     // Update color sum to color later reflections.
     color_sum += last_color;
   }
@@ -299,18 +305,18 @@ void main(){
   // Default tex_color to color.
   vec4 tex_color = color;
   // Multiply with texture value if texture is defined.
-  if(texture_nums.x != -1.0) tex_color *= texture(tex, vec3(tex_coord, texture_nums.x), 0.0);
+  if(texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
   // Default roughness to 0.5.
   float roughness = 0.5;
   // Set roughness to texture value if texture is defined.
-  if(texture_nums.y != -1.0) roughness = texture(normal_tex, vec3(tex_coord, texture_nums.y), 0.0).x;
+  if(texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
   // Start hybrid ray tracing on a per light source base.
   vec3 final_color = null;
   vec3 random_vec = null;
   // Skip unneccessery samples on specific surfaces.
   int samples = samples;
   // Adapt sample count to specific edge cases.
-  if (roughness == 1.0 || roughness == 0.0) samples = 1;
+  // if (roughness == 1.0 || roughness == 0.0) samples = 1;
   // Generate multiple samples.
   for(int i = 0; i < samples; i++){
     if(mod(float(i), 2.0) == float(i)){
@@ -322,18 +328,18 @@ void main(){
       random_vec = - random_vec;
     }
     // Alter normal and color according to texture and normal texture.
-    vec3 rough_normal = normalize(normal + random_vec * roughness);
+    vec3 rough_normal = normalize(random_vec * roughness + normal * (1.0 - roughness));
     // Calculate pixel for specific normal.
-    if(use_filter == 0){
-      final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, tex_color.xyz, roughness, reflections, 3.0);
-    }else{
+    //if(use_filter == 0){
+      final_color += lightTrace(world_tex, light, player, position, random_vec, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
+    //}else{
       // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
-      final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, vec3(1.0, 1.0, 1.0), roughness, reflections, 3.0);
-    }
+      //final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, vec3(1.0, 1.0, 1.0), roughness, reflections, 3.0);
+    //}
   }
   // Render all relevant information to 4 textures for the post processing shader.
   render_color = vec4(final_color / float(samples), 1.0);
-  render_normal = vec4(normal, in_shadow);
+  render_normal = vec4(normal, first_in_shadow);
   render_original_color = vec4(tex_color.xyz, roughness);
-  render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), ray_length);
+  render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
 }

@@ -52,9 +52,9 @@ function worldTextureBuilder()
   // Tell webgl to use 4 bytes per value for the 32 bit floats.
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 4);
   // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 8, DataHeight, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Data));
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 8, DataHeight, 0, Gl.RGB, Gl.FLOAT, new Float32Array(Data));
 }
 
 function randomTextureBuilder()
@@ -70,36 +70,68 @@ function randomTextureBuilder()
   Gl.generateMipmap(Gl.TEXTURE_2D);
 }
 
-function normalTextureBuilder()
+function updateNormal()
 {
-  Gl.bindTexture(Gl.TEXTURE_3D, NormalTexture);
+  Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+
   // Set data texture details and tell webgl, that no mip maps are required.
-  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-  Gl.texImage3D(Gl.TEXTURE_3D, 0, Gl.R8, NORMAL_TEXTURE[0].width, NORMAL_TEXTURE[0].height, NORMAL_TEXTURE.length, 0, Gl.RED, Gl.UNSIGNED_BYTE, new Uint8Array(NORMAL_TEXTURE.map(item => item.normals).flat()));
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  let [width, height] = TEXTURE_SIZES;
+  var ScaledTextures = [];
+
+  NORMAL_TEXTURE.forEach(async (item, i) => {
+    if(Array.isArray(item))
+    {
+      ScaledTextures.push(new Array(width * height).fill(item).flat());
+    }
+    else
+    {
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(item, 0, 0, width, height);
+      let array = Array.from(ctx.getImageData(0, 0, width, height).data);
+      for (let i = 0; i < array.length; i++)
+      {
+        if (i%4 === 0) ScaledTextures.push(array[i]);
+      }
+    }
+  });
+
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.R8, width, height * NORMAL_TEXTURE.length, 0, Gl.RED, Gl.UNSIGNED_BYTE, new Uint8Array(ScaledTextures.flat()));
 }
 
-function colorTextureBuilder()
+function updateTexture()
 {
-  Gl.bindTexture(Gl.TEXTURE_3D, ColorTexture);
+  Gl.bindTexture(Gl.TEXTURE_2D, ColorTexture);
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+
   // Set data texture details and tell webgl, that no mip maps are required.
-  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-  Gl.texParameteri(Gl.TEXTURE_3D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 
-  let [width, height] = [TEXTURE[0].width, TEXTURE[0].height];
+  let [width, height] = TEXTURE_SIZES;
+  var ScaledTextures = [];
 
-  Gl.texImage3D(
-    Gl.TEXTURE_3D, 0,
-    Gl.RGBA, width, height, TEXTURE.length,
-    0, Gl.RGBA, Gl.UNSIGNED_BYTE,
-    new Uint8Array(new Array(width * height * TEXTURE.length * 4).fill(255))
-  );
-
-  TEXTURE.forEach((item, i) => {
-    Gl.texSubImage3D(Gl.TEXTURE_3D, 0, 0, 0, 0, item.width, item.height, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, item);
+  TEXTURE.forEach(async (item, i) => {
+      //var newImg = document.createElement('img');
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(item, 0, 0, width, height);
+      ScaledTextures.push(Array.from(ctx.getImageData(0, 0, width, height).data));
   });
+
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, width, height * TEXTURE.length, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, new Uint8Array(ScaledTextures.flat()));
 }
 
 function renderTextureBuilder(){
@@ -176,7 +208,12 @@ async function fillData(item)
     let uv = item.uvs;
     let len = item.arrayLength;
     // Declare bounding volume of object.
-    Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    try{
+      Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    }catch{
+      console.warn(item);
+    }
+    // Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
     for(let i = 0; i < len * 3; i += 9){
       let j = i/3*2
       // 1 vertex = 1 line in world texture.
