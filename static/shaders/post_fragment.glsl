@@ -23,7 +23,10 @@ void main(){
   vec4 color = center_color;
   float count = 1.0;
   int increment = 3;
-  int radius = 1 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.015 * center_original_color.w);
+  int max_radius = 8;
+  int radius = 1 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.05 * center_original_color.w);
+  // Force max radius.
+  if(radius > max_radius) radius = max_radius;
 
   // Apply blur filter on image.
   for(int i = 0; i < radius; i++){
@@ -35,7 +38,7 @@ void main(){
       vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
       vec4 id = texelFetch(pre_render_id, coords, 0);
 
-      if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color == center_original_color){
+      if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color.xyz == center_original_color.xyz){
         color += next_color;
         count ++;
       }
