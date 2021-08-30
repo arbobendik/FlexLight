@@ -1,4 +1,4 @@
-This project will be converted into a javascript library later. For the moment it runs on a small FastAPI backend
+This project will be converted into a javascript library later. For the moment it runs on a small FastAPI backend for testing and development purposes.
 
 Screenshots:
 
@@ -16,7 +16,7 @@ export DB_PASS=<<your_db_password>>
 ```
 python3 -m venv ./venv
 ```
-4. Install all required libraries
+4. Install all required libraries.
 ```
 ./venv/bin/pip3 install -r requirements.txt
 ```
