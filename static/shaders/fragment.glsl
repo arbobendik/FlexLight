@@ -41,6 +41,7 @@ float brightness = 2.0;
 
 // Prevent blur over shadow border.
 float first_in_shadow = 0.0;
+float first_reflection_ray_length = 1.0;
 
 // Lookup values for texture atlases.
 vec4 lookup(sampler2D atlas, vec3 coords){
@@ -207,6 +208,16 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
   return l_color;
 }
 
+float fresnel(vec3 normal, vec3 lightDir) {
+  // fresnel
+  float fresnel = dot(normal, normalize(lightDir));
+  if(fresnel >= 0.0){
+    return fresnel;
+  }else{
+    return 0.0;
+  }
+}
+
 vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 random_vec,vec3 rough_normal, vec3 normal, vec3 color, float roughness, int bounces, float strength){
   vec3 inv_light = light * vec3(-1.0, 1.0, 1.0);
   // Use additive color mixing technique, so start with black.
@@ -214,7 +225,6 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   vec3 importancy_factor = null;
   // Ray currently traced.
   vec3 active_ray = normalize(random_vec * roughness + normalize(position - origin));
-  if(dot(normalize(active_ray), normal) >= 0.0) active_ray *= -1.0;
   // Ray from last_position to light source.
   vec3 last_origin = origin;
   // Triangle ray lastly intersected with is last_position.w.
@@ -245,7 +255,6 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
     // Calculate reflecting ray.
     active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal));
-    if(dot(normalize(active_ray), last_normal) <= 0.0) active_ray *= -1.0;
     // Calculate next intersection.
     vec4 intersection = rayTracer(active_ray, last_position);
     // Stop loop if there is no intersection and ray goes in the void.
@@ -283,10 +292,13 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     last_roughness = 0.5;
     // Use roughness from texture if available.
     if(tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
+    // Fresnel effect.
+    last_roughness *= fresnel(last_normal, last_position - intersection.xyz);
     // Update parameters.
     last_origin = last_position;
     last_position = intersection.xyz;
     last_normal = normalize(texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz);
+
     last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
     // Update color sum to color later reflections.
     color_sum += last_color;
@@ -310,13 +322,13 @@ void main(){
   float roughness = 0.5;
   // Set roughness to texture value if texture is defined.
   if(texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
+  // Fresnel effect.
+  roughness *= fresnel(normal, player - position);
   // Start hybrid ray tracing on a per light source base.
   vec3 final_color = null;
   vec3 random_vec = null;
   // Skip unneccessery samples on specific surfaces.
   int samples = samples;
-  // Adapt sample count to specific edge cases.
-  // if (roughness == 1.0 || roughness == 0.0) samples = 1;
   // Generate multiple samples.
   for(int i = 0; i < samples; i++){
     if(mod(float(i), 2.0) == float(i)){
