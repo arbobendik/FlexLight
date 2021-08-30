@@ -14,7 +14,7 @@ RESIZE.initUIEvent ("resize", false, false);
 // Initialize performance metric globals.
 var FpsCounter = document.createElement("div");
 var Samples = 1;
-var Scale = 1.0;
+var Scale = 1;
 var Reflections = 3;
 var Fps = 0;
 var Frame = 0;
@@ -88,6 +88,8 @@ var KernelTex;
 var QUEUE = [];
 // Globals to store all currently used textures / normal maps.
 var TEXTURE = [];
+var TEXTURE_SIZES = [512, 512];
+
 var NORMAL_TEXTURE = [];
 // Create different VAOs for different rendering/filtering steps in pipeline.
 var VAO = Gl.createVertexArray();
@@ -99,15 +101,13 @@ var KERNEL_VAO = Gl.createVertexArray();
 var KeyMap = [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]];
 // Speed is handled on the backend as well.
 const Pull = 500;
-const Speed = 0.02;
+const Speed = 0.1;
 
 var DeltaX = 0;
 var DeltaY = 0;
 var DeltaZ = 0;
 // Store pressed keys in this to handle multikey input.
 var KeysPressed = [];
-// List of other players.
-var Players = [];
 // current pointer lock state.
 var PointerLocked = false;
 // Current player frustum rotation.
@@ -117,27 +117,28 @@ var Fy = 0.235;
 var Mouse_y = 1 / 200;
 var Mouse_x = 1 / 200;
 
-//////////////////////////////////////// SOCKET
-// Initialize socket object and global KEYS variable.
-var KEYS;
-// Websocket must be initialized before it is open.
-var WS = {open: false };
 
 window.addEventListener("load", async function (){
-	// Wait until all images are loaded.
-	await preloadImages();
   // Create canvas element.
 	document.body.appendChild(Canvas);
 	// Create FpsCounter element.
 	document.body.appendChild(FpsCounter);
-	// Dispatch resize event to initialize canvas.
-	window.dispatchEvent (RESIZE);
+	// Initialize canvas.
+	resize()
 	// Start RENDER_ENGINE, socket to server and listen for keyboard input.
-	initSocket();
 	initEngine();
+	initMovement();
 }, {capture: false, once: true});
 
-window.addEventListener ("resize", function (){
+window.addEventListener("resize", function(){
+	resize();
+	// Rebuild textures with every resize.
+	randomTextureBuilder();
+	renderTextureBuilder();
+	postRenderTextureBuilder();
+});
+
+function resize(){
 	Canvas.width = Canvas.clientWidth * Scale;
 	Canvas.height = Canvas.clientHeight * Scale;
 	Ratio = window.innerWidth / window.innerHeight;
@@ -145,27 +146,4 @@ window.addEventListener ("resize", function (){
 	// Build random texture.
 	Random = [];
 	for (let i = 0; i < Gl.canvas.width * Gl.canvas.height * 3; i++) Random.push(Math.random() * 256);
-	// Rebuild textures on every resize.
-	randomTextureBuilder();
-	renderTextureBuilder();
-	postRenderTextureBuilder();
-});
-
-// Preload most textures to prevent lags.
-var ImageURL = [
-	"static/textures/stone.svg",
-	"static/textures/gras.jpg",
-	"static/textures/dirt_side.jpg"
-];
-
-var IMAGE = [];
-// Preload all Images
-async function preloadImages()
-{
-	ImageURL.forEach((item, i) => {
-		IMAGE[item]=new Image();
-    IMAGE[item].src=item;
-	});
-	TEXTURE.push(IMAGE["static/textures/dirt_side.jpg"]);
-	// Push images in local storage
 }
