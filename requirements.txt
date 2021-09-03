@@ -1,6 +1,0 @@
-fastapi
-aiofiles
-websockets
-uvicorn
-uvloop
-cryptography
