@@ -74,7 +74,6 @@ function updateNormal()
 {
   Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-
   // Set data texture details and tell webgl, that no mip maps are required.
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
@@ -82,36 +81,24 @@ function updateNormal()
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 
   let [width, height] = TEXTURE_SIZES;
-  var ScaledTextures = [];
+  let textureWidth = Math.floor(2048 / TEXTURE_SIZES[0]);
+
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  canvas.width = width * textureWidth;
+  canvas.height = height * TEXTURE.length;
 
   NORMAL_TEXTURE.forEach(async (item, i) => {
-    if(Array.isArray(item))
-    {
-      ScaledTextures.push(new Array(width * height).fill(item).flat());
-    }
-    else
-    {
-      var canvas = document.createElement('canvas');
-      var ctx = canvas.getContext('2d');
-      canvas.width = width;
-      canvas.height = height;
-      ctx.drawImage(item, 0, 0, width, height);
-      let array = Array.from(ctx.getImageData(0, 0, width, height).data);
-      for (let i = 0; i < array.length; i++)
-      {
-        if (i%4 === 0) ScaledTextures.push(array[i]);
-      }
-    }
+      ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
   });
 
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.R8, width, height * NORMAL_TEXTURE.length, 0, Gl.RED, Gl.UNSIGNED_BYTE, new Uint8Array(ScaledTextures.flat()));
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, canvas.width, canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, new Uint8Array(Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data)));
 }
 
 function updateTexture()
 {
   Gl.bindTexture(Gl.TEXTURE_2D, ColorTexture);
   Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-
   // Set data texture details and tell webgl, that no mip maps are required.
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
@@ -119,19 +106,31 @@ function updateTexture()
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 
   let [width, height] = TEXTURE_SIZES;
-  var ScaledTextures = [];
+  let textureWidth = Math.floor(2048 / TEXTURE_SIZES[0]);
+
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  canvas.width = width * textureWidth;
+  canvas.height = height * TEXTURE.length;
 
   TEXTURE.forEach(async (item, i) => {
-      //var newImg = document.createElement('img');
-      var canvas = document.createElement('canvas');
-      var ctx = canvas.getContext('2d');
-      canvas.width = width;
-      canvas.height = height;
-      ctx.drawImage(item, 0, 0, width, height);
-      ScaledTextures.push(Array.from(ctx.getImageData(0, 0, width, height).data));
+      ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
   });
 
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, width, height * TEXTURE.length, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, new Uint8Array(ScaledTextures.flat()));
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, canvas.width, canvas.height, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, new Uint8Array(Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data)));
+}
+
+function updateLight()
+{
+  Gl.bindTexture(Gl.TEXTURE_2D, LightTexture);
+  Gl.pixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+  // Set data texture details and tell webgl, that no mip maps are required.
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+  Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 1, LIGHT.length, 0, Gl.RGB, Gl.FLOAT, new Float32Array(LIGHT.flat()));
 }
 
 function renderTextureBuilder(){
