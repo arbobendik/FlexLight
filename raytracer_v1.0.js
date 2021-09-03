@@ -730,7 +730,7 @@ const RayTracer = (target_canvas) => {
             }
         });
         // Handle canvas resize.
-        target_canvas.addEventListener("resize", function(){
+        window.addEventListener("resize", function(){
         	resize();
         	// Rebuild textures with every resize.
         	randomTextureBuilder();
@@ -941,7 +941,7 @@ const RayTracer = (target_canvas) => {
         {
       		Frame = 0;
       		// Calculate Fps.
-          RT.GL.FPS = 30000 / (performance.now() - Micros);
+          RT.FPS = (30000 / (performance.now() - Micros)).toFixed(0);
           // Update Microse variable
       		Micros = window.performance.now();
         }
