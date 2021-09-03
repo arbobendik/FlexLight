@@ -28,13 +28,18 @@ document.addEventListener("DOMContentLoaded", function(){
 	r[1] = rt.CUBOID(-1.5, -1, -2, 3, 3, 1);
 	r[2] = rt.CUBOID(0.5, -1, -1, 1, 3, 1);
 	r[3] = rt.CUBOID(-1.5, -1, - 1, 1, 3, 1);
-	// Spawn dice.
-	let dice = rt.CUBOID(5.5, 1.5, 5.5, 1, 1, 1);
-	// Package dice and cuboids together in a shared bounding volume.
+	// Color all cuboid in center.
+	for (let i = 0; i < 4; i++){
+		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
+		for (let j = 1; j < 7; j++) r[i][j].colors = color;
+	}
+	// Spawn cube.
+	let cube = rt.CUBOID(5.5, 1.5, 5.5, 1, 1, 1);
+	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
 	  [-1.5, 6.5, -1, 2.5, -2, 6.5],
 	  [[-1.5, 4.5, -1, 2, -2, 2.5], r[0], r[1], r[2], r[3]],
-	  dice
+	  cube
 	];
 	// Push both objects to render queue.
 	rt.QUEUE.push(test_planes, objects);
