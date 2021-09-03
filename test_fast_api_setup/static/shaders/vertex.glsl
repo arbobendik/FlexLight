@@ -8,7 +8,7 @@ in vec4 color_3d;
 in vec2 texture_nums_3d;
 in vec2 texture_sizes_3d;
 
-uniform vec3 player_position;
+uniform vec3 camera_position;
 uniform vec2 perspective;
 uniform vec4 conf;
 
@@ -23,7 +23,7 @@ flat out int vertex_id;
 flat out vec2 texture_nums;
 
 void main(){
-  vec3 move_3d = position_3d + vec3(player_position.x, - player_position.yz);
+  vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz);
   vec2 translate_px = vec2(
     move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
     move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
@@ -37,7 +37,7 @@ void main(){
   gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 1000000000.0))), translate_py.y);
   vertex_id = gl_VertexID;
   clip_space = vec3(translate_2d, translate_py.y);
-  player = player_position * vec3(-1.0, 1.0, 1.0);
+  player = camera_position * vec3(-1.0, 1.0, 1.0);
   position = position_3d;
   normal = normalize(normal_3d);
   tex_coord = tex_pos;
