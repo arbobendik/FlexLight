@@ -26,7 +26,7 @@ async function initEngine()
   Gl.bindAttribLocation(Program, Color, "color_3d");
   Gl.bindAttribLocation(Program, TexNum, "texture_nums_3d");
 	// Bind uniforms to Program.
-  PlayerPosition = Gl.getUniformLocation(Program, "player_position");
+  CameraPosition = Gl.getUniformLocation(Program, "camera_position");
   Perspective = Gl.getUniformLocation(Program, "perspective");
   RenderConf = Gl.getUniformLocation(Program, "conf");
   SamplesLocation = Gl.getUniformLocation(Program, "samples");
@@ -210,7 +210,7 @@ function renderFrame()
     Gl.bindTexture(Gl.TEXTURE_2D, LightTexture);
     // Set uniforms for shaders.
     // Set 3d camera position.
-    Gl.uniform3f(PlayerPosition, X, Y, Z);
+    Gl.uniform3f(CameraPosition, X, Y, Z);
     // Set x and y rotation of camera.
     Gl.uniform2f(Perspective, Fx, Fy);
     // Set fov and X/Y ratio of screen.
