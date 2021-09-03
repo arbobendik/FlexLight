@@ -12,10 +12,12 @@ flat in vec3 normal;
 flat in vec3 player;
 flat in int vertex_id;
 flat in vec2 texture_nums;
-
+// Quality configurators.
 uniform int samples;
 uniform int reflections;
 uniform int use_filter;
+// Textures in parallel for texture atlas.
+uniform int texture_width;
 // Texture with information about all triangles in scene.
 uniform sampler2D world_tex;
 // Random texture to multiply with normal map to simulate rough surfaces.
@@ -23,6 +25,10 @@ uniform sampler2D random;
 
 uniform sampler2D normal_tex;
 uniform sampler2D tex;
+// Texture with all primary light sources of scene.
+uniform sampler2D light_tex;
+// Get global illumination color, intensity.
+uniform vec3 global_illumination;
 
 layout(location = 0) out vec4 render_color;
 layout(location = 1) out vec4 render_normal;
@@ -35,7 +41,7 @@ const vec3 null = vec3(0.0, 0.0, 0.0);
 const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
 const float shadow_bias = 0.00001;
 
-vec3 light = vec3(3.0, 5.0, 2.0);
+//vec3 light = vec3(5.0, 5.0, 3.0);
 float strength = 3.0;
 float brightness = 2.0;
 
@@ -43,10 +49,15 @@ float brightness = 2.0;
 float first_in_shadow = 0.0;
 float first_reflection_ray_length = 1.0;
 
+
 // Lookup values for texture atlases.
 vec4 lookup(sampler2D atlas, vec3 coords){
-  float atlas_scale_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y);
-  vec2 atlas_coords = vec2(coords.x, (coords.y + coords.z) * atlas_scale_factor);
+  float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
+  float atlas_width_factor = 1.0 / float(texture_width);
+  vec2 atlas_coords = vec2(
+    (coords.x + mod(coords.z, float(texture_width))) * atlas_width_factor,
+    (coords.y + floor(coords.z / float(texture_width))) * atlas_height_factor
+  );
   // Return texel on requested location.
   return texture(atlas, atlas_coords);
 }
@@ -209,13 +220,8 @@ vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, ve
 }
 
 float fresnel(vec3 normal, vec3 lightDir) {
-  // fresnel
-  float fresnel = dot(normal, normalize(lightDir));
-  if(fresnel >= 0.0){
-    return fresnel;
-  }else{
-    return 0.0;
-  }
+  // Apply fresnel effect.
+  return dot(normal, normalize(lightDir));
 }
 
 vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec3 random_vec,vec3 rough_normal, vec3 normal, vec3 color, float roughness, int bounces, float strength){
@@ -246,7 +252,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     if(!shadowTest(active_light_ray, light, last_position)){
       final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
     }else if(i == 0){
-      first_in_shadow = 1.0;
+      first_in_shadow += 1.0 / 256.0;
     }
     // Break out of the loop after color is calculated if i was the last iteration.
     if(i == bounces - 1) break;
@@ -303,8 +309,8 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     // Update color sum to color later reflections.
     color_sum += last_color;
   }
-  // Global illumination.
-  final_color += vec3(0.05,0.05,0.05) * importancy_factor;
+  // Apply global illumination.
+  final_color += global_illumination * importancy_factor;
   // Return final pixel color.
   return final_color;
 }
@@ -327,27 +333,31 @@ void main(){
   // Start hybrid ray tracing on a per light source base.
   vec3 final_color = null;
   vec3 random_vec = null;
-  // Skip unneccessery samples on specific surfaces.
-  int samples = samples;
+  // Addapt outer loop iterations depending on how many light sources there are.
+  int samples = samples / textureSize(light_tex, 0).y + 1;
   // Generate multiple samples.
   for(int i = 0; i < samples; i++){
-    if(mod(float(i), 2.0) == float(i)){
-      vec2 random_coord = vec2(i, i) + ((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1);
-      random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
-    }else{
-      // Invert vector every second sample instead of getting a new one.
-      // --> smoother image.
-      random_vec = - random_vec;
+    for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+      if(mod(float(i), 2.0) == float(i)){
+        vec2 random_coord = vec2(i, i) + ((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1);
+        random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
+      }else{
+        // Invert vector every second sample instead of getting a new one.
+        // --> smoother image.
+        random_vec = - random_vec;
+      }
+      // Alter normal and color according to texture and normal texture.
+      vec3 rough_normal = normalize(random_vec * roughness + normal * (1.0 - roughness));
+      // Read light position.
+      vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz;
+      // Calculate pixel for specific normal.
+      //if(use_filter == 0){
+        final_color += lightTrace(world_tex, light, player, position, random_vec, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
+      //}else{
+        // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
+        //final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, vec3(1.0, 1.0, 1.0), roughness, reflections, 3.0);
+      //}
     }
-    // Alter normal and color according to texture and normal texture.
-    vec3 rough_normal = normalize(random_vec * roughness + normal * (1.0 - roughness));
-    // Calculate pixel for specific normal.
-    //if(use_filter == 0){
-      final_color += lightTrace(world_tex, light, player, position, random_vec, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
-    //}else{
-      // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
-      //final_color += lightTrace(world_tex, light, player, position, rough_normal, normal, vec3(1.0, 1.0, 1.0), roughness, reflections, 3.0);
-    //}
   }
   // Render all relevant information to 4 textures for the post processing shader.
   render_color = vec4(final_color / float(samples), 1.0);

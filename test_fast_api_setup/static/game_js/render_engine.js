@@ -32,8 +32,11 @@ async function initEngine()
   SamplesLocation = Gl.getUniformLocation(Program, "samples");
   ReflectionsLocation = Gl.getUniformLocation(Program, "reflections");
   FilterLocation = Gl.getUniformLocation(Program, "use_filter");
+  GILocation = Gl.getUniformLocation(Program, "global_illumination");
   WorldTex = Gl.getUniformLocation(Program, "world_tex");
   RandomTex = Gl.getUniformLocation(Program, "random");
+  TextureWidth = Gl.getUniformLocation(Program, "texture_width");
+  LightTex = Gl.getUniformLocation(Program, "light_tex");
   NormalTex = Gl.getUniformLocation(Program, "normal_tex");
   ColorTex = Gl.getUniformLocation(Program, "tex");
   // Set pixel density in canvas correctly.
@@ -65,6 +68,8 @@ async function initEngine()
   RandomTexture = Gl.createTexture();
   NormalTexture = Gl.createTexture();
   ColorTexture = Gl.createTexture();
+  // Create texture for all primary light sources in scene.
+  LightTexture = Gl.createTexture();
   // Create random texture.
   randomTextureBuilder();
   // Bind and set buffer parameters.
@@ -136,6 +141,7 @@ async function initEngine()
   // Load existing textures.
   updateNormal();
   updateTexture();
+  updateLight();
   // Begin frame cycle.
   frameCycle();
 }
@@ -200,6 +206,8 @@ function renderFrame()
     Gl.bindTexture(Gl.TEXTURE_2D, NormalTexture);
     Gl.activeTexture(Gl.TEXTURE3);
     Gl.bindTexture(Gl.TEXTURE_2D, ColorTexture);
+    Gl.activeTexture(Gl.TEXTURE4);
+    Gl.bindTexture(Gl.TEXTURE_2D, LightTexture);
     // Set uniforms for shaders.
     // Set 3d camera position.
     Gl.uniform3f(PlayerPosition, X, Y, Z);
@@ -213,6 +221,10 @@ function renderFrame()
     Gl.uniform1i(ReflectionsLocation, Reflections);
     // Instuct shader to render for filter or not.
     Gl.uniform1i(FilterLocation, Filter);
+    // Set global illumination.
+    Gl.uniform3f(GILocation, GI[0], GI[1], GI[2]);
+    // Set width of height and normal texture.
+    Gl.uniform1i(TextureWidth, Math.floor(2048 / TEXTURE_SIZES[0]));
     // Pass whole current world space as data structure to GPU.
     Gl.uniform1i(WorldTex, 0);
     // Pass random texture to GPU.
@@ -221,6 +233,8 @@ function renderFrame()
     Gl.uniform1i(NormalTex, 2);
     // Pass texture to GPU.
     Gl.uniform1i(ColorTex, 3);
+    // Pass texture with all primary light sources in the scene.
+    Gl.uniform1i(LightTex, 4);
 
     let vertices = [];
     let normals = [];
