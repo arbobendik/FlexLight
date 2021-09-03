@@ -730,7 +730,7 @@ const RayTracer = (target_canvas) => {
             }
         });
         // Handle canvas resize.
-        target_canvas.addEventListener("resize", function(){
+        window.addEventListener("resize", function(){
         	resize();
         	// Rebuild textures with every resize.
         	randomTextureBuilder();
