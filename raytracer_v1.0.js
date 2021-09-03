@@ -439,8 +439,8 @@ const RayTracer = (target_canvas) => {
           last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
           // Multiply with texture value if available.
           if(tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
-          // Default last_roughness to 0.5.
-          last_roughness = 0.5;
+          // Default last_roughness to 0.7.
+          last_roughness = 0.7;
           // Use roughness from texture if available.
           if(tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
           // Fresnel effect.
@@ -469,8 +469,8 @@ const RayTracer = (target_canvas) => {
         vec4 tex_color = color;
         // Multiply with texture value if texture is defined.
         if(texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
-        // Default roughness to 0.5.
-        float roughness = 0.5;
+        // Default roughness to 0.7.
+        float roughness = 0.7;
         // Set roughness to texture value if texture is defined.
         if(texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
         // Fresnel effect.
