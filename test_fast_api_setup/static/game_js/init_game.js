@@ -26,7 +26,7 @@ var Fov = Math.PI;
 var Ratio = window.innerWidth / window.innerHeight;
 // Internal GL objects.
 var Program;
-var PlayerPosition;
+var CameraPosition;
 var Perspective;
 var RenderConf;
 var SamplesLocation;
@@ -116,7 +116,7 @@ var DeltaZ = 0;
 var KeysPressed = [];
 // current pointer lock state.
 var PointerLocked = false;
-// Current player frustum rotation.
+// Current camera frustum rotation.
 var Fx = 0.440;
 var Fy = 0.235;
 // Mouse Speed.
