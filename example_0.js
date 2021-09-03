@@ -7,6 +7,8 @@ document.addEventListener("DOMContentLoaded", function(){
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
 	var rt = RayTracer(canvas);
+	// Reduce Scale for better performance.
+	rt.SCALE = 0.5;
 	// Generate some planes in bounding box structure.
 	let test_planes = [[-10, 10, -1, -0.9, -10, 10], [],[],[],[],[]];
 	// Create 25 plane elements.
@@ -34,8 +36,17 @@ document.addEventListener("DOMContentLoaded", function(){
 	  [[-1.5, 4.5, -1, 2, -2, 2.5], r[0], r[1], r[2], r[3]],
 	  dice
 	];
-	// Append both objects to render queue.
+	// Push both objects to render queue.
 	rt.QUEUE.push(test_planes, objects);
 	// Start render engine.
 	rt.START();
+
+	// Add FPS counter to top-right corner.
+	var fpsCounter = document.createElement("div");
+	// Append it to body.
+	document.body.appendChild(fpsCounter);
+	// Update Counter periodically.
+	setInterval(function(){
+		fpsCounter.textContent = rt.FPS;
+	},100/6);
 });
