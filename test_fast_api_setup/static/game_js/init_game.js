@@ -32,10 +32,13 @@ var RenderConf;
 var SamplesLocation;
 var ReflectionsLocation;
 var FilterLocation;
+var GILocation;
+var TextureWidth;
 var WorldTex;
 var RandomTex;
 var NormalTex;
 var ColorTex;
+var LightTex;
 // Init Buffers.
 var PositionBuffer;
 var NormalBuffer;
@@ -50,6 +53,7 @@ var WorldTexture;
 var RandomTexture;
 var NormalTexture;
 var ColorTexture;
+var LightTexture;
 var Random;
 // Linkers for GLATTRIBARRAYS.
 const Position = 0;
@@ -86,6 +90,9 @@ var KernelTexture;
 var KernelTex;
 // Create render queue QUEUE for all elemnts that exist in the scene. This variable stores all currently displayed objects.
 var QUEUE = [];
+// List of all primary light sources.
+var LIGHT = [[0, 10, 0]];
+var GI = [0.05, 0.05, 0.05];
 // Globals to store all currently used textures / normal maps.
 var TEXTURE = [];
 var TEXTURE_SIZES = [512, 512];
@@ -99,10 +106,9 @@ var KERNEL_VAO = Gl.createVertexArray();
 //////////////////////////////////////// ENVIRONMENT
 // Define Keymap.
 var KeyMap = [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]];
-// Speed is handled on the backend as well.
-const Pull = 500;
+// Movementspeed in all directions.
 const Speed = 0.1;
-
+// Momentary rotation change.
 var DeltaX = 0;
 var DeltaY = 0;
 var DeltaZ = 0;
