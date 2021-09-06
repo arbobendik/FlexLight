@@ -42,8 +42,6 @@ const RayTracer = (target_canvas) => {
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -67,8 +65,6 @@ const RayTracer = (target_canvas) => {
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -1210,7 +1206,7 @@ const RayTracer = (target_canvas) => {
         RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, TexNumBuffer);
         RT.GL.enableVertexAttribArray(TexNum);
         RT.GL.vertexAttribPointer(TexNum, 2, RT.GL.FLOAT, true, 0, 0);
-        // Create frame buffer and texteure to be rendered to.
+        // Create frame buffers and textures to be rendered to.
         Framebuffer = RT.GL.createFramebuffer();
         ColorRenderTexture = RT.GL.createTexture();
         NormalRenderTexture = RT.GL.createTexture();
