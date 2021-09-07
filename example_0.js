@@ -1,4 +1,6 @@
 "use strict";
+// Declare RayTracer global.
+var rt;
 // Wait until DOM is loaded.
 document.addEventListener("DOMContentLoaded", function(){
 	// Create new canvas.
@@ -6,7 +8,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	var rt = RayTracer(canvas);
+	rt = RayTracer(canvas);
 	// Reduce Scale for better performance.
 	rt.SCALE = 0.5;
 	// Generate some planes in bounding box structure.
