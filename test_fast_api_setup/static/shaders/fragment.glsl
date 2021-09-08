@@ -47,7 +47,6 @@ float brightness = 2.0;
 
 // Prevent blur over shadow border.
 float first_in_shadow = 0.0;
-float first_reflection_ray_length = 1.0;
 
 
 // Lookup values for texture atlases.
