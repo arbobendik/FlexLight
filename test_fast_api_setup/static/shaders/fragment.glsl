@@ -231,6 +231,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
   vec3 importancy_factor = null;
   // Ray currently traced.
   vec3 active_ray = normalize(random_vec * roughness + normalize(position - origin));
+  if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
   // Ray from last_position to light source.
   vec3 last_origin = origin;
   // Triangle ray lastly intersected with is last_position.w.
@@ -261,6 +262,7 @@ vec3 lightTrace(sampler2D world_tex, vec3 light, vec3 origin, vec3 position, vec
     vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
     // Calculate reflecting ray.
     active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal));
+    if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
     // Calculate next intersection.
     vec4 intersection = rayTracer(active_ray, last_position);
     // Stop loop if there is no intersection and ray goes in the void.
