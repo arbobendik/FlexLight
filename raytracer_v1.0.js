@@ -370,6 +370,7 @@ const RayTracer = (target_canvas) => {
         vec3 importancy_factor = null;
         // Ray currently traced.
         vec3 active_ray = normalize(random_vec * roughness + normalize(position - origin));
+        if (dot(active_ray, normal) <= 0.0) active_ray = - active_ray;
         // Ray from last_position to light source.
         vec3 last_origin = origin;
         // Triangle ray lastly intersected with is last_position.w.
@@ -400,6 +401,7 @@ const RayTracer = (target_canvas) => {
           vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * float(i/2 + 1);
           // Calculate reflecting ray.
           active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal));
+          if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
           // Calculate next intersection.
           vec4 intersection = rayTracer(active_ray, last_position);
           // Stop loop if there is no intersection and ray goes in the void.
@@ -433,8 +435,8 @@ const RayTracer = (target_canvas) => {
           last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
           // Multiply with texture value if available.
           if(tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
-          // Default last_roughness to 0.7.
-          last_roughness = 0.7;
+          // Default last_roughness to 0.5.
+          last_roughness = 0.5;
           // Use roughness from texture if available.
           if(tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
           // Fresnel effect.
@@ -463,8 +465,8 @@ const RayTracer = (target_canvas) => {
         vec4 tex_color = color;
         // Multiply with texture value if texture is defined.
         if(texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
-        // Default roughness to 0.7.
-        float roughness = 0.7;
+        // Default roughness to 0.5.
+        float roughness = 0.5;
         // Set roughness to texture value if texture is defined.
         if(texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
         // Fresnel effect.
