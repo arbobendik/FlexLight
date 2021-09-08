@@ -188,8 +188,6 @@ const RayTracer = (target_canvas) => {
 
       // Prevent blur over shadow border.
       float first_in_shadow = 0.0;
-      float first_reflection_ray_length = 1.0;
-
 
       // Lookup values for texture atlases.
       vec4 lookup(sampler2D atlas, vec3 coords){
