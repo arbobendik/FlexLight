@@ -3,6 +3,9 @@ Screenshots:
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen0.png?raw=true)
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen1.png?raw=true)
 
+It would be very helpful if you could visit this test page and report any errors here in the "Issues" tab:
+example_0 test page: https://arbobendik.github.io/web-ray-tracer/example_0.html
+
 use the raytracer in your project as a javascript library (raytracer.js).
 There is no official documentation yet. For code examples look at example_0.
 
