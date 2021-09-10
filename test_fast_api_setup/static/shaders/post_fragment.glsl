@@ -23,8 +23,8 @@ void main(){
   vec4 color = center_color;
   float count = 1.0;
   int increment = 3;
-  int max_radius = 5;
-  int radius = 1 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.05 * center_original_color.w);
+  int max_radius = 6;
+  int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
   // Force max radius.
   if(radius > max_radius) radius = max_radius;
 
@@ -45,8 +45,8 @@ void main(){
     }
   }
   if (color.w > 0.0){
-    // Multiply with
-    out_color = vec4(color.xyz / count, 1.0); // * center_original_color.xyz
+    // Set out color for render texture for the antialiasing filter.
+    out_color = vec4(color.xyz / count, 1.0);
   }else{
     out_color = vec4(0.0, 0.0, 0.0, 0.0);
   }
