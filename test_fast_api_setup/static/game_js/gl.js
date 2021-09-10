@@ -130,7 +130,20 @@ function updateLight()
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
   Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
 
-  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 1, LIGHT.length, 0, Gl.RGB, Gl.FLOAT, new Float32Array(LIGHT.flat()));
+  var LightTexArray = [];
+  // Iterate over light sources and default strength value if not set.
+  for(let i = 0; i < LIGHT.length; i++)
+  {
+    // Set default value.
+    let strength = 2;
+    // Overwrite default if set.
+    if(typeof(LIGHT[i].strength) !== "undefined") strength = LIGHT[i].strength;
+    // Push light location to Texture.
+    LightTexArray.push(LIGHT[i][0], LIGHT[i][1], LIGHT[i][2]);
+    // Push strength and 0, 0 to texture, because RGB texture format needs 3x values per row.
+    LightTexArray.push(strength, 0, 0);
+  }
+  Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGB32F, 2, LIGHT.length, 0, Gl.RGB, Gl.FLOAT, new Float32Array(LightTexArray));
 }
 
 function renderTextureBuilder(){
