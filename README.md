@@ -3,6 +3,7 @@ Screenshots:
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen3.png?raw=true)
 example_0 (SCALE = 2 (1080p -> 4k), SAMPLES = 8)
 
+
 It would be very helpful if you could visit this test page and report any errors here in the "Issues" tab:
 
 example_0 test page: https://arbobendik.github.io/web-ray-tracer/example_0.html
@@ -29,6 +30,7 @@ python3 -m venv ./venv
 ./venv/bin/python3 ./venv/bin/uvicorn app:app --host 0.0.0.0
 ```
 5. Visit http://localhost:8000 in your browser of choice (Safari & IE unsupported due to a lack of WebGl2 support).
+
 
 More screenshots (probably from deprecated versions):
 
