@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Create new RayTracer (rt) for canvas.
 	rt = RayTracer(canvas);
 	// Reduce Scale for better performance.
-	rt.SCALE = 0.5;
+	rt.SCALE = 1;
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
 	// Modify brightness of first one to be dimmer (default is 3)
