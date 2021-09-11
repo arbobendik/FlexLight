@@ -23,7 +23,7 @@ void main(){
   vec4 color = center_color;
   float count = 1.0;
   int increment = 3;
-  int max_radius = 6;
+  int max_radius = 7;
   int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
   // Force max radius.
   if(radius > max_radius) radius = max_radius;

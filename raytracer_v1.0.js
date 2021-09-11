@@ -377,7 +377,7 @@ const RayTracer = (target_canvas) => {
         vec3 inv_light = light * vec3(-1.0, 1.0, 1.0);
         // Use additive color mixing technique, so start with black.
         vec3 final_color = null;
-        vec3 importancy_factor = null;
+        vec3 importancy_factor = vec3(1.0, 1.0, 1.0);
         // Ray currently traced.
         vec3 active_ray = normalize(position - origin);
         // Ray from last_position to light source.
@@ -389,12 +389,11 @@ const RayTracer = (target_canvas) => {
         // Remember color of triangle ray intersected lastly.
         // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
         vec3 last_color = color;
-        vec3 color_sum = color;
         float last_roughness = roughness;
         // Iterate over each bounce and modify color accordingly.
         for(int i = 0; i < bounces; i++){
           // Precalculate importancy_factor of this iteration.
-          importancy_factor = color_sum / float(i + 1);
+          importancy_factor *= last_color;
           // Recalculate position -> light vector.
           vec3 active_light_ray = normalize(light - last_position);
           // Update pixel color if coordinate is not in shadow.
@@ -406,7 +405,7 @@ const RayTracer = (target_canvas) => {
           // Break out of the loop after color is calculated if i was the last iteration.
           if(i == bounces - 1) break;
           // Generate pseudo random vector.
-          vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (float(i*2 + 1) + cos(float(sample_n))), 1.0);
+          vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
           vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
           // Calculate reflecting ray.
           active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal) * (1.0 - last_roughness));
@@ -454,10 +453,7 @@ const RayTracer = (target_canvas) => {
           last_normal = normalize(texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz);
           // Fresnel effect.
           last_roughness *= fresnel(last_normal, last_origin - last_position);
-
           last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
-          // Update color sum to color later reflections.
-          color_sum += last_color;
         }
         // Apply global illumination.
         final_color += global_illumination * importancy_factor;
@@ -506,6 +502,16 @@ const RayTracer = (target_canvas) => {
             final_color += lightTrace(world_tex, light, player, position, i, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
           }
         }
+        // Improved precision for render_color.
+        // Build render_color with improved precision that value can be larger than 1.
+        vec3 render_color_ip = vec3(final_color / float(samples) / 255.0);
+
+        // Render all relevant information to 4 textures for the post processing shader.
+        if(use_filter == 1){
+          render_color = vec4(final_color / float(samples), first_in_shadow + 1.0 / 256.0);
+        }else{
+          render_color = vec4(final_color / float(samples), 1.0);
+        }
         // Render all relevant information to 4 textures for the post processing shader.
         render_color = vec4(final_color / float(samples), 1.0);
         render_normal = vec4(normal, first_in_shadow);
@@ -551,7 +557,7 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color;
         float count = 1.0;
         int increment = 3;
-        int max_radius = 6;
+        int max_radius = 7;
         int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
@@ -620,7 +626,7 @@ const RayTracer = (target_canvas) => {
         }
       }
       `;
-      // Initialize globals.
+      // Initialize internal globals.
       {
         // Initialize performance metric globals.
         var Frame = 0;
