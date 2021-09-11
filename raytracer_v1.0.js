@@ -24,7 +24,7 @@ const RayTracer = (target_canvas) => {
     MOUSE_ROTATION: true,
     MOVEMENT: true,
     MOVEMENT_SPEED: 0.1,
-    MOUSE_Y: 1 / 200, MOUSE_X: 1 / 200,
+    MOUSE_Y: 1 / 500, MOUSE_X: 1 / 500,
     KEYMAP: [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]],
     // Performance metric.
     FPS: 0,
