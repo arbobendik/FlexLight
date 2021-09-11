@@ -24,7 +24,7 @@ void main(){
   float count = 1.0;
   int increment = 3;
   int max_radius = 7;
-  int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
+  int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.04 * center_original_color.w);
   // Force max radius.
   if(radius > max_radius) radius = max_radius;
 
@@ -38,7 +38,7 @@ void main(){
       vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
       vec4 id = texelFetch(pre_render_id, coords, 0);
 
-      if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color.xyzw == center_original_color.xyzw){
+      if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color.xyz == center_original_color.xyz){
         color += next_color;
         count ++;
       }
