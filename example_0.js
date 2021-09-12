@@ -11,10 +11,12 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt = RayTracer(canvas);
 	// Reduce Scale for better performance.
 	rt.SCALE = 1;
+	// Set higher Sample count.
+	rt.SAMPLES = 1;
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
 	// Modify brightness of first one to be dimmer (default is 3)
-	rt.LIGHT[0].strength = 1;
+	rt.LIGHT[0].strength = 2;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	// Generate a few cuboids on the planes with bounding box.
