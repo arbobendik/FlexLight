@@ -200,6 +200,7 @@ const RayTracer = (target_canvas) => {
 
       // Prevent blur over shadow border.
       float first_in_shadow = 0.0;
+      float first_ray_length = 256.0;
 
       // Lookup values for texture atlases.
       vec4 lookup(sampler2D atlas, vec3 coords){
@@ -416,6 +417,8 @@ const RayTracer = (target_canvas) => {
           vec4 intersection = rayTracer(active_ray, last_position);
           // Stop loop if there is no intersection and ray goes in the void.
           if(intersection.xyz == null) break;
+
+          if(i == 0) first_ray_length = length(intersection.xyz - last_position);
           // Calculate barycentric coordinates to map textures.
           // Read UVs of vertices.
           vec3 v_uvs_1 = texelFetch(world_tex, ivec2(6, int(intersection.w)), 0).xyz;
@@ -514,8 +517,8 @@ const RayTracer = (target_canvas) => {
         }
         // Render all relevant information to 4 textures for the post processing shader.
         render_color = vec4(final_color / float(samples), 1.0);
-        render_normal = vec4(normal, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness);
+        render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
+        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/4.0));
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
       }
       `;
@@ -558,7 +561,7 @@ const RayTracer = (target_canvas) => {
         float count = 1.0;
         int increment = 3;
         int max_radius = 10;
-        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
 
@@ -572,8 +575,14 @@ const RayTracer = (target_canvas) => {
             vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal && original_color.xyz == center_original_color.xyz
-              && (center_id == id || round(1.0 * (center_color.xyz - next_color.xyz)) == vec3(0.0, 0.0, 0.0))){
+            if (
+              normal == center_normal
+              && original_color.xyz == center_original_color.xyz
+              && (
+                center_id == id
+                || round(center_color.xyz - next_color.xyz) == vec3(0.0, 0.0, 0.0)
+              )
+            ){
               color += next_color;
               count ++;
             }
