@@ -850,8 +850,8 @@ const RayTracer = (target_canvas) => {
         // Tell webgl to use 1 byte per value for the 8 bit ints.
         RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
         // Set data texture details and tell webgl, that no mip maps are required.
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST_MIPMAP_NEAREST);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.LINEAR_MIPMAP_LINEAR);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.LINEAR_MIPMAP_LINEAR);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB8, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGB, RT.GL.UNSIGNED_BYTE, new Uint8Array(Random));
         RT.GL.generateMipmap(RT.GL.TEXTURE_2D);
       }
