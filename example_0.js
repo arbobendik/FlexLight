@@ -15,8 +15,8 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt.SAMPLES = 1;
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
-	// Modify brightness of first one to be dimmer (default is 3)
-	rt.LIGHT[0].strength = 2;
+	// Modify brightness of first one to be brighter (default is 3)
+	rt.LIGHT[0].strength = 4;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	// Generate a few cuboids on the planes with bounding box.
