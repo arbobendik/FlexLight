@@ -562,7 +562,7 @@ const RayTracer = (target_canvas) => {
         float count = 1.0;
         int increment = 3;
         int max_radius = 10;
-        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.1 * center_original_color.w);
+        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
 
