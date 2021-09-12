@@ -42,6 +42,8 @@ const RayTracer = (target_canvas) => {
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
+      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -65,6 +67,8 @@ const RayTracer = (target_canvas) => {
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
+      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -142,7 +146,7 @@ const RayTracer = (target_canvas) => {
         );
         vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y);
         // Set final clip space position.
-        gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 1000000000.0))), translate_py.y);
+        gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 1000000.0))), translate_py.y);
         vertex_id = gl_VertexID;
         clip_space = vec3(translate_2d, translate_py.y);
         player = camera_position * vec3(-1.0, 1.0, 1.0);
@@ -557,8 +561,8 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color;
         float count = 1.0;
         int increment = 3;
-        int max_radius = 7;
-        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.04 * center_original_color.w);
+        int max_radius = 10;
+        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.1 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
 
@@ -572,7 +576,8 @@ const RayTracer = (target_canvas) => {
             vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal && center_id == id/*){ // Pixel effect : */&& original_color.xyz == center_original_color.xyz){
+            if (normal == center_normal && original_color.xyz == center_original_color.xyz
+              && (center_id == id || round(1.0 * (center_color.xyz - next_color.xyz)) == vec3(0.0, 0.0, 0.0))){
               color += next_color;
               count ++;
             }
@@ -845,8 +850,8 @@ const RayTracer = (target_canvas) => {
         // Tell webgl to use 1 byte per value for the 8 bit ints.
         RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
         // Set data texture details and tell webgl, that no mip maps are required.
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.LINEAR_MIPMAP_LINEAR);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.LINEAR);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST_MIPMAP_NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB8, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGB, RT.GL.UNSIGNED_BYTE, new Uint8Array(Random));
         RT.GL.generateMipmap(RT.GL.TEXTURE_2D);
       }
@@ -854,24 +859,28 @@ const RayTracer = (target_canvas) => {
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorRenderTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, NormalRenderTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, OriginalRenderTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, IdRenderTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
@@ -885,8 +894,8 @@ const RayTracer = (target_canvas) => {
       function postRenderTextureBuilder(){
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, KernelTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
-
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
       }
