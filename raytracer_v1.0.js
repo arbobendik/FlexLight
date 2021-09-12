@@ -517,7 +517,7 @@ const RayTracer = (target_canvas) => {
         }
         // Render all relevant information to 4 textures for the post processing shader.
         render_color = vec4(final_color / float(samples), 1.0);
-        render_normal = vec4(normal, first_in_shadow);
+        render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
         render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/4.0));
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
       }
@@ -579,10 +579,7 @@ const RayTracer = (target_canvas) => {
               normal == center_normal
               && original_color.xyz == center_original_color.xyz
               && (
-                (
-                  center_id == id
-                  //&& round(128.0 * (original_color.w - center_original_color.w)) == 0.0
-                )
+                center_id == id
                 || round(center_color.xyz - next_color.xyz) == vec3(0.0, 0.0, 0.0)
               )
             ){
