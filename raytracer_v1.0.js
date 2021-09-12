@@ -42,8 +42,6 @@ const RayTracer = (target_canvas) => {
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
-      RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -146,7 +144,7 @@ const RayTracer = (target_canvas) => {
         );
         vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y);
         // Set final clip space position.
-        gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 1000000.0))), translate_py.y);
+        gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 10000000000.0))), translate_py.y);
         vertex_id = gl_VertexID;
         clip_space = vec3(translate_2d, translate_py.y);
         player = camera_position * vec3(-1.0, 1.0, 1.0);
@@ -233,7 +231,7 @@ const RayTracer = (target_canvas) => {
         // Get distance to intersection point.
         float s = dot(n , a - p) / dnr;
         // Ensure that ray triangle intersection is between light source and texture.
-        if(s > l || s <= 0.0) return vec4_null;
+        if(s > l || s <= shadow_bias) return vec4_null;
         // Calculate intersection point.
         vec3 d = (s * r) + p;
         // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
@@ -251,7 +249,7 @@ const RayTracer = (target_canvas) => {
         float u = (d11 * d02 - d01 * d12) * i;
         float v = (d00 * d12 - d01 * d02) * i;
         // Return if ray intersects triangle or not.
-        if((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0)){
+        if((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0 - shadow_bias)){
           return vec4(d, s);
         }else{
           return vec4_null;
@@ -489,7 +487,7 @@ const RayTracer = (target_canvas) => {
         for(int i = 0; i < samples; i++){
           for (int j = 0; j < textureSize(light_tex, 0).y; j++){
             if(mod(float(i), 2.0) == 0.0){
-              vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * float(i/2 + 1), 1.0);
+              vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * cos(float(i)), 1.0);
               random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
             }else{
               // Invert vector every second sample instead of getting a new one.
@@ -504,11 +502,9 @@ const RayTracer = (target_canvas) => {
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
             // Calculate pixel for specific normal.
             final_color += lightTrace(world_tex, light, player, position, i, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
+            // forwardTrace(rough_normal, tex_color.xyz, normalize(light - position),light * vec3(-1.0, 1.0, 1.0), player, position, strength);
           }
         }
-        // Improved precision for render_color.
-        // Build render_color with improved precision that value can be larger than 1.
-        vec3 render_color_ip = vec3(final_color / float(samples) / 255.0);
 
         // Render all relevant information to 4 textures for the post processing shader.
         if(use_filter == 1){
