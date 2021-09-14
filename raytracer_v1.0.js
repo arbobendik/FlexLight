@@ -505,16 +505,9 @@ const RayTracer = (target_canvas) => {
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
             // Calculate pixel for specific normal.
             final_color += lightTrace(world_tex, light, player, position, i, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
-            // forwardTrace(rough_normal, tex_color.xyz, normalize(light - position),light * vec3(-1.0, 1.0, 1.0), player, position, strength);
           }
         }
 
-        // Render all relevant information to 4 textures for the post processing shader.
-        if(use_filter == 1){
-          render_color = vec4(final_color / float(samples), first_in_shadow + 1.0 / 256.0);
-        }else{
-          render_color = vec4(final_color / float(samples), 1.0);
-        }
         // Render all relevant information to 4 textures for the post processing shader.
         render_color = vec4(final_color / float(samples), 1.0);
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
