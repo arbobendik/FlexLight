@@ -188,9 +188,10 @@ const RayTracer = (target_canvas) => {
       uniform vec3 global_illumination;
 
       layout(location = 0) out vec4 render_color;
-      layout(location = 1) out vec4 render_normal;
-      layout(location = 2) out vec4 render_original_color;
-      layout(location = 3) out vec4 render_id;
+      layout(location = 1) out vec4 render_color_ip;
+      layout(location = 2) out vec4 render_normal;
+      layout(location = 3) out vec4 render_original_color;
+      layout(location = 4) out vec4 render_id;
 
       // Global constants.
       // Declare null vector as constant.
@@ -395,15 +396,22 @@ const RayTracer = (target_canvas) => {
         float last_roughness = roughness;
         // Iterate over each bounce and modify color accordingly.
         for(int i = 0; i < bounces; i++){
-          // Precalculate importancy_factor of this iteration.
-          importancy_factor *= last_color;
           // Recalculate position -> light vector.
           vec3 active_light_ray = normalize(light - last_position);
           // Update pixel color if coordinate is not in shadow.
-          if(!shadowTest(active_light_ray, light, last_position)){
-            final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
-          }else if(i == 0){
-            first_in_shadow += 1.0 / 256.0;
+          if(i == 0){
+            if(!shadowTest(active_light_ray, light, last_position)){
+              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength);
+            }else{
+              first_in_shadow += 1.0 / 256.0;
+            }
+          }else{
+            // Precalculate importancy_factor of this iteration.
+            importancy_factor *= last_color;
+
+            if(!shadowTest(active_light_ray, light, last_position)){
+              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
+            }
           }
           // Break out of the loop after color is calculated if i was the last iteration.
           if(i == bounces - 1) break;
@@ -509,9 +517,10 @@ const RayTracer = (target_canvas) => {
         }
 
         // Render all relevant information to 4 textures for the post processing shader.
-        render_color = vec4(final_color / float(samples), 1.0);
+        render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
+        render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/4.0));
+        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/2.0));
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
       }
       `;
@@ -534,6 +543,7 @@ const RayTracer = (target_canvas) => {
       in vec2 clip_space;
 
       uniform sampler2D pre_render_color;
+      uniform sampler2D pre_render_color_ip;
       uniform sampler2D pre_render_normal;
       uniform sampler2D pre_render_original_color;
       uniform sampler2D pre_render_id;
@@ -546,6 +556,7 @@ const RayTracer = (target_canvas) => {
         ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
 
         vec4 center_color = texelFetch(pre_render_color, texel, 0);
+        vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
         vec4 center_normal = texelFetch(pre_render_normal, texel, 0);
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
@@ -554,7 +565,7 @@ const RayTracer = (target_canvas) => {
         float count = 1.0;
         int increment = 3;
         int max_radius = 10;
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
+        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
 
@@ -564,19 +575,13 @@ const RayTracer = (target_canvas) => {
 
             ivec2 coords = ivec2(vec2(texel) + vec2(i, j) * float(increment) - float(radius * increment / 2));
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
+            vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
             vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (
-              normal == center_normal
-              && original_color.xyz == center_original_color.xyz
-              && (
-                center_id == id
-                || round(center_color.xyz - next_color.xyz) == vec3(0.0, 0.0, 0.0)
-              )
-            ){
-              color += next_color;
+            if (normal == center_normal && id == center_id){
+              color += vec4((next_color.xyz + next_color_ip.xyz * 256.0) * center_original_color.xyz, next_color.w);
               count ++;
             }
           }
@@ -679,6 +684,8 @@ const RayTracer = (target_canvas) => {
         var PostVertexBuffer;
         var ColorRenderTexture;
         var ColorRenderTex;
+        var ColorIpRenderTexture;
+        var ColorIpRenderTex;
         var NormalRenderTexture;
         var NormalRenderTex;
         var OriginalRenderTexture;
@@ -861,6 +868,13 @@ const RayTracer = (target_canvas) => {
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
 
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorIpRenderTexture);
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
+
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, NormalRenderTexture);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
@@ -971,13 +985,15 @@ const RayTracer = (target_canvas) => {
               RT.GL.COLOR_ATTACHMENT0,
               RT.GL.COLOR_ATTACHMENT1,
               RT.GL.COLOR_ATTACHMENT2,
-              RT.GL.COLOR_ATTACHMENT3
+              RT.GL.COLOR_ATTACHMENT3,
+              RT.GL.COLOR_ATTACHMENT4
             ]);
             // Configure framebuffer for color and depth.
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, ColorRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, NormalRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT2, RT.GL.TEXTURE_2D, OriginalRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT3, RT.GL.TEXTURE_2D, IdRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, ColorIpRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT2, RT.GL.TEXTURE_2D, NormalRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT3, RT.GL.TEXTURE_2D, OriginalRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT4, RT.GL.TEXTURE_2D, IdRenderTexture, 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.DEPTH_ATTACHMENT, RT.GL.TEXTURE_2D, DepthTexture, 0);
           }
           else
@@ -1090,26 +1106,29 @@ const RayTracer = (target_canvas) => {
             // Make pre rendered image TEXTURE0.
             RT.GL.activeTexture(RT.GL.TEXTURE0);
             RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorRenderTexture);
-            // Make pre rendered normal map TEXTURE1.
             RT.GL.activeTexture(RT.GL.TEXTURE1);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, NormalRenderTexture);
-            // Make pre rendered map of original colors TEXTURE2.
+            RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorIpRenderTexture);
+            // Make pre rendered normal map TEXTURE2.
             RT.GL.activeTexture(RT.GL.TEXTURE2);
+            RT.GL.bindTexture(RT.GL.TEXTURE_2D, NormalRenderTexture);
+            // Make pre rendered map of original colors TEXTURE3.
+            RT.GL.activeTexture(RT.GL.TEXTURE3);
             RT.GL.bindTexture(RT.GL.TEXTURE_2D, OriginalRenderTexture);
 
-            RT.GL.activeTexture(RT.GL.TEXTURE3);
+            RT.GL.activeTexture(RT.GL.TEXTURE4);
             RT.GL.bindTexture(RT.GL.TEXTURE_2D, IdRenderTexture);
             // Switch program and VAO.
             RT.GL.useProgram(PostProgram);
             RT.GL.bindVertexArray(POST_VAO);
             // Pass pre rendered texture to shader.
             RT.GL.uniform1i(ColorRenderTex, 0);
+            RT.GL.uniform1i(ColorIpRenderTex, 1);
             // Pass normal texture to GPU.
-            RT.GL.uniform1i(NormalRenderTex, 1);
+            RT.GL.uniform1i(NormalRenderTex, 2);
             // Pass original color texture to GPU.
-            RT.GL.uniform1i(OriginalRenderTex, 2);
+            RT.GL.uniform1i(OriginalRenderTex, 3);
             // Pass vertex_id texture to GPU.
-            RT.GL.uniform1i(IdRenderTex, 3);
+            RT.GL.uniform1i(IdRenderTex, 4);
             // Post processing drawcall.
             RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
           }
@@ -1228,6 +1247,7 @@ const RayTracer = (target_canvas) => {
         // Create frame buffers and textures to be rendered to.
         Framebuffer = RT.GL.createFramebuffer();
         ColorRenderTexture = RT.GL.createTexture();
+        ColorIpRenderTexture = RT.GL.createTexture();
         NormalRenderTexture = RT.GL.createTexture();
         OriginalRenderTexture = RT.GL.createTexture();
         IdRenderTexture = RT.GL.createTexture();
@@ -1241,6 +1261,7 @@ const RayTracer = (target_canvas) => {
 
         // Bind uniforms.
         ColorRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_color");
+        ColorIpRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_color_ip");
         NormalRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_normal");
         OriginalRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_original_color");
         IdRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_id");
