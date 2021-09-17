@@ -517,7 +517,11 @@ const RayTracer = (target_canvas) => {
         }
 
         // Render all relevant information to 4 textures for the post processing shader.
-        render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
+        if(use_filter == 1){
+          render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
+        }else{
+          render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
+        }
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
         render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/2.0));
