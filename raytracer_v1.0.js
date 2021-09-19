@@ -23,7 +23,7 @@ const RayTracer = (target_canvas) => {
     // Movement settings.
     MOUSE_ROTATION: true,
     MOVEMENT: true,
-    MOVEMENT_SPEED: 0.1,
+    MOVEMENT_SPEED: 0.01,
     MOUSE_Y: 1 / 500, MOUSE_X: 1 / 500,
     KEYMAP: [["w", 0, 0, 1], ["s", 0, 0, -1], ["a", 1, 0, 0], ["d", -1, 0, 0], [" ", 0, 1, 0], ["shift", 0, -1, 0]],
     // Performance metric.
@@ -640,9 +640,7 @@ const RayTracer = (target_canvas) => {
       `;
       // Initialize internal globals.
       {
-        // Initialize performance metric globals.
-        var Frame = 0;
-        // The micros variable is needed to calculate fps.
+        // The micros variable is needed to calculate fps and movement speed.
         var Micros = window.performance.now();
         // Internal GL objects.
         var Program;
@@ -771,19 +769,6 @@ const RayTracer = (target_canvas) => {
         // Init canvas parameters with resize.
         resize();
       }
-      // Update movement with 60Hz.
-      setInterval(
-        async function(){
-        if (RT.MOVEMENT)
-        {
-          evalKeys();
-          RT.X += DeltaX * Math.cos(RT.FX) + DeltaZ * Math.sin(RT.FX);
-          RT.Y += DeltaY;
-          RT.Z += DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX);
-        }
-        },
-        100/6
-      );
       // Handle new keyboard input.
       async function evalKeys(){
         if (PointerLocked)
@@ -792,9 +777,9 @@ const RayTracer = (target_canvas) => {
           RT.KEYMAP.forEach((item, i) => {
             if (KeysPressed.includes(item[0]))
             {
-              x += item[1] * RT.MOVEMENT_SPEED;
-              y += item[2] * RT.MOVEMENT_SPEED;
-              z += item[3] * RT.MOVEMENT_SPEED;
+              x += item[1];
+              y += item[2];
+              z += item[3];
             }
           });
           if (x !== DeltaX || y !== DeltaY || z !== DeltaZ)
@@ -969,15 +954,18 @@ const RayTracer = (target_canvas) => {
         // Render new Image, work through QUEUE.
       	renderFrame();
         // Calculate fps by measuring the time it takes to render 30 frames.
-        Frame++;
-        if (Frame >= 30)
+        if (RT.MOVEMENT)
         {
-      		Frame = 0;
-      		// Calculate Fps.
-          RT.FPS = (30000 / (performance.now() - Micros)).toFixed(0);
-          // Update Microse variable
-      		Micros = window.performance.now();
+          let deltaTime = (window.performance.now() - Micros) * RT.MOVEMENT_SPEED;
+          evalKeys();
+          RT.X += (DeltaX * Math.cos(RT.FX) + DeltaZ * Math.sin(RT.FX)) * deltaTime;
+          RT.Y += DeltaY * deltaTime;
+          RT.Z += (DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX)) * deltaTime;
         }
+        // Calculate Fps.
+        RT.FPS = (1000 / (performance.now() - Micros)).toFixed(0);
+        // Update Microse variable
+        Micros = window.performance.now();
       }
       function renderFrame(){
         {
