@@ -50,5 +50,5 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
-	},100/6);
+	},1000);
 });
