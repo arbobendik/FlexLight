@@ -142,7 +142,7 @@ const RayTracer = (target_canvas) => {
           move_3d.y * cos(perspective.y) + translate_px.y * sin(perspective.y),
           translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
         );
-        vec2 translate_2d = conf.x * vec2(translate_px.x, translate_py.x * conf.y);
+        vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
         // Set final clip space position.
         gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 10000000000.0))), translate_py.y);
         vertex_id = gl_VertexID;
