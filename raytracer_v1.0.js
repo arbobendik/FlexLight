@@ -962,7 +962,6 @@ const RayTracer = (target_canvas) => {
           RT.Y += DeltaY * deltaTime;
           RT.Z += (DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX)) * deltaTime;
         }
-        Frame = 0;
         // Calculate Fps.
         RT.FPS = (1000 / (performance.now() - Micros)).toFixed(0);
         // Update Microse variable
