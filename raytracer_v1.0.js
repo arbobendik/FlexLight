@@ -524,7 +524,7 @@ const RayTracer = (target_canvas) => {
         }
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + 1.0/2.0));
+        render_original_color = vec4(tex_color.xyz, pow(roughness, 1.5) * first_ray_length / 8.0);
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
       }
       `;
@@ -569,7 +569,7 @@ const RayTracer = (target_canvas) => {
         float count = 1.0;
         int increment = 3;
         int max_radius = 10;
-        int radius = 3 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
+        int radius = 4 + int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.06 * center_original_color.w);
         // Force max radius.
         if(radius > max_radius) radius = max_radius;
 
