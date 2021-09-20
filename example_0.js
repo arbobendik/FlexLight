@@ -51,4 +51,28 @@ document.addEventListener("DOMContentLoaded", function(){
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
 	},1000);
+
+	// Init iterator variable for simple animations.
+	let iterator = 0;
+
+	setInterval(function(){
+		// Increase iterator.
+		iterator += 0.01;
+		// Precalculate sin and cos.
+		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
+		// Animate ligth sources.
+		rt.LIGHT =  [[20*sin, 20, 20*cos]];
+		rt.UPDATE_LIGHT();
+		// Calculate new width for this frame.
+		let newX = 6.5 + 4 * sin;
+		// Create new resized R0 object.
+		let newR0 = rt.CUBOID(-1.5 + newX, -1, 1.5, 3, 3, 1);
+		// Color new cuboid.
+		for (let j = 1; j < 7; j++) newR0[j].colors = r[0][j].colors;
+		// Update bounding boxes.
+		rt.QUEUE[1][0] = [-1.5, 6.5 + newX, -1, 2.5, -2, 6.5];
+		rt.QUEUE[1][1][0] = [-1.5, 4.5 + newX, -1, 2, -2, 2.5];
+		// Push element in QUEUE.
+		rt.QUEUE[1][1][1] = newR0;
+	}, 100/6);
 });
