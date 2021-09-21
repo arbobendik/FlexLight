@@ -29,9 +29,7 @@ const RayTracer = (target_canvas) => {
     // Performance metric.
     FPS: 0,
     // Init scene state GL textures.
-    NormalTexture: null,
-    ColorTexture: null,
-    LightTexture: null,
+    NormalTexture: null, ColorTexture: null, LightTexture: null,
     // Functions to update scene states.
     UPDATE_NORMAL: () => {
       // Test if there is even a texture.
@@ -971,21 +969,17 @@ const RayTracer = (target_canvas) => {
           };
           // Start recursion.
           RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
-          // Set PositionBuffer.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PositionBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(vertices.flat()), RT.GL.STATIC_DRAW);
-          // Set NormalBuffer.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, NormalBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(normals.flat()), RT.GL.STATIC_DRAW);
-          // Set ColorBuffer.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, ColorBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(colors.flat()), RT.GL.STATIC_DRAW);
-          // Set TexBuffer.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, TexBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(uvs.flat()), RT.GL.STATIC_DRAW);
-          // Pass texture IDs to GPU.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, TexNumBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(texNums.flat()), RT.GL.STATIC_DRAW);
+          // Set buffers.
+          [
+            [PositionBuffer, vertices],
+            [NormalBuffer, normals],
+            [ColorBuffer, colors],
+            [TexBuffer, uvs],
+            [TexNumBuffer, texNums]
+          ].forEach(function(item){
+            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
+            RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
+          });
           // Actual drawcall.
           RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
         }
@@ -998,20 +992,11 @@ const RayTracer = (target_canvas) => {
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
             // Clear depth and color buffers from last frame.
             RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
-            // Make pre rendered image TEXTURE0.
-            RT.GL.activeTexture(RT.GL.TEXTURE0);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorRenderTexture);
-            RT.GL.activeTexture(RT.GL.TEXTURE1);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, ColorIpRenderTexture);
-            // Make pre rendered normal map TEXTURE2.
-            RT.GL.activeTexture(RT.GL.TEXTURE2);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, NormalRenderTexture);
-            // Make pre rendered map of original colors TEXTURE3.
-            RT.GL.activeTexture(RT.GL.TEXTURE3);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, OriginalRenderTexture);
-
-            RT.GL.activeTexture(RT.GL.TEXTURE4);
-            RT.GL.bindTexture(RT.GL.TEXTURE_2D, IdRenderTexture);
+            // Push pre rendered textures to next shader (post processing).
+            [ColorRenderTexture, ColorIpRenderTexture, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+              RT.GL.activeTexture(RT.GL.TEXTURE0 + i);
+              RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
+            });
             // Switch program and VAO.
             RT.GL.useProgram(PostProgram);
             RT.GL.bindVertexArray(POST_VAO);
@@ -1095,18 +1080,8 @@ const RayTracer = (target_canvas) => {
       	RT.GL.clearColor(0, 0, 0, 0);
       	// Define Program with its currently bound shaders as the program to use for the webgl2 context.
         RT.GL.useProgram(Program);
-        // Prepare position buffer for coordinates array.
-        PositionBuffer = RT.GL.createBuffer();
-        // Create a buffer for normals.
-        NormalBuffer = RT.GL.createBuffer();
-        // Create a buffer for tex_coords.
-        TexBuffer = RT.GL.createBuffer();
-        // Create buffer for texture sizes.
-        TexSizeBuffer = RT.GL.createBuffer();
-        // Create buffer for textur IDs.
-        TexNumBuffer = RT.GL.createBuffer();
-        // Create a buffer for colors.
-        ColorBuffer = RT.GL.createBuffer();
+        // Create buffers.
+        [PositionBuffer, NormalBuffer, TexBuffer, TexSizeBuffer, TexNumBuffer, ColorBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
         // Create a world texture containing all information about world space.
         WorldTexture = RT.GL.createTexture();
         // Create Textures for primary render.
@@ -1119,35 +1094,25 @@ const RayTracer = (target_canvas) => {
         // Create random texture.
         randomTextureBuilder();
         // Bind and set buffer parameters.
-        // Bind position buffer.
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PositionBuffer);
-        RT.GL.enableVertexAttribArray(Position);
-        RT.GL.vertexAttribPointer(Position, 3, RT.GL.FLOAT, false, 0, 0);
-        // Bind normal buffer.
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, NormalBuffer);
-        RT.GL.enableVertexAttribArray(Normal);
-        RT.GL.vertexAttribPointer(Normal, 3, RT.GL.FLOAT, false, 0, 0);
-        // Bind color buffer.
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, ColorBuffer);
-        RT.GL.enableVertexAttribArray(Color);
-        RT.GL.vertexAttribPointer(Color, 4, RT.GL.FLOAT, false, 0, 0);
-        //Set TexBuffer
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, TexBuffer);
-        RT.GL.enableVertexAttribArray(TexCoord);
-        RT.GL.vertexAttribPointer(TexCoord, 2, RT.GL.FLOAT, true, 0, 0);
+        [
+          // Bind world space position buffer.
+          [PositionBuffer, Position, 3, false],
+          // Set normals.
+          [NormalBuffer, Normal, 3, false],
+          // Bind color buffer.
+          [ColorBuffer, Color, 4, false],
+          // Set barycentric texture coordinates.
+          [TexBuffer, TexCoord, 2, true],
+          // Set Texture number (id) in buffer.
+          [TexNumBuffer, TexNum, 2, true]
 
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, TexNumBuffer);
-        RT.GL.enableVertexAttribArray(TexNum);
-        RT.GL.vertexAttribPointer(TexNum, 2, RT.GL.FLOAT, true, 0, 0);
+        ].forEach((item) => {
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
+          RT.GL.enableVertexAttribArray(item[1]);
+          RT.GL.vertexAttribPointer(item[1], item[2], RT.GL.FLOAT, item[3], 0, 0);
+        });
         // Create frame buffers and textures to be rendered to.
-        Framebuffer = RT.GL.createFramebuffer();
-        ColorRenderTexture = RT.GL.createTexture();
-        ColorIpRenderTexture = RT.GL.createTexture();
-        NormalRenderTexture = RT.GL.createTexture();
-        OriginalRenderTexture = RT.GL.createTexture();
-        IdRenderTexture = RT.GL.createTexture();
-
-        DepthTexture = RT.GL.createTexture();
+        [Framebuffer, ColorRenderTexture, ColorIpRenderTexture, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture, DepthTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture()];
 
         renderTextureBuilder();
         // Create post program buffers and uniforms.
