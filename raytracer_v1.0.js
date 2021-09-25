@@ -4,10 +4,17 @@ const RayTracer = (target_canvas) => {
   var RT = {
     // Initialize Gl context variable.
     GL: target_canvas.getContext("webgl2"),
+    // Small internal Math library.
+    Math: {
+      // Cross product.
+      cross: (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]],
+      // Calculate difference between 2 vectors.
+      vec_diff: (a, b) => a.map((item, i) => b[i] - item),
+    },
     // Configurable runtime properties of the Raytracer.
     QUEUE: [],
     LIGHT: [[0, 10, 0]],
-    GI: [0.05, 0.05, 0.05],
+    SKYBOX: [0.05, 0.05, 0.05],
     TEXTURE: [],
     NORMAL_TEXTURE: [],
     TEXTURE_SIZES: [512, 512],
@@ -30,6 +37,12 @@ const RayTracer = (target_canvas) => {
     FPS: 0,
     // Init scene state GL textures.
     NormalTexture: null, ColorTexture: null, LightTexture: null,
+
+    NORMAL_TEXTURE_FROM_ARRAY: (array, width, height) => {
+      array.width = width;
+      array.height = height;
+      return array;
+    },
     // Functions to update scene states.
     UPDATE_NORMAL: () => {
       // Test if there is even a texture.
@@ -47,12 +60,34 @@ const RayTracer = (target_canvas) => {
       var canvas = document.createElement('canvas');
       var ctx = canvas.getContext('2d');
       canvas.width = width * textureWidth;
-      canvas.height = height * RT.TEXTURE.length;
+      canvas.height = height * RT.NORMAL_TEXTURE.length;
 
       RT.NORMAL_TEXTURE.forEach(async (item, i) => {
-          ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
+        if(Array.isArray(item)){
+          var partCanvas = document.createElement('canvas');
+          var partCtx = partCanvas.getContext('2d');
+          partCanvas.width = item.width;
+          partCanvas.height = item.height;
+
+          let imgArray = [];
+          for (let i = 0; i < item.length; i++) imgArray.push([item[i], 0, 0, 255]);
+          imgArray = new Uint8ClampedArray(imgArray.flat());
+          // Create Image element.
+          let imgData = partCtx.createImageData(item.width, item.height);
+          // Set imgArray as image source.
+          imgData.data.set(imgArray, 0);
+          // Set image data in canvas.
+          partCtx.putImageData(imgData, 0, 0);
+          // Disable image smoothing to get non-blury pixel values.
+          partCtx.imageSmoothingEnabled = false;
+          // Set part canvas as image source.
+          item = new Image();
+          item.src = partCanvas.toDataURL();
+        }
+        // Draw element on atlas canvas.
+        ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
       });
-      RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, canvas.width, canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, new Uint8Array(Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data)));
+      RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, canvas.width, canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
     },
     UPDATE_TEXTURE: () => {
       // Test if there is even a texture.
@@ -183,7 +218,7 @@ const RayTracer = (target_canvas) => {
       // Texture with all primary light sources of scene.
       uniform sampler2D light_tex;
       // Get global illumination color, intensity.
-      uniform vec3 global_illumination;
+      uniform vec3 sky_box;
 
       layout(location = 0) out vec4 render_color;
       layout(location = 1) out vec4 render_color_ip;
@@ -467,7 +502,7 @@ const RayTracer = (target_canvas) => {
           last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
         }
         // Apply global illumination.
-        final_color += global_illumination * importancy_factor;
+        final_color += sky_box * importancy_factor;
         // Return final pixel color.
         return final_color;
       }
@@ -582,7 +617,7 @@ const RayTracer = (target_canvas) => {
             vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal && id == center_id){
+            if (normal == center_normal && (id == center_id || length(abs(center_color - next_color).xyz) < 0.3)){
               color += vec4((next_color.xyz + next_color_ip.xyz * 256.0) * center_original_color.xyz, next_color.w);
               count ++;
             }
@@ -641,7 +676,7 @@ const RayTracer = (target_canvas) => {
         // The micros variable is needed to calculate fps and movement speed.
         var Micros = window.performance.now();
         // Internal GL objects.
-        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, GILocation, TextureWidth, WorldTex, RandomTex, NormalTex, ColorTex, LightTex;
+        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, ColorTex, LightTex;
         // Init Buffers.
         var PositionBuffer, NormalBuffer, TexBuffer, ColorBuffer, TexSizeBuffer, TexNumBuffer, SurfaceBuffer, TriangleBuffer;
         // Init Texture elements.
@@ -832,23 +867,26 @@ const RayTracer = (target_canvas) => {
           Data[len_pos + 6] = len;
           // console.log(item.slice(1));
         }else{
-          let b = item.bounding;
-          // Create extra bounding volume for each object.
+          // Alias object properties to simplify data texture assembly.
           let v = item.vertices;
           let c = item.colors;
           let n = item.normals;
           let t = item.textureNums;
           let uv = item.uvs;
           let len = item.arrayLength;
-          // Declare bounding volume of object.
-          try{
+          // Test if bounding volume is set.
+          if (item.bounding !== undefined){
+            // Declare bounding volume of object.
+            let b = item.bounding;
             Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-          }catch{
+          }else if (item.arrayLength > 3){
+            // Warn if length is greater than 3.
             console.warn(item);
+            // A single triangle needs no bounding voume, so nothing happens in this case.
           }
-          // Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+          
           for (let i = 0; i < len * 3; i += 9){
-            let j = i/3*2
+            let j = i/3*2;
             // 1 vertex = 1 line in world texture.
             // a, b, c, color, normal, texture_nums, UVs1, UVs2.
             Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*4],c[i/9*4+1],c[i/9*4+2],n[i],n[i+1],n[i+2],t[j],t[j+1],0,uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
@@ -863,9 +901,10 @@ const RayTracer = (target_canvas) => {
         // Render new Image, work through QUEUE.
       	renderFrame();
         // Calculate fps by measuring the time it takes to render 30 frames.
+        evalKeys();
+
         if (RT.MOVEMENT){
           let deltaTime = (window.performance.now() - Micros) * RT.MOVEMENT_SPEED;
-          evalKeys();
           RT.X += (DeltaX * Math.cos(RT.FX) + DeltaZ * Math.sin(RT.FX)) * deltaTime;
           RT.Y += DeltaY * deltaTime;
           RT.Z += (DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX)) * deltaTime;
@@ -929,7 +968,7 @@ const RayTracer = (target_canvas) => {
           // Instuct shader to render for filter or not.
           RT.GL.uniform1i(FilterLocation, RT.FILTER);
           // Set global illumination.
-          RT.GL.uniform3f(GILocation, RT.GI[0], RT.GI[1], RT.GI[2]);
+          RT.GL.uniform3f(SkyBoxLocation, RT.SKYBOX[0], RT.SKYBOX[1], RT.SKYBOX[2]);
           // Set width of height and normal texture.
           RT.GL.uniform1i(TextureWidth, Math.floor(2048 / RT.TEXTURE_SIZES[0]));
           // Pass whole current world space as data structure to GPU.
@@ -1061,7 +1100,7 @@ const RayTracer = (target_canvas) => {
         SamplesLocation = RT.GL.getUniformLocation(Program, "samples");
         ReflectionsLocation = RT.GL.getUniformLocation(Program, "reflections");
         FilterLocation = RT.GL.getUniformLocation(Program, "use_filter");
-        GILocation = RT.GL.getUniformLocation(Program, "global_illumination");
+        SkyBoxLocation = RT.GL.getUniformLocation(Program, "sky_box");
         WorldTex = RT.GL.getUniformLocation(Program, "world_tex");
         RandomTex = RT.GL.getUniformLocation(Program, "random");
         TextureWidth = RT.GL.getUniformLocation(Program, "texture_width");
@@ -1159,7 +1198,7 @@ const RayTracer = (target_canvas) => {
         frameCycle();
       }
     },
-    // Cuboid element prototype.
+    // Axis aligned cuboid element prototype.
     CUBOID: (x, y, z, width, height, depth) => {
       // Predefine properties of vertices.
       let [x2, y2, z2] = [x + width, y + height, z + depth];
@@ -1182,7 +1221,7 @@ const RayTracer = (target_canvas) => {
         // Set vertices.
         vertices: [c0,c1,c2,c2,c3,c0].flat(),
         // Default color to white.
-        colors: new Array(24).fill(1).flat(),
+        colors: new Array(24).fill(1),
         // Set UVs.
         uvs: [0,0,0,1,1,1,1,1,1,0,0,0],
         // Set used textures.
@@ -1196,6 +1235,26 @@ const RayTracer = (target_canvas) => {
                    Math.max(c0[2],c1[2],c2[2],c3[2])],
         // Set default arrayLength for this object.
         arrayLength: 6
+      }
+    },
+    // Triangle element prototype.
+    TRIANGLE: (a, b, c) => {
+      return {
+        // Generate surface normal.
+        normals: new Array(3).fill(RT.Math.cross(
+          RT.Math.vec_diff(a, b),
+          RT.Math.vec_diff(a, c)
+        )).flat(),
+        // Vertex for queue.
+        vertices: [a,b,c].flat(),
+        // Default color to white.
+        colors: new Array(12).fill(1),
+        // UVs to map textures on triangle.
+        uvs: [0,0,0,1,1,1],
+        // Set used textures.
+        textureNums: new Array(3).fill([-1,-1]).flat(),
+        // Length in world data texture for this object.
+        arrayLength: 3
       }
     }
   };
