@@ -9,6 +9,11 @@ document.addEventListener("DOMContentLoaded", function(){
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
 	rt = RayTracer(canvas);
+
+	// Make plane defuseR.
+	let normal_tex = rt.NORMAL_TEXTURE_FROM_ARRAY([200], 1, 1);
+	rt.NORMAL_TEXTURE.push(normal_tex);
+	rt.UPDATE_NORMAL();
 	// Reduce Scale for better performance.
 	rt.SCALE = 1;
 	// Set higher Sample count.
@@ -19,6 +24,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt.LIGHT[0].strength = 4;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
+	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [];
 	r[0] = rt.CUBOID(-1.5, -1, 1.5, 6, 3, 1);
@@ -30,6 +36,7 @@ document.addEventListener("DOMContentLoaded", function(){
 		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
 		for (let j = 1; j < 7; j++) r[i][j].colors = color;
 	}
+
 	// Spawn cube.
 	let cube = rt.CUBOID(5.5, 1.5, 5.5, 1, 1, 1);
 	// Package cube and cuboids together in a shared bounding volume.
@@ -61,7 +68,7 @@ document.addEventListener("DOMContentLoaded", function(){
 		// Precalculate sin and cos.
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// Animate ligth sources.
-		rt.LIGHT =  [[20*sin, 30, 20*cos], [2*cos, 20, 10*sin]];
+		rt.LIGHT =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
 		rt.UPDATE_LIGHT();
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;
