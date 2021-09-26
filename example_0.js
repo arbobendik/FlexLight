@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	r[1] = rt.CUBOID(-1.5, -1, -2, 3, 3, 1);
 	r[2] = rt.CUBOID(0.5, -1, -1, 1, 3, 1);
 	r[3] = rt.CUBOID(-1.5, -1, - 1, 1, 3, 1);
-	// Color all cuboid in center.
+	// Color all cuboids in center.
 	for (let i = 0; i < 4; i++){
 		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
 		for (let j = 1; j < 7; j++) r[i][j].colors = color;
