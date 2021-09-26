@@ -230,7 +230,7 @@ const RayTracer = (target_canvas) => {
       // Declare null vector as constant.
       const vec3 null = vec3(0.0, 0.0, 0.0);
       const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
-      const float shadow_bias = 0.0000;
+      const float shadow_bias = 0.00001;
 
       // Prevent blur over shadow border.
       float first_in_shadow = 0.0;
