@@ -11,9 +11,9 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt = RayTracer(canvas);
 	// Set Textures 0, 1, 2.
 	[
-		"./textures/grass.jpg",     // 0
-		"./textures/dirt_side.jpg", // 1
-	  "./textures/dirt.jpeg"      // 2
+		"textures/grass.jpg",     // 0
+		"textures/dirt_side.jpg", // 1
+	  "textures/dirt.jpeg"      // 2
 	].forEach((item, i) => {
 		let img = new Image();
 	  img.src = item;
@@ -24,10 +24,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	normal_tex.src = "./textures/normal.jpg";
 	rt.NORMAL_TEXTURE.push(normal_tex);
 	// Set texture Sizes.
-	rt.TEXTURE_SIZES = [48, 48];
-	// Update textures.
-	rt.UPDATE_TEXTURE();
-	rt.UPDATE_NORMAL();
+	rt.TEXTURE_SIZES = [16, 16];
 
 	// Init surface element.
 	let test_surface = [[-10, 10, -1, -0.9, -10, 10], [],[],[],[],[]];
@@ -83,7 +80,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
-		// Update textures.
+		// Update textures every second.
 		rt.UPDATE_TEXTURE();
 		rt.UPDATE_NORMAL();
 	},1000);
