@@ -521,7 +521,7 @@ const RayTracer = (target_canvas) => {
         // Set roughness to texture value if texture is defined.
         if (texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
         // Fresnel effect.
-        roughness *= fresnel(normal, player - position);
+        float fresnel_roughness = roughness * fresnel(normal, player - position);
         // Start hybrid ray tracing on a per light source base.
         vec3 final_color = null;
         vec3 random_vec = null;
@@ -539,13 +539,13 @@ const RayTracer = (target_canvas) => {
               random_vec = - random_vec;
             }
             // Alter normal and color according to texture and normal texture.
-            vec3 rough_normal = normalize(random_vec * roughness + normal * (1.0 - roughness));
+            vec3 rough_normal = normalize(random_vec * fresnel_roughness + normal * (1.0 - roughness));
             // Read light position.
             vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz;
             // Read light strength from texture.
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light, player, position, i, rough_normal, normal, tex_color.xyz, roughness, reflections, strength);
+            final_color += lightTrace(world_tex, light, player, position, i, rough_normal, normal, tex_color.xyz, fresnel_roughness, reflections, strength);
           }
         }
 
@@ -556,7 +556,7 @@ const RayTracer = (target_canvas) => {
           render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
         }
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
-        render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
+        render_normal = vec4((normal / 2.0 + 0.5) * roughness, first_in_shadow);
         render_original_color = vec4(tex_color.xyz, pow(roughness, 1.5) * first_ray_length / 2.0);
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
       }
@@ -617,7 +617,7 @@ const RayTracer = (target_canvas) => {
             vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal && (id == center_id || length(abs(center_color - next_color).xyz) < 0.3)){
+            if (normal == center_normal && (id == center_id || length(abs(center_color - next_color).xyz) < 0.5)){
               color += vec4((next_color.xyz + next_color_ip.xyz * 256.0) * center_original_color.xyz, next_color.w);
               count ++;
             }
