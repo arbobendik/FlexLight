@@ -25,9 +25,6 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt.NORMAL_TEXTURE.push(normal_tex);
 	// Set texture Sizes.
 	rt.TEXTURE_SIZES = [16, 16];
-	// Update textures.
-	rt.UPDATE_TEXTURE();
-	rt.UPDATE_NORMAL();
 
 	// Init surface element.
 	let test_surface = [[-10, 10, -1, -0.9, -10, 10], [],[],[],[],[]];
@@ -83,7 +80,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
-		// Update textures.
+		// Update textures every second.
 		rt.UPDATE_TEXTURE();
 		rt.UPDATE_NORMAL();
 	},1000);
