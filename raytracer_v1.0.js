@@ -230,7 +230,7 @@ const RayTracer = (target_canvas) => {
       // Declare null vector as constant.
       const vec3 null = vec3(0.0, 0.0, 0.0);
       const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
-      const float shadow_bias = 0.00001;
+      const float shadow_bias = 0.0000;
 
       // Prevent blur over shadow border.
       float first_in_shadow = 0.0;
@@ -490,7 +490,7 @@ const RayTracer = (target_canvas) => {
           // Multiply with texture value if available.
           if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
           // Default last_roughness to 0.5.
-          last_roughness = 0.5;
+          last_roughness = 0.3;
           // Use roughness from texture if available.
           if (tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
           // Update parameters.
@@ -517,7 +517,7 @@ const RayTracer = (target_canvas) => {
         // Multiply with texture value if texture is defined.
         if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
         // Default roughness to 0.5.
-        float roughness = 0.5;
+        float roughness = 0.3;
         // Set roughness to texture value if texture is defined.
         if (texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
         // Fresnel effect.
@@ -600,9 +600,9 @@ const RayTracer = (target_canvas) => {
 
         vec4 color = center_color;
         float count = 1.0;
-        int increment = 3;
-        int max_radius = 10;
-        int radius = int(4.0 + sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.1 * center_original_color.w);
+        int increment = 4;
+        int max_radius = 5;
+        int radius = int(3.0 + sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
         // Force max radius.
         if (radius > max_radius) radius = max_radius;
 
@@ -884,7 +884,7 @@ const RayTracer = (target_canvas) => {
             console.warn(item);
             // A single triangle needs no bounding voume, so nothing happens in this case.
           }
-          
+
           for (let i = 0; i < len * 3; i += 9){
             let j = i/3*2;
             // 1 vertex = 1 line in world texture.
