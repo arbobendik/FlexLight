@@ -11,9 +11,9 @@ document.addEventListener("DOMContentLoaded", function(){
 	rt = RayTracer(canvas);
 	// Set Textures 0, 1, 2.
 	[
-		"static/textures/grass.jpg",     // 0
-		"static/textures/dirt_side.jpg", // 1
-	  "static/textures/dirt.jpeg"      // 2
+		"./textures/grass.jpg",     // 0
+		"./textures/dirt_side.jpg", // 1
+	  "./textures/dirt.jpeg"      // 2
 	].forEach((item, i) => {
 		let img = new Image();
 	  img.src = item;
@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	});
 
 	let normal_tex = new Image();
-	normal_tex.src = "static/textures/normal.jpg";
+	normal_tex.src = "./textures/normal.jpg";
 	rt.NORMAL_TEXTURE.push(normal_tex);
 	// Set texture Sizes.
 	rt.TEXTURE_SIZES = [48, 48];
