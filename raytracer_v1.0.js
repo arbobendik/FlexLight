@@ -230,7 +230,7 @@ const RayTracer = (target_canvas) => {
       // Declare null vector as constant.
       const vec3 null = vec3(0.0, 0.0, 0.0);
       const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
-      const float shadow_bias = 0.00001;
+      const float shadow_bias = 0.0000;
 
       // Prevent blur over shadow border.
       float first_in_shadow = 0.0;
@@ -1026,7 +1026,7 @@ const RayTracer = (target_canvas) => {
         if (RT.FILTER){
           {
             // Configure where the final image should go.
-            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer);
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);//PostFramebuffer);
             // Configure framebuffer for color and depth.
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
             // Clear depth and color buffers from last frame.
@@ -1051,7 +1051,7 @@ const RayTracer = (target_canvas) => {
             // Post processing drawcall.
             RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
           }
-          // Apply kernel convolution matrix.
+          /* Apply kernel convolution matrix.
           {
             // Render to canvas now.
             RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
@@ -1065,7 +1065,7 @@ const RayTracer = (target_canvas) => {
             RT.GL.uniform1i(KernelTex, 0);
             // Post processing drawcall.
             RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
-          }
+          }*/
         }
       }
       // Start render engine.
