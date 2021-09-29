@@ -17,6 +17,8 @@ There is no official documentation yet. For code examples look at example_0.js o
 
 More screenshots (deprecated versions):
 
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen3.png?raw=true)
+
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen1.png?raw=true)
 
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/screen0.png?raw=true)
