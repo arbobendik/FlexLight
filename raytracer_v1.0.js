@@ -14,7 +14,7 @@ const RayTracer = (target_canvas) => {
     // Configurable runtime properties of the Raytracer.
     QUEUE: [],
     LIGHT: [[0, 10, 0]],
-    SKYBOX: [0.05, 0.05, 0.05],
+    SKYBOX: [0, 0, 0],
     TEXTURE: [],
     NORMAL_TEXTURE: [],
     TEXTURE_SIZES: [512, 512],
@@ -38,13 +38,55 @@ const RayTracer = (target_canvas) => {
     // Init scene state GL textures.
     NormalTexture: null, ColorTexture: null, LightTexture: null,
 
-    NORMAL_TEXTURE_FROM_ARRAY: (array, width, height) => {
-      array.width = width;
-      array.height = height;
-      return array;
+    GENERATE_TEX: async (array, width, height) => {
+      var partCanvas = document.createElement('canvas');
+      var partCtx = partCanvas.getContext('2d');
+      partCanvas.width = width;
+      partCanvas.height = height;
+
+      let imgArray = [];
+
+      for (let i = 0; i < array.length; i+=4) imgArray.push([array[i],array[i+1],array[i+2],array[i+3]]);
+      imgArray = new Uint8ClampedArray(imgArray.flat());
+      // Create Image element.
+      let imgData = partCtx.createImageData(width, height);
+      // Set imgArray as image source.
+      imgData.data.set(imgArray, 0);
+      // Set image data in canvas.
+      partCtx.putImageData(imgData, 0, 0);
+      // Disable image smoothing to get non-blury pixel values.
+      partCtx.imageSmoothingEnabled = false;
+      // Set part canvas as image source.
+      let image = new Image();
+      image.src = await partCanvas.toDataURL();
+      return await image;
+    },
+
+    GENERATE_NORMAL_TEX: async (array, width, height) => {
+      var partCanvas = document.createElement('canvas');
+      var partCtx = partCanvas.getContext('2d');
+      partCanvas.width = width;
+      partCanvas.height = height;
+
+      let imgArray = [];
+
+      for (let i = 0; i < array.length; i++) imgArray.push([array[i], 0, 0, 255]);
+      imgArray = new Uint8ClampedArray(imgArray.flat());
+      // Create Image element.
+      let imgData = partCtx.createImageData(width, height);
+      // Set imgArray as image source.
+      imgData.data.set(imgArray, 0);
+      // Set image data in canvas.
+      partCtx.putImageData(imgData, 0, 0);
+      // Disable image smoothing to get non-blury pixel values.
+      partCtx.imageSmoothingEnabled = false;
+      // Set part canvas as image source.
+      let image = new Image();
+      image.src = await partCanvas.toDataURL();
+      return await image;
     },
     // Functions to update scene states.
-    UPDATE_NORMAL: () => {
+    UPDATE_NORMAL_TEXTURE: () => {
       // Test if there is even a texture.
       if (RT.NORMAL_TEXTURE.length === 0) return;
 
@@ -63,27 +105,6 @@ const RayTracer = (target_canvas) => {
       canvas.height = height * RT.NORMAL_TEXTURE.length;
 
       RT.NORMAL_TEXTURE.forEach(async (item, i) => {
-        if(Array.isArray(item)){
-          var partCanvas = document.createElement('canvas');
-          var partCtx = partCanvas.getContext('2d');
-          partCanvas.width = item.width;
-          partCanvas.height = item.height;
-
-          let imgArray = [];
-          for (let i = 0; i < item.length; i++) imgArray.push([item[i], 0, 0, 255]);
-          imgArray = new Uint8ClampedArray(imgArray.flat());
-          // Create Image element.
-          let imgData = partCtx.createImageData(item.width, item.height);
-          // Set imgArray as image source.
-          imgData.data.set(imgArray, 0);
-          // Set image data in canvas.
-          partCtx.putImageData(imgData, 0, 0);
-          // Disable image smoothing to get non-blury pixel values.
-          partCtx.imageSmoothingEnabled = false;
-          // Set part canvas as image source.
-          item = new Image();
-          item.src = partCanvas.toDataURL();
-        }
         // Draw element on atlas canvas.
         ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
       });
@@ -623,9 +644,9 @@ const RayTracer = (target_canvas) => {
             }
           }
         }
-        if (color.w > 0.0){
+        if (center_color.w > 0.0){
           // Set out color for render texture for the antialiasing filter.
-          out_color = vec4(color.xyz / count, 1.0);
+          out_color = color / count;
         }else{
           out_color = vec4(0.0, 0.0, 0.0, 0.0);
         }
@@ -1191,7 +1212,7 @@ const RayTracer = (target_canvas) => {
         RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, KernelVertexBuffer);
         RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
         // Load existing textures.
-        RT.UPDATE_NORMAL();
+        RT.UPDATE_NORMAL_TEXTURE();
         RT.UPDATE_TEXTURE();
         RT.UPDATE_LIGHT();
         // Begin frame cycle.
