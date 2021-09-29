@@ -2,7 +2,7 @@
 // Declare RayTracer global.
 var rt;
 // Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", function(){
+document.addEventListener("DOMContentLoaded", async function(){
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -20,11 +20,18 @@ document.addEventListener("DOMContentLoaded", function(){
 	  rt.TEXTURE.push(img);
 	});
 
-	let normal_tex = new Image();
-	normal_tex.src = "./textures/normal.jpg";
-	rt.NORMAL_TEXTURE.push(normal_tex);
+	// Set sky-box illumination to 0.2.
+	rt.SKYBOX = [0.2, 0.2, 0.2];
+
+	let normalTex = new Image();
+	normalTex.src = "./textures/normal.jpg";
+	rt.NORMAL_TEXTURE.push(normalTex);
+
+	let diffuseTex = await rt.GENERATE_NORMAL_TEX([200], 1, 1);
+	console.log(diffuseTex);
+	rt.NORMAL_TEXTURE.push(diffuseTex);
 	// Set texture Sizes.
-	rt.TEXTURE_SIZES = [16, 16];
+	rt.TEXTURE_SIZES = [32, 32];
 
 	// Init surface element.
 	let test_surface = [[-10, 10, -1, -0.9, -10, 10], [],[],[],[],[]];
@@ -55,12 +62,13 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Spawn cube with textures.
 	let cube = rt.CUBOID(5.5, 1.5, 5.5, 1, 1, 1);
 	// Set different textures for different sides of the array.
-	cube[1].textureNums = new Array(6).fill([0,-1]).flat();
-	cube[2].textureNums = new Array(6).fill([1,-1]).flat();
-	cube[3].textureNums = new Array(6).fill([1,-1]).flat();
-	cube[4].textureNums = new Array(6).fill([2,-1]).flat();
-	cube[5].textureNums = new Array(6).fill([1,-1]).flat();
-	cube[6].textureNums = new Array(6).fill([1,-1]).flat();
+	// And make cube full diffuse.
+	cube[1].textureNums = new Array(6).fill([0,1]).flat();
+	cube[2].textureNums = new Array(6).fill([1,1]).flat();
+	cube[3].textureNums = new Array(6).fill([1,1]).flat();
+	cube[4].textureNums = new Array(6).fill([2,1]).flat();
+	cube[5].textureNums = new Array(6).fill([1,1]).flat();
+	cube[6].textureNums = new Array(6).fill([1,1]).flat();
 
 	// Create flat surface.
 	let objects = [
@@ -82,6 +90,6 @@ document.addEventListener("DOMContentLoaded", function(){
 		fpsCounter.textContent = rt.FPS;
 		// Update textures every second.
 		rt.UPDATE_TEXTURE();
-		rt.UPDATE_NORMAL();
+		rt.UPDATE_NORMAL_TEXTURE();
 	},1000);
 });
