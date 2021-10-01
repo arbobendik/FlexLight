@@ -25,8 +25,8 @@ const RayTracer = (target_canvas) => {
     FILTER: true,
     // Camera and frustrum settings.
     FOV: Math.PI,
-    X: -12, Y: 5, Z: -18,
-    FX: 0.440, FY: 0.235,
+    X: 0, Y: 0, Z: 0,
+    FX: 0, FY: 0,
     // Movement settings.
     MOUSE_ROTATION: true,
     MOVEMENT: true,
@@ -37,17 +37,14 @@ const RayTracer = (target_canvas) => {
     FPS: 0,
     // Init scene state GL textures.
     NormalTexture: null, ColorTexture: null, LightTexture: null,
-
+    // Generate texture from rgba array.
     GENERATE_TEX: async (array, width, height) => {
       var partCanvas = document.createElement('canvas');
       var partCtx = partCanvas.getContext('2d');
       partCanvas.width = width;
       partCanvas.height = height;
-
-      let imgArray = [];
-
-      for (let i = 0; i < array.length; i+=4) imgArray.push([array[i],array[i+1],array[i+2],array[i+3]]);
-      imgArray = new Uint8ClampedArray(imgArray.flat());
+      // Convert texel data to uint8.
+      let imgArray = new Uint8ClampedArray(array);
       // Create Image element.
       let imgData = partCtx.createImageData(width, height);
       // Set imgArray as image source.
@@ -61,17 +58,18 @@ const RayTracer = (target_canvas) => {
       image.src = await partCanvas.toDataURL();
       return await image;
     },
-
+    // Generate normal texture (only red channel)
     GENERATE_NORMAL_TEX: async (array, width, height) => {
       var partCanvas = document.createElement('canvas');
       var partCtx = partCanvas.getContext('2d');
       partCanvas.width = width;
       partCanvas.height = height;
-
-      let imgArray = [];
-
-      for (let i = 0; i < array.length; i++) imgArray.push([array[i], 0, 0, 255]);
-      imgArray = new Uint8ClampedArray(imgArray.flat());
+      // Create new array.
+      let texelArray = [];
+      // Convert image to rgba.
+      for (let i = 0; i < array.length; i++) texelArray.push([array[i], 0, 0, 255]);
+      // Convert texel data to uint8.
+      let imgArray = new Uint8ClampedArray(texelArray.flat());
       // Create Image element.
       let imgData = partCtx.createImageData(width, height);
       // Set imgArray as image source.
@@ -110,6 +108,7 @@ const RayTracer = (target_canvas) => {
       });
       RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, canvas.width, canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
     },
+    // Regenerate texture after change.
     UPDATE_TEXTURE: () => {
       // Test if there is even a texture.
       if (RT.TEXTURE.length === 0) return;
@@ -150,7 +149,7 @@ const RayTracer = (target_canvas) => {
       for (let i = 0; i < RT.LIGHT.length; i++)
       {
         // Set default value.
-        let strength = 5;
+        let strength = 20;
         // Overwrite default if set.
         if (typeof(RT.LIGHT[i].strength) !== "undefined") strength = RT.LIGHT[i].strength;
         // Push light location to Texture.
@@ -249,8 +248,7 @@ const RayTracer = (target_canvas) => {
 
       // Global constants.
       // Declare null vector as constant.
-      const vec3 null = vec3(0.0, 0.0, 0.0);
-      const vec4 vec4_null = vec4(0.0, 0.0, 0.0, 0.0);
+      const vec3 null = vec3(0.0);
       const float shadow_bias = 0.00001;
 
       // Prevent blur over shadow border.
@@ -281,13 +279,13 @@ const RayTracer = (target_canvas) => {
       vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
         float dnr = dot(n, r);
         // Test if ray or surface face in same direction.
-        if (sign(n) == sign(r)) return vec4_null;
+        if (sign(n) == sign(r)) return vec4(0.0);
         // Test if ray and plane are parallel.
-        if (dnr == 0.0) return vec4_null;
+        if (dnr == 0.0) return vec4(0.0);
         // Get distance to intersection point.
-        float s = dot(n , a - p) / dnr;
+        float s = dot(n, a - p) / dnr;
         // Ensure that ray triangle intersection is between light source and texture.
-        if (s > l || s <= shadow_bias) return vec4_null;
+        if (s > l || s <= shadow_bias) return vec4(0.0);
         // Calculate intersection point.
         vec3 d = (s * r) + p;
         // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
@@ -308,7 +306,7 @@ const RayTracer = (target_canvas) => {
         if ((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0 - shadow_bias)){
           return vec4(d, s);
         }else{
-          return vec4_null;
+          return vec4(0.0);
         }
       }
 
@@ -355,7 +353,7 @@ const RayTracer = (target_canvas) => {
             // Test if triangle intersects ray.
             vec4 current_intersection = rayTriangle(1000.0, ray, origin, a, b, c, n);
             // Test if ray even intersects.
-            if (current_intersection == vec4_null) continue;
+            if (current_intersection == vec4(0.0)) continue;
             // Test if this intersection is the closest.
             if (current_intersection.w < min_len || min_len == - 1.0){
               min_len = current_intersection.w;
@@ -412,14 +410,14 @@ const RayTracer = (target_canvas) => {
         return in_shadow;
       }
 
-      vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength){
+      vec3 forwardTrace(vec3 normal, vec3 color, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength, float roughness){
         // Calculate intensity of light reflection.
-        float intensity = strength / (1.0 + length(light - position) / strength);
+        float intensity = strength / (1.0 + length(light - position));
         // Process specularity of ray in view from origin's perspective.
         vec3 view = normalize(origin - position);
         vec3 halfVector = normalize(ray + view);
         float l = abs(dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal));
-        float specular = pow(dot(normal, halfVector), 50.0 * strength);
+        float specular = pow(dot(normal, halfVector), 1.0 / roughness * strength);
         // Determine final color and return it.
         vec3 l_color = color * l * intensity;
         if (specular > 0.0) l_color.rgb += specular * intensity;
@@ -455,7 +453,7 @@ const RayTracer = (target_canvas) => {
           // Update pixel color if coordinate is not in shadow.
           if (i == 0){
             if (!shadowTest(active_light_ray, light, last_position)){
-              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength);
+              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength, last_roughness);
             }else{
               first_in_shadow += 1.0 / 256.0;
             }
@@ -464,7 +462,7 @@ const RayTracer = (target_canvas) => {
             importancy_factor *= last_color;
 
             if (!shadowTest(active_light_ray, light, last_position)){
-              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength) * importancy_factor;
+              final_color += forwardTrace(last_rough_normal, last_color, active_light_ray, inv_light, last_origin, last_position, strength, last_roughness) * importancy_factor;
             }
           }
           // Break out of the loop after color is calculated if i was the last iteration.
@@ -1220,25 +1218,23 @@ const RayTracer = (target_canvas) => {
       }
     },
     // Axis aligned cuboid element prototype.
-    CUBOID: (x, y, z, width, height, depth) => {
-      // Predefine properties of vertices.
-      let [x2, y2, z2] = [x + width, y + height, z + depth];
+    CUBOID: (x, x2, y, y2, z, z2) => {
       // Create surface elements for cuboid.
       let surfaces = new Array(2);
       surfaces[0] = [x, x2, y, y2, z, z2];
-      surfaces[1] = RT.PLANE([x,y2,z],[x2,y2,z],[x2,y2,z2],[x,y2,z2],[0,1,0]);
-      surfaces[2] = RT.PLANE([x2,y2,z],[x2,y,z],[x2,y,z2],[x2,y2,z2],[1,0,0]);
-      surfaces[3] = RT.PLANE([x2,y2,z2],[x2,y,z2],[x,y,z2],[x,y2,z2],[0,0,1]);
-      surfaces[4] = RT.PLANE([x,y,z2],[x2,y,z2],[x2,y,z],[x,y,z],[0,-1,0]);
-      surfaces[5] = RT.PLANE([x,y2,z2],[x,y,z2],[x,y,z],[x,y2,z],[-1,0,0]);
-      surfaces[6] = RT.PLANE([x,y2,z],[x,y,z],[x2,y,z],[x2,y2,z],[0,0,-1]);
+      surfaces[1] = RT.PLANE([x,y2,z],[x2,y2,z],[x2,y2,z2],[x,y2,z2]);
+      surfaces[2] = RT.PLANE([x2,y2,z],[x2,y,z],[x2,y,z2],[x2,y2,z2]);
+      surfaces[3] = RT.PLANE([x2,y2,z2],[x2,y,z2],[x,y,z2],[x,y2,z2]);
+      surfaces[4] = RT.PLANE([x,y,z2],[x2,y,z2],[x2,y,z],[x,y,z]);
+      surfaces[5] = RT.PLANE([x,y2,z2],[x,y,z2],[x,y,z],[x,y2,z]);
+      surfaces[6] = RT.PLANE([x,y2,z],[x,y,z],[x2,y,z],[x2,y2,z]);
       return surfaces;
     },
     // Surface element prototype.
-    PLANE: (c0, c1, c2, c3, normal) => {
+    PLANE: (c0, c1, c2, c3) => {
       return {
         // Set normals.
-        normals: new Array(6).fill(normal).flat(),
+        normals: new Array(6).fill(RT.Math.cross(RT.Math.vec_diff(c0, c3), RT.Math.vec_diff(c0, c2))).flat(),
         // Set vertices.
         vertices: [c0,c1,c2,c2,c3,c0].flat(),
         // Default color to white.

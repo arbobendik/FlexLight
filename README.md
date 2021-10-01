@@ -6,6 +6,8 @@ example_0 (SCALE = 2 (1080p -> 4k), SAMPLES = 8)
 
 It would be very helpful if you could visit this test page and report any errors here in the "Issues" tab:
 
+cornell box: https://arbobendik.github.io/web-ray-tracer/example_cornell.html
+
 example_0 (without textures) test page: https://arbobendik.github.io/web-ray-tracer/example_0.html
 
 example_1 (with textures) test page: https://arbobendik.github.io/web-ray-tracer/example_1.html
