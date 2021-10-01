@@ -417,7 +417,7 @@ const RayTracer = (target_canvas) => {
         vec3 view = normalize(origin - position);
         vec3 halfVector = normalize(ray + view);
         float l = abs(dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal));
-        float specular = pow(dot(normal, halfVector), 1.0 / roughness * strength);
+        float specular = pow(dot(normal, halfVector), strength);
         // Determine final color and return it.
         vec3 l_color = color * l * intensity;
         if (specular > 0.0) l_color.rgb += specular * intensity;
