@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", async function(){
   // Make planes diffuse.
 	bottom_plane.textureNums = new Array(6).fill([-1,0]).flat();
   top_plane.textureNums = new Array(6).fill([-1,0]).flat();
+	back_plane.textureNums = new Array(6).fill([-1,0]).flat();
   left_plane.textureNums = new Array(6).fill([-1,0]).flat();
   right_plane.textureNums = new Array(6).fill([-1,0]).flat();
   // Color left and right plane.
