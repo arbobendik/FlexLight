@@ -2,7 +2,7 @@
 // Declare RayTracer global.
 var rt;
 // Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", function(){
+document.addEventListener("DOMContentLoaded", async function(){
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -10,14 +10,14 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Create new RayTracer (rt) for canvas.
 	rt = RayTracer(canvas);
 
-	// Make plane defuseR.
-	let normal_tex = rt.NORMAL_TEXTURE_FROM_ARRAY([200], 1, 1);
+	// Make plane defuser.
+	let normal_tex = await rt.GENERATE_NORMAL_TEX([200], 1, 1);
 	rt.NORMAL_TEXTURE.push(normal_tex);
-	rt.UPDATE_NORMAL();
-	// Reduce Scale for better performance.
-	rt.SCALE = 1;
-	// Set higher Sample count.
-	rt.SAMPLES = 1;
+
+	// Set camera perspective and position.
+	[rt.X, rt.Y, rt.Z] = [-12, 5, -18];
+	[rt.FX, rt.FY] = [0.440, 0.235];
+
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
 	// Modify brightness of first one to be brighter (default is 3)
@@ -27,10 +27,10 @@ document.addEventListener("DOMContentLoaded", function(){
 	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [];
-	r[0] = rt.CUBOID(-1.5, -1, 1.5, 6, 3, 1);
-	r[1] = rt.CUBOID(-1.5, -1, -2, 3, 3, 1);
-	r[2] = rt.CUBOID(0.5, -1, -1, 1, 3, 1);
-	r[3] = rt.CUBOID(-1.5, -1, - 1, 1, 3, 1);
+	r[0] = rt.CUBOID(-1.5, 4.5, -1, 2, 1.5, 2.5);
+	r[1] = rt.CUBOID(-1.5, 1.5, -1, 2, -2, -1);
+	r[2] = rt.CUBOID(0.5, 1.5, -1, 2, -1, 0);
+	r[3] = rt.CUBOID(-1.5, -0.5, -1, 2, - 1, 0);
 	// Color all cuboids in center.
 	for (let i = 0; i < 4; i++){
 		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
@@ -38,7 +38,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	}
 
 	// Spawn cube.
-	let cube = rt.CUBOID(5.5, 1.5, 5.5, 1, 1, 1);
+	let cube = rt.CUBOID(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
 	  [-1.5, 6.5, -1, 2.5, -2, 6.5],
@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
+		rt.UPDATE_NORMAL_TEXTURE();
 	},1000);
 
 	// Init iterator variable for simple animations.
