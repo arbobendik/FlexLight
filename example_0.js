@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;
 		// Create new resized R0 object.
-		let newR0 = rt.CUBOID(-1.5 + newX, -1, 1.5, 3, 3, 1);
+		let newR0 = rt.CUBOID(-1.5 + newX, 1.5 + newX, -1, 2, 1.5, 2.5);
 		// Color new cuboid.
 		for (let j = 1; j < 7; j++) newR0[j].colors = r[0][j].colors;
 		// Update bounding boxes.
