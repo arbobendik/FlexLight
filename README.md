@@ -8,6 +8,8 @@ It would be very helpful if you could visit this test page and report any errors
 
 cornell box: https://arbobendik.github.io/web-ray-tracer/example_cornell.html
 
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/cornell.png?raw=true)
+
 example_0 (without textures) test page: https://arbobendik.github.io/web-ray-tracer/example_0.html
 
 example_1 (with textures) test page: https://arbobendik.github.io/web-ray-tracer/example_1.html
