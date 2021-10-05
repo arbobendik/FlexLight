@@ -17,7 +17,7 @@ const RayTracer = (target_canvas) => {
     SKYBOX: [0, 0, 0],
     TEXTURE: [],
     NORMAL_TEXTURE: [],
-    TEXTURE_SIZES: [512, 512],
+    TEXTURE_SIZES: [64, 64],
     // Quality settings.
     SAMPLES: 1,
     SCALE: 1,
@@ -433,7 +433,7 @@ const RayTracer = (target_canvas) => {
         vec3 inv_light = light * vec3(-1.0, 1.0, 1.0);
         // Use additive color mixing technique, so start with black.
         vec3 final_color = null;
-        vec3 importancy_factor = vec3(1.0, 1.0, 1.0);
+        vec3 importancy_factor = vec3(1.0);
         // Ray currently traced.
         vec3 active_ray = normalize(position - origin);
         // Ray from last_position to light source.
@@ -509,7 +509,7 @@ const RayTracer = (target_canvas) => {
           // Multiply with texture value if available.
           if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
           // Default last_roughness to 0.5.
-          last_roughness = 0.3;
+          last_roughness = 0.5;
           // Use roughness from texture if available.
           if (tex_nums.y != -1.0) last_roughness = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
           // Update parameters.
@@ -536,7 +536,7 @@ const RayTracer = (target_canvas) => {
         // Multiply with texture value if texture is defined.
         if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
         // Default roughness to 0.5.
-        float roughness = 0.3;
+        float roughness = 0.5;
         // Set roughness to texture value if texture is defined.
         if (texture_nums.y != -1.0) roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
         // Fresnel effect.
@@ -575,9 +575,9 @@ const RayTracer = (target_canvas) => {
           render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
         }
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
-        render_normal = vec4((normal / 2.0 + 0.5) * roughness, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, pow(roughness, 1.5) * first_ray_length / 2.0);
-        render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.0);
+        render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
+        render_original_color = vec4(tex_color.xyz, roughness * (0.1 + first_ray_length));
+        render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), roughness);
       }
       `;
       const post_vertex_glsl = `#version 300 es
@@ -604,6 +604,70 @@ const RayTracer = (target_canvas) => {
       uniform sampler2D pre_render_original_color;
       uniform sampler2D pre_render_id;
 
+      layout(location = 0) out vec4 render_color;
+      layout(location = 1) out vec4 render_color_ip;
+
+      void main(){
+
+        // Get texture size.
+        ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
+
+        vec4 center_color = texelFetch(pre_render_color, texel, 0);
+        vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
+        vec4 center_normal = texelFetch(pre_render_normal, texel, 0);
+        vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+        vec4 center_id = texelFetch(pre_render_id, texel, 0);
+
+        vec4 color = center_color + center_color_ip * 256.0;
+        float count = 1.0;
+
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
+        // Force max radius.
+        if (radius > 3) radius = 3;
+
+        // Apply blur filter on image.
+        for (int i = 0; i < radius; i++){
+          for (int j = 0; j < radius; j++){
+
+            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 1.5 * asin(1.0) * float(1 + i));
+            vec4 next_color = texelFetch(pre_render_color, coords, 0);
+            vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
+            vec4 normal = texelFetch(pre_render_normal, coords, 0);
+            vec4 id = texelFetch(pre_render_id, coords, 0);
+
+            if (normal == center_normal
+              && abs(id.w - center_id.w) < 0.1
+              && (
+                id == center_id
+                || length(abs(center_color - next_color).xyz) < 0.1
+              )
+            ){
+              color += next_color + next_color_ip * 256.0;
+              count ++;
+            }
+          }
+        }
+        if (center_color.w > 0.0){
+          // Set out color for render texture for the antialiasing filter.
+          render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
+          render_color_ip = vec4(floor(color.xyz / count) / 256.0, 1.0);;
+        }else{
+          render_color = vec4(0.0);
+          render_color_ip = vec4(0.0);
+        }
+      }
+      `;
+      const post_fragment_2_glsl = `#version 300 es
+
+      precision highp float;
+      in vec2 clip_space;
+
+      uniform sampler2D pre_render_color;
+      uniform sampler2D pre_render_color_ip;
+      uniform sampler2D pre_render_normal;
+      uniform sampler2D pre_render_original_color;
+      uniform sampler2D pre_render_id;
+
       out vec4 out_color;
 
       void main(){
@@ -617,34 +681,39 @@ const RayTracer = (target_canvas) => {
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-        vec4 color = center_color;
+        vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
-        int increment = 4;
-        int max_radius = 8;
-        int radius = int(4.0 + sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
+
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
+
         // Force max radius.
-        if (radius > max_radius) radius = max_radius;
+        if (radius > 5) radius = 5;
 
         // Apply blur filter on image.
         for (int i = 0; i < radius; i++){
           for (int j = 0; j < radius; j++){
-
-            ivec2 coords = ivec2(vec2(texel) + vec2(i, j) * float(increment) - float(radius * increment / 2));
+            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 3.0);
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
-            vec4 original_color = texelFetch(pre_render_original_color, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal && (id == center_id || length(abs(center_color - next_color).xyz) < 0.5)){
-              color += vec4((next_color.xyz + next_color_ip.xyz * 256.0) * center_original_color.xyz, next_color.w);
+            if (
+              normal == center_normal
+              && (
+                id == center_id
+                || length(abs(center_color - next_color).xyz) < 0.1
+              )
+              && abs(id.w - center_id.w) < 0.1
+            ){
+              color += next_color + next_color_ip * 256.0;
               count ++;
             }
           }
         }
         if (center_color.w > 0.0){
           // Set out color for render texture for the antialiasing filter.
-          out_color = color / count;
+          out_color = color * center_original_color / count;
         }else{
           out_color = vec4(0.0, 0.0, 0.0, 0.0);
         }
@@ -705,16 +774,40 @@ const RayTracer = (target_canvas) => {
         // List of all vertices currently in world space.
         var Data = [];
         // Framebuffer, Post Program buffers and textures.
-        var Framebuffer, PostProgram, PostVertexBuffer, ColorRenderTexture, ColorRenderTex, ColorIpRenderTexture, ColorIpRenderTex, NormalRenderTexture, NormalRenderTex, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture, IdRenderTex, DepthTexture;
-        // Linkers for GLATTRIBARRAYS in PostProgram.
-        var PostPosition = 0;
-        // PostFramebuffer, Convolution-kernel program and its buffers and textures.
-        var PostFramebuffer, KernelProgram, KernelVertexBuffer, KernelTexture, KernelTex;
+        var Framebuffer, NormalRenderTexture, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
+        // Set post program array.
+        var PostProgram = [];
+        // Set DenoiserPasses.
+        var DenoiserPasses = 3;
+        // Create textures for Framebuffers in PostPrograms.
+        var ColorRenderTexture = new Array(DenoiserPasses + 1);
+        var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
+        var DepthTexture = new Array(DenoiserPasses + 1);
+        var ColorRenderTex = new Array(DenoiserPasses + 1);
+        var ColorIpRenderTex = new Array(DenoiserPasses + 1);
+        var NormalRenderTex = new Array(DenoiserPasses + 1);
+        var OriginalRenderTex = new Array(DenoiserPasses + 1);
+        var IdRenderTex = new Array(DenoiserPasses + 1);
+        // Create caching textures for denoising.
+        new Array(DenoiserPasses + 1).fill(null).forEach((item, i)=>{
+          [ColorRenderTexture[i], ColorIpRenderTexture[i], DepthTexture[i]] = [RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture()];
+        });
+        // Create buffers for vertices in PostPrograms.
+        var PostVertexBuffer = new Array(DenoiserPasses + 1);
+        var PostFramebuffer = new Array(DenoiserPasses + 1);
+        // Linkers for GLATTRIBARRAYS in PostPrograms.
+        var PostPosition = [0, 0, 0]
+        // Convolution-kernel program and its buffers and textures.
+        var KernelProgram, KernelVertexBuffer, KernelTexture, KernelTex;
         // Linkers for GLATTRIBARRAYS in KernelProgram.
         var KernelPosition = 0;
         // Create different VAOs for different rendering/filtering steps in pipeline.
         var VAO = RT.GL.createVertexArray();
-        var POST_VAO = RT.GL.createVertexArray();
+        var POST_VAO = new Array(DenoiserPasses + 1);
+        // Dynamically generate enough VAOs for each denoise pass.
+        new Array(DenoiserPasses + 1).fill(null).forEach((item, i)=>{
+          POST_VAO[i] = RT.GL.createVertexArray();
+        });
         var KERNEL_VAO = RT.GL.createVertexArray();
         // Momentary rotation change.
         var [DeltaX, DeltaY, DeltaZ] = [0, 0, 0];
@@ -842,8 +935,28 @@ const RayTracer = (target_canvas) => {
         RT.GL.generateMipmap(RT.GL.TEXTURE_2D);
       }
       function renderTextureBuilder(){
-        // Init textures
-        [ColorRenderTexture, ColorIpRenderTexture, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item){
+        // Init textures for denoiser.
+        [ColorRenderTexture, ColorIpRenderTexture].forEach((parent) => {
+          parent.forEach(function(item){
+            RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
+            RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
+            RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+            RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+            RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
+            RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
+          });
+        });
+        // Init single channel depth textures.
+        DepthTexture.forEach((item) => {
+          RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
+          RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.DEPTH_COMPONENT24, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.DEPTH_COMPONENT, RT.GL.UNSIGNED_INT, null);
+          RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
+          RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+          RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
+          RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
+        });
+        // Init other textures.
+        [NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item){
           RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
           RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
           RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
@@ -851,12 +964,6 @@ const RayTracer = (target_canvas) => {
           RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
           RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
         });
-        RT.GL.bindTexture(RT.GL.TEXTURE_2D, DepthTexture);
-        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.DEPTH_COMPONENT24, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.DEPTH_COMPONENT, RT.GL.UNSIGNED_INT, null);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
       }
       function postRenderTextureBuilder(){
         RT.GL.bindTexture(RT.GL.TEXTURE_2D, KernelTexture);
@@ -880,11 +987,9 @@ const RayTracer = (target_canvas) => {
             fillData(item[i]);
           }
           let len = Math.floor((Data.length - len_pos) / 24);
-          // console.log(len);
           // Set now calculated vertices length of bounding box
           // to skip if ray doesn't intersect with it.
           Data[len_pos + 6] = len;
-          // console.log(item.slice(1));
         }else{
           // Alias object properties to simplify data texture assembly.
           let v = item.vertices;
@@ -933,6 +1038,7 @@ const RayTracer = (target_canvas) => {
         // Update Microse variable
         Micros = window.performance.now();
       }
+
       function renderFrame(){
         {
           // Configure where the final image should go.
@@ -946,13 +1052,14 @@ const RayTracer = (target_canvas) => {
               RT.GL.COLOR_ATTACHMENT4
             ]);
             // Configure framebuffer for color and depth.
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, ColorRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, ColorIpRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, ColorRenderTexture[0], 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, ColorIpRenderTexture[0], 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT2, RT.GL.TEXTURE_2D, NormalRenderTexture, 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT3, RT.GL.TEXTURE_2D, OriginalRenderTexture, 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT4, RT.GL.TEXTURE_2D, IdRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.DEPTH_ATTACHMENT, RT.GL.TEXTURE_2D, DepthTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.DEPTH_ATTACHMENT, RT.GL.TEXTURE_2D, DepthTexture[0], 0);
           }else{
+            // If Filter variable is not set render to canvas directly.
             RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
           }
           // Clear depth and color buffers from last frame.
@@ -1021,7 +1128,6 @@ const RayTracer = (target_canvas) => {
               colors.push(item.colors);
               uvs.push(item.uvs);
               texNums.push(item.textureNums);
-              //console.log(item.textureNums);
               length += item.arrayLength;
             }
           };
@@ -1044,29 +1150,70 @@ const RayTracer = (target_canvas) => {
         // Apply post processing.
         if (RT.FILTER){
           {
+            for (let i = 0; i < DenoiserPasses; i++){
+              // Configure where the final image should go.
+              RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[i]);
+              // Set attachments to use for framebuffer.
+              RT.GL.drawBuffers([
+                RT.GL.COLOR_ATTACHMENT0,
+                RT.GL.COLOR_ATTACHMENT1
+              ]);
+              // Configure framebuffer for color and depth.
+              RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, ColorRenderTexture[i+1], 0);
+              RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, ColorIpRenderTexture[i+1], 0);
+              RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.DEPTH_ATTACHMENT, RT.GL.TEXTURE_2D, DepthTexture[i+1], 0);
+              // Clear depth and color buffers from last frame.
+              RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
+              // Push pre rendered textures to next shader (post processing).
+              [ColorRenderTexture[i], ColorIpRenderTexture[i], NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+                RT.GL.activeTexture(RT.GL.TEXTURE0 + i);
+                RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
+              });
+              // Switch program and VAO.
+              RT.GL.useProgram(PostProgram[i]);
+              RT.GL.bindVertexArray(POST_VAO[i]);
+              // Pass pre rendered texture to shader.
+              RT.GL.uniform1i(ColorRenderTex[i], 0);
+              RT.GL.uniform1i(ColorIpRenderTex[i], 1);
+              // Pass normal texture to GPU.
+              RT.GL.uniform1i(NormalRenderTex[i], 2);
+              // Pass original color texture to GPU.
+              RT.GL.uniform1i(OriginalRenderTex[i], 3);
+              // Pass vertex_id texture to GPU.
+              RT.GL.uniform1i(IdRenderTex[i], 4);
+              // Post processing drawcall.
+              RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
+            }
+          }
+          // Last denoise pass.
+          {
             // Configure where the final image should go.
-            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer);
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
+            RT.GL.drawBuffers([
+              RT.GL.COLOR_ATTACHMENT0,
+              RT.GL.COLOR_ATTACHMENT1
+            ]);
             // Configure framebuffer for color and depth.
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
             // Clear depth and color buffers from last frame.
             RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
             // Push pre rendered textures to next shader (post processing).
-            [ColorRenderTexture, ColorIpRenderTexture, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+            [ColorRenderTexture[DenoiserPasses], ColorIpRenderTexture[DenoiserPasses], NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
               RT.GL.activeTexture(RT.GL.TEXTURE0 + i);
               RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
             });
             // Switch program and VAO.
-            RT.GL.useProgram(PostProgram);
-            RT.GL.bindVertexArray(POST_VAO);
+            RT.GL.useProgram(PostProgram[DenoiserPasses]);
+            RT.GL.bindVertexArray(POST_VAO[DenoiserPasses]);
             // Pass pre rendered texture to shader.
-            RT.GL.uniform1i(ColorRenderTex, 0);
-            RT.GL.uniform1i(ColorIpRenderTex, 1);
+            RT.GL.uniform1i(ColorRenderTex[DenoiserPasses], 0);
+            RT.GL.uniform1i(ColorIpRenderTex[DenoiserPasses], 1);
             // Pass normal texture to GPU.
-            RT.GL.uniform1i(NormalRenderTex, 2);
+            RT.GL.uniform1i(NormalRenderTex[DenoiserPasses], 2);
             // Pass original color texture to GPU.
-            RT.GL.uniform1i(OriginalRenderTex, 3);
+            RT.GL.uniform1i(OriginalRenderTex[DenoiserPasses], 3);
             // Pass vertex_id texture to GPU.
-            RT.GL.uniform1i(IdRenderTex, 4);
+            RT.GL.uniform1i(IdRenderTex[DenoiserPasses], 4);
             // Post processing drawcall.
             RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
           }
@@ -1095,9 +1242,16 @@ const RayTracer = (target_canvas) => {
           { source: fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
         ]);
         // Compile shaders and link them into PostProgram global.
-        PostProgram = await buildProgram([
+        for (let i = 0; i < DenoiserPasses; i++){
+          PostProgram[i] = await buildProgram([
+            { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
+            { source: post_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
+          ]);
+        }
+        // Compile shaders and link them into PostProgram global.
+        PostProgram[DenoiserPasses] = await buildProgram([
           { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
-          { source: post_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
+          { source: post_fragment_2_glsl, type: RT.GL.FRAGMENT_SHADER }
         ]);
         // Compile shaders and link them into KernelProgram global.
         KernelProgram = await buildProgram([
@@ -1170,30 +1324,31 @@ const RayTracer = (target_canvas) => {
           RT.GL.vertexAttribPointer(item[1], item[2], RT.GL.FLOAT, item[3], 0, 0);
         });
         // Create frame buffers and textures to be rendered to.
-        [Framebuffer, ColorRenderTexture, ColorIpRenderTexture, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture, DepthTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture()];
+        [Framebuffer, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture()];
 
         renderTextureBuilder();
-        // Create post program buffers and uniforms.
-        RT.GL.bindVertexArray(POST_VAO);
-        RT.GL.useProgram(PostProgram);
 
-        // Bind uniforms.
-        ColorRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_color");
-        ColorIpRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_color_ip");
-        NormalRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_normal");
-        OriginalRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_original_color");
-        IdRenderTex = RT.GL.getUniformLocation(PostProgram, "pre_render_id");
+        for (let i = 0; i < DenoiserPasses + 1; i++){
+          // Create post program buffers and uniforms.
+          RT.GL.bindVertexArray(POST_VAO[i]);
+          RT.GL.useProgram(PostProgram[i]);
+          // Bind uniforms.
+          ColorRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color");
+          ColorIpRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color_ip");
+          NormalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_normal");
+          OriginalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_original_color");
+          IdRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_id");
+          PostVertexBuffer[i] = RT.GL.createBuffer();
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
+          RT.GL.enableVertexAttribArray(PostPosition[i]);
+          RT.GL.vertexAttribPointer(PostPosition[i], 2, RT.GL.FLOAT, false, 0, 0);
+          // Fill buffer with data for two verices.
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
+          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
+          PostFramebuffer[i] = RT.GL.createFramebuffer();
+        }
 
-        PostVertexBuffer = RT.GL.createBuffer();
-
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer);
-        RT.GL.enableVertexAttribArray(PostPosition);
-        RT.GL.vertexAttribPointer(PostPosition, 2, RT.GL.FLOAT, false, 0, 0);
-        // Fill buffer with data for two verices.
-        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer);
-        RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
-
-        PostFramebuffer = RT.GL.createFramebuffer();
+        // Post processing (end of render pipeline).
         KernelTexture = RT.GL.createTexture();
 
         postRenderTextureBuilder();
