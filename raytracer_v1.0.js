@@ -576,7 +576,7 @@ const RayTracer = (target_canvas) => {
         }
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (0.1 + first_ray_length));
+        render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 1.5 - roughness);
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), roughness);
       }
       `;
@@ -623,13 +623,13 @@ const RayTracer = (target_canvas) => {
 
         int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
         // Force max radius.
-        if (radius > 3) radius = 3;
+        if (radius > 5) radius = 5;
 
         // Apply blur filter on image.
         for (int i = 0; i < radius; i++){
           for (int j = 0; j < radius; j++){
 
-            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 1.5 * asin(1.0) * float(1 + i));
+            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * asin(1.0) * float(3 + i));
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
@@ -639,7 +639,7 @@ const RayTracer = (target_canvas) => {
               && abs(id.w - center_id.w) < 0.1
               && (
                 id == center_id
-                || length(abs(center_color - next_color).xyz) < 0.1
+                || length(abs(center_color - next_color).xyz) < 0.3
               )
             ){
               color += next_color + next_color_ip * 256.0;
@@ -684,7 +684,7 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.02 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.05 * center_original_color.w);
 
         // Force max radius.
         if (radius > 5) radius = 5;
@@ -702,7 +702,7 @@ const RayTracer = (target_canvas) => {
               normal == center_normal
               && (
                 id == center_id
-                || length(abs(center_color - next_color).xyz) < 0.1
+                || length(abs(center_color - next_color).xyz) < 0.5
               )
               && abs(id.w - center_id.w) < 0.1
             ){
@@ -729,9 +729,9 @@ const RayTracer = (target_canvas) => {
       void main(){
 
         int kernel[12] = int[12](
-             1, 2, 1,
-             2, 4, 2,
-             1, 2, 1,
+             1, 5, 1,
+             5, 20, 5,
+             1, 5, 1,
              0, 0, 0
         );
 
@@ -778,7 +778,7 @@ const RayTracer = (target_canvas) => {
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
-        var DenoiserPasses = 3;
+        var DenoiserPasses = 4;
         // Create textures for Framebuffers in PostPrograms.
         var ColorRenderTexture = new Array(DenoiserPasses + 1);
         var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
