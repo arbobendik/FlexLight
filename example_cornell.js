@@ -13,8 +13,17 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create 2 options for texture roughness.
 	let roughTex = await rt.GENERATE_NORMAL_TEX([255], 1, 1);
-  let metallicTex = await rt.GENERATE_NORMAL_TEX([205], 1, 1);
-	rt.NORMAL_TEXTURE.push(roughTex, metallicTex);
+  let caroTex = await rt.GENERATE_NORMAL_TEX(
+		[
+			Array(64).fill([
+				Array(64).fill(255), Array(64).fill(100)
+			].flat()).flat(),
+			Array(64).fill([
+				Array(64).fill(50), Array(64).fill(255)
+			].flat()).flat()
+		].flat(),
+	128, 128);
+	rt.NORMAL_TEXTURE.push(roughTex, caroTex);
 
   // Move camera out of center.
   rt.Z = -20;
@@ -56,7 +65,7 @@ document.addEventListener("DOMContentLoaded", async function(){
   r[1] = surfaces;
 
 	for (let i = 1; i <= 6; i++){
-		r[0][i].textureNums = new Array(6).fill([-1,1]).flat();
+		r[0][i].textureNums = new Array(6).fill([-1,0]).flat();
 		r[1][i].textureNums = new Array(6).fill([-1,0]).flat();
 	}
 	// Package cube and cuboids together in a shared bounding volume.
