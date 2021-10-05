@@ -24,16 +24,16 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.X, rt.Y, rt.Z] = [-12, 5, -18];
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
-	// Set sky-box illumination to 0.2.
-	rt.SKYBOX = [0.2, 0.2, 0.2];
+	// Set sky-box illumination to 0.1.
+	rt.SKYBOX = [0.1, 0.1, 0.1];
 	// Make light brighter.
-	rt.LIGHT[0].strength = 20;
+	rt.LIGHT[0].strength = 15;
 
 	// Create varying roughness texture for the surface.
 	let normalTex = new Image();
 	normalTex.src = "./textures/normal.jpg";
 	// Generate new more diffuse texture for the grass block.
-	let diffuseTex = await rt.GENERATE_NORMAL_TEX([200], 1, 1);
+	let diffuseTex = await rt.GENERATE_NORMAL_TEX([255], 1, 1);
 	// Add those textures to render queue.
 	rt.NORMAL_TEXTURE.push(normalTex, diffuseTex);
 

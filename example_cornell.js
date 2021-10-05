@@ -13,8 +13,17 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create 2 options for texture roughness.
 	let roughTex = await rt.GENERATE_NORMAL_TEX([255], 1, 1);
-  let metallicTex = await rt.GENERATE_NORMAL_TEX([0], 1, 1);
-	rt.NORMAL_TEXTURE.push(roughTex, metallicTex);
+  let caroTex = await rt.GENERATE_NORMAL_TEX(
+		[
+			Array(64).fill([
+				Array(64).fill(255), Array(64).fill(100)
+			].flat()).flat(),
+			Array(64).fill([
+				Array(64).fill(50), Array(64).fill(255)
+			].flat()).flat()
+		].flat(),
+	128, 128);
+	rt.NORMAL_TEXTURE.push(roughTex, caroTex);
 
   // Move camera out of center.
   rt.Z = -20;
@@ -24,7 +33,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Modify brightness of first one to be brighter (default is 20)
 	rt.LIGHT[0].strength = 4;
 
-	// Generate side planes.
+	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
   let back_plane = rt.PLANE([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[0,0,-1]);
@@ -43,11 +52,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 	let r = [];
   // Make first cuboid full defuse.
 	r[0] = rt.CUBOID(-3, -1.5, -5, -2, -1, 1);
-
+	// Generate Second object from planes.
   let surfaces = new Array(2);
 	let [x, x2, y, y2, z, z2] = [1, 3, -5, -1, -2, 2];
   surfaces[0] = [x, x2, y, y2, z, z2];
-	// x2 z
   surfaces[1] = rt.PLANE([x,y2,z],[x2-1,y2,z+1],[x2,y2,z2],[x,y2,z2-1],[0,1,0]);
   surfaces[2] = rt.PLANE([x2-1,y2,z+1],[x2-1,y,z+1],[x2,y,z2],[x2,y2,z2],[1,0,0]);
   surfaces[3] = rt.PLANE([x2,y2,z2],[x2,y,z2],[x,y,z2-1],[x,y2,z2-1],[0,0,1]);
@@ -56,8 +64,8 @@ document.addEventListener("DOMContentLoaded", async function(){
   surfaces[6] = rt.PLANE([x,y2,z],[x,y,z],[x2-1,y,z+1],[x2-1,y2,z+1],[0,0,-1]);
   r[1] = surfaces;
 
-	for (let i = 1; i < 6; i++){
-		r[0][i].textureNums = new Array(6).fill([-1,0]).flat();
+	for (let i = 1; i <= 6; i++){
+		r[0][i].textureNums = new Array(6).fill([-1,1]).flat();
 		r[1][i].textureNums = new Array(6).fill([-1,0]).flat();
 	}
 	// Package cube and cuboids together in a shared bounding volume.
@@ -75,8 +83,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
-	setInterval(function(){
+	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
+		// Update texture atlases.
+		rt.UPDATE_TEXTURE();
 		rt.UPDATE_NORMAL_TEXTURE();
 	},1000);
 });
