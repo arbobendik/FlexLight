@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", async function(){
   r[1] = surfaces;
 
 	for (let i = 1; i <= 6; i++){
-		r[0][i].textureNums = new Array(6).fill([-1,0]).flat();
+		r[0][i].textureNums = new Array(6).fill([-1,1]).flat();
 		r[1][i].textureNums = new Array(6).fill([-1,0]).flat();
 	}
 	// Package cube and cuboids together in a shared bounding volume.
