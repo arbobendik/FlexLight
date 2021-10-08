@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
-		rt.UPDATE_NORMAL_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 
 	// Init iterator variable for simple animations.
