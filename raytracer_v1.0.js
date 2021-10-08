@@ -535,7 +535,7 @@ const RayTracer = (target_canvas) => {
           last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
 
           if (i == 0){
-            if(roughness <= 0.1){
+            if(roughness < 0.1){
               inner_normal = vec4(last_normal, 1.0);
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
               inner_render_id = vec4(1.0 / vec3(int(intersection.w)%16777216, int(intersection.w)%65536, int(intersection.w)%256), 0.5 * (last_roughness * 0.5 + metallicity));
@@ -605,11 +605,11 @@ const RayTracer = (target_canvas) => {
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
 
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + (1.5 - roughness)) + 0.1);
+        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + (2.0 - roughness)));
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.5 * (roughness + metallicity));
 
         // Add properties of reflected objects to filter parameters for very reflective materials.
-        if(roughness <= 0.1){
+        if(roughness < 0.1){
           render_normal = 0.5 * (render_normal + inner_normal);
           render_original_color = render_original_color * (1.0 + inner_original_color);
           render_id = 0.5 * (render_id + inner_render_id);
@@ -657,7 +657,7 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.01 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.005 * center_original_color.w);
         // Force max radius.
         if (radius > 3) radius = 3;
 
@@ -817,7 +817,7 @@ const RayTracer = (target_canvas) => {
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
-        var DenoiserPasses = 5;
+        var DenoiserPasses = 7;
         // Create textures for Framebuffers in PostPrograms.
         var ColorRenderTexture = new Array(DenoiserPasses + 1);
         var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
