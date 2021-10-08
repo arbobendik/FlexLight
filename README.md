@@ -10,7 +10,7 @@ cornell box: https://arbobendik.github.io/web-ray-tracer/example_cornell.html
 
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/cornell.png?raw=true)
 
-cornell box with emissive sides: ![](https://arbobendik.github.io/web-ray-tracer/example_emissive.html)
+cornell box with emissive sides: https://arbobendik.github.io/web-ray-tracer/example_emissive.html
 
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/emissive.png?raw=true)
 
