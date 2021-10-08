@@ -33,9 +33,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 	let normalTex = new Image();
 	normalTex.src = "./textures/normal.jpg";
 	// Generate new more diffuse texture for the grass block.
-	let diffuseTex = await rt.GENERATE_NORMAL_TEX([255], 1, 1);
+	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 1], 1, 1);
 	// Add those textures to render queue.
-	rt.NORMAL_TEXTURE.push(normalTex, diffuseTex);
+	rt.PBR_TEXTURE.push(normalTex, diffuseTex);
 
 	// Set texture Sizes.
 	rt.TEXTURE_SIZES = [32, 32];
@@ -98,6 +98,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 		fpsCounter.textContent = rt.FPS;
 		// Update textures every second.
 		rt.UPDATE_TEXTURE();
-		rt.UPDATE_NORMAL_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 });

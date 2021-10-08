@@ -14,27 +14,26 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
 	let topLight = await rt.GENERATE_PBR_TEX([1, 0, 1], 1, 1);
+	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.2], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
-				Array(64).fill([1, 0, 0.3]).flat(),
+				Array(64).fill([1, 0, 0.5]).flat(),
 				Array(64).fill([0.1, 1, 0]).flat()
 			].flat()).flat(),
 			Array(64).fill([
 				Array(64).fill([0.1, 1, 0]).flat(),
-				Array(64).fill([1, 0, 0.3]).flat()
+				Array(64).fill([1, 0, 0.5]).flat()
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight);
+	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight, roughLight);
 
   // Move camera out of center.
   rt.Z = -20;
 
-	// Set primary light source.
-	rt.LIGHT = [[0, 4.9, 0]];
-	// Modify brightness of first one to be brighter (default is 20)
-	rt.LIGHT[0].strength = 5;
+	// Remove primary light source in favour of emissive.
+	rt.LIGHT = [];
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-5],[5,-5,-5],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-5],[-5,5,5],[5,5,5],[5,5,-5],[0,-1,0]);
@@ -48,8 +47,8 @@ document.addEventListener("DOMContentLoaded", async function(){
   top_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	back_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	front_plane.textureNums = new Array(6).fill([-1,0]).flat();
-  left_plane.textureNums = new Array(6).fill([-1,0]).flat();
-  right_plane.textureNums = new Array(6).fill([-1,0]).flat();
+  left_plane.textureNums = new Array(6).fill([-1,3]).flat();
+  right_plane.textureNums = new Array(6).fill([-1,3]).flat();
   // Color left and right plane.
   left_plane.colors = new Array(6).fill([1, 0, 0, 1]).flat();
   right_plane.colors = new Array(6).fill([0, 1, 0, 1]).flat();
