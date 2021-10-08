@@ -11,8 +11,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 
 	// Make plane defuser.
-	let normal_tex = await rt.GENERATE_NORMAL_TEX([200], 1, 1);
-	rt.NORMAL_TEXTURE.push(normal_tex);
+	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
+	rt.PBR_TEXTURE.push(normal_tex);
 
 	// Set camera perspective and position.
 	[rt.X, rt.Y, rt.Z] = [-12, 5, -18];
@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
-		rt.UPDATE_NORMAL_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 
 	// Init iterator variable for simple animations.
