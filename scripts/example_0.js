@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 
 	// Make plane defuser.
-	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 1], 1, 1);
+	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
 	rt.PBR_TEXTURE.push(normal_tex);
 
 	// Set camera perspective and position.

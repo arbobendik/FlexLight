@@ -817,7 +817,7 @@ const RayTracer = (target_canvas) => {
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
-        var DenoiserPasses = 4;
+        var DenoiserPasses = 5;
         // Create textures for Framebuffers in PostPrograms.
         var ColorRenderTexture = new Array(DenoiserPasses + 1);
         var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
