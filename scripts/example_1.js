@@ -24,18 +24,17 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.X, rt.Y, rt.Z] = [-12, 5, -18];
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
-	// Set sky-box illumination to 0.1.
-	rt.SKYBOX = [0.1, 0.1, 0.1];
 	// Make light brighter.
-	rt.LIGHT[0].strength = 15;
+	rt.LIGHT[0].strength = 20;
 
 	// Create varying roughness texture for the surface.
 	let normalTex = new Image();
 	normalTex.src = "./textures/normal.jpg";
 	// Generate new more diffuse texture for the grass block.
-	let diffuseTex = await rt.GENERATE_NORMAL_TEX([255], 1, 1);
+	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
+	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.1, 1, 0], 1, 1);
 	// Add those textures to render queue.
-	rt.NORMAL_TEXTURE.push(normalTex, diffuseTex);
+	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseMetallicTex);
 
 	// Set texture Sizes.
 	rt.TEXTURE_SIZES = [32, 32];
@@ -66,6 +65,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 	for (let i = 0; i < 4; i++){
 		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
 		for (let j = 1; j < 7; j++) r[i][j].colors = color;
+	}
+
+	for (let i = 1; i <= 6; i++){
+		for (let j = 0; j < 4; j++) r[j][i].textureNums = new Array(6).fill([-1,2]).flat();
 	}
 	// Spawn cube with textures.
 	let cube = rt.CUBOID(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
@@ -98,6 +101,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 		fpsCounter.textContent = rt.FPS;
 		// Update textures every second.
 		rt.UPDATE_TEXTURE();
-		rt.UPDATE_NORMAL_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 });
