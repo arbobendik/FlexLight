@@ -35,12 +35,12 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Remove primary light source in favour of emissive.
 	rt.LIGHT = [];
 	// Generate side planes of box.
-	let bottom_plane = rt.PLANE([-5,-5,-5],[5,-5,-5],[5,-5,5],[-5,-5,5],[0,1,0]);
-  let top_plane = rt.PLANE([-5,5,-5],[-5,5,5],[5,5,5],[5,5,-5],[0,-1,0]);
-  let back_plane = rt.PLANE([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[0,0,-1]);
-	let front_plane = rt.PLANE([-5,-5,-5],[-5,5,-5],[5,5,-5],[5,-5,-5],[0,0,1]);
-  let left_plane = rt.PLANE([-5,-5,-5],[-5,-5,5],[-5,5,5],[-5,5,-5],[1,0,0]);
-  let right_plane = rt.PLANE([5,-5,-5],[5,5,-5],[5,5,5],[5,-5,5],[-1,0,0]);
+	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
+	let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
+	let back_plane = rt.PLANE([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[0,0,-1]);
+	let front_plane = rt.PLANE([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15],[0,0,1]);
+	let left_plane = rt.PLANE([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15],[1,0,0]);
+	let right_plane = rt.PLANE([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5],[-1,0,0]);
 
   // Make planes diffuse.
 	bottom_plane.textureNums = new Array(6).fill([-1,0]).flat();
