@@ -655,7 +655,7 @@ const RayTracer = (target_canvas) => {
         // Apply blur filter on image.
         for (int i = 0; i < radius; i++){
           for (int j = 0; j < radius; j++){
-            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * asin(1.0) * float(3 + 2 * (i + j)));
+            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * asin(1.0) * float(4 + 2 * (i + j)));
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
