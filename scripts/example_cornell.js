@@ -17,12 +17,12 @@ document.addEventListener("DOMContentLoaded", async function(){
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
-				Array(64).fill([1, 0, 0.3]).flat(),
+				Array(64).fill([1, 0, 0.02]).flat(),
 				Array(64).fill([0.1, 1, 0]).flat()
 			].flat()).flat(),
 			Array(64).fill([
 				Array(64).fill([0.1, 1, 0]).flat(),
-				Array(64).fill([1, 0, 0.3]).flat()
+				Array(64).fill([1, 0, 0.02]).flat()
 			].flat()).flat()
 		].flat(),
 	128, 128);

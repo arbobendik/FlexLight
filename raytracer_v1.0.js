@@ -439,7 +439,7 @@ const RayTracer = (target_canvas) => {
         float last_roughness = roughness;
         float last_metallicity = metallicity;
         // Iterate over each bounce and modify color accordingly.
-        for (int i = 0; i < bounces; i++){
+        for (int i = 0; i < bounces && length(importancy_factor) >= 0.0; i++){
 
           //  Calculate primary light sources for this pass.
           for (int j = 0; j < textureSize(light_tex, 0).y; j++){
@@ -531,10 +531,11 @@ const RayTracer = (target_canvas) => {
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
               inner_render_id = vec4(1.0 / vec3(int(intersection.w)%16777216, int(intersection.w)%65536, int(intersection.w)%256), 0.5 * (last_roughness * 0.5 + metallicity));
             }
-            first_ray_length = length(last_position - last_origin);
+            first_ray_length = length(last_position - last_origin) / length(position - origin);
           }
-            // Precalculate importancy_factor for this iteration.
-            importancy_factor *= last_color * (0.5 + (0.5 * last_metallicity));
+
+          // Precalculate importancy_factor for this iteration.
+          importancy_factor *= last_color * (0.5 + (0.5 * last_metallicity));
         }
         // Apply global illumination.
         final_color += sky_box * importancy_factor;
@@ -566,7 +567,7 @@ const RayTracer = (target_canvas) => {
         // Start hybrid ray tracing on a per light source base.
         // Directly add emissive light of original surface to final_color.
         vec3 final_color = vec3(0.0);
-        vec3 random_vec = null;
+        vec3 random_vec = vec3(0.0);
         // Addapt outer loop iterations depending on how many light sources there are.
         int samples = samples;
         // Generate multiple samples.
@@ -596,7 +597,7 @@ const RayTracer = (target_canvas) => {
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
 
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + (2.0 - roughness)) + 0.01);
+        render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.5 * (roughness + metallicity));
 
         // Add properties of reflected objects to filter parameters for very reflective materials.
@@ -648,14 +649,16 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.005 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
         // Force max radius.
         if (radius > 3) radius = 3;
 
         // Apply blur filter on image.
         for (int i = 0; i < radius; i++){
           for (int j = 0; j < radius; j++){
-            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * asin(1.0) * float(4 + 2 * (i + j)));
+            ivec2 coords = ivec2(
+              vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius)
+            );
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
@@ -710,7 +713,7 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.05 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * center_original_color.w);
 
         // Force max radius.
         if (radius > 5) radius = 5;
@@ -739,7 +742,7 @@ const RayTracer = (target_canvas) => {
         }
         if (center_color.w > 0.0){
           // Set out color for render texture for the antialiasing filter.
-          out_color = color * center_original_color / count;
+          out_color = color * vec4(center_original_color.xyz, 1.0) / count;
         }else{
           out_color = vec4(0.0, 0.0, 0.0, 0.0);
         }
@@ -760,10 +763,6 @@ const RayTracer = (target_canvas) => {
              1, 5, 1,
              0, 0, 0
         );
-
-        /*imat3 kernel = imat3(
-          ivec3(1, 5),
-        );*/
 
         // Get texture size.
         vec2 texel = vec2(textureSize(pre_render, 0)) * clip_space;
@@ -792,7 +791,9 @@ const RayTracer = (target_canvas) => {
       // Initialize internal globals.
       {
         // The micros variable is needed to calculate fps and movement speed.
-        var Micros = window.performance.now();
+        var Millis = performance.now();
+        var TimeElapsed = performance.now();
+        var Frames = 0;
         // Internal GL objects.
         var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, ColorTex, LightTex;
         // Init Buffers.
@@ -808,7 +809,7 @@ const RayTracer = (target_canvas) => {
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
-        var DenoiserPasses = 5;
+        var DenoiserPasses = 6;
         // Create textures for Framebuffers in PostPrograms.
         var ColorRenderTexture = new Array(DenoiserPasses + 1);
         var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
@@ -1056,19 +1057,24 @@ const RayTracer = (target_canvas) => {
         requestAnimationFrame(frameCycle);
         // Render new Image, work through QUEUE.
       	renderFrame();
-        // Calculate fps by measuring the time it takes to render 30 frames.
+        // Reevaluate keys for movement.
         evalKeys();
 
         if (RT.MOVEMENT){
-          let deltaTime = (window.performance.now() - Micros) * RT.MOVEMENT_SPEED;
+          let deltaTime = (window.performance.now() - Millis) * RT.MOVEMENT_SPEED;
           RT.X += (DeltaX * Math.cos(RT.FX) + DeltaZ * Math.sin(RT.FX)) * deltaTime;
           RT.Y += DeltaY * deltaTime;
           RT.Z += (DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX)) * deltaTime;
         }
+        // Update Millis variable for movement.
+        Millis = performance.now();
+        // Update frame counter.
+        Frames ++;
         // Calculate Fps.
-        RT.FPS = (1000 / (performance.now() - Micros)).toFixed(0);
-        // Update Microse variable
-        Micros = window.performance.now();
+        if ((performance.now() - TimeElapsed) >= 500) {
+          RT.FPS = (1000 * Frames / (performance.now() - TimeElapsed)).toFixed(0);
+          [TimeElapsed, Frames] = [performance.now(), 0];
+        }
       }
 
       function renderFrame(){
