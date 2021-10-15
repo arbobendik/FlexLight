@@ -197,7 +197,7 @@ const RayTracer = (target_canvas) => {
         );
         vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
         // Set final clip space position.
-        gl_Position = vec4(translate_2d, - 0.99 / (1.0 + exp(- length(move_3d / 10000000000000000.0))), translate_py.y);
+        gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 10000000000000000.0))), translate_py.y);
         vertex_id = gl_VertexID;
         clip_space = vec3(translate_2d, translate_py.y);
         player = camera_position * vec3(-1.0, 1.0, 1.0);
@@ -253,7 +253,7 @@ const RayTracer = (target_canvas) => {
 
       // Prevent blur over shadow border or over (close to) perfect reflections.
       float first_in_shadow = 0.0;
-      float first_ray_length = 256.0;
+      float first_ray_length = 1.0;
 
       vec4 inner_normal;
       vec4 inner_original_color;
@@ -279,13 +279,8 @@ const RayTracer = (target_canvas) => {
 
       // Test if ray intersects triangle and return intersection.
       vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n){
-        float dnr = dot(n, r);
-        // Test if ray or surface face in same direction.
-        if (sign(n) == sign(r)) return vec4(0.0);
-        // Test if ray and plane are parallel.
-        if (dnr == 0.0) return vec4(0.0);
         // Get distance to intersection point.
-        float s = dot(n, a - p) / dnr;
+        float s = dot(n, a - p) / dot(n, r);
         // Ensure that ray triangle intersection is between light source and texture.
         if (s > l || s <= shadow_bias) return vec4(0.0);
         // Calculate intersection point.
@@ -296,14 +291,14 @@ const RayTracer = (target_canvas) => {
         vec3 v2 = d - a;
         // Precalculate dot products.
         float d00 = dot(v0, v0);
-        float d01 = dot(v0, v1);
+        float d01 = - dot(v0, v1);
         float d02 = dot(v0, v2);
         float d11 = dot(v1, v1);
         float d12 = dot(v1, v2);
-        // Compute coordinates.
-        float i = 1.0 / (d00 * d11 - d01 * d01);
-        float u = (d11 * d02 - d01 * d12) * i;
-        float v = (d00 * d12 - d01 * d02) * i;
+        // Compute coordinates with optemized dot products.
+        float i = dot(vec2(d11, d01), vec2(d00, - d01));
+        float u = dot(vec2(d11, d01), vec2(d02, d12)) / i;
+        float v = dot(vec2(d12, d01), vec2(d00, d02)) / i;
         // Return if ray intersects triangle or not.
         if ((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0 - shadow_bias)){
           return vec4(d, s);
@@ -337,9 +332,9 @@ const RayTracer = (target_canvas) => {
         // Which triangle (number) reflects ray.
         int target_triangle = -1;
         // Latest intersection which is now closest to origin.
-        vec3 intersection = null;
+        vec3 intersection = vec3(0.0);
         // Length to latest intersection.
-        float min_len = - 1.0;
+        float min_len = 1.0 / 0.0;
         // Iterate through lines of texture.
         for (int i = 0; i < size.y; i++){
           // Read point a and normal from traingle.
@@ -350,14 +345,12 @@ const RayTracer = (target_canvas) => {
           //  Two cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
-          if (n != null){
+          if (n != vec3(0.0)){
             vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
             // Test if triangle intersects ray.
-            vec4 current_intersection = rayTriangle(1000.0, ray, origin, a, b, c, n);
+            vec4 current_intersection = rayTriangle(min_len, ray, origin, a, b, c, n);
             // Test if ray even intersects.
-            if (current_intersection == vec4(0.0)) continue;
-            // Test if this intersection is the closest.
-            if (current_intersection.w < min_len || min_len == - 1.0){
+            if (current_intersection != vec4(0.0)){
               min_len = current_intersection.w;
               target_triangle = i;
               intersection = current_intersection.xyz;
@@ -383,10 +376,8 @@ const RayTracer = (target_canvas) => {
         vec3 inv_ray = 1.0 / ray;
         // Get texture size as max iteration value.
         ivec2 size = textureSize(world_tex, 0);
-        // Test if pixel is in shadow or not.
-        bool in_shadow = false;
         // Iterate through lines of texture.
-        for (int i = 0; i < size.y && !in_shadow; i++){
+        for (int i = 0; i < size.y; i++){
           // Read point a and normal from traingle.
           vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
           vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
@@ -395,10 +386,10 @@ const RayTracer = (target_canvas) => {
           //  Three cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
-          if (n != null){
+          if (n != vec3(0.0)){
             vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
-            // Test if triangle intersects ray.
-            in_shadow = (rayTriangle(length(light - origin), ray, origin, a, b, c, n).xyz != null);
+            // Test if triangle intersects ray and return true if there is shadow.
+            if (rayTriangle(length(light - origin), ray, origin, a, b, c, n).xyz != vec3(0.0)) return true;;
           }else if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
             // Test if Ray intersects bounding volume.
             // a = x x2 y
@@ -408,8 +399,8 @@ const RayTracer = (target_canvas) => {
             i += int(c.x);
           }
         }
-        // Return if pixel is in shadow or not.
-        return in_shadow;
+        // Tested all triangles, but there is no intersection.
+        return false;
       }
 
       float forwardTrace(vec3 normal, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength, float roughness, float metallicity){
@@ -417,7 +408,7 @@ const RayTracer = (target_canvas) => {
         float intensity = strength / (1.0 + length(light - position));
         // Process specularity of ray in view from origin's perspective.
         vec3 halfVector = normalize(ray + normalize(origin - position));
-        float l = abs(dot(normalize(vec3(- light.x - position.x, ray.y, - light.z + position.z)), normal));
+        float l = abs(dot(ray, normal)); //vec3(- light.x - position.x, ray.y, - light.z + position.z)
         float specular = pow(dot(normal, halfVector), strength / metallicity);
         // Determine final color and return it.
         float multip = l * intensity;
@@ -432,7 +423,7 @@ const RayTracer = (target_canvas) => {
 
       vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, int sample_n, vec3 rough_normal, vec3 normal, vec3 color, float roughness, float metallicity, int bounces){
         // Use additive color mixing technique, so start with black.
-        vec3 final_color = null;
+        vec3 final_color = vec3(0.0);
         vec3 importancy_factor = vec3(1.0);
         // Ray currently traced.
         vec3 active_ray = normalize(position - origin);
@@ -448,7 +439,7 @@ const RayTracer = (target_canvas) => {
         float last_roughness = roughness;
         float last_metallicity = metallicity;
         // Iterate over each bounce and modify color accordingly.
-        for (int i = 0; i < bounces; i++){
+        for (int i = 0; i < bounces && length(importancy_factor) >= 0.0; i++){
 
           //  Calculate primary light sources for this pass.
           for (int j = 0; j < textureSize(light_tex, 0).y; j++){
@@ -479,7 +470,7 @@ const RayTracer = (target_canvas) => {
           vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
           vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
           // Calculate reflecting ray.
-          active_ray = normalize(random_vec * last_roughness + reflect(active_ray, last_normal) * (1.0 - last_roughness));
+          active_ray = normalize(mix(reflect(active_ray, last_normal), random_vec, last_roughness));
           if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
           // Calculate next intersection.
           vec4 intersection = rayTracer(active_ray, last_position);
@@ -531,8 +522,8 @@ const RayTracer = (target_canvas) => {
           // Apply emissive texture.
           final_color += emissiveness * last_color * importancy_factor;
           // Fresnel effect.
-          last_roughness *= (1.0 - last_metallicity) + last_metallicity * fresnel(last_normal, last_origin - last_position);
-          last_rough_normal = normalize(random_vec * last_roughness + last_normal * (1.0 - last_roughness));
+          last_roughness *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_metallicity);
+          last_rough_normal = normalize(mix(last_normal, random_vec, last_roughness));
 
           if (i == 0){
             if(roughness < 0.1){
@@ -540,10 +531,11 @@ const RayTracer = (target_canvas) => {
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
               inner_render_id = vec4(1.0 / vec3(int(intersection.w)%16777216, int(intersection.w)%65536, int(intersection.w)%256), 0.5 * (last_roughness * 0.5 + metallicity));
             }
-            first_ray_length = length(last_position - last_origin);
+            first_ray_length = length(last_position - last_origin) / length(position - origin);
           }
-            // Precalculate importancy_factor for this iteration.
-            importancy_factor *= last_color * (0.5 + (0.5 * last_metallicity));
+
+          // Precalculate importancy_factor for this iteration.
+          importancy_factor *= last_color * (0.5 + (0.5 * last_metallicity));
         }
         // Apply global illumination.
         final_color += sky_box * importancy_factor;
@@ -568,14 +560,14 @@ const RayTracer = (target_canvas) => {
         if (texture_nums.y != -1.0){
           roughness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).x;
           metallicity = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).y;
-          emissiveness= lookup(normal_tex, vec3(tex_coord, texture_nums.y)).z * 4.0;
+          emissiveness = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).z * 4.0;
         }
         // Fresnel effect.
-        float fresnel_roughness = roughness * ((1.0 - metallicity) + metallicity * fresnel(normal, player - position));
+        float fresnel_roughness = roughness * mix(1.0, fresnel(normal, player - position), metallicity);
         // Start hybrid ray tracing on a per light source base.
         // Directly add emissive light of original surface to final_color.
         vec3 final_color = vec3(0.0);
-        vec3 random_vec = null;
+        vec3 random_vec = vec3(0.0);
         // Addapt outer loop iterations depending on how many light sources there are.
         int samples = samples;
         // Generate multiple samples.
@@ -590,7 +582,7 @@ const RayTracer = (target_canvas) => {
             random_vec = - random_vec;
           }
           // Alter normal and color according to texture and normal texture.
-          vec3 rough_normal = normalize(random_vec * fresnel_roughness + normal * (1.0 - roughness));
+          vec3 rough_normal = normalize(mix(normal, random_vec, fresnel_roughness));
           // Calculate pixel for specific normal.
           final_color += lightTrace(world_tex, light_tex, player, position, i, rough_normal, normal, tex_color.xyz, fresnel_roughness, metallicity, reflections);
         }
@@ -605,7 +597,7 @@ const RayTracer = (target_canvas) => {
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
 
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
-        render_original_color = vec4(tex_color.xyz, roughness * (first_ray_length + (2.0 - roughness)));
+        render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
         render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.5 * (roughness + metallicity));
 
         // Add properties of reflected objects to filter parameters for very reflective materials.
@@ -657,14 +649,16 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.005 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
         // Force max radius.
         if (radius > 3) radius = 3;
 
         // Apply blur filter on image.
         for (int i = 0; i < radius; i++){
           for (int j = 0; j < radius; j++){
-            ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 2.0 * asin(1.0) * float(3 + i));
+            ivec2 coords = ivec2(
+              vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius)
+            );
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
@@ -719,7 +713,7 @@ const RayTracer = (target_canvas) => {
         vec4 color = center_color + center_color_ip * 256.0;
         float count = 1.0;
 
-        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * 0.05 * center_original_color.w);
+        int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * center_original_color.w);
 
         // Force max radius.
         if (radius > 5) radius = 5;
@@ -748,7 +742,7 @@ const RayTracer = (target_canvas) => {
         }
         if (center_color.w > 0.0){
           // Set out color for render texture for the antialiasing filter.
-          out_color = color * center_original_color / count;
+          out_color = color * vec4(center_original_color.xyz, 1.0) / count;
         }else{
           out_color = vec4(0.0, 0.0, 0.0, 0.0);
         }
@@ -769,10 +763,6 @@ const RayTracer = (target_canvas) => {
              1, 5, 1,
              0, 0, 0
         );
-
-        /*imat3 kernel = imat3(
-          ivec3(1, 5),
-        );*/
 
         // Get texture size.
         vec2 texel = vec2(textureSize(pre_render, 0)) * clip_space;
@@ -801,7 +791,9 @@ const RayTracer = (target_canvas) => {
       // Initialize internal globals.
       {
         // The micros variable is needed to calculate fps and movement speed.
-        var Micros = window.performance.now();
+        var Millis = performance.now();
+        var TimeElapsed = performance.now();
+        var Frames = 0;
         // Internal GL objects.
         var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, ColorTex, LightTex;
         // Init Buffers.
@@ -817,7 +809,7 @@ const RayTracer = (target_canvas) => {
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
-        var DenoiserPasses = 7;
+        var DenoiserPasses = 6;
         // Create textures for Framebuffers in PostPrograms.
         var ColorRenderTexture = new Array(DenoiserPasses + 1);
         var ColorIpRenderTexture = new Array(DenoiserPasses + 1);
@@ -1065,19 +1057,24 @@ const RayTracer = (target_canvas) => {
         requestAnimationFrame(frameCycle);
         // Render new Image, work through QUEUE.
       	renderFrame();
-        // Calculate fps by measuring the time it takes to render 30 frames.
+        // Reevaluate keys for movement.
         evalKeys();
 
         if (RT.MOVEMENT){
-          let deltaTime = (window.performance.now() - Micros) * RT.MOVEMENT_SPEED;
+          let deltaTime = (window.performance.now() - Millis) * RT.MOVEMENT_SPEED;
           RT.X += (DeltaX * Math.cos(RT.FX) + DeltaZ * Math.sin(RT.FX)) * deltaTime;
           RT.Y += DeltaY * deltaTime;
           RT.Z += (DeltaZ * Math.cos(RT.FX) - DeltaX * Math.sin(RT.FX)) * deltaTime;
         }
+        // Update Millis variable for movement.
+        Millis = performance.now();
+        // Update frame counter.
+        Frames ++;
         // Calculate Fps.
-        RT.FPS = (1000 / (performance.now() - Micros)).toFixed(0);
-        // Update Microse variable
-        Micros = window.performance.now();
+        if ((performance.now() - TimeElapsed) >= 500) {
+          RT.FPS = (1000 * Frames / (performance.now() - TimeElapsed)).toFixed(0);
+          [TimeElapsed, Frames] = [performance.now(), 0];
+        }
       }
 
       function renderFrame(){
