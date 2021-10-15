@@ -17,12 +17,12 @@ document.addEventListener("DOMContentLoaded", async function(){
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
-				Array(64).fill([1, 0, 0.02]).flat(),
+				Array(64).fill([1, 0, 0.2]).flat(),
 				Array(64).fill([0.1, 1, 0]).flat()
 			].flat()).flat(),
 			Array(64).fill([
 				Array(64).fill([0.1, 1, 0]).flat(),
-				Array(64).fill([1, 0, 0.02]).flat()
+				Array(64).fill([1, 0, 0.2]).flat()
 			].flat()).flat()
 		].flat(),
 	128, 128);
@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set primary light source.
 	rt.LIGHT = [[0, 4.9, 0]];
 	// Modify brightness of first one to be brighter (default is 20)
-	rt.LIGHT[0].strength = 4;
+	rt.LIGHT[0].strength = 4.5;
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
