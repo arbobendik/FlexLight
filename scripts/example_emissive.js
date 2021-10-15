@@ -13,7 +13,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let topLight = await rt.GENERATE_PBR_TEX([1, 0, 1], 1, 1);
 	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.2], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
@@ -27,7 +26,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight, roughLight);
+	rt.PBR_TEXTURE.push(roughTex, caroTex, roughLight);
 
   // Move camera out of center.
   rt.Z = -20;
@@ -41,14 +40,13 @@ document.addEventListener("DOMContentLoaded", async function(){
 	let front_plane = rt.PLANE([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15],[0,0,1]);
 	let left_plane = rt.PLANE([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15],[1,0,0]);
 	let right_plane = rt.PLANE([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5],[-1,0,0]);
-
   // Make planes diffuse.
 	bottom_plane.textureNums = new Array(6).fill([-1,0]).flat();
   top_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	back_plane.textureNums = new Array(6).fill([-1,0]).flat();
 	front_plane.textureNums = new Array(6).fill([-1,0]).flat();
-  left_plane.textureNums = new Array(6).fill([-1,3]).flat();
-  right_plane.textureNums = new Array(6).fill([-1,3]).flat();
+  left_plane.textureNums = new Array(6).fill([-1,2]).flat();
+  right_plane.textureNums = new Array(6).fill([-1,2]).flat();
   // Color left and right plane.
   left_plane.colors = new Array(6).fill([1, 0, 0, 1]).flat();
   right_plane.colors = new Array(6).fill([0, 1, 0, 1]).flat();
