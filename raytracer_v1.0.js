@@ -255,9 +255,9 @@ const RayTracer = (target_canvas) => {
       float first_in_shadow = 0.0;
       float first_ray_length = 1.0;
 
-      vec4 inner_normal;
-      vec4 inner_original_color;
-      vec4 inner_render_id;
+      vec4 inner_normal = vec4(0.0);
+      vec4 inner_original_color = vec4(0.0);
+      vec4 inner_render_id = vec4(0.0);
 
       // Lookup values for texture atlases.
       vec4 lookup(sampler2D atlas, vec3 coords){
@@ -456,11 +456,13 @@ const RayTracer = (target_canvas) => {
               if (!shadowTest(active_light_ray, light, last_position)){
                 final_color += forwardTrace(last_rough_normal, active_light_ray, light, last_origin, last_position, strength, last_roughness, last_metallicity) * last_color * importancy_factor;
               }else{
-                first_in_shadow += 1.0 / 256.0;
+                first_in_shadow += 1.0 / 32.0;
               }
             }else{
               if (!shadowTest(active_light_ray, light, last_position)){
                 final_color += forwardTrace(last_rough_normal, active_light_ray, light, last_origin, last_position, strength, last_roughness, last_metallicity) * last_color * importancy_factor;
+              }else if (i == 1 && inner_normal != vec4(0.0)){
+                first_in_shadow += 1.0 / 64.0;
               }
             }
           }
@@ -535,7 +537,7 @@ const RayTracer = (target_canvas) => {
           }
 
           // Precalculate importancy_factor for this iteration.
-          importancy_factor *= last_color * (0.5 + (0.5 * last_metallicity));
+          importancy_factor *= last_color;
         }
         // Apply global illumination.
         final_color += sky_box * importancy_factor;

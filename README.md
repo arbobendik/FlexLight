@@ -6,13 +6,19 @@ example_0 (SCALE = 2 (1080p -> 4k), SAMPLES = 8)
 
 It would be very helpful if you could visit this test page and report any errors here in the "Issues" tab:
 
-cornell box: https://arbobendik.github.io/web-ray-tracer/example_cornell.html
-
 ![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/cornell.png?raw=true)
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/emissive.png?raw=true)
+![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/waves.png?raw=true)
+
+
+Links:
+
+
+cornell box: https://arbobendik.github.io/web-ray-tracer/example_cornell.html
 
 cornell box with emissive sides: https://arbobendik.github.io/web-ray-tracer/example_emissive.html
 
-![](https://github.com/arbobendik/web-ray-tracer/blob/master/screenshots/emissive.png?raw=true)
+example_wave colorful pillar wave: https://arbobendik.github.io/web-ray-tracer/example_wave.html
 
 example_0 (without textures) test page: https://arbobendik.github.io/web-ray-tracer/example_0.html
 
