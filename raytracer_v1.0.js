@@ -530,10 +530,10 @@ const RayTracer = (target_canvas) => {
           last_rough_normal = normalize(mix(last_normal, random_vec, last_roughness));
 
           if (i == 0){
-            if(roughness < 0.1){
+            if(roughness < 0.01){
               inner_normal = vec4(last_normal, 1.0);
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
-              inner_render_id = vec4(1.0 / vec3(int(intersection.w)%16777216, int(intersection.w)%65536, int(intersection.w)%256), 0.5 * (last_roughness * 0.5 + metallicity));
+              inner_render_id = vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), 0.0, 0.5 * (last_roughness * 0.5 + metallicity));
             }
             first_ray_length = length(last_position - last_origin) / length(position - origin);
           }
@@ -604,7 +604,7 @@ const RayTracer = (target_canvas) => {
         render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
         render_id = vec4(vertex_id.xy, 0.0, 0.5 * (roughness + metallicity));
         // Add properties of reflected objects to filter parameters for very reflective materials.
-        if(roughness < 0.1){
+        if(roughness < 0.01){
           render_normal = 0.5 * (render_normal + inner_normal);
           render_original_color = render_original_color * (1.0 + inner_original_color);
           render_id = 0.5 * (render_id + inner_render_id);
