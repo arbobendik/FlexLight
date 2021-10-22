@@ -1172,7 +1172,6 @@ const RayTracer = (target_canvas) => {
           };
           // Start recursion.
           RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
-          console.log(ids);
           // Set buffers.
           [
             [PositionBuffer, vertices],
