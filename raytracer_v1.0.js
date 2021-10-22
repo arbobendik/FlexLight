@@ -169,6 +169,7 @@ const RayTracer = (target_canvas) => {
       in vec4 color_3d;
 
       in vec2 texture_nums_3d;
+      in vec2 id;
       in vec2 texture_sizes_3d;
 
       uniform vec3 camera_position;
@@ -182,7 +183,7 @@ const RayTracer = (target_canvas) => {
       flat out vec4 color;
       flat out vec3 normal;
       flat out vec3 player;
-      flat out int vertex_id;
+      flat out vec2 vertex_id;
       flat out vec2 texture_nums;
 
       void main(){
@@ -198,7 +199,7 @@ const RayTracer = (target_canvas) => {
         vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
         // Set final clip space position.
         gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 10000000000000000.0))), translate_py.y);
-        vertex_id = gl_VertexID;
+        vertex_id = id;
         clip_space = vec3(translate_2d, translate_py.y);
         player = camera_position * vec3(-1.0, 1.0, 1.0);
         position = position_3d;
@@ -206,6 +207,7 @@ const RayTracer = (target_canvas) => {
         tex_coord = tex_pos;
         texture_nums = texture_nums_3d;
         color = color_3d;
+        // surface_id = id;
       }
       `;
       const fragment_glsl = `#version 300 es
@@ -220,7 +222,7 @@ const RayTracer = (target_canvas) => {
       flat in vec4 color;
       flat in vec3 normal;
       flat in vec3 player;
-      flat in int vertex_id;
+      flat in vec2 vertex_id;
       flat in vec2 texture_nums;
       // Quality configurators.
       uniform int samples;
@@ -528,10 +530,10 @@ const RayTracer = (target_canvas) => {
           last_rough_normal = normalize(mix(last_normal, random_vec, last_roughness));
 
           if (i == 0){
-            if(roughness < 0.1){
+            if(roughness < 0.01){
               inner_normal = vec4(last_normal, 1.0);
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
-              inner_render_id = vec4(1.0 / vec3(int(intersection.w)%16777216, int(intersection.w)%65536, int(intersection.w)%256), 0.5 * (last_roughness * 0.5 + metallicity));
+              inner_render_id = vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), 0.0, 0.5 * (last_roughness * 0.5 + metallicity));
             }
             first_ray_length = length(last_position - last_origin) / length(position - origin);
           }
@@ -600,10 +602,9 @@ const RayTracer = (target_canvas) => {
 
         render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
         render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
-        render_id = vec4(1.0 / vec3(float((vertex_id/3)%16777216), float((vertex_id/3)%65536), float((vertex_id/3)%256)), 0.5 * (roughness + metallicity));
-
+        render_id = vec4(vertex_id.xy, 0.0, 0.5 * (roughness + metallicity));
         // Add properties of reflected objects to filter parameters for very reflective materials.
-        if(roughness < 0.1){
+        if(roughness < 0.01){
           render_normal = 0.5 * (render_normal + inner_normal);
           render_original_color = render_original_color * (1.0 + inner_original_color);
           render_id = 0.5 * (render_id + inner_render_id);
@@ -666,12 +667,10 @@ const RayTracer = (target_canvas) => {
             vec4 normal = texelFetch(pre_render_normal, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (normal == center_normal
+            if (
+              normal == center_normal
               && abs(id.w - center_id.w) < 0.1
-              && (
-                id == center_id
-                || length(abs(center_color - next_color).xyz) < 0.3
-              )
+              && id == center_id
             ){
               color += next_color + next_color_ip * 256.0;
               count ++;
@@ -731,11 +730,8 @@ const RayTracer = (target_canvas) => {
 
             if (
               normal == center_normal
-              && (
-                id == center_id
-                || length(abs(center_color - next_color).xyz) < 0.5
-              )
               && abs(id.w - center_id.w) < 0.1
+              && id == center_id
             ){
               color += next_color + next_color_ip * 256.0;
               count ++;
@@ -799,11 +795,11 @@ const RayTracer = (target_canvas) => {
         // Internal GL objects.
         var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, ColorTex, LightTex;
         // Init Buffers.
-        var PositionBuffer, NormalBuffer, TexBuffer, ColorBuffer, TexSizeBuffer, TexNumBuffer, SurfaceBuffer, TriangleBuffer;
+        var PositionBuffer, NormalBuffer, TexBuffer, ColorBuffer, TexSizeBuffer, TexNumBuffer, IdBuffer, SurfaceBuffer, TriangleBuffer;
         // Init Texture elements.
         var WorldTexture, RandomTexture, Random;
         // Linkers for GLATTRIBARRAYS.
-        var [Position, Normal, TexCoord, Color, TexNum] = [0, 1, 2, 3, 4];
+        var [Position, Normal, TexCoord, Color, TexNum, IdLoc] = [0, 1, 2, 3, 4, 5];
         // List of all vertices currently in world space.
         var Data = [];
         // Framebuffer, Post Program buffers and textures.
@@ -1042,8 +1038,6 @@ const RayTracer = (target_canvas) => {
             // A single triangle needs no bounding voume, so nothing happens in this case.
           }
 
-
-
           for (let i = 0; i < len * 3; i += 9){
             let j = i/3*2;
             // 1 vertex = 1 line in world texture.
@@ -1153,6 +1147,8 @@ const RayTracer = (target_canvas) => {
           let colors = [];
           let uvs = [];
           let texNums = [];
+          let ids = [];
+          let id = 0;
           let length = 0;
           // Iterate through render queue and build arrays for GPU.
           var flattenQUEUE = (item) => {
@@ -1168,7 +1164,10 @@ const RayTracer = (target_canvas) => {
               colors.push(item.colors);
               uvs.push(item.uvs);
               texNums.push(item.textureNums);
+              id ++;
+              ids.push(new Array(6).fill([id / 65535, id / 256]).flat());
               length += item.arrayLength;
+              // increase id counter.
             }
           };
           // Start recursion.
@@ -1179,7 +1178,8 @@ const RayTracer = (target_canvas) => {
             [NormalBuffer, normals],
             [ColorBuffer, colors],
             [TexBuffer, uvs],
-            [TexNumBuffer, texNums]
+            [TexNumBuffer, texNums],
+            [IdBuffer, ids]
           ].forEach(function(item){
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
             RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
@@ -1306,6 +1306,7 @@ const RayTracer = (target_canvas) => {
         RT.GL.bindAttribLocation(Program, TexCoord, "tex_pos");
         RT.GL.bindAttribLocation(Program, Color, "color_3d");
         RT.GL.bindAttribLocation(Program, TexNum, "texture_nums_3d");
+        RT.GL.bindAttribLocation(Program, IdLoc, "id");
       	// Bind uniforms to Program.
         CameraPosition = RT.GL.getUniformLocation(Program, "camera_position");
         Perspective = RT.GL.getUniformLocation(Program, "perspective");
@@ -1333,7 +1334,7 @@ const RayTracer = (target_canvas) => {
       	// Define Program with its currently bound shaders as the program to use for the webgl2 context.
         RT.GL.useProgram(Program);
         // Create buffers.
-        [PositionBuffer, NormalBuffer, TexBuffer, TexSizeBuffer, TexNumBuffer, ColorBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
+        [PositionBuffer, NormalBuffer, TexBuffer, TexSizeBuffer, TexNumBuffer, ColorBuffer, IdBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
         // Create a world texture containing all information about world space.
         WorldTexture = RT.GL.createTexture();
         // Create Textures for primary render.
@@ -1356,7 +1357,9 @@ const RayTracer = (target_canvas) => {
           // Set barycentric texture coordinates.
           [TexBuffer, TexCoord, 2, true],
           // Set Texture number (id) in buffer.
-          [TexNumBuffer, TexNum, 2, true]
+          [TexNumBuffer, TexNum, 2, true],
+          // Surface id buffer.
+          [IdBuffer, IdLoc, 2, true]
 
         ].forEach((item) => {
           RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
