@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set primary light source.
 	rt.LIGHT = [[0, 4.9, 0]];
 	// Modify brightness of first one to be brighter (default is 20)
-	rt.LIGHT[0].strength = 4.5;
+	rt.LIGHT[0].strength = 3.5;
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
