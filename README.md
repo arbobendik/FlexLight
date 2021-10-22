@@ -24,8 +24,9 @@ example_0 (without textures) test page: https://arbobendik.github.io/web-ray-tra
 
 example_1 (with textures) test page: https://arbobendik.github.io/web-ray-tracer/example_1.html
 
+
 use the raytracer in your project as a javascript library (raytracer.js).
-There is no official documentation yet. For code examples look at example_0.js or example_1.js.
+There is no official documentation yet. For code examples look at test pages provided above.
 
 (Safari & IE unsupported due to a lack of WebGl2 support).
 
