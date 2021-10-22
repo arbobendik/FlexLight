@@ -28,10 +28,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 	128, 128);
 	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight);
 
-	// Update texture atlases.
-	rt.UPDATE_TEXTURE();
-	rt.UPDATE_PBR_TEXTURE();
-
   // Move camera out of center.
   rt.Z = -20;
 
@@ -99,5 +95,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
+		// Update texture atlases.
+		rt.UPDATE_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 });
