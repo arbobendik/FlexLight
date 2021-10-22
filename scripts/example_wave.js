@@ -11,17 +11,15 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 	// Make plane defuser.
 	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
-	let cuboid_tex = await rt.GENERATE_PBR_TEX([1, 1, 0], 1, 1);
+	let cuboid_tex = await rt.GENERATE_PBR_TEX([1, 1, 0.05], 1, 1);
 	rt.PBR_TEXTURE.push(normal_tex, cuboid_tex);
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0]];
 	// Modify brightness of first one to be brighter (default is 3)
-	rt.LIGHT[0].strength = 4;
+	rt.LIGHT[0].strength = 5;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
-	// Set width and depth of cuboid array.
-	var [width, depth] = [2, 2];
 	// Push both objects to render queue.
 	rt.QUEUE.push(this_plane);
 	// Set lower scale to improve performance.
