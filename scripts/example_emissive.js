@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.2], 1, 1);
+	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.15], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
