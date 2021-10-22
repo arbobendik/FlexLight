@@ -592,11 +592,11 @@ const RayTracer = (target_canvas) => {
         }
 
         // Render all relevant information to 4 textures for the post processing shader.
-        if (use_filter == 1){
-          render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
-        }else{
+        if (use_filter == 0){
           render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
+          return;
         }
+        render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
         // 16 bit HDR for improved filtering.
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
 
