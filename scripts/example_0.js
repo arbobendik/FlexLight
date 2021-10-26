@@ -20,8 +20,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Set two light sources.
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
-	// Modify brightness of first one to be brighter (default is 3)
-	rt.LIGHT[0].strength = 4;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
@@ -70,6 +68,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// Animate ligth sources.
 		rt.LIGHT =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
+		rt.LIGHT[0].strength = 10;
+		rt.LIGHT[1].strength = 10;
 		rt.UPDATE_LIGHT();
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;

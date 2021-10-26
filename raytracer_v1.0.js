@@ -405,17 +405,17 @@ const RayTracer = (target_canvas) => {
         return false;
       }
 
-      float forwardTrace(vec3 normal, vec3 ray, vec3 light, vec3 origin, vec3 position, float strength, float roughness, float metallicity){
-        // Calculate intensity of light reflection.
-        float intensity = strength / (1.0 + length(light - position));
+      float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
+        // Calculate intensity of light reflection, which decreases squared over distance.
+        float intensity = strength / pow(1.0 + length(light_ray), 1.0);
         // Process specularity of ray in view from origin's perspective.
-        vec3 halfVector = normalize(ray + normalize(origin - position));
-        float l = abs(dot(ray, normal)); //vec3(- light.x - position.x, ray.y, - light.z + position.z)
-        float specular = pow(dot(normal, halfVector), strength / metallicity);
+        vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
+        float light = abs(dot(normalize(light_ray), normal));
+        float specular = pow(dot(normal, halfVector), 3.0 + 300.0 * metallicity) * 10.0 * metallicity;
         // Determine final color and return it.
-        float multip = l * intensity;
-        if (specular > 0.0) multip += specular * intensity;
-        return multip;
+        if (specular > 0.0) return light * intensity + specular * intensity;
+        // Return just light if specular is negative.
+        return light * intensity;
       }
 
       float fresnel(vec3 normal, vec3 lightDir) {
@@ -446,23 +446,23 @@ const RayTracer = (target_canvas) => {
           //  Calculate primary light sources for this pass.
           for (int j = 0; j < textureSize(light_tex, 0).y; j++){
             // Read light position.
-            vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);;
+            vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
             // Read light strength from texture.
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
             // Skip if strength is negative or zero.
             if (strength <= 0.0) continue;
             // Recalculate position -> light vector.
-            vec3 active_light_ray = normalize(texture(light_tex, vec2(0.0, float(j))).xyz - last_position);
+            vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
             // Update pixel color if coordinate is not in shadow.
             if (i == 0){
-              if (!shadowTest(active_light_ray, light, last_position)){
-                final_color += forwardTrace(last_rough_normal, active_light_ray, light, last_origin, last_position, strength, last_roughness, last_metallicity) * last_color * importancy_factor;
+              if (!shadowTest(normalize(active_light_ray), light, last_position)){
+                final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_metallicity, strength) * last_color * importancy_factor;
               }else{
                 first_in_shadow += 1.0 / 32.0;
               }
             }else{
-              if (!shadowTest(active_light_ray, light, last_position)){
-                final_color += forwardTrace(last_rough_normal, active_light_ray, light, last_origin, last_position, strength, last_roughness, last_metallicity) * last_color * importancy_factor;
+              if (!shadowTest(normalize(active_light_ray), light, last_position)){
+                final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_metallicity, strength) * last_color * importancy_factor;
               }else if (i == 1 && inner_normal != vec4(0.0)){
                 first_in_shadow += 1.0 / 64.0;
               }
