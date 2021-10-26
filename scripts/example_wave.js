@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set light source.
 	rt.LIGHT = [[0, 10, 0]];
 	// Modify brightness to be brighter (default is 3)
-	rt.LIGHT[0].strength = 4;
+	rt.LIGHT[0].strength = 8;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
