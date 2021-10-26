@@ -25,14 +25,14 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
 	// Make light brighter.
-	rt.LIGHT[0].strength = 15;
+	rt.LIGHT[0].strength = 10;
 
 	// Create varying roughness texture for the surface.
 	let normalTex = new Image();
 	normalTex.src = "./textures/normal.jpg";
 	// Generate new more diffuse texture for the grass block.
 	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.1, 1, 0], 1, 1);
+	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
 	// Add those textures to render queue.
 	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseMetallicTex);
 

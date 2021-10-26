@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set light source.
 	rt.LIGHT = [[0, 10, 0]];
 	// Modify brightness to be brighter (default is 3)
-	rt.LIGHT[0].strength = 4;
+	rt.LIGHT[0].strength = 8;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
@@ -33,6 +33,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
+		// Update texture atlases.
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 
 	// Set power of 2 square length.
@@ -54,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	var drawMap = (pot, x, y, notSquare) => {
 		// Base case.
 		if (pot == 0){
-			let cuboid = rt.CUBOID(x, x + 1 , -1, 0.1 + Math.sin(t + 0.5 * x + 0.5 * y), y, y + 1);
+			let cuboid = rt.CUBOID(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
 			for (let i = 1; i <= 6; i++){
 				cuboid[i].textureNums = new Array(6).fill([-1,1]).flat();
