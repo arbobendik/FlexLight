@@ -28,17 +28,17 @@ document.addEventListener("DOMContentLoaded", async function(){
 	128, 128);
 	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight);
 
-	// Update texture atlases.
-	rt.UPDATE_TEXTURE();
-	rt.UPDATE_PBR_TEXTURE();
-
   // Move camera out of center.
   rt.Z = -20;
 
 	// Set primary light source.
-	rt.LIGHT = [[0, 4.9, 0]];
-	// Modify brightness of first one to be brighter (default is 20)
-	rt.LIGHT[0].strength = 3.5;
+
+	let light_plane = rt.PLANE([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2],[0,-1,0]);
+	light_plane.textureNums = new Array(6).fill([-1,2]).flat();
+
+	rt.LIGHT = [[0, 4.95, 0]];
+	// Modify brightness of first one to be brighter (default is 3)
+	rt.LIGHT[0].strength = 4.5;
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
@@ -99,5 +99,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
+		// Update texture atlases.
+		rt.UPDATE_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 });
