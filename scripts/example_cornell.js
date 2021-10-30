@@ -99,8 +99,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
-		// Update texture atlases.
-		rt.UPDATE_TEXTURE();
+		// Update texture atlases.t
 		rt.UPDATE_PBR_TEXTURE();
 	},1000);
 });
