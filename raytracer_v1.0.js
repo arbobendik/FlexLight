@@ -85,14 +85,18 @@ const RayTracer = (target_canvas) => {
     },
     // Functions to update scene states.
     UPDATE_PBR_TEXTURE: () => {
-      // Test if there is even a texture.
-      if (RT.PBR_TEXTURE.length === 0) return;
 
       RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.PbrTexture);
       RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
       // Set data texture details and tell webgl, that no mip maps are required.
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
+
+      // Test if there is even a texture.
+      if (RT.PBR_TEXTURE.length === 0){
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, 1, 1, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+        return;
+      }
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -110,8 +114,6 @@ const RayTracer = (target_canvas) => {
     },
     // Regenerate texture after change.
     UPDATE_TEXTURE: () => {
-      // Test if there is even a texture.
-      if (RT.TEXTURE.length === 0) return;
 
       RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.ColorTexture);
       RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
@@ -120,6 +122,12 @@ const RayTracer = (target_canvas) => {
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_S, RT.GL.CLAMP_TO_EDGE);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
+
+      // Test if there is even a texture.
+      if (RT.TEXTURE.length === 0){
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, 1, 1, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+        return;
+      }
 
       let [width, height] = RT.TEXTURE_SIZES;
       let textureWidth = Math.floor(2048 / RT.TEXTURE_SIZES[0]);
@@ -132,7 +140,6 @@ const RayTracer = (target_canvas) => {
       RT.TEXTURE.forEach(async (item, i) => {
           ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
       });
-
       RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, canvas.width, canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, new Uint8Array(Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data)));
     },
     UPDATE_LIGHT: () => {
@@ -157,7 +164,11 @@ const RayTracer = (target_canvas) => {
         // Push strength and 0, 0 to texture, because RGB texture format needs 3x values per row.
         LightTexArray.push(strength, 0, 0);
       }
-      if(RT.LIGHT.length !== 0) RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 2, RT.LIGHT.length, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(LightTexArray));
+      if (RT.LIGHT.length !== 0){
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 2, RT.LIGHT.length, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(LightTexArray));
+      }else{
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 1, 1, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array([0, 0, 0]));
+      }
     },
     // Start function for engine.
     START: async () => {
@@ -244,9 +255,8 @@ const RayTracer = (target_canvas) => {
 
       layout(location = 0) out vec4 render_color;
       layout(location = 1) out vec4 render_color_ip;
-      layout(location = 2) out vec4 render_normal;
-      layout(location = 3) out vec4 render_original_color;
-      layout(location = 4) out vec4 render_id;
+      layout(location = 2) out vec4 render_original_color;
+      layout(location = 3) out vec4 render_id;
 
       // Global constants.
       // Declare null vector as constant.
@@ -257,7 +267,6 @@ const RayTracer = (target_canvas) => {
       float first_in_shadow = 0.0;
       float first_ray_length = 1.0;
 
-      vec4 inner_normal = vec4(0.0);
       vec4 inner_original_color = vec4(0.0);
       vec4 inner_render_id = vec4(0.0);
 
@@ -329,26 +338,30 @@ const RayTracer = (target_canvas) => {
       vec4 rayTracer(vec3 ray, vec3 origin){
         // Precompute inverse of ray for AABB cuboid intersection test.
         vec3 inv_ray = 1.0 / ray;
-        // Get texture size as max iteration value.
-        ivec2 size = textureSize(world_tex, 0);
         // Which triangle (number) reflects ray.
         int target_triangle = -1;
         // Latest intersection which is now closest to origin.
         vec3 intersection = vec3(0.0);
         // Length to latest intersection.
         float min_len = 1.0 / 0.0;
+        // Get texture size as max iteration value.
+        int size = textureSize(world_tex, 0).y * 256;
         // Iterate through lines of texture.
-        for (int i = 0; i < size.y; i++){
+        for (int i = 0; i < size; i++){
+          // Get position of current triangle/vertex in world_tex.
+          ivec2 index = ivec2(mod(float(i), 256.0) * 8.0, i / 256);
           // Read point a and normal from traingle.
-          vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
-          vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
-          vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
+          vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
+          vec3 a = texelFetch(world_tex, index, 0).xyz;
+          vec3 b = texelFetch(world_tex, index + ivec2(1, 0), 0).xyz;
+          // Break if all values are zero and texture already ended.
+          if (mat3(n,a,b) == mat3(vec3(0.0),vec3(0.0),vec3(0.0))) break;
           // Fetch triangle coordinates from world texture.
           //  Two cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
           if (n != vec3(0.0)){
-            vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
+            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
             // Test if triangle intersects ray.
             vec4 current_intersection = rayTriangle(min_len, ray, origin, a, b, c, n);
             // Test if ray even intersects.
@@ -362,7 +375,7 @@ const RayTracer = (target_canvas) => {
             // a = x x2 y
             // b = y2 z z2
             if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
-              vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
+              vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
               // If it doesn't intersect, skip shadow test for all elements in bounding volume.
               i += int(c.x);
             }
@@ -377,26 +390,30 @@ const RayTracer = (target_canvas) => {
         // Precompute inverse of ray for AABB cuboid intersection test.
         vec3 inv_ray = 1.0 / ray;
         // Get texture size as max iteration value.
-        ivec2 size = textureSize(world_tex, 0);
+        int size = textureSize(world_tex, 0).y * 256;
         // Iterate through lines of texture.
-        for (int i = 0; i < size.y; i++){
+        for (int i = 0; i < size; i++){
+          // Get position of current triangle/vertex in world_tex.
+          ivec2 index = ivec2(mod(float(i), 256.0) * 8.0, i / 256);
           // Read point a and normal from traingle.
-          vec3 n = texelFetch(world_tex, ivec2(4, i), 0).xyz;
-          vec3 a = texelFetch(world_tex, ivec2(0, i), 0).xyz;
-          vec3 b = texelFetch(world_tex, ivec2(1, i), 0).xyz;
+          vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
+          vec3 a = texelFetch(world_tex, index, 0).xyz;
+          vec3 b = texelFetch(world_tex, index + ivec2(1, 0), 0).xyz;
+          // Break if all values are zero and texture already ended.
+          if (mat3(n,a,b) == mat3(vec3(0.0),vec3(0.0),vec3(0.0))) break;
           // Fetch triangle coordinates from world texture.
           //  Three cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
           if (n != vec3(0.0)){
-            vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
+            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
             // Test if triangle intersects ray and return true if there is shadow.
             if (rayTriangle(length(light - origin), ray, origin, a, b, c, n).xyz != vec3(0.0)) return true;;
           }else if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
             // Test if Ray intersects bounding volume.
             // a = x x2 y
             // b = y2 z z2
-            vec3 c = texelFetch(world_tex, ivec2(2, i), 0).xyz;
+            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
             // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
             i += int(c.x);
           }
@@ -463,7 +480,7 @@ const RayTracer = (target_canvas) => {
             }else{
               if (!shadowTest(normalize(active_light_ray), light, last_position)){
                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_metallicity, strength) * last_color * importancy_factor;
-              }else if (i == 1 && inner_normal != vec4(0.0)){
+              }else if (i == 1 && inner_render_id != vec4(0.0)){
                 first_in_shadow += 1.0 / 64.0;
               }
             }
@@ -478,19 +495,21 @@ const RayTracer = (target_canvas) => {
           if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
           // Calculate next intersection.
           vec4 intersection = rayTracer(active_ray, last_position);
+          // Get position of current triangle/vertex in world_tex.
+          ivec2 index = ivec2(mod(intersection.w, 256.0) * 8.0, intersection.w / 256.0);
           // Stop loop if there is no intersection and ray goes in the void.
           if (intersection.xyz == null) break;
           // Calculate barycentric coordinates to map textures.
           // Read UVs of vertices.
-          vec3 v_uvs_1 = texelFetch(world_tex, ivec2(6, int(intersection.w)), 0).xyz;
-          vec3 v_uvs_2 = texelFetch(world_tex, ivec2(7, int(intersection.w)), 0).xyz;
+          vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
+          vec3 v_uvs_2 = texelFetch(world_tex, index + ivec2(7, 0), 0).xyz;
 
           mat3x2 vertex_uvs = mat3x2(vec2(v_uvs_1.xy), vec2(v_uvs_1.z, v_uvs_2.x), vec2(v_uvs_2.yz));
           // Get vertices of triangle.
           mat3 vertices = mat3(
-            texelFetch(world_tex, ivec2(0, int(intersection.w)), 0).xyz,
-            texelFetch(world_tex, ivec2(1, int(intersection.w)), 0).xyz,
-            texelFetch(world_tex, ivec2(2, int(intersection.w)), 0).xyz
+            texelFetch(world_tex, index, 0).xyz,
+            texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
+            texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
           );
           // Calculate sub surfaces of triangles.
           vec3 sub_surfaces = vec3(
@@ -504,9 +523,9 @@ const RayTracer = (target_canvas) => {
           // Interpolate final barycentric coordinates.
           vec2 barycentric = vertex_uvs * sub_surfaces;
           // Read triangle normal.
-          vec2 tex_nums = texelFetch(world_tex, ivec2(5, int(intersection.w)), 0).xy;
+          vec2 tex_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xy;
           // Default last_color to color of target triangle.
-          last_color = texelFetch(world_tex, ivec2(3, int(intersection.w)), 0).xyz;
+          last_color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
           // Multiply with texture value if available.
           if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
           // Default roughness, metallicity and emissiveness.
@@ -522,7 +541,7 @@ const RayTracer = (target_canvas) => {
           // Update parameters.
           last_origin = last_position;
           last_position = intersection.xyz;
-          last_normal = normalize(texelFetch(world_tex, ivec2(4, int(intersection.w)), 0).xyz);
+          last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
           // Apply emissive texture.
           final_color += emissiveness * last_color * importancy_factor;
           // Fresnel effect.
@@ -531,7 +550,6 @@ const RayTracer = (target_canvas) => {
 
           if (i == 0){
             if(roughness < 0.01){
-              inner_normal = vec4(last_normal, 1.0);
               inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
               inner_render_id = vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), 0.0, 0.5 * (last_roughness * 0.5 + metallicity));
             }
@@ -599,13 +617,10 @@ const RayTracer = (target_canvas) => {
         render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
         // 16 bit HDR for improved filtering.
         render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
-
-        render_normal = vec4(normal / 2.0 + 0.5, first_in_shadow);
         render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
-        render_id = vec4(vertex_id.xy, 0.0, 0.5 * (roughness + metallicity));
+        render_id = vec4(vertex_id.xy, first_in_shadow, 0.5 * (roughness + metallicity));
         // Add properties of reflected objects to filter parameters for very reflective materials.
         if(roughness < 0.01){
-          render_normal = 0.5 * (render_normal + inner_normal);
           render_original_color = render_original_color * (1.0 + inner_original_color);
           render_id = 0.5 * (render_id + inner_render_id);
         }
@@ -645,7 +660,6 @@ const RayTracer = (target_canvas) => {
 
         vec4 center_color = texelFetch(pre_render_color, texel, 0);
         vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-        vec4 center_normal = texelFetch(pre_render_normal, texel, 0);
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
@@ -664,14 +678,9 @@ const RayTracer = (target_canvas) => {
             );
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-            vec4 normal = texelFetch(pre_render_normal, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (
-              normal == center_normal
-              && abs(id.w - center_id.w) < 0.1
-              && id == center_id
-            ){
+            if (id == center_id){
               color += next_color + next_color_ip * 256.0;
               count ++;
             }
@@ -694,7 +703,6 @@ const RayTracer = (target_canvas) => {
 
       uniform sampler2D pre_render_color;
       uniform sampler2D pre_render_color_ip;
-      uniform sampler2D pre_render_normal;
       uniform sampler2D pre_render_original_color;
       uniform sampler2D pre_render_id;
 
@@ -707,7 +715,6 @@ const RayTracer = (target_canvas) => {
 
         vec4 center_color = texelFetch(pre_render_color, texel, 0);
         vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-        vec4 center_normal = texelFetch(pre_render_normal, texel, 0);
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
@@ -725,14 +732,9 @@ const RayTracer = (target_canvas) => {
             ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 3.0);
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-            vec4 normal = texelFetch(pre_render_normal, coords, 0);
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
-            if (
-              normal == center_normal
-              && abs(id.w - center_id.w) < 0.1
-              && id == center_id
-            ){
+            if (id == center_id){
               color += next_color + next_color_ip * 256.0;
               count ++;
             }
@@ -803,7 +805,7 @@ const RayTracer = (target_canvas) => {
         // List of all vertices currently in world space.
         var Data = [];
         // Framebuffer, Post Program buffers and textures.
-        var Framebuffer, NormalRenderTexture, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
+        var Framebuffer, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
         // Set post program array.
         var PostProgram = [];
         // Set DenoiserPasses.
@@ -814,7 +816,6 @@ const RayTracer = (target_canvas) => {
         var DepthTexture = new Array(DenoiserPasses + 1);
         var ColorRenderTex = new Array(DenoiserPasses + 1);
         var ColorIpRenderTex = new Array(DenoiserPasses + 1);
-        var NormalRenderTex = new Array(DenoiserPasses + 1);
         var OriginalRenderTex = new Array(DenoiserPasses + 1);
         var IdRenderTex = new Array(DenoiserPasses + 1);
         // Create caching textures for denoising.
@@ -943,12 +944,15 @@ const RayTracer = (target_canvas) => {
         Data = [];
         // Fill texture with data pixels.
         for (let i = 0; i < RT.QUEUE.length; i++) fillData(RT.QUEUE[i]);
-        // Calculate DataHeight.
-        var DataHeight = Data.length / 24;
+        // Round up data to next higher multiple of 6144.
+        Data.push(new Array(6144 - Data.length % 6144).fill(0));
+        Data = Data.flat();
+        // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line).
+        var DataHeight = Data.length / 6144;
         // Tell webgl to use 4 bytes per value for the 32 bit floats.
         RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 4);
         // Set data texture details and tell webgl, that no mip maps are required.
-        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 8, DataHeight, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(Data));
+        RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 2048, DataHeight, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(Data));
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
         RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
       }
@@ -958,8 +962,8 @@ const RayTracer = (target_canvas) => {
         // Tell webgl to use 1 byte per value for the 8 bit ints.
         RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
         // Set data texture details and tell webgl, that no mip maps are required.
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.LINEAR_MIPMAP_LINEAR);
-        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.LINEAR_MIPMAP_LINEAR);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.LINEAR);
+        RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.LINEAR);
         RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB8, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGB, RT.GL.UNSIGNED_BYTE, new Uint8Array(Random));
         RT.GL.generateMipmap(RT.GL.TEXTURE_2D);
       }
@@ -985,7 +989,7 @@ const RayTracer = (target_canvas) => {
           RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_WRAP_T, RT.GL.CLAMP_TO_EDGE);
         });
         // Init other textures.
-        [NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item){
+        [OriginalRenderTexture, IdRenderTexture].forEach(function(item){
           RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
           RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGBA, RT.GL.canvas.width, RT.GL.canvas.height, 0, RT.GL.RGBA, RT.GL.UNSIGNED_BYTE, null);
           RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
@@ -1082,15 +1086,13 @@ const RayTracer = (target_canvas) => {
               RT.GL.COLOR_ATTACHMENT0,
               RT.GL.COLOR_ATTACHMENT1,
               RT.GL.COLOR_ATTACHMENT2,
-              RT.GL.COLOR_ATTACHMENT3,
-              RT.GL.COLOR_ATTACHMENT4
+              RT.GL.COLOR_ATTACHMENT3
             ]);
             // Configure framebuffer for color and depth.
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, ColorRenderTexture[0], 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT1, RT.GL.TEXTURE_2D, ColorIpRenderTexture[0], 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT2, RT.GL.TEXTURE_2D, NormalRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT3, RT.GL.TEXTURE_2D, OriginalRenderTexture, 0);
-            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT4, RT.GL.TEXTURE_2D, IdRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT2, RT.GL.TEXTURE_2D, OriginalRenderTexture, 0);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT3, RT.GL.TEXTURE_2D, IdRenderTexture, 0);
             RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.DEPTH_ATTACHMENT, RT.GL.TEXTURE_2D, DepthTexture[0], 0);
           }else{
             // If Filter variable is not set render to canvas directly.
@@ -1205,7 +1207,7 @@ const RayTracer = (target_canvas) => {
               // Clear depth and color buffers from last frame.
               RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
               // Push pre rendered textures to next shader (post processing).
-              [ColorRenderTexture[i], ColorIpRenderTexture[i], NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+              [ColorRenderTexture[i], ColorIpRenderTexture[i], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
                 RT.GL.activeTexture(RT.GL.TEXTURE0 + i);
                 RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
               });
@@ -1215,12 +1217,10 @@ const RayTracer = (target_canvas) => {
               // Pass pre rendered texture to shader.
               RT.GL.uniform1i(ColorRenderTex[i], 0);
               RT.GL.uniform1i(ColorIpRenderTex[i], 1);
-              // Pass normal texture to GPU.
-              RT.GL.uniform1i(NormalRenderTex[i], 2);
               // Pass original color texture to GPU.
-              RT.GL.uniform1i(OriginalRenderTex[i], 3);
+              RT.GL.uniform1i(OriginalRenderTex[i], 2);
               // Pass vertex_id texture to GPU.
-              RT.GL.uniform1i(IdRenderTex[i], 4);
+              RT.GL.uniform1i(IdRenderTex[i], 3);
               // Post processing drawcall.
               RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
             }
@@ -1238,7 +1238,7 @@ const RayTracer = (target_canvas) => {
             // Clear depth and color buffers from last frame.
             RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
             // Push pre rendered textures to next shader (post processing).
-            [ColorRenderTexture[DenoiserPasses], ColorIpRenderTexture[DenoiserPasses], NormalRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+            [ColorRenderTexture[DenoiserPasses], ColorIpRenderTexture[DenoiserPasses], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
               RT.GL.activeTexture(RT.GL.TEXTURE0 + i);
               RT.GL.bindTexture(RT.GL.TEXTURE_2D, item);
             });
@@ -1248,12 +1248,10 @@ const RayTracer = (target_canvas) => {
             // Pass pre rendered texture to shader.
             RT.GL.uniform1i(ColorRenderTex[DenoiserPasses], 0);
             RT.GL.uniform1i(ColorIpRenderTex[DenoiserPasses], 1);
-            // Pass normal texture to GPU.
-            RT.GL.uniform1i(NormalRenderTex[DenoiserPasses], 2);
             // Pass original color texture to GPU.
-            RT.GL.uniform1i(OriginalRenderTex[DenoiserPasses], 3);
+            RT.GL.uniform1i(OriginalRenderTex[DenoiserPasses], 2);
             // Pass vertex_id texture to GPU.
-            RT.GL.uniform1i(IdRenderTex[DenoiserPasses], 4);
+            RT.GL.uniform1i(IdRenderTex[DenoiserPasses], 3);
             // Post processing drawcall.
             RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
           }
@@ -1367,7 +1365,7 @@ const RayTracer = (target_canvas) => {
           RT.GL.vertexAttribPointer(item[1], item[2], RT.GL.FLOAT, item[3], 0, 0);
         });
         // Create frame buffers and textures to be rendered to.
-        [Framebuffer, NormalRenderTexture, OriginalRenderTexture, IdRenderTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture(), RT.GL.createTexture()];
+        [Framebuffer, OriginalRenderTexture, IdRenderTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture()];
 
         renderTextureBuilder();
 
@@ -1378,7 +1376,6 @@ const RayTracer = (target_canvas) => {
           // Bind uniforms.
           ColorRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color");
           ColorIpRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color_ip");
-          NormalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_normal");
           OriginalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_original_color");
           IdRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_id");
           PostVertexBuffer[i] = RT.GL.createBuffer();

@@ -23,13 +23,9 @@ rt.QUEUE = [
 ];
 ```
 Actual example code (working web-sites / scenes) on my github is linked under Examples/Screenshots below.
-
 For performance reasons the path tracer works with 1 Sample per ray and 7 3x3 filter passes and one 5x5 pass.
-
 The Filter can be switched on/off via the rt.Filter variable.
-
 The sample count per ray can be controlled over the rt.SAMPLES varible as well.
-
 The library (ray tracer object) offers many more options and functions that can't all be shown here.
 
 (Safari & IE unsupported due to a lack of WebGl2 support).
