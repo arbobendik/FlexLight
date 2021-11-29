@@ -13,7 +13,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let topLight = await rt.GENERATE_PBR_TEX([1, 0, 1], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
@@ -26,19 +25,15 @@ document.addEventListener("DOMContentLoaded", async function(){
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	rt.PBR_TEXTURE.push(roughTex, caroTex, topLight);
+	rt.PBR_TEXTURE.push(roughTex, caroTex);
 
   // Move camera out of center.
   rt.Z = -20;
 
 	// Set primary light source.
-
-	let light_plane = rt.PLANE([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2],[0,-1,0]);
-	light_plane.textureNums = new Array(6).fill([-1,2]).flat();
-
 	rt.LIGHT = [[0, 4.95, 0]];
 	// Modify brightness of first one to be brighter (default is 3)
-	rt.LIGHT[0].strength = 4.5;
+	rt.LIGHT[0].strength = 5;
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
@@ -71,12 +66,13 @@ document.addEventListener("DOMContentLoaded", async function(){
   r[1][4] = rt.PLANE(b3,b2,b1,b0,[0,-1,0]);
   r[1][5] = rt.PLANE(t3,b3,b0,t0,[-1,0,0]);
   r[1][6] = rt.PLANE(t0,b0,b1,t1,[0,0,-1]);
-
+	// Set textures for cuboids.
 	for (let i = 1; i <= 6; i++){
 		r[0][i].textureNums = new Array(6).fill([-1,1]).flat();
 		// Make second cuboid full defuse.
 		r[1][i].textureNums = new Array(6).fill([-1,0]).flat();
 	}
+
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
     [-3, 3, -5, 0, -3, 3],
