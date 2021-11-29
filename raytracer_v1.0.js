@@ -550,14 +550,14 @@ const RayTracer = (target_canvas) => {
 
           if (i == 0){
             if(roughness < 0.01){
-              inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1);
-              inner_render_id = vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), 0.0, 0.5 * (last_roughness * 0.5 + metallicity));
+              inner_original_color = vec4(last_color, last_roughness * (first_ray_length + (1.5 - last_roughness)) + 0.1)  * metallicity;
+              inner_render_id = vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), 0.0, 0.5 * (last_roughness + metallicity));
             }
             first_ray_length = length(last_position - last_origin) / length(position - origin);
           }
 
           // Precalculate importancy_factor for this iteration.
-          importancy_factor *= last_color;
+          importancy_factor *= last_color * metallicity;
         }
         // Apply global illumination.
         final_color += sky_box * importancy_factor;
@@ -1429,7 +1429,7 @@ const RayTracer = (target_canvas) => {
     PLANE: (c0, c1, c2, c3) => {
       return {
         // Set normals.
-        normals: new Array(6).fill(RT.Math.cross(RT.Math.vec_diff(c0, c3), RT.Math.vec_diff(c0, c2))).flat(),
+        normals: new Array(6).fill(RT.Math.cross(RT.Math.vec_diff(c0, c2), RT.Math.vec_diff(c0, c1))).flat(),
         // Set vertices.
         vertices: [c0,c1,c2,c2,c3,c0].flat(),
         // Default color to white.
@@ -1454,8 +1454,8 @@ const RayTracer = (target_canvas) => {
       return {
         // Generate surface normal.
         normals: new Array(3).fill(RT.Math.cross(
-          RT.Math.vec_diff(a, b),
-          RT.Math.vec_diff(a, c)
+          RT.Math.vec_diff(a, c),
+          RT.Math.vec_diff(a, b)
         )).flat(),
         // Vertex for queue.
         vertices: [a,b,c].flat(),
