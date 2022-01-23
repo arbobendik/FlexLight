@@ -209,7 +209,7 @@ const RayTracer = (target_canvas) => {
         );
         vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
         // Set final clip space position.
-        gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 10000000000000000.0))), translate_py.y);
+        gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
         vertex_id = id;
         clip_space = vec3(translate_2d, translate_py.y);
         player = camera_position * vec3(-1.0, 1.0, 1.0);
@@ -616,7 +616,7 @@ const RayTracer = (target_canvas) => {
         }
         render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
         // 16 bit HDR for improved filtering.
-        render_color_ip = vec4(floor(final_color / float(samples)) / 256.0, 1.0);
+        render_color_ip = vec4(floor(final_color / float(samples)) / 255.0, 1.0);
         render_original_color = vec4(tex_color.xyz, roughness * first_ray_length + 0.1);
         render_id = vec4(vertex_id.xy, first_in_shadow, 0.5 * (roughness + metallicity));
         // Add properties of reflected objects to filter parameters for very reflective materials.
@@ -663,7 +663,7 @@ const RayTracer = (target_canvas) => {
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-        vec4 color = center_color + center_color_ip * 256.0;
+        vec4 color = center_color + center_color_ip * 255.0;
         float count = 1.0;
 
         int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
@@ -681,7 +681,7 @@ const RayTracer = (target_canvas) => {
             vec4 id = texelFetch(pre_render_id, coords, 0);
 
             if (id == center_id){
-              color += next_color + next_color_ip * 256.0;
+              color += next_color + next_color_ip * 255.0;
               count ++;
             }
           }
@@ -689,7 +689,7 @@ const RayTracer = (target_canvas) => {
         if (center_color.w > 0.0){
           // Set out color for render texture for the antialiasing filter.
           render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
-          render_color_ip = vec4(floor(color.xyz / count) / 256.0, 1.0);;
+          render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);;
         }else{
           render_color = vec4(0.0);
           render_color_ip = vec4(0.0);
@@ -718,7 +718,7 @@ const RayTracer = (target_canvas) => {
         vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
         vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-        vec4 color = center_color + center_color_ip * 256.0;
+        vec4 color = center_color + center_color_ip * 255.0;
         float count = 1.0;
 
         int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y)) * center_original_color.w);
@@ -741,8 +741,15 @@ const RayTracer = (target_canvas) => {
           }
         }
         if (center_color.w > 0.0){
-          // Set out color for render texture for the antialiasing filter.
-          out_color = color * vec4(center_original_color.xyz, 1.0) / count;
+          // Set out target_color for render texture for the antialiasing filter.
+          vec3 hdr_color = color.xyz * center_original_color.xyz / count;
+          // Apply Reinhard tone mapping.
+          hdr_color = hdr_color / (hdr_color + vec3(1.0));
+          // Gamma correction.
+          float gamma = 0.8;
+          hdr_color = pow(3.0 * hdr_color, vec3(1.0 / gamma)) / 3.0 * 1.1;
+          // Set tone mapped color as out_color.
+          out_color = vec4(hdr_color, 1.0);
         }else{
           out_color = vec4(0.0, 0.0, 0.0, 0.0);
         }
