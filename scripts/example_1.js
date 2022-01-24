@@ -25,7 +25,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
 	// Make light brighter.
-	rt.LIGHT[0].strength = 10;
+	rt.LIGHT[0].strength = 8;
+	// Set skylight.
+	rt.SKYBOX = [0.2,0.2,0.2];
 
 	// Create varying roughness texture for the surface.
 	let normalTex = new Image();
