@@ -747,7 +747,7 @@ const RayTracer = (target_canvas) => {
           hdr_color = hdr_color / (hdr_color + vec3(1.0));
           // Gamma correction.
           float gamma = 0.8;
-          hdr_color = pow(3.0 * hdr_color, vec3(1.0 / gamma)) / 3.0 * 1.1;
+          hdr_color = pow(3.0 * hdr_color, vec3(1.0 / gamma)) / 3.0 * 1.5;
           // Set tone mapped color as out_color.
           out_color = vec4(hdr_color, 1.0);
         }else{
