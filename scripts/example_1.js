@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	normalTex.src = "./textures/normal.jpg";
 	// Generate new more diffuse texture for the grass block.
 	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
+	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.3, 1, 0], 1, 1);
 	// Add those textures to render queue.
 	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseMetallicTex);
 
