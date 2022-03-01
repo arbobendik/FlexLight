@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 
 	// Make plane defuser.
-	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 1, 0], 1, 1);
+	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 0, 0], 1, 1);
 	rt.PBR_TEXTURE.push(normal_tex);
 
 	// Set camera perspective and position.
@@ -22,13 +22,13 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt.LIGHT = [[0, 10, 0], [5, 5, 5]];
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
+	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [];
 	r[0] = rt.CUBOID(-1.5, 4.5, -1, 2, 1.5, 2.5);
 	r[1] = rt.CUBOID(-1.5, 1.5, -1, 2, -2, -1);
 	r[2] = rt.CUBOID(0.5, 1.5, -1, 2, -1, 0);
-	r[3] = rt.CUBOID(-1.5, -0.5, -1, 2, - 1, 0);
+	r[3] = rt.CUBOID(-1.5, -0.5, -1, 2, -1, 0);
 	// Color all cuboids in center.
 	for (let i = 0; i < 4; i++){
 		let color = new Array(6).fill([Math.random(), Math.random(), Math.random(), 1]).flat();
@@ -52,16 +52,19 @@ document.addEventListener("DOMContentLoaded", async function(){
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
-	// Update Counter periodically.
+  // Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
+		// Update textures every second.
+		rt.UPDATE_TEXTURE();
 		rt.UPDATE_PBR_TEXTURE();
+    rt.UPDATE_TRANSLUCENCY_TEXTURE();
 	},1000);
 
 	// Init iterator variable for simple animations.
 	let iterator = 0;
 
-	setInterval(function(){
+	setInterval(async function(){
 		// Increase iterator.
 		iterator += 0.01;
 		// Precalculate sin and cos.
