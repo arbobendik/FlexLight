@@ -13,15 +13,13 @@ document.addEventListener("DOMContentLoaded", async function(){
 	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0], 1, 1);
 	let cuboid_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0.1], 1, 1);
 	rt.PBR_TEXTURE.push(normal_tex, cuboid_tex);
-	// Set PBR textures.
-	rt.UPDATE_PBR_TEXTURE();
 	// Set light source.
 	rt.LIGHT = [[0, 10, 0]];
 	// Modify brightness to be brighter (default is 3)
 	rt.LIGHT[0].strength = 8;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-	this_plane.textureNums = new Array(6).fill([-1,0]).flat();
+	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
 	// Push both objects to render queue.
 	rt.QUEUE.push(this_plane);
 	// Start render engine.
@@ -59,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 			let cuboid = rt.CUBOID(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
 			for (let i = 1; i <= 6; i++){
-				cuboid[i].textureNums = new Array(6).fill([-1,1]).flat();
+				cuboid[i].textureNums = new Array(6).fill([-1,1,-1]).flat();
 				cuboid[i].colors = new Array(6).fill(colors[x][y]).flat();
 			}
 			return cuboid;

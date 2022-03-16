@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
+  let smoothTex = await rt.GENERATE_PBR_TEX([0, 0, 0], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
 			Array(64).fill([
@@ -23,9 +24,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	rt.PBR_TEXTURE.push(roughTex, caroTex);
+	rt.PBR_TEXTURE.push(roughTex, caroTex, smoothTex);
   // Generate translucency texture for cube.
-  let translucencyTex = await rt.GENERATE_TRANSLUCENCY_TEX([0.3, 0, 0], 1, 1);
+  let translucencyTex = await rt.GENERATE_TRANSLUCENCY_TEX([1, 0, 1.3 / 4], 1, 1);
   rt.TRANSLUCENCY_TEXTURE.push(translucencyTex);
   // Move camera out of center.
   rt.Z = -20;
@@ -68,8 +69,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set textures for cuboids.
 	for (let i = 1; i <= 6; i++){
 		r[0][i].textureNums = new Array(6).fill([-1,1,-1]).flat();
-		// Make second cuboid full defuse and semi-translucent.
-		r[1][i].textureNums = new Array(6).fill([-1,0,0]).flat();
+		// Make second cuboid smooth and semi-translucent.
+		r[1][i].textureNums = new Array(6).fill([-1,2,0]).flat();
 	}
 
 	// Package cube and cuboids together in a shared bounding volume.
@@ -94,5 +95,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
+    // Update textures every second.
+		rt.UPDATE_TEXTURE();
+		rt.UPDATE_PBR_TEXTURE();
+    rt.UPDATE_TRANSLUCENCY_TEXTURE();
 	},1000);
 });

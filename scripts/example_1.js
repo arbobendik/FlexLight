@@ -31,10 +31,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Create varying roughness texture for the surface.
 	let normalTex = new Image();
-	normalTex.src = "./textures/normal.jpg";
+	normalTex.src = "./textures/normal.png";
 	// Generate new more diffuse texture for the grass block.
 	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0.3, 1, 0], 1, 1);
+	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0, 1, 0], 1, 1);
 	// Add those textures to render queue.
 	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseMetallicTex);
 
@@ -69,7 +69,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	r[3] = rt.CUBOID(-1.5, -0.5, -1, 2, - 1, 0);
 	// Color all cuboid in center.
 	for (let i = 0; i < 4; i++){
-		let color = new Array(6).fill(/*[1, 1, 1, 1]).flat();*/[Math.random(), Math.random(), Math.random(), 1]).flat();
+		let color = new Array(6).fill([1, 1, 1, 1]).flat();//[Math.random(), Math.random(), Math.random(), 1]).flat();
 		for (let j = 1; j < 7; j++) r[i][j].colors = color;
 	}
 
@@ -95,7 +95,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	];
 	// Append both objects to render queue.
 	rt.QUEUE.push(test_surface, objects);
-  // because translucent scene needs more.
+  // Increase max reflections, because translucent objects need more reflections to look good.
   rt.REFLECTIONS = 7;
 	// Start render engine.
 	rt.START();
