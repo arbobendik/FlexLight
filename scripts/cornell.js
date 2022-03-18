@@ -80,7 +80,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	];
 
 	let box = [
-		[-5, 5, -5, 5, -5, 5],
+		[-5, 5, -5, 5, -15, 5],
 		bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane
 	];
 	// Push both objects to render queue.

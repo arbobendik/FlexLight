@@ -9,10 +9,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
 	rt = RayTracer(canvas);
-  
+
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.15], 1, 1);
+	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.2], 1, 1);
   let smoothTex = await rt.GENERATE_PBR_TEX([0, 0, 0], 1, 1);
   let caroTex = await rt.GENERATE_PBR_TEX(
 		[
@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	];
 
 	let box = [
-		[-5, 5, -5, 5, -5, 5],
+		[-5, 5, -5, 5, -15, 5],
 		bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane
 	];
 	// Push both objects to render queue.
