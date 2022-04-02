@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
 	// Make light brighter.
-	rt.LIGHT[0].strength = 8;
+	rt.LIGHT[0].strength = 25;
 	// Set skylight.
 	rt.SKYBOX = [0.2,0.2,0.2];
 
@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	normalTex.src = "./textures/normal.png";
 	// Generate new more diffuse texture for the grass block.
 	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0, 1, 0], 1, 1);
+	let diffuseMetallicTex = await rt.GENERATE_PBR_TEX([0, 0.5, 0], 1, 1);
 	// Add those textures to render queue.
 	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseMetallicTex);
 
@@ -69,7 +69,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	r[3] = rt.CUBOID(-1.5, -0.5, -1, 2, - 1, 0);
 	// Color all cuboid in center.
 	for (let i = 0; i < 4; i++){
-		let color = new Array(6).fill(/*[1, 1, 1, 1]).flat();*/[Math.random(), Math.random(), Math.random(), 1]).flat();
+		let color = new Array(6).fill(/*[1, 1, 1]).flat();*/[Math.random(), Math.random(), Math.random()]).flat();
 		for (let j = 1; j < 7; j++) r[i][j].colors = color;
 	}
 
