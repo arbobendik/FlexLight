@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = RayTracer(canvas);
 	// Make plane defuser.
 	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0], 1, 1);
-	let cuboid_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0.1], 1, 1);
+	let cuboid_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0.05], 1, 1);
 	rt.PBR_TEXTURE.push(normal_tex, cuboid_tex);
 	// Set light source.
 	rt.LIGHT = [[0, 10, 0]];
@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// assign each pillar a color.
 	for (let i = 0; i < sideLength; i++){
 		let row = [];
-		for (let j = 0; j < sideLength; j++) row.push([Math.random(), Math.random(), Math.random(), 1]);
+		for (let j = 0; j < sideLength; j++) row.push([Math.random(), Math.random(), Math.random()]);
 		colors.push(row);
 	}
 
