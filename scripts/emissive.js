@@ -9,7 +9,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
 	rt = RayTracer(canvas);
-
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
 	let roughLight = await rt.GENERATE_PBR_TEX([1, 0, 0.2], 1, 1);
