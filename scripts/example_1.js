@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.FX, rt.FY] = [0.440, 0.235];
 
 	// Make light brighter.
-	rt.LIGHT[0].strength = 25;
+	rt.LIGHT[0].strength = 15;
 	// Set skylight.
 	rt.SKYBOX = [0.2,0.2,0.2];
 
