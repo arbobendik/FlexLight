@@ -262,12 +262,15 @@ const RayTracer = (target_canvas) => {
     START: async () => {
       const vertex_glsl = `#version 300 es
 
+      precision highp float;
+
+
       in vec3 position_3d;
       in vec3 color_3d;
       in vec3 normal_3d;
-      in vec2 tex_pos;
-
       in vec3 texture_nums_3d;
+
+      in vec2 tex_pos;
       in vec2 texture_sizes_3d;
       in vec2 id;
 
@@ -528,7 +531,7 @@ const RayTracer = (target_canvas) => {
         return dot(normal, normalize(lightDir));
       }
 
-      vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 rough_normal, vec3 normal, vec3 color, vec3 rme, vec3 tpo, int sample_n, int bounces){
+      vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 rough_normal, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
         // Set bool to false when filter becomes necessary
         bool dont_filter = true;
         // Use additive color mixing technique, so start with black.
@@ -544,7 +547,7 @@ const RayTracer = (target_canvas) => {
         vec3 last_rough_normal = rough_normal;
         // Remember color of triangle ray intersected lastly.
         // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
-        vec3 last_color = color;
+        vec3 last_color = vec3(1.0);
         // Pack roughness, metallicity and emissiveness in one vector for simplicity.
         vec3 last_rme = rme;
         // Pack all translucency related values in one vector.
@@ -618,7 +621,7 @@ const RayTracer = (target_canvas) => {
                vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
                // Update pixel color if coordinate is not in shadow.
                if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * last_color * importancy_factor * 1.0;
+                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * last_color * importancy_factor;
                }
              }
            }
@@ -749,19 +752,19 @@ const RayTracer = (target_canvas) => {
             // Alter normal and color according to texture and normal texture.
             vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, tex_color.xyz, rme, tpo, i, actual_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, actual_reflections);
           }else{
             // Alter normal and color according to texture and normal texture.
             vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Next position
             vec3 next_position = rayTracer(normalize(position - player), position, normal).xyz;
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, tex_color.xyz, rme, tpo, i, actual_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, actual_reflections);
           }
         }
         // Render all relevant information to 4 textures for the post processing shader.
         if (use_filter == 0){
-          render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
+          render_color = vec4(final_color / float(samples), 1.0);
           return;
         }
         render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
@@ -774,8 +777,13 @@ const RayTracer = (target_canvas) => {
 
       const raster_fragment_glsl = `#version 300 es
 
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
-      precision highp sampler2D;
+      #else
+      precision mediump float;
+      #endif
+
+      precision lowp sampler2D;
 
       in vec3 position;
       in vec2 tex_coord;
@@ -906,17 +914,15 @@ const RayTracer = (target_canvas) => {
         return false;
       }
 
-      float forwardTrace(vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
+      float forwardTrace(vec3 light_ray, vec3 origin, vec3 position, vec3 normal, float metallicity, float strength){
         // Calculate intensity of light reflection, which decreases squared over distance.
-        float intensity = strength * (1.0 + length(light_ray));
+        float intensity = strength / (1.0 + length(light_ray));
         // Process specularity of ray in view from origin's perspective.
         vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
-        float light = 0.001;//abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
+        float light = dot(normalize(light_ray), normalize(normal));// * (1.0 - metallicity);
         float specular = pow(dot(normal, halfVector), 300.0 / intensity) * metallicity;
         // Determine final color and return it.
-        if (specular > 0.0) return (light + specular) * intensity;
-        // Return just light if specular is negative.
-        return light * intensity;
+        return (light + specular) * intensity;
       }
 
       float fresnel(vec3 normal, vec3 lightDir) {
@@ -924,7 +930,7 @@ const RayTracer = (target_canvas) => {
         return dot(normal, normalize(lightDir));
       }
 
-      vec3 lightTrace(sampler2D light_tex, vec3 origin, vec3 position, vec3 color, vec3 rme){
+      vec3 lightTrace(sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 color, vec3 rme){
         // Use additive color mixing technique, so start with black.
         // Apply global illumination.
         vec3 final_color = sky_box * color * 0.5;
@@ -941,7 +947,7 @@ const RayTracer = (target_canvas) => {
           vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - position;
           // Update pixel color if coordinate is not in shadow.
           if (!shadowTest(normalize(active_light_ray), light, position, normal)){
-            final_color += abs(forwardTrace(active_light_ray, origin, position, rme.y, strength) * color);
+            final_color += forwardTrace(active_light_ray, origin, position, normal, rme.y, strength) * color;
           }
         }
         // Handle emissive materials.
@@ -967,10 +973,10 @@ const RayTracer = (target_canvas) => {
           //rme.z = rme.z * 4.0;
         //}
         // Fresnel effect.
-        rme.x = rme.x * mix(1.0, fresnel(normal, player - position), rme.y);
+        // rme.x = rme.x * mix(1.0, fresnel(normal, player - position), rme.y);
         // Generate sample
-        vec3 final_color = lightTrace(light_tex, player, position, tex_color.xyz, rme) * tex_color.xyz;
-        render_color = vec4(final_color.xyz, 1.0);
+        vec3 final_color = lightTrace(light_tex, player, position, normal, tex_color.xyz, rme) * tex_color.xyz;
+        render_color = vec4(final_color, 1.0);
       }
       `;
 
@@ -1154,7 +1160,7 @@ const RayTracer = (target_canvas) => {
         // Init Texture elements.
         var RandomTexture, Random;
         // Linkers for GLATTRIBARRAYS.
-        var [Position, Color, Normal, TexCoord, TexNum, TexSize, IdLoc] = [0, 1, 2, 3, 4, 5, 6];
+        var [Position, Color, Normal, TexNum, TexCoord, TexSize, IdLoc] = [0, 1, 2, 3, 4, 5, 6];
         // List of all vertices currently in world space.
         var Data = [];
         // Framebuffer, Post Program buffers and textures.
@@ -1668,8 +1674,8 @@ const RayTracer = (target_canvas) => {
             [PositionBuffer, vertices],
             [NormalBuffer, normals],
             [ColorBuffer, colors],
-            [TexBuffer, uvs],
             [TexNumBuffer, texNums],
+            [TexBuffer, uvs],
             [IdBuffer, ids]
           ].forEach(function(item){
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
@@ -1748,9 +1754,8 @@ const RayTracer = (target_canvas) => {
           // Set buffers.
           [
             [PositionBuffer, vertices],
-            [ColorBuffer, colors],
             [NormalBuffer, normals],
-            [TexBuffer, uvs],
+            [ColorBuffer, colors],
             [TexNumBuffer, texNums]
           ].forEach(function(item){
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
@@ -1771,13 +1776,17 @@ const RayTracer = (target_canvas) => {
             { source: vertex_glsl, type: RT.GL.VERTEX_SHADER },
             { source: raster_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
           ]);
+          // Reassign attribpositions.
+          Position = 0;
+          Color = 1;
+          Normal = 2;
+          TexNum = 3;
           // Create global vertex array object (VAO).
           RT.GL.bindVertexArray(VAO);
           // Bind Attribute varying to their respective shader locations.
           RT.GL.bindAttribLocation(Program, Position, "position_3d");
           RT.GL.bindAttribLocation(Program, Color, "color_3d");
           RT.GL.bindAttribLocation(Program, Normal, "normal_3d");
-          RT.GL.bindAttribLocation(Program, TexCoord, "tex_pos");
           RT.GL.bindAttribLocation(Program, TexNum, "texture_nums_3d");
           // Bind uniforms to Program.
           CameraPosition = RT.GL.getUniformLocation(Program, "camera_position");
@@ -1802,7 +1811,7 @@ const RayTracer = (target_canvas) => {
           // Define Program with its currently bound shaders as the program to use for the webgl2 context.
           RT.GL.useProgram(Program);
           // Create buffers.
-          [PositionBuffer, ColorBuffer, NormalBuffer, TexBuffer, TexSizeBuffer, TexNumBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
+          [PositionBuffer, ColorBuffer, NormalBuffer, TexNumBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
           // Init a world texture containing all information about world space.
           RT.WorldTexture = RT.GL.createTexture();
           // Create Textures for primary render.
@@ -1819,11 +1828,8 @@ const RayTracer = (target_canvas) => {
             [ColorBuffer, Color, 3, false],
             // Set normals.
             [NormalBuffer, Normal, 3, false],
-            // Set barycentric texture coordinates.
-            [TexBuffer, TexCoord, 2, true],
             // Set Texture number (id) in buffer.
-            [TexNumBuffer, TexNum, 3, true],
-
+            [TexNumBuffer, TexNum, 3, true]
           ].forEach((item) => {
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
             RT.GL.enableVertexAttribArray(item[1]);
