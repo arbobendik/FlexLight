@@ -51,18 +51,17 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Set textures for cube.
   let cube_colors = [
-    [1, 1, 0, 1], // yelllow
-    [1, 0.5, 0, 1], // orange
-    [0, 0, 1, 1], // blue
-    [1, 1, 1, 1], // white
-    [1, 0, 0, 1], // red
-    [0, 1, 0, 1] // green
+    [1, 1, 0], // yelllow
+    [1, 0.5, 0], // orange
+    [0, 0, 1], // blue
+    [1, 1, 1], // white
+    [1, 0, 0], // red
+    [0, 1, 0] // green
   ];
 
 	for (let i = 1; i <= 6; i++){
     c[i].colors = new Array(6).fill(cube_colors[i-1]).flat();
     c[i].textureNums = new Array(6).fill([-1,1,-1]).flat();
-    console.log(c[i].colors);
   }
 
 	let box = [

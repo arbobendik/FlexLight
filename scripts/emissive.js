@@ -52,8 +52,8 @@ document.addEventListener("DOMContentLoaded", async function(){
   left_plane.textureNums = new Array(6).fill([-1,2,-1]).flat();
   right_plane.textureNums = new Array(6).fill([-1,2,-1]).flat();
   // Color left and right plane.
-  left_plane.colors = new Array(6).fill([1, 0, 0, 1]).flat();
-  right_plane.colors = new Array(6).fill([0, 1, 0, 1]).flat();
+  left_plane.colors = new Array(6).fill([1, 0, 0]).flat();
+  right_plane.colors = new Array(6).fill([0, 1, 0]).flat();
 	// Generate a few cuboids in the box with respective bounding box.
 	let r = [[], []];
 	r[0] = rt.CUBOID(-3, -1.5, -5, -2, -1, 1);
