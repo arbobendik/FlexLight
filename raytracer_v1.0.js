@@ -25,6 +25,7 @@ const RayTracer = (target_canvas) => {
     MAX_REFLECTIONS: 5,
     MIN_IMPORTANCY: 0.3,
     FILTER: true,
+    ANTIALIASING: true,
     RASTER: false,
     // Camera and frustrum settings.
     FOV: Math.PI,
@@ -558,7 +559,7 @@ const RayTracer = (target_canvas) => {
         // Pack all translucency related values in one vector.
         vec3 last_tpo = tpo;
         // Iterate over each bounce and modify color accordingly.
-        for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
+        for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy / SQRT3; i++){
 
           // Generate pseudo random vector.
           vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
@@ -1112,52 +1113,150 @@ const RayTracer = (target_canvas) => {
       `;
       const kernel_glsl = `#version 300 es
 
+      // Define FXAA constants.
+      #define FXAA_EDGE_THRESHOLD_MIN 0.06125
+      #define FXAA_EDGE_THRESHOLD 0.125
+
+      #define FXAA_SUBPIX_TRIM 0.5
+      #define FXAA_SUBPIX_TRIM_SCALE 2.0
+      #define FXAA_SUBPIX_CAP 0.75
+
+      #define FXAA_SEARCH_STEPS 4
+
       precision highp float;
+
       in vec2 clip_space;
       uniform sampler2D pre_render;
       out vec4 out_color;
 
       vec2 texel;
 
-      vec4 fetch(int x_off, int y_off){
-        return texelFetch(pre_render, ivec2(texel) + ivec2(x_off, y_off), 0);
+      vec4 fetch(int x, int y) {
+        return texelFetch(pre_render, ivec2(texel) + ivec2(x, y), 0);
       }
 
-      float f_luma(int x_off, int y_off){
-        return length(fetch(x_off, y_off).xyz);
+      // Color to luminance conversion from NVIDIA FXAA white paper.
+      float fxaa_luma(vec3 rgb) {
+        return rgb.y * (0.587/0.299) + rgb.x;
       }
 
-      void main(){
+      float tex_luma(int x, int y) {
+        // Devide length through square root of 3 to have a maximum length of 1.
+        return fxaa_luma(fetch(x, y).xyz);
+      }
+
+
+      // Local contrast checker from NVIDIA FXAA white paper.
+      vec2 fxaa_contrast(int x, int y) {
+        return vec2(
+          min(tex_luma(x, y), min(min(tex_luma(x, y-1), tex_luma(x-1, y)), min(tex_luma(x, y+1), tex_luma(x+1, y)))),
+          max(tex_luma(x, y), max(max(tex_luma(x, y-1), tex_luma(x-1, y)), max(tex_luma(x, y+1), tex_luma(x+1, y))))
+        );
+      }
+
+      // Local low contrast checker from NVIDIA FXAA white paper.
+      bool fxaa_is_low_contrast(int x, int y) {
+        vec2 range_min_max = fxaa_contrast(x, y);
+        float range = range_min_max.y - range_min_max.x;
+        return (range < max(FXAA_EDGE_THRESHOLD_MIN, range_min_max.y * FXAA_EDGE_THRESHOLD));
+      }
+
+      vec4 blur_3x3(int x, int y) {
+        return 1.0 / 9.0 * (
+            fetch(x-1,y-1) + fetch(  x,y-1) + fetch(x+1,y-1)
+          + fetch(x-1,  y) + fetch(  x,  y) + fetch(x+1,  y)
+          + fetch(x-1,y+1) + fetch(  x,y+1) + fetch(x+1,y+1)
+        );
+      }
+
+      float fxaa_sub_pixel_aliasing(int x, int y) {
+        float luma_l = 0.25 * (tex_luma(x,y-1) + tex_luma(x-1,y) + tex_luma(x+1,y) + tex_luma(x,y+1));
+        float range_l = abs(luma_l - tex_luma(x, y));
+        // Get contrast range.
+        vec2 range_min_max = fxaa_contrast(x, y);
+        float range = range_min_max.y - range_min_max.x;
+        float blend_l = max(0.0,
+        (range_l / range) - FXAA_SUBPIX_TRIM) * FXAA_SUBPIX_TRIM_SCALE;
+        blend_l = min(FXAA_SUBPIX_CAP, blend_l);
+        return blend_l;
+      }
+
+
+      void main() {
         // Get texture size.
         texel = vec2(textureSize(pre_render, 0)) * clip_space;
 
         vec4 original_color = fetch(0, 0);
+        float original_luma = tex_luma(0, 0);
 
         mat3 luma = mat3(
-          vec3(f_luma(-1,-1),f_luma(0,-1),f_luma(1,-1)),
-          vec3(f_luma(-1, 0),f_luma(0, 0),f_luma(1, 0)),
-          vec3(f_luma(-1, 1),f_luma(0, 1),f_luma(1, 1))
+          vec3(tex_luma(-1,-1),tex_luma(0,-1),tex_luma(1,-1)),
+          vec3(tex_luma(-1, 0),tex_luma(0, 0),tex_luma(1, 0)),
+          vec3(tex_luma(-1, 1),tex_luma(0, 1),tex_luma(1, 1))
         );
 
         // Edge detection from NVIDIA FXAA white paper
-
-        float edgeVert =
+        float edge_vert =
           abs((0.25 * luma[0].x) + (-0.5 * luma[0].y) + (0.25 * luma[0].z)) +
           abs((0.50 * luma[1].x) + (-1.0 * luma[1].y) + (0.50 * luma[1].z)) +
           abs((0.25 * luma[2].x) + (-0.5 * luma[2].y) + (0.25 * luma[2].z));
 
-        float edgeHorz =
+        float edge_horz =
           abs((0.25 * luma[0].x) + (-0.5 * luma[1].x) + (0.25 * luma[2].x)) +
           abs((0.50 * luma[0].y) + (-1.0 * luma[1].y) + (0.50 * luma[2].y)) +
           abs((0.25 * luma[0].z) + (-0.5 * luma[1].z) + (0.25 * luma[2].z));
 
-        bool horzSpan = edgeHorz >= edgeVert;
+        bool horz_span = edge_horz >= edge_vert;
+        ivec2 step = ivec2(0, 1);
+        if (horz_span) step = ivec2(1, 0);
 
-        if (original_color.w != 0.0){
+        if (fxaa_is_low_contrast(0, 0)) {
           out_color = original_color;
-        }else{
-          out_color = vec4(0.0, 0.0, 0.0, 0.0);
+          return;
         }
+
+        ivec2 pos_n = - step;
+        ivec2 pos_p = step;
+
+        float pixel_count = 1.0;
+
+        bool done_n = false;
+        bool done_p = false;
+
+        // Luma of neighbour with highest contrast.
+        float luma_mcn = max(
+          max(abs(luma[0].y - luma[1].y), abs(luma[1].z - luma[1].y)),
+          max(abs(luma[2].y - luma[1].y), abs(luma[1].x - luma[1].y))
+        );
+        float gradient = abs(luma_mcn - luma[1].y);
+
+        vec4 color = original_color;
+        for (int i = 0; i <= FXAA_SEARCH_STEPS; i++) {
+          // Blend pixel with 3x3 box filter to preserve sub pixel detail.
+          if (!done_n) {
+            vec4 local_blur_n = blur_3x3(pos_n.x, pos_n.y);
+            done_n = (abs(fxaa_luma(local_blur_n.xyz) - luma_mcn) >= gradient);
+            color += mix(fetch(pos_n.x, pos_n.y), local_blur_n, fxaa_sub_pixel_aliasing(pos_n.x, pos_n.y));
+            pixel_count++;
+            pos_n -= step;
+          } else if (!done_p) {
+            vec4 local_blur_p = blur_3x3(pos_p.x, pos_p.y);
+            done_p = (abs(fxaa_luma(local_blur_p.xyz) - luma_mcn) >= gradient);
+            color += mix(fetch(pos_p.x, pos_p.y), local_blur_p, fxaa_sub_pixel_aliasing(pos_p.x, pos_p.y));
+            pixel_count++;
+            pos_p += step;
+          } else {
+            break;
+          }
+        }
+
+        out_color = color / pixel_count;
+
+        /*if(horz_span){
+          out_color = vec4(0.0, 0.0, 1.0, 1.0);
+        }else{
+          out_color = vec4(1.0, 0.0, 0.0, 1.0);
+        }*/
       }
       `;
       // Initialize internal globals.
@@ -1555,14 +1654,19 @@ const RayTracer = (target_canvas) => {
         }
         // Last denoise pass.
         {
-          // Configure where the final image should go.
-          RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
           RT.GL.drawBuffers([
             RT.GL.COLOR_ATTACHMENT0,
             RT.GL.COLOR_ATTACHMENT1
           ]);
           // Configure framebuffer for color and depth.
-          RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
+          if (RT.ANTIALIASING) {
+            // Configure where the final image should go.
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
+          } else {
+            // Render to canvas now.
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
+          }
           // Clear depth and color buffers from last frame.
           RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
           // Push pre rendered textures to next shader (post processing).
@@ -1583,8 +1687,8 @@ const RayTracer = (target_canvas) => {
           // Post processing drawcall.
           RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
         }
-        // Apply kernel convolution matrix.
-        {
+        // Apply antialiasing shader if enabled.
+        if (RT.ANTIALIASING) {
           // Render to canvas now.
           RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
           // Make pre rendered texture TEXTURE0.
