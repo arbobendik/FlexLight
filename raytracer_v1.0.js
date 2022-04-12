@@ -1118,10 +1118,10 @@ const RayTracer = (target_canvas) => {
       #define FXAA_EDGE_THRESHOLD 0.125
 
       #define FXAA_SUBPIX_TRIM 0.5
-      #define FXAA_SUBPIX_TRIM_SCALE 2.0
+      #define FXAA_SUBPIX_TRIM_SCALE 1.0
       #define FXAA_SUBPIX_CAP 0.75
 
-      #define FXAA_SEARCH_STEPS 4
+      #define FXAA_SEARCH_STEPS 6
 
       precision highp float;
 
