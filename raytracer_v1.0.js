@@ -22,8 +22,10 @@ const RayTracer = (target_canvas) => {
     // Quality settings.
     SAMPLES: 1,
     SCALE: 1,
-    REFLECTIONS: 5,
+    MAX_REFLECTIONS: 5,
+    MIN_IMPORTANCY: 0.3,
     FILTER: true,
+    ANTIALIASING: true,
     RASTER: false,
     // Camera and frustrum settings.
     FOV: Math.PI,
@@ -313,6 +315,8 @@ const RayTracer = (target_canvas) => {
       `;
       const fragment_glsl = `#version 300 es
 
+      #define SQRT3 1.7320508075688772
+
       precision highp float;
       precision highp sampler2D;
 
@@ -325,9 +329,11 @@ const RayTracer = (target_canvas) => {
       flat in vec3 player;
       flat in vec2 vertex_id;
       flat in vec3 texture_nums;
+
       // Quality configurators.
       uniform int samples;
-      uniform int reflections;
+      uniform int max_reflections;
+      uniform float min_importancy;
       uniform int use_filter;
       // Textures in parallel for texture atlas.
       uniform int texture_width;
@@ -380,7 +386,7 @@ const RayTracer = (target_canvas) => {
       vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n, vec3 on){
         // if(length(r) == 0.0) return vec4(p, 0.0);
         // Get distance to intersection point.
-        float s = dot(n, a - p) /  dot(n, r);
+        float s = dot(n, a - p) / dot(n, r);
         // Ensure that ray triangle intersection is between light source and texture.
         if (s > l || s <= shadow_bias) return vec4(0.0);
         // Calculate intersection point.
@@ -553,7 +559,7 @@ const RayTracer = (target_canvas) => {
         // Pack all translucency related values in one vector.
         vec3 last_tpo = tpo;
         // Iterate over each bounce and modify color accordingly.
-        for (int i = 0; i < bounces && length(importancy_factor) >= 0.0; i++){
+        for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy / SQRT3; i++){
 
           // Generate pseudo random vector.
           vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
@@ -709,8 +715,6 @@ const RayTracer = (target_canvas) => {
         vec3 tex_color = color;
         // Multiply with texture value if texture is defined.
         if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x)).xyz;
-        // Actual reflections
-        int actual_reflections = reflections;
         // Skip path tracing if random value determines that this pixel shouldn't be fully calculated
         // to enable lower pathtracing resolutions than native.
         vec2 random_coord = vec2(0.0);
@@ -752,14 +756,14 @@ const RayTracer = (target_canvas) => {
             // Alter normal and color according to texture and normal texture.
             vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, actual_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, max_reflections);
           }else{
             // Alter normal and color according to texture and normal texture.
             vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Next position
             vec3 next_position = rayTracer(normalize(position - player), position, normal).xyz;
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, actual_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, max_reflections);
           }
         }
         // Render all relevant information to 4 textures for the post processing shader.
@@ -1109,41 +1113,149 @@ const RayTracer = (target_canvas) => {
       `;
       const kernel_glsl = `#version 300 es
 
+      // Define FXAA constants.
+      #define FXAA_EDGE_THRESHOLD_MIN 1.0 / 32.0
+      #define FXAA_EDGE_THRESHOLD 1.0 / 4.0
+
+      #define FXAA_SUBPIX_TRIM 0.0
+      #define FXAA_SUBPIX_TRIM_SCALE 1.0
+      #define FXAA_SUBPIX_CAP 7.0 / 8.0
+
+      #define FXAA_SEARCH_STEPS 6
+
       precision highp float;
+
       in vec2 clip_space;
       uniform sampler2D pre_render;
       out vec4 out_color;
 
-      void main(){
+      vec2 texel;
 
-        int kernel[12] = int[12](
-             1, 5, 1,
-             5, 20, 5,
-             1, 5, 1,
-             0, 0, 0
+      vec4 fetch(int x, int y) {
+        return texelFetch(pre_render, ivec2(texel) + ivec2(x, y), 0);
+      }
+
+      // Color to luminance conversion from NVIDIA FXAA white paper.
+      float fxaa_luma(vec4 rgba) {
+        return (rgba.y * (0.587/0.299) + rgba.x) * rgba.w;
+      }
+
+      float tex_luma(int x, int y) {
+        // Devide length through square root of 3 to have a maximum length of 1.
+        return fxaa_luma(fetch(x, y));
+      }
+
+
+      // Local contrast checker from NVIDIA FXAA white paper.
+      vec2 fxaa_contrast(int x, int y) {
+        return vec2(
+          min(tex_luma(x, y), min(min(tex_luma(x, y-1), tex_luma(x-1, y)), min(tex_luma(x, y+1), tex_luma(x+1, y)))),
+          max(tex_luma(x, y), max(max(tex_luma(x, y-1), tex_luma(x-1, y)), max(tex_luma(x, y+1), tex_luma(x+1, y))))
+        );
+      }
+
+      // Local low contrast checker from NVIDIA FXAA white paper.
+      bool fxaa_is_low_contrast(int x, int y) {
+        vec2 range_min_max = fxaa_contrast(x, y);
+        float range = range_min_max.y - range_min_max.x;
+        return (range < max(FXAA_EDGE_THRESHOLD_MIN, range_min_max.y * FXAA_EDGE_THRESHOLD));
+      }
+
+      vec4 blur_3x3(int x, int y) {
+        return 1.0 / 9.0 * (
+            fetch(x-1,y-1) + fetch(  x,y-1) + fetch(x+1,y-1)
+          + fetch(x-1,  y) + fetch(  x,  y) + fetch(x+1,  y)
+          + fetch(x-1,y+1) + fetch(  x,y+1) + fetch(x+1,y+1)
+        );
+      }
+
+      float fxaa_sub_pixel_aliasing(int x, int y) {
+        float luma_l = 0.25 * (tex_luma(x,y-1) + tex_luma(x-1,y) + tex_luma(x+1,y) + tex_luma(x,y+1));
+        float range_l = abs(luma_l - tex_luma(x, y));
+        // Get contrast range.
+        vec2 range_min_max = fxaa_contrast(x, y);
+        float range = range_min_max.y - range_min_max.x;
+        float blend_l = max(0.0,
+        (range_l / range) - FXAA_SUBPIX_TRIM) * FXAA_SUBPIX_TRIM_SCALE;
+        blend_l = min(FXAA_SUBPIX_CAP, blend_l);
+        return blend_l;
+      }
+
+
+      void main() {
+        // Get texture size.
+        texel = vec2(textureSize(pre_render, 0)) * clip_space;
+
+        vec4 original_color = fetch(0, 0);
+        float original_luma = tex_luma(0, 0);
+
+        mat3 luma = mat3(
+          vec3(tex_luma(-1,-1),tex_luma(0,-1),tex_luma(1,-1)),
+          vec3(tex_luma(-1, 0),tex_luma(0, 0),tex_luma(1, 0)),
+          vec3(tex_luma(-1, 1),tex_luma(0, 1),tex_luma(1, 1))
         );
 
-        // Get texture size.
-        vec2 texel = vec2(textureSize(pre_render, 0)) * clip_space;
+        // Edge detection from NVIDIA FXAA white paper
+        float edge_vert =
+          abs((0.25 * luma[0].x) + (-0.5 * luma[0].y) + (0.25 * luma[0].z)) +
+          abs((0.50 * luma[1].x) + (-1.0 * luma[1].y) + (0.50 * luma[1].z)) +
+          abs((0.25 * luma[2].x) + (-0.5 * luma[2].y) + (0.25 * luma[2].z));
 
-        vec4 original_color = texelFetch(pre_render, ivec2(texel), 0);
-        vec4 color = vec4(0.0, 0.0, 0.0, 0.0);
-        float count = 0.0;
-        int increment = 1;
-        int radius = 3;
+        float edge_horz =
+          abs((0.25 * luma[0].x) + (-0.5 * luma[1].x) + (0.25 * luma[2].x)) +
+          abs((0.50 * luma[0].y) + (-1.0 * luma[1].y) + (0.50 * luma[2].y)) +
+          abs((0.25 * luma[0].z) + (-0.5 * luma[1].z) + (0.25 * luma[2].z));
 
-        // Apply 3x3 kernel on image.
-        for (int i = 0; i < radius; i++){
-          for (int j = 0; j < radius; j++){
-            vec4 next_color = texelFetch(pre_render, ivec2(texel + vec2(i, j) - float(radius/2)), 0);
-              color += next_color * float(kernel[i%3+j]);
-              count += float(kernel[i%3+j]);
+        bool horz_span = edge_horz >= edge_vert;
+        ivec2 step = ivec2(0, 1);
+        if (horz_span) step = ivec2(1, 0);
+
+        if (fxaa_is_low_contrast(0, 0)) {
+          out_color = original_color;
+          return;
+        }
+
+        ivec2 pos_n = - step;
+        ivec2 pos_p = step;
+
+        vec4 color = original_color;
+        float pixel_count = 1.0;
+
+        bool done_n = false;
+        bool done_p = false;
+
+        // Luma of neighbour with highest contrast.
+        float luma_mcn = max(
+          max(abs(luma[0].y - luma[1].y), abs(luma[1].z - luma[1].y)),
+          max(abs(luma[2].y - luma[1].y), abs(luma[1].x - luma[1].y))
+        );
+        float gradient = abs(luma_mcn - luma[1].y);
+
+        for (int i = 0; i < FXAA_SEARCH_STEPS; i++) {
+          // Blend pixel with 3x3 box filter to preserve sub pixel detail.
+          if (!done_n) {
+            vec4 local_blur_n = blur_3x3(pos_n.x, pos_n.y);
+            done_n = (abs(fxaa_luma(local_blur_n) - luma_mcn) >= gradient);
+            color += mix(fetch(pos_n.x, pos_n.y), local_blur_n, fxaa_sub_pixel_aliasing(pos_n.x, pos_n.y));
+            pixel_count++;
+            pos_n -= step;
+          } else if (!done_p) {
+            vec4 local_blur_p = blur_3x3(pos_p.x, pos_p.y);
+            done_p = (abs(fxaa_luma(local_blur_p) - luma_mcn) >= gradient);
+            color += mix(fetch(pos_p.x, pos_p.y), local_blur_p, fxaa_sub_pixel_aliasing(pos_p.x, pos_p.y));
+            pixel_count++;
+            pos_p += step;
+          } else {
+            break;
           }
         }
-        if (original_color.w != 0.0){
-          out_color = color / count;
+
+        out_color = color / pixel_count;
+
+        if(horz_span){
+          //out_color = vec4(0.0, 0.0, 1.0, 1.0);
         }else{
-          out_color = vec4(0.0, 0.0, 0.0, 0.0);
+          //out_color = vec4(1.0, 0.0, 0.0, 1.0);
         }
       }
       `;
@@ -1154,7 +1266,7 @@ const RayTracer = (target_canvas) => {
         var TimeElapsed = performance.now();
         var Frames = 0;
         // Internal GL objects.
-        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, ReflectionsLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, TranslucencyTex, ColorTex, LightTex;
+        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, TranslucencyTex, ColorTex, LightTex;
         // Init Buffers.
         var PositionBuffer, NormalBuffer, TexBuffer, ColorBuffer, TexSizeBuffer, TexNumBuffer, IdBuffer, SurfaceBuffer, TriangleBuffer;
         // Init Texture elements.
@@ -1438,7 +1550,9 @@ const RayTracer = (target_canvas) => {
           // Set amount of samples per ray.
           RT.GL.uniform1i(SamplesLocation, RT.SAMPLES);
           // Set max reflections per ray.
-          RT.GL.uniform1i(ReflectionsLocation, RT.REFLECTIONS);
+          RT.GL.uniform1i(MaxReflectionsLocation, RT.MAX_REFLECTIONS);
+          // Set min importancy of light ray.
+          RT.GL.uniform1f(MinImportancyLocation, RT.MIN_IMPORTANCY);
           // Instuct shader to render for filter or not.
           RT.GL.uniform1i(FilterLocation, RT.FILTER);
           // Set global illumination.
@@ -1540,14 +1654,19 @@ const RayTracer = (target_canvas) => {
         }
         // Last denoise pass.
         {
-          // Configure where the final image should go.
-          RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
           RT.GL.drawBuffers([
             RT.GL.COLOR_ATTACHMENT0,
             RT.GL.COLOR_ATTACHMENT1
           ]);
           // Configure framebuffer for color and depth.
-          RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
+          if (RT.ANTIALIASING) {
+            // Configure where the final image should go.
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
+            RT.GL.framebufferTexture2D(RT.GL.FRAMEBUFFER, RT.GL.COLOR_ATTACHMENT0, RT.GL.TEXTURE_2D, KernelTexture, 0);
+          } else {
+            // Render to canvas now.
+            RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
+          }
           // Clear depth and color buffers from last frame.
           RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
           // Push pre rendered textures to next shader (post processing).
@@ -1568,8 +1687,8 @@ const RayTracer = (target_canvas) => {
           // Post processing drawcall.
           RT.GL.drawArrays(RT.GL.TRIANGLES, 0, 6);
         }
-        // Apply kernel convolution matrix.
-        {
+        // Apply antialiasing shader if enabled.
+        if (RT.ANTIALIASING) {
           // Render to canvas now.
           RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
           // Make pre rendered texture TEXTURE0.
@@ -1619,7 +1738,9 @@ const RayTracer = (target_canvas) => {
           // Set amount of samples per ray.
           RT.GL.uniform1i(SamplesLocation, RT.SAMPLES);
           // Set max reflections per ray.
-          RT.GL.uniform1i(ReflectionsLocation, RT.REFLECTIONS);
+          RT.GL.uniform1i(MaxReflectionsLocation, RT.MAX_REFLECTIONS);
+          // Set min importancy of light ray.
+          RT.GL.uniform1f(MinImportancyLocation, RT.MIN_IMPORTANCY);
           // Instuct shader to render for filter or not.
           RT.GL.uniform1i(FilterLocation, RT.FILTER);
           // Set global illumination.
@@ -1874,7 +1995,8 @@ const RayTracer = (target_canvas) => {
           Perspective = RT.GL.getUniformLocation(Program, "perspective");
           RenderConf = RT.GL.getUniformLocation(Program, "conf");
           SamplesLocation = RT.GL.getUniformLocation(Program, "samples");
-          ReflectionsLocation = RT.GL.getUniformLocation(Program, "reflections");
+          MaxReflectionsLocation = RT.GL.getUniformLocation(Program, "max_reflections");
+          MinImportancyLocation = RT.GL.getUniformLocation(Program, "min_importancy");
           FilterLocation = RT.GL.getUniformLocation(Program, "use_filter");
           SkyBoxLocation = RT.GL.getUniformLocation(Program, "sky_box");
           WorldTex = RT.GL.getUniformLocation(Program, "world_tex");
