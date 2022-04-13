@@ -1114,12 +1114,12 @@ const RayTracer = (target_canvas) => {
       const kernel_glsl = `#version 300 es
 
       // Define FXAA constants.
-      #define FXAA_EDGE_THRESHOLD_MIN 0.06125
-      #define FXAA_EDGE_THRESHOLD 0.125
+      #define FXAA_EDGE_THRESHOLD_MIN 1.0 / 32.0
+      #define FXAA_EDGE_THRESHOLD 1.0 / 4.0
 
-      #define FXAA_SUBPIX_TRIM 0.5
+      #define FXAA_SUBPIX_TRIM 0.0
       #define FXAA_SUBPIX_TRIM_SCALE 1.0
-      #define FXAA_SUBPIX_CAP 0.75
+      #define FXAA_SUBPIX_CAP 7.0 / 8.0
 
       #define FXAA_SEARCH_STEPS 6
 
@@ -1136,13 +1136,13 @@ const RayTracer = (target_canvas) => {
       }
 
       // Color to luminance conversion from NVIDIA FXAA white paper.
-      float fxaa_luma(vec3 rgb) {
-        return rgb.y * (0.587/0.299) + rgb.x;
+      float fxaa_luma(vec4 rgba) {
+        return (rgba.y * (0.587/0.299) + rgba.x) * rgba.w;
       }
 
       float tex_luma(int x, int y) {
         // Devide length through square root of 3 to have a maximum length of 1.
-        return fxaa_luma(fetch(x, y).xyz);
+        return fxaa_luma(fetch(x, y));
       }
 
 
@@ -1218,6 +1218,7 @@ const RayTracer = (target_canvas) => {
         ivec2 pos_n = - step;
         ivec2 pos_p = step;
 
+        vec4 color = original_color;
         float pixel_count = 1.0;
 
         bool done_n = false;
@@ -1230,18 +1231,17 @@ const RayTracer = (target_canvas) => {
         );
         float gradient = abs(luma_mcn - luma[1].y);
 
-        vec4 color = original_color;
-        for (int i = 0; i <= FXAA_SEARCH_STEPS; i++) {
+        for (int i = 0; i < FXAA_SEARCH_STEPS; i++) {
           // Blend pixel with 3x3 box filter to preserve sub pixel detail.
           if (!done_n) {
             vec4 local_blur_n = blur_3x3(pos_n.x, pos_n.y);
-            done_n = (abs(fxaa_luma(local_blur_n.xyz) - luma_mcn) >= gradient);
+            done_n = (abs(fxaa_luma(local_blur_n) - luma_mcn) >= gradient);
             color += mix(fetch(pos_n.x, pos_n.y), local_blur_n, fxaa_sub_pixel_aliasing(pos_n.x, pos_n.y));
             pixel_count++;
             pos_n -= step;
           } else if (!done_p) {
             vec4 local_blur_p = blur_3x3(pos_p.x, pos_p.y);
-            done_p = (abs(fxaa_luma(local_blur_p.xyz) - luma_mcn) >= gradient);
+            done_p = (abs(fxaa_luma(local_blur_p) - luma_mcn) >= gradient);
             color += mix(fetch(pos_p.x, pos_p.y), local_blur_p, fxaa_sub_pixel_aliasing(pos_p.x, pos_p.y));
             pixel_count++;
             pos_p += step;
@@ -1252,11 +1252,11 @@ const RayTracer = (target_canvas) => {
 
         out_color = color / pixel_count;
 
-        /*if(horz_span){
-          out_color = vec4(0.0, 0.0, 1.0, 1.0);
+        if(horz_span){
+          //out_color = vec4(0.0, 0.0, 1.0, 1.0);
         }else{
-          out_color = vec4(1.0, 0.0, 0.0, 1.0);
-        }*/
+          //out_color = vec4(1.0, 0.0, 0.0, 1.0);
+        }
       }
       `;
       // Initialize internal globals.
