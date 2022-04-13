@@ -26,7 +26,7 @@ const RayTracer = (target_canvas) => {
     MIN_IMPORTANCY: 0.3,
     FILTER: true,
     ANTIALIASING: true,
-    RASTER: false,
+    MOBILE: true,
     // Camera and frustrum settings.
     FOV: Math.PI,
     X: 0, Y: 0, Z: 0,
@@ -116,7 +116,6 @@ const RayTracer = (target_canvas) => {
     },
     // Functions to update scene states.
     UPDATE_TRANSLUCENCY_TEXTURE: () => {
-      if (RT.RASTER) return;
       RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.TranslucencyTexture);
       RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 1);
       // Set data texture details and tell webgl, that no mip maps are required.
@@ -198,6 +197,7 @@ const RayTracer = (target_canvas) => {
       }
     },
     UPDATE_SCENE: () => {
+      let id = 0
       // Set data variable for texels in world space texture.
       var Data = [];
       // Build simple AABB tree (Axis aligned bounding box).
@@ -208,6 +208,7 @@ const RayTracer = (target_canvas) => {
           let len_pos = Data.length;
           // Begin bounding volume array.
           Data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+          id++;
           // Iterate over all sub elements and skip bounding (item[0]).
           for (let i = 1; i < item.length; i++){
             // Push sub elements in QUEUE.
@@ -230,33 +231,37 @@ const RayTracer = (target_canvas) => {
             // Declare bounding volume of object.
             let b = item.bounding;
             Data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+            id++;
           }else if (item.arrayLength > 3){
             // Warn if length is greater than 3.
             console.warn(item);
             // A single triangle needs no bounding voume, so nothing happens in this case.
           }
 
+          item.ids = [];
           for (let i = 0; i < len * 3; i += 9){
             let j = i/3*2;
             // 1 vertex = 1 line in world texture.
             // a, b, c, color, normal, texture_nums, UVs1, UVs2.
-            Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/9*3],c[i/9*3+1],c[i/9*3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
+            Data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/3],c[i/3+1],c[i/3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
+            item.ids.push(Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535);
+            id++;
           }
         }
       }
       // Fill texture with data pixels.
       for (let i = 0; i < RT.QUEUE.length; i++) fillData(RT.QUEUE[i]);
       // Round up data to next higher multiple of 6144.
-      Data.push(new Array(6144 - Data.length % 6144).fill(0));
+      Data.push(new Array(1536 - Data.length % 1536).fill(0));
       Data = Data.flat();
-      // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line).
-      var DataHeight = Data.length / 6144;
+      // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 64 vertecies per line).
+      var DataHeight = Data.length / 1536;
       // Manipulate actual webgl texture.
       RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.WorldTexture);
       // Tell webgl to use 4 bytes per value for the 32 bit floats.
       RT.GL.pixelStorei(RT.GL.UNPACK_ALIGNMENT, 4);
       // Set data texture details and tell webgl, that no mip maps are required.
-      RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 2048, DataHeight, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(Data));
+      RT.GL.texImage2D(RT.GL.TEXTURE_2D, 0, RT.GL.RGB32F, 512, DataHeight, 0, RT.GL.RGB, RT.GL.FLOAT, new Float32Array(Data));
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MIN_FILTER, RT.GL.NEAREST);
       RT.GL.texParameteri(RT.GL.TEXTURE_2D, RT.GL.TEXTURE_MAG_FILTER, RT.GL.NEAREST);
     },
@@ -266,15 +271,12 @@ const RayTracer = (target_canvas) => {
 
       precision highp float;
 
-
       in vec3 position_3d;
+      in vec4 id;
+      in vec2 tex_pos;
       in vec3 color_3d;
       in vec3 normal_3d;
       in vec3 texture_nums_3d;
-
-      in vec2 tex_pos;
-      in vec2 texture_sizes_3d;
-      in vec2 id;
 
       uniform vec3 camera_position;
       uniform vec2 perspective;
@@ -284,11 +286,11 @@ const RayTracer = (target_canvas) => {
       out vec2 tex_coord;
       out vec3 clip_space;
 
+      flat out vec4 vertex_id;
       flat out vec3 color;
       flat out vec3 normal;
       flat out vec3 player;
       flat out vec3 texture_nums;
-      flat out vec2 vertex_id;
 
       void main(){
         vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz);
@@ -306,14 +308,14 @@ const RayTracer = (target_canvas) => {
         position = position_3d;
         tex_coord = tex_pos;
         clip_space = vec3(translate_2d, translate_py.y);
+        vertex_id = id;
+        player = camera_position * vec3(-1.0, 1.0, 1.0);
         color = color_3d;
         normal = normalize(normal_3d);
-        player = camera_position * vec3(-1.0, 1.0, 1.0);
         texture_nums = texture_nums_3d;
-        vertex_id = id;
       }
       `;
-      const fragment_glsl = `#version 300 es
+      const fragment_glsl = `
 
       #define SQRT3 1.7320508075688772
 
@@ -324,17 +326,24 @@ const RayTracer = (target_canvas) => {
       in vec2 tex_coord;
       in vec3 clip_space;
 
+      flat in vec4 vertex_id;
+      flat in vec3 player;
+
+      #if (MOBILE == 0)
       flat in vec3 color;
       flat in vec3 normal;
-      flat in vec3 player;
-      flat in vec2 vertex_id;
       flat in vec3 texture_nums;
+      #endif
 
       // Quality configurators.
       uniform int samples;
       uniform int max_reflections;
       uniform float min_importancy;
       uniform int use_filter;
+      // Get global illumination color, intensity.
+      uniform vec3 sky_box;
+
+
       // Textures in parallel for texture atlas.
       uniform int texture_width;
       // Texture with information about all triangles in scene.
@@ -347,8 +356,6 @@ const RayTracer = (target_canvas) => {
       uniform sampler2D tex;
       // Texture with all primary light sources of scene.
       uniform sampler2D light_tex;
-      // Get global illumination color, intensity.
-      uniform vec3 sky_box;
 
       layout(location = 0) out vec4 render_color;
       layout(location = 1) out vec4 render_color_ip;
@@ -440,11 +447,11 @@ const RayTracer = (target_canvas) => {
         // Length to latest intersection.
         float min_len = 1.0 / 0.0;
         // Get texture size as max iteration value.
-        int size = textureSize(world_tex, 0).y * 256;
+        int size = textureSize(world_tex, 0).y * 64;
         // Iterate through lines of texture.
         for (int i = 0; i < size; i++){
           // Get position of current triangle/vertex in world_tex.
-          ivec2 index = ivec2(mod(float(i), 256.0) * 8.0, i / 256);
+          ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
           // Read point a and normal from traingle.
           vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
           vec3 a = texelFetch(world_tex, index, 0).xyz;
@@ -486,11 +493,11 @@ const RayTracer = (target_canvas) => {
         // Precompute inverse of ray for AABB cuboid intersection test.
         vec3 inv_ray = 1.0 / ray;
         // Get texture size as max iteration value.
-        int size = textureSize(world_tex, 0).y * 256;
+        int size = textureSize(world_tex, 0).y * 64;
         // Iterate through lines of texture.
         for (int i = 0; i < size; i++){
           // Get position of current triangle/vertex in world_tex.
-          ivec2 index = ivec2(mod(float(i), 256.0) * 8.0, i / 256);
+          ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
           // Read point a and normal from traingle.
           vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
           vec3 a = texelFetch(world_tex, index, 0).xyz;
@@ -610,7 +617,7 @@ const RayTracer = (target_canvas) => {
           // Calculate next intersection.
           vec4 intersection = rayTracer(active_ray, last_position, last_normal);
           // Get position of current triangle/vertex in world_tex.
-          ivec2 index = ivec2(mod(intersection.w, 256.0) * 8.0, intersection.w / 256.0);
+          ivec2 index = ivec2(mod(intersection.w, 64.0) * 8.0, intersection.w / 64.0);
           // Stop loop if there is no intersection and ray goes in the void.
           if (intersection.xyz == null) {
            // Stop loop if there is no intersection and ray goes in the void.
@@ -683,7 +690,7 @@ const RayTracer = (target_canvas) => {
           last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
           // Lock filter ids if surface isn't perfectly reflective.
           if(rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter){
-            render_id += pow(2.0, - float(i + 1)) * vec4(vec2(int(intersection.w)/65536, int(intersection.w)/256), last_rme.xy);
+            render_id += pow(2.0, - float(i + 1)) * vec4(vec2(int(intersection.w)/65535, int(intersection.w)/255), last_rme.xy);
           }else{
             dont_filter = false;
           }
@@ -707,6 +714,14 @@ const RayTracer = (target_canvas) => {
       }
 
       void main(){
+      #if (MOBILE == 1)
+        float id = vertex_id.x * 65535.0 + vertex_id.y;
+        ivec2 index = ivec2(mod(id, 64.0) * 8.0, id / 64.0);
+
+        vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
+        vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+        vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
+      #endif
         // Test if pixel is in frustum or not.
         if (clip_space.z < 0.0) return;
         // Alter normal and color according to texture and normal texture.
@@ -768,222 +783,16 @@ const RayTracer = (target_canvas) => {
         }
         // Render all relevant information to 4 textures for the post processing shader.
         if (use_filter == 0){
-          render_color = vec4(final_color / float(samples), 1.0);
+          render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
           return;
         }
         render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
         // 16 bit HDR for improved filtering.
         render_color_ip = vec4(floor(final_color / float(samples)) / 255.0, 1.0);
         render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
-        render_id += vec4(vertex_id.xy, first_in_shadow, 0.5 * (filter_roughness + rme.y));
+        render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
       }
       `;
-
-      const raster_fragment_glsl = `#version 300 es
-
-      #ifdef GL_FRAGMENT_PRECISION_HIGH
-      precision highp float;
-      #else
-      precision mediump float;
-      #endif
-
-      precision lowp sampler2D;
-
-      in vec3 position;
-      in vec2 tex_coord;
-      in vec3 clip_space;
-
-      flat in vec3 color;
-      flat in vec3 normal;
-      flat in vec3 player;
-      flat in vec3 texture_nums;
-
-      // Texture with information about all triangles in scene.
-      uniform sampler2D world_tex;
-      uniform sampler2D normal_tex;
-      uniform sampler2D tex;
-      // Texture with all primary light sources of scene.
-      uniform sampler2D light_tex;
-
-      // Global constants.
-      // Declare null vector as constant.
-      const vec3 null = vec3(0.0);
-      const float shadow_bias = 0.00001;
-
-      // Textures in parallel for texture atlas.
-      uniform int texture_width;
-      // Get global illumination color, intensity.
-      uniform vec3 sky_box;
-
-      out vec4 render_color;
-
-      // Lookup values for texture atlases.
-      vec4 lookup(sampler2D atlas, vec3 coords){
-        float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
-        float atlas_width_factor = 1.0 / float(texture_width);
-        vec2 atlas_coords = vec2(
-          (coords.x + mod(coords.z, float(texture_width))) * atlas_width_factor,
-          (coords.y + floor(coords.z / float(texture_width))) * atlas_height_factor
-        );
-        // Return texel on requested location.
-        return texture(atlas, atlas_coords);
-      }
-
-      float triangleSurface(mat3 vertices){
-        vec3 ab = vertices[1] - vertices[0];
-        vec3 ac = vertices[2] - vertices[0];
-        return 0.5 * length(cross(ab, ac));
-      }
-
-      // Test if ray intersects triangle and return intersection.
-      vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n, vec3 on){
-        // if(length(r) == 0.0) return vec4(p, 0.0);
-        // Get distance to intersection point.
-        float s = dot(n, a - p) /  dot(n, r);
-        // Ensure that ray triangle intersection is between light source and texture.
-        if (s > l || s <= shadow_bias) return vec4(0.0);
-        // Calculate intersection point.
-        vec3 d = (s * r) + p;
-        // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
-        vec3 v0 = c - a;
-        vec3 v1 = b - a;
-        vec3 v2 = d - a;
-        // Precalculate dot products.
-        float d00 = dot(v0, v0);
-        float d01 = - dot(v0, v1);
-        float d02 = dot(v0, v2);
-        float d11 = dot(v1, v1);
-        float d12 = dot(v1, v2);
-        // Compute coordinates with optemized dot products.
-        float i = dot(vec2(d11, d01), vec2(d00, - d01));
-        float u = dot(vec2(d11, d01), vec2(d02, d12)) / i;
-        float v = dot(vec2(d12, d01), vec2(d00, d02)) / i;
-        // Return if ray intersects triangle or not.
-        if ((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0 - shadow_bias)){
-          return vec4(d, s);
-        }else{
-          return vec4(0.0);
-        }
-      }
-
-      // Don't return intersection point, because we're looking for a specific triangle.
-      bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
-        vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
-        vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
-        vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
-        float lowest = max(max(min(v1.x, v1.y), min(v2.x, v2.y)), min(v3.x, v3.y));
-        float highest = min(min(max(v1.x, v1.y), max(v2.x, v2.y)), max(v3.x, v3.y));
-        // Cuboid is behind ray.
-        if (highest < 0.0) return false;
-        // Ray points in cuboid direction, but doesn't intersect.
-        if (lowest > highest) return false;
-        return true;
-      }
-
-      // Simplified rayTracer test only if ray intersects anything.
-      bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
-        // Precompute inverse of ray for AABB cuboid intersection test.
-        vec3 inv_ray = 1.0 / ray;
-        // Get texture size as max iteration value.
-        int size = textureSize(world_tex, 0).y * 256;
-        // Iterate through lines of texture.
-        for (int i = 0; i < size; i++){
-          // Get position of current triangle/vertex in world_tex.
-          ivec2 index = ivec2(mod(float(i), 256.0) * 8.0, i / 256);
-          // Read point a and normal from traingle.
-          vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
-          vec3 a = texelFetch(world_tex, index, 0).xyz;
-          vec3 b = texelFetch(world_tex, index + ivec2(1, 0), 0).xyz;
-          // Break if all values are zero and texture already ended.
-          if (mat3(n, a, b) == mat3(vec3(0.0),vec3(0.0),vec3(0.0))) break;
-          // Fetch triangle coordinates from world texture.
-          //  Three cases:
-          //   - normal is not 0 0 0 --> normal vertex
-          //   - normal is 0 0 0 --> beginning of new bounding volume
-          if (n != vec3(0.0)){
-            // if (n == origin_normal) return false;
-            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
-            // Test if triangle intersects ray and return true if there is shadow.
-            if (rayTriangle(length(light - origin), ray, origin, a, b, c, n, origin_normal).xyz != vec3(0.0)) return true;
-          }else if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
-            // Test if Ray intersects bounding volume.
-            // a = x x2 y
-            // b = y2 z z2
-            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
-            // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
-            i += int(c.x);
-          }
-        }
-        // Tested all triangles, but there is no intersection.
-        return false;
-      }
-
-      float forwardTrace(vec3 light_ray, vec3 origin, vec3 position, vec3 normal, float metallicity, float strength){
-        // Calculate intensity of light reflection, which decreases squared over distance.
-        float intensity = strength / (1.0 + length(light_ray));
-        // Process specularity of ray in view from origin's perspective.
-        vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
-        float light = dot(normalize(light_ray), normalize(normal));// * (1.0 - metallicity);
-        float specular = pow(dot(normal, halfVector), 300.0 / intensity) * metallicity;
-        // Determine final color and return it.
-        return (light + specular) * intensity;
-      }
-
-      float fresnel(vec3 normal, vec3 lightDir) {
-        // Apply fresnel effect.
-        return dot(normal, normalize(lightDir));
-      }
-
-      vec3 lightTrace(sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 color, vec3 rme){
-        // Use additive color mixing technique, so start with black.
-        // Apply global illumination.
-        vec3 final_color = sky_box * color * 0.5;
-        // Ray currently traced.
-        vec3 active_ray = normalize(position - origin);
-        for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-          // Read light position.
-          vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
-          // Read light strength from texture.
-          float strength = texture(light_tex, vec2(1.0, float(j))).x;
-          // Skip if strength is negative or zero.
-          if (strength <= 0.0) continue;
-          // Recalculate position -> light vector.
-          vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - position;
-          // Update pixel color if coordinate is not in shadow.
-          if (!shadowTest(normalize(active_light_ray), light, position, normal)){
-            final_color += forwardTrace(active_light_ray, origin, position, normal, rme.y, strength) * color;
-          }
-        }
-        // Handle emissive materials.
-        // final_color += rme.z * color;
-        // Return final pixel color.
-        return final_color;
-      }
-
-      void main(){
-        // Test if pixel is in frustum or not.
-        if (clip_space.z < 0.0) return;
-        // Alter normal and color according to texture and normal texture.
-        // Test if textures are even set otherwise default to 0.5 / color.
-        // Default tex_color to color.
-        vec3 tex_color = color;
-        // Multiply with texture value if texture is defined.
-        // if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x));
-        // Default roughness and metallicity.
-        // Pack fresnel_roughness, metallicity and emissiveness in one vector (roughness, metallicity, emissiveness) => rme.
-        vec3 rme = vec3(0.5, 0.0, 0.0);
-        //if (texture_nums.y != -1.0){
-          //rme = lookup(normal_tex, vec3(tex_coord, texture_nums.x)).xyz;
-          //rme.z = rme.z * 4.0;
-        //}
-        // Fresnel effect.
-        // rme.x = rme.x * mix(1.0, fresnel(normal, player - position), rme.y);
-        // Generate sample
-        vec3 final_color = lightTrace(light_tex, player, position, normal, tex_color.xyz, rme) * tex_color.xyz;
-        render_color = vec4(final_color, 1.0);
-      }
-      `;
-
       const post_vertex_glsl = `#version 300 es
 
       in vec2 position_2d;
@@ -997,7 +806,6 @@ const RayTracer = (target_canvas) => {
         clip_space = position_2d;
       }
       `;
-
       const post_fragment_glsl = `#version 300 es
 
       precision highp float;
@@ -1091,7 +899,7 @@ const RayTracer = (target_canvas) => {
             vec4 next_color = texelFetch(pre_render_color, coords, 0);
             vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
             if (id == center_id){
-              color += next_color + next_color_ip * 256.0;
+              color += next_color + next_color_ip * 255.0;
               count ++;
             }
           }
@@ -1272,7 +1080,7 @@ const RayTracer = (target_canvas) => {
         // Init Texture elements.
         var RandomTexture, Random;
         // Linkers for GLATTRIBARRAYS.
-        var [Position, Color, Normal, TexNum, TexCoord, TexSize, IdLoc] = [0, 1, 2, 3, 4, 5, 6];
+        var [Position, IdLoc, TexCoord, Color, Normal, TexNum, TexSize] = [0, 1, 2, 3, 4, 5, 6];
         // List of all vertices currently in world space.
         var Data = [];
         // Framebuffer, Post Program buffers and textures.
@@ -1317,7 +1125,7 @@ const RayTracer = (target_canvas) => {
         // Current pointer lock state.
         var PointerLocked = false;
         // Check if recompile is needed.
-        var State = [RT.FILTER, RT.RASTER];
+        var State = [RT.FILTER, RT.MOBILE];
       }
       // Add eventlisteners for movement and rotation.
       {
@@ -1354,11 +1162,9 @@ const RayTracer = (target_canvas) => {
         window.addEventListener("resize", function(){
         	resize();
         	// Rebuild textures with every resize.
-        	if (!RT.RASTER) {
-            randomTextureBuilder();
-            renderTextureBuilder();
-            postRenderTextureBuilder();
-          }
+          randomTextureBuilder();
+          renderTextureBuilder();
+          postRenderTextureBuilder();
         });
         // Function to handle canvas resize.
         function resize(){
@@ -1367,7 +1173,7 @@ const RayTracer = (target_canvas) => {
         	RT.GL.viewport(0, 0, RT.GL.canvas.width, RT.GL.canvas.height);
           // Generate Random variable after each resize.
         	Random = [];
-        	for (let i = 0; i < RT.GL.canvas.width * RT.GL.canvas.height * 3; i++) Random.push(Math.random() * 256);
+        	for (let i = 0; i < RT.GL.canvas.width * RT.GL.canvas.height * 3; i++) Random.push(Math.random() * 255);
         }
         // Init canvas parameters with resize.
         resize();
@@ -1469,16 +1275,14 @@ const RayTracer = (target_canvas) => {
       function frameCycle () {
         RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
         // Check if recompile is required.
-        if (State[0] !== RT.FILTER || State[1] !== RT.RASTER) {
+        if (State[0] !== RT.FILTER || State[1] !== RT.MOBILE) {
           prepareEngine();
-          State = [RT.FILTER, RT.RASTER];
+          State = [RT.FILTER, RT.MOBILE];
         }
         // Request the browser to render frame with hardware accelerated rendering.
         requestAnimationFrame(frameCycle);
         // Render new Image, work through QUEUE.
-        if (RT.RASTER) {
-          renderFrameRaster();
-        } else if (RT.FILTER) {
+        if (RT.FILTER) {
           renderFrameRt();
         } else {
           renderFrameRtRaw();
@@ -1503,7 +1307,146 @@ const RayTracer = (target_canvas) => {
         }
       }
 
-      function renderFrameRt(){
+      function texturesToGPU() {
+        RT.GL.bindVertexArray(VAO);
+        RT.GL.useProgram(Program);
+        // Set world-texture.
+        RT.UPDATE_SCENE();
+        RT.UPDATE_LIGHT();
+
+        RT.GL.activeTexture(RT.GL.TEXTURE0);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.WorldTexture);
+        RT.GL.activeTexture(RT.GL.TEXTURE1);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RandomTexture);
+        RT.GL.activeTexture(RT.GL.TEXTURE2);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.PbrTexture);
+        RT.GL.activeTexture(RT.GL.TEXTURE3);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.TranslucencyTexture);
+        RT.GL.activeTexture(RT.GL.TEXTURE4);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.ColorTexture);
+        RT.GL.activeTexture(RT.GL.TEXTURE5);
+        RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.LightTexture);
+        // Set uniforms for shaders.
+        // Set 3d camera position.
+        RT.GL.uniform3f(CameraPosition, RT.X, RT.Y, RT.Z);
+        // Set x and y rotation of camera.
+        RT.GL.uniform2f(Perspective, RT.FX, RT.FY);
+        // Set fov and X/Y ratio of screen.
+        RT.GL.uniform4f(RenderConf, RT.FOV, target_canvas.width / target_canvas.height, 1, 1);
+        // Set amount of samples per ray.
+        RT.GL.uniform1i(SamplesLocation, RT.SAMPLES);
+        // Set max reflections per ray.
+        RT.GL.uniform1i(MaxReflectionsLocation, RT.MAX_REFLECTIONS);
+        // Set min importancy of light ray.
+        RT.GL.uniform1f(MinImportancyLocation, RT.MIN_IMPORTANCY);
+        // Instuct shader to render for filter or not.
+        RT.GL.uniform1i(FilterLocation, RT.FILTER);
+        // Set global illumination.
+        RT.GL.uniform3f(SkyBoxLocation, RT.SKYBOX[0], RT.SKYBOX[1], RT.SKYBOX[2]);
+        // Set width of height and normal texture.
+        RT.GL.uniform1i(TextureWidth, Math.floor(512 / RT.TEXTURE_SIZES[0]));
+        // Pass whole current world space as data structure to GPU.
+        RT.GL.uniform1i(WorldTex, 0);
+        // Pass random texture to GPU.
+        RT.GL.uniform1i(RandomTex, 1);
+        // Pass pbr texture to GPU.
+        RT.GL.uniform1i(NormalTex, 2);
+        // Pass pbr texture to GPU.
+        RT.GL.uniform1i(TranslucencyTex, 3);
+        // Pass texture to GPU.
+        RT.GL.uniform1i(ColorTex, 4);
+        // Pass texture with all primary light sources in the scene.
+        RT.GL.uniform1i(LightTex, 5);
+      }
+
+      function fillBuffersDesktop() {
+        let vertices = [];
+        let ids = [];
+        let uvs = [];
+        let colors = [];
+        let normals = [];
+        let texNums = [];
+        let id = 0;
+        let length = 0;
+        // Iterate through render queue and build arrays for GPU.
+        var flattenQUEUE = (item) => {
+          if (Array.isArray(item)){
+            // Iterate over all sub elements and skip bounding (item[0]).
+            for (let i = 1; i < item.length; i++){
+              // flatten sub element of QUEUE.
+              flattenQUEUE(item[i]);
+            }
+          }else{
+            vertices.push(item.vertices);
+            id ++;
+            for(let i = 0; i < item.ids.length; i+=2) {
+              ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
+            }
+            uvs.push(item.uvs);
+            colors.push(item.colors);
+            normals.push(item.normals);
+            texNums.push(item.textureNums);
+            length += item.arrayLength;
+          }
+        };
+        // Start recursion.
+        RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
+        // Set buffers.
+        [
+          [PositionBuffer, vertices],
+          [IdBuffer, ids.flat()],
+          [TexBuffer, uvs],
+          [ColorBuffer, colors],
+          [NormalBuffer, normals],
+          [TexNumBuffer, texNums]
+        ].forEach(function(item){
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
+          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
+        });
+        // Actual drawcall.
+        RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
+      }
+
+      function fillBuffersMobile() {
+        let vertices = [];
+        let ids = [];
+        let uvs = [];
+        let id = 0;
+        let length = 0;
+        // Iterate through render queue and build arrays for GPU.
+        var flattenQUEUE = (item) => {
+          if (Array.isArray(item)){
+            // Iterate over all sub elements and skip bounding (item[0]).
+            for (let i = 1; i < item.length; i++){
+              // flatten sub element of QUEUE.
+              flattenQUEUE(item[i]);
+            }
+          }else{
+            vertices.push(item.vertices);
+            id ++;
+            for(let i = 0; i < item.ids.length; i+=2) {
+              ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
+            }
+            uvs.push(item.uvs);
+            length += item.arrayLength;
+          }
+        };
+        // Start recursion.
+        RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
+        // Set buffers.
+        [
+          [PositionBuffer, vertices],
+          [IdBuffer, ids.flat()],
+          [TexBuffer, uvs]
+        ].forEach(function(item){
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
+          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
+        });
+        // Actual drawcall.
+        RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
+      }
+
+      function renderFrameRt() {
         {
           // Configure where the final image should go.
           RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, Framebuffer);
@@ -1522,100 +1465,12 @@ const RayTracer = (target_canvas) => {
           // Clear depth and color buffers from last frame.
           RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
 
-          RT.GL.bindVertexArray(VAO);
-          RT.GL.useProgram(Program);
-          // Set world-texture.
-          RT.UPDATE_SCENE();
-          RT.UPDATE_LIGHT();
-
-          RT.GL.activeTexture(RT.GL.TEXTURE0);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.WorldTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE1);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RandomTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE2);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.PbrTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE3);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.TranslucencyTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE4);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.ColorTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE5);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.LightTexture);
-          // Set uniforms for shaders.
-          // Set 3d camera position.
-          RT.GL.uniform3f(CameraPosition, RT.X, RT.Y, RT.Z);
-          // Set x and y rotation of camera.
-          RT.GL.uniform2f(Perspective, RT.FX, RT.FY);
-          // Set fov and X/Y ratio of screen.
-          RT.GL.uniform4f(RenderConf, RT.FOV, target_canvas.width / target_canvas.height, 1, 1);
-          // Set amount of samples per ray.
-          RT.GL.uniform1i(SamplesLocation, RT.SAMPLES);
-          // Set max reflections per ray.
-          RT.GL.uniform1i(MaxReflectionsLocation, RT.MAX_REFLECTIONS);
-          // Set min importancy of light ray.
-          RT.GL.uniform1f(MinImportancyLocation, RT.MIN_IMPORTANCY);
-          // Instuct shader to render for filter or not.
-          RT.GL.uniform1i(FilterLocation, RT.FILTER);
-          // Set global illumination.
-          RT.GL.uniform3f(SkyBoxLocation, RT.SKYBOX[0], RT.SKYBOX[1], RT.SKYBOX[2]);
-          // Set width of height and normal texture.
-          RT.GL.uniform1i(TextureWidth, Math.floor(512 / RT.TEXTURE_SIZES[0]));
-          // Pass whole current world space as data structure to GPU.
-          RT.GL.uniform1i(WorldTex, 0);
-          // Pass random texture to GPU.
-          RT.GL.uniform1i(RandomTex, 1);
-          // Pass pbr texture to GPU.
-          RT.GL.uniform1i(NormalTex, 2);
-          // Pass pbr texture to GPU.
-          RT.GL.uniform1i(TranslucencyTex, 3);
-          // Pass texture to GPU.
-          RT.GL.uniform1i(ColorTex, 4);
-          // Pass texture with all primary light sources in the scene.
-          RT.GL.uniform1i(LightTex, 5);
-
-          let vertices = [];
-          let normals = [];
-          let colors = [];
-          let uvs = [];
-          let texNums = [];
-          let ids = [];
-          let id = 0;
-          let length = 0;
-          // Iterate through render queue and build arrays for GPU.
-          var flattenQUEUE = (item) => {
-            if (Array.isArray(item)){
-              // Iterate over all sub elements and skip bounding (item[0]).
-              for (let i = 1; i < item.length; i++){
-                // flatten sub element of QUEUE.
-                flattenQUEUE(item[i]);
-              }
-            }else{
-              vertices.push(item.vertices);
-              normals.push(item.normals);
-              colors.push(item.colors);
-              uvs.push(item.uvs);
-              texNums.push(item.textureNums);
-              id ++;
-              ids.push(new Array(6).fill([id / 65535, id / 256]).flat());
-              length += item.arrayLength;
-              // increase id counter.
-            }
-          };
-          // Start recursion.
-          RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
-          // Set buffers.
-          [
-            [PositionBuffer, vertices],
-            [NormalBuffer, normals],
-            [ColorBuffer, colors],
-            [TexBuffer, uvs],
-            [TexNumBuffer, texNums],
-            [IdBuffer, ids]
-          ].forEach(function(item){
-            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
-            RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
-          });
-          // Actual drawcall.
-          RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
+          texturesToGPU();
+          if (RT.MOBILE) {
+            fillBuffersMobile();
+          } else {
+            fillBuffersDesktop();
+          }
         }
         // Apply post processing.
         {
@@ -1710,180 +1565,13 @@ const RayTracer = (target_canvas) => {
           RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
           // Clear depth and color buffers from last frame.
           RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
-          RT.GL.bindVertexArray(VAO);
-          RT.GL.useProgram(Program);
-          // Set world-texture.
-          RT.UPDATE_SCENE();
-          RT.UPDATE_LIGHT();
 
-          RT.GL.activeTexture(RT.GL.TEXTURE0);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.WorldTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE1);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RandomTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE2);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.PbrTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE3);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.TranslucencyTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE4);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.ColorTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE5);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.LightTexture);
-          // Set uniforms for shaders.
-          // Set 3d camera position.
-          RT.GL.uniform3f(CameraPosition, RT.X, RT.Y, RT.Z);
-          // Set x and y rotation of camera.
-          RT.GL.uniform2f(Perspective, RT.FX, RT.FY);
-          // Set fov and X/Y ratio of screen.
-          RT.GL.uniform4f(RenderConf, RT.FOV, target_canvas.width / target_canvas.height, 1, 1);
-          // Set amount of samples per ray.
-          RT.GL.uniform1i(SamplesLocation, RT.SAMPLES);
-          // Set max reflections per ray.
-          RT.GL.uniform1i(MaxReflectionsLocation, RT.MAX_REFLECTIONS);
-          // Set min importancy of light ray.
-          RT.GL.uniform1f(MinImportancyLocation, RT.MIN_IMPORTANCY);
-          // Instuct shader to render for filter or not.
-          RT.GL.uniform1i(FilterLocation, RT.FILTER);
-          // Set global illumination.
-          RT.GL.uniform3f(SkyBoxLocation, RT.SKYBOX[0], RT.SKYBOX[1], RT.SKYBOX[2]);
-          // Set width of height and normal texture.
-          RT.GL.uniform1i(TextureWidth, Math.floor(512 / RT.TEXTURE_SIZES[0]));
-          // Pass whole current world space as data structure to GPU.
-          RT.GL.uniform1i(WorldTex, 0);
-          // Pass random texture to GPU.
-          RT.GL.uniform1i(RandomTex, 1);
-          // Pass pbr texture to GPU.
-          RT.GL.uniform1i(NormalTex, 2);
-          // Pass pbr texture to GPU.
-          RT.GL.uniform1i(TranslucencyTex, 3);
-          // Pass texture to GPU.
-          RT.GL.uniform1i(ColorTex, 4);
-          // Pass texture with all primary light sources in the scene.
-          RT.GL.uniform1i(LightTex, 5);
-
-          let vertices = [];
-          let normals = [];
-          let colors = [];
-          let uvs = [];
-          let texNums = [];
-          let ids = [];
-          let id = 0;
-          let length = 0;
-          // Iterate through render queue and build arrays for GPU.
-          var flattenQUEUE = (item) => {
-            if (Array.isArray(item)){
-              // Iterate over all sub elements and skip bounding (item[0]).
-              for (let i = 1; i < item.length; i++){
-                // flatten sub element of QUEUE.
-                flattenQUEUE(item[i]);
-              }
-            }else{
-              vertices.push(item.vertices);
-              normals.push(item.normals);
-              colors.push(item.colors);
-              uvs.push(item.uvs);
-              texNums.push(item.textureNums);
-              id ++;
-              ids.push(new Array(6).fill([id / 65535, id / 256]).flat());
-              length += item.arrayLength;
-              // increase id counter.
-            }
-          };
-          // Start recursion.
-          RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
-          // Set buffers.
-          [
-            [PositionBuffer, vertices],
-            [NormalBuffer, normals],
-            [ColorBuffer, colors],
-            [TexNumBuffer, texNums],
-            [TexBuffer, uvs],
-            [IdBuffer, ids]
-          ].forEach(function(item){
-            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
-            RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
-          });
-          // Actual drawcall.
-          RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
-        }
-      }
-
-      function renderFrameRaster(){
-        {
-          // Configure where the final image should go.
-          RT.GL.bindFramebuffer(RT.GL.FRAMEBUFFER, null);
-          // Clear depth and color buffers from last frame.
-          RT.GL.clear(RT.GL.COLOR_BUFFER_BIT | RT.GL.DEPTH_BUFFER_BIT);
-          RT.GL.bindVertexArray(VAO);
-          RT.GL.useProgram(Program);
-          // Set world-texture.
-          RT.UPDATE_SCENE();
-          RT.UPDATE_LIGHT();
-
-          RT.GL.activeTexture(RT.GL.TEXTURE0);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.WorldTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE1);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.ColorTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE2);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.PbrTexture);
-          RT.GL.activeTexture(RT.GL.TEXTURE3);
-          RT.GL.bindTexture(RT.GL.TEXTURE_2D, RT.LightTexture);
-          // Set 3d camera position.
-          RT.GL.uniform3f(CameraPosition, RT.X, RT.Y, RT.Z);
-          // Set x and y rotation of camera.
-          RT.GL.uniform2f(Perspective, RT.FX, RT.FY);
-          // Set fov and X/Y ratio of screen.
-          RT.GL.uniform4f(RenderConf, RT.FOV, target_canvas.width / target_canvas.height, 1, 1);
-          // Set global illumination.
-          RT.GL.uniform3f(SkyBoxLocation, RT.SKYBOX[0], RT.SKYBOX[1], RT.SKYBOX[2]);
-          // Set width of height and normal texture.
-          RT.GL.uniform1i(TextureWidth, Math.floor(512 / RT.TEXTURE_SIZES[0]));
-          // Pass whole current world space as data structure to GPU.
-          RT.GL.uniform1i(WorldTex, 0);
-          // Pass texture to GPU.
-          RT.GL.uniform1i(ColorTex, 1);
-          // Pass pbr texture to GPU.
-          RT.GL.uniform1i(NormalTex, 2);
-          // Pass texture with all primary light sources in the scene.
-          RT.GL.uniform1i(LightTex, 3);
-
-          let vertices = [];
-          let normals = [];
-          let colors = [];
-          let uvs = [];
-          let texNums = [];
-          let length = 0;
-          // Iterate through render queue and build arrays for GPU.
-          var flattenQUEUE = (item) => {
-            if (Array.isArray(item)){
-              // Iterate over all sub elements and skip bounding (item[0]).
-              for (let i = 1; i < item.length; i++){
-                // flatten sub element of QUEUE.
-                flattenQUEUE(item[i]);
-              }
-            }else{
-              vertices.push(item.vertices);
-              normals.push(item.normals);
-              colors.push(item.colors);
-              uvs.push(item.uvs);
-              texNums.push(item.textureNums);
-              length += item.arrayLength;
-              // increase id counter.
-            }
-          };
-          // Start recursion.
-          RT.QUEUE.forEach((item, i) => {flattenQUEUE(item)});
-          // Set buffers.
-          [
-            [PositionBuffer, vertices],
-            [NormalBuffer, normals],
-            [ColorBuffer, colors],
-            [TexNumBuffer, texNums]
-          ].forEach(function(item){
-            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
-            RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array(item[1].flat()), RT.GL.STATIC_DRAW);
-          });
-          // Actual drawcall.
-          RT.GL.drawArrays(RT.GL.TRIANGLES, 0, length);
+          texturesToGPU();
+          if (RT.MOBILE) {
+            fillBuffersMobile();
+          } else {
+            fillBuffersDesktop();
+          }
         }
       }
 
@@ -1891,208 +1579,172 @@ const RayTracer = (target_canvas) => {
         RT.UPDATE_TEXTURE();
         RT.UPDATE_PBR_TEXTURE();
         RT.UPDATE_TRANSLUCENCY_TEXTURE();
-        if (RT.RASTER) {
-          // Compile shaders and link them into Program global.
+        // Compile shaders and link them into Program global.
+        if (RT.MOBILE) {
           Program = buildProgram([
             { source: vertex_glsl, type: RT.GL.VERTEX_SHADER },
-            { source: raster_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
+            { source: ` #version 300 es
+                        #define MOBILE 1
+                        ` + fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
           ]);
-          // Reassign attribpositions.
-          Position = 0;
-          Color = 1;
-          Normal = 2;
-          TexNum = 3;
-          // Create global vertex array object (VAO).
-          RT.GL.bindVertexArray(VAO);
+        } else {
+          Program = buildProgram([
+            { source: vertex_glsl, type: RT.GL.VERTEX_SHADER },
+            { source: ` #version 300 es
+                        #define MOBILE 0
+                        ` + fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
+          ]);
+        }
+        // Compile shaders and link them into PostProgram global.
+        for (let i = 0; i < DenoiserPasses; i++){
+          PostProgram[i] = buildProgram([
+            { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
+            { source: post_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
+          ]);
+        }
+        // Compile shaders and link them into PostProgram global.
+        PostProgram[DenoiserPasses] = buildProgram([
+          { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
+          { source: post_fragment_2_glsl, type: RT.GL.FRAGMENT_SHADER }
+        ]);
+        // Compile shaders and link them into KernelProgram global.
+        KernelProgram = buildProgram([
+          { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
+          { source: kernel_glsl, type: RT.GL.FRAGMENT_SHADER }
+        ]);
+        // Create global vertex array object (VAO).
+        RT.GL.bindVertexArray(VAO);
+        // Bind uniforms to Program.
+        CameraPosition = RT.GL.getUniformLocation(Program, "camera_position");
+        Perspective = RT.GL.getUniformLocation(Program, "perspective");
+        RenderConf = RT.GL.getUniformLocation(Program, "conf");
+        SamplesLocation = RT.GL.getUniformLocation(Program, "samples");
+        MaxReflectionsLocation = RT.GL.getUniformLocation(Program, "max_reflections");
+        MinImportancyLocation = RT.GL.getUniformLocation(Program, "min_importancy");
+        FilterLocation = RT.GL.getUniformLocation(Program, "use_filter");
+        SkyBoxLocation = RT.GL.getUniformLocation(Program, "sky_box");
+        WorldTex = RT.GL.getUniformLocation(Program, "world_tex");
+        RandomTex = RT.GL.getUniformLocation(Program, "random");
+        TextureWidth = RT.GL.getUniformLocation(Program, "texture_width");
+
+        LightTex = RT.GL.getUniformLocation(Program, "light_tex");
+        NormalTex = RT.GL.getUniformLocation(Program, "normal_tex");
+        TranslucencyTex = RT.GL.getUniformLocation(Program, "translucency_tex");
+        ColorTex = RT.GL.getUniformLocation(Program, "tex");
+        // Enable depth buffer and therefore overlapping vertices.
+        RT.GL.enable(RT.GL.DEPTH_TEST);
+        RT.GL.depthMask(true);
+        // Cull (exclude from rendering) hidden vertices at the other side of objects.
+        RT.GL.enable(RT.GL.CULL_FACE);
+        // Set clear color for framebuffer.
+        RT.GL.clearColor(0, 0, 0, 0);
+        // Define Program with its currently bound shaders as the program to use for the webgl2 context.
+        RT.GL.useProgram(Program);
+        // Create Textures for primary render.
+        RandomTexture = RT.GL.createTexture();
+        RT.PbrTexture = RT.GL.createTexture();
+        RT.TranslucencyTexture = RT.GL.createTexture();
+        RT.ColorTexture = RT.GL.createTexture();
+        // Create texture for all primary light sources in scene.
+        RT.LightTexture = RT.GL.createTexture();
+        // Init a world texture containing all information about world space.
+        RT.WorldTexture = RT.GL.createTexture();
+        // Create random texture.
+        randomTextureBuilder();
+        // Set pixel density in canvas correctly.
+        RT.GL.viewport(0, 0, RT.GL.canvas.width, RT.GL.canvas.height);
+        // Use different GLATTRIBARRAYS for mobile because of known compatability problems.
+        if (RT.MOBILE) {
           // Bind Attribute varying to their respective shader locations.
           RT.GL.bindAttribLocation(Program, Position, "position_3d");
-          RT.GL.bindAttribLocation(Program, Color, "color_3d");
-          RT.GL.bindAttribLocation(Program, Normal, "normal_3d");
-          RT.GL.bindAttribLocation(Program, TexNum, "texture_nums_3d");
-          // Bind uniforms to Program.
-          CameraPosition = RT.GL.getUniformLocation(Program, "camera_position");
-          Perspective = RT.GL.getUniformLocation(Program, "perspective");
-          RenderConf = RT.GL.getUniformLocation(Program, "conf");
-          SkyBoxLocation = RT.GL.getUniformLocation(Program, "sky_box");
-          TextureWidth = RT.GL.getUniformLocation(Program, "texture_width");
-
-          WorldTex = RT.GL.getUniformLocation(Program, "world_tex");
-          ColorTex = RT.GL.getUniformLocation(Program, "tex");
-          NormalTex = RT.GL.getUniformLocation(Program, "normal_tex");
-          LightTex = RT.GL.getUniformLocation(Program, "light_tex");
-          // Set pixel density in canvas correctly.
-          RT.GL.viewport(0, 0, RT.GL.canvas.width, RT.GL.canvas.height);
-          // Enable depth buffer and therefore overlapping vertices.
-          RT.GL.enable(RT.GL.DEPTH_TEST);
-          RT.GL.depthMask(true);
-          // Cull (exclude from rendering) hidden vertices at the other side of objects.
-          RT.GL.enable(RT.GL.CULL_FACE);
-          // Set clear color for framebuffer.
-          RT.GL.clearColor(0, 0, 0, 0);
-          // Define Program with its currently bound shaders as the program to use for the webgl2 context.
-          RT.GL.useProgram(Program);
+          RT.GL.bindAttribLocation(Program, IdLoc, "id");
+          RT.GL.bindAttribLocation(Program, TexCoord, "tex_pos");
           // Create buffers.
-          [PositionBuffer, ColorBuffer, NormalBuffer, TexNumBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
-          // Init a world texture containing all information about world space.
-          RT.WorldTexture = RT.GL.createTexture();
-          // Create Textures for primary render.
-          RT.ColorTexture = RT.GL.createTexture();
-
-          RT.PbrTexture = RT.GL.createTexture();
-          // Create texture for all primary light sources in scene.
-          RT.LightTexture = RT.GL.createTexture();
-          // Bind and set buffer parameters.
+          [PositionBuffer, IdBuffer, TexBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
           [
             // Bind world space position buffer.
             [PositionBuffer, Position, 3, false],
-            // Bind color buffer.
-            [ColorBuffer, Color, 3, false],
-            // Set normals.
-            [NormalBuffer, Normal, 3, false],
-            // Set Texture number (id) in buffer.
-            [TexNumBuffer, TexNum, 3, true]
+            // Surface id buffer.
+            [IdBuffer, IdLoc, 4, false],
+            // Set barycentric texture coordinates.
+            [TexBuffer, TexCoord, 2, true]
           ].forEach((item) => {
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
             RT.GL.enableVertexAttribArray(item[1]);
             RT.GL.vertexAttribPointer(item[1], item[2], RT.GL.FLOAT, item[3], 0, 0);
           });
-
-        } else if (RT.FILTER) {
-
-          // Compile shaders and link them into Program global.
-          Program = buildProgram([
-            { source: vertex_glsl, type: RT.GL.VERTEX_SHADER },
-            { source: fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
-          ]);
-          // Compile shaders and link them into PostProgram global.
-          for (let i = 0; i < DenoiserPasses; i++){
-            PostProgram[i] = buildProgram([
-              { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
-              { source: post_fragment_glsl, type: RT.GL.FRAGMENT_SHADER }
-            ]);
-          }
-          // Compile shaders and link them into PostProgram global.
-          PostProgram[DenoiserPasses] = buildProgram([
-            { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
-            { source: post_fragment_2_glsl, type: RT.GL.FRAGMENT_SHADER }
-          ]);
-          // Compile shaders and link them into KernelProgram global.
-          KernelProgram = buildProgram([
-            { source: post_vertex_glsl, type: RT.GL.VERTEX_SHADER },
-            { source: kernel_glsl, type: RT.GL.FRAGMENT_SHADER }
-          ]);
-          // Create global vertex array object (VAO).
-          RT.GL.bindVertexArray(VAO);
+        } else {
           // Bind Attribute varying to their respective shader locations.
           RT.GL.bindAttribLocation(Program, Position, "position_3d");
-          RT.GL.bindAttribLocation(Program, Normal, "normal_3d");
+          RT.GL.bindAttribLocation(Program, IdLoc, "id");
           RT.GL.bindAttribLocation(Program, TexCoord, "tex_pos");
           RT.GL.bindAttribLocation(Program, Color, "color_3d");
+          RT.GL.bindAttribLocation(Program, Normal, "normal_3d");
           RT.GL.bindAttribLocation(Program, TexNum, "texture_nums_3d");
-          RT.GL.bindAttribLocation(Program, IdLoc, "id");
-          // Bind uniforms to Program.
-          CameraPosition = RT.GL.getUniformLocation(Program, "camera_position");
-          Perspective = RT.GL.getUniformLocation(Program, "perspective");
-          RenderConf = RT.GL.getUniformLocation(Program, "conf");
-          SamplesLocation = RT.GL.getUniformLocation(Program, "samples");
-          MaxReflectionsLocation = RT.GL.getUniformLocation(Program, "max_reflections");
-          MinImportancyLocation = RT.GL.getUniformLocation(Program, "min_importancy");
-          FilterLocation = RT.GL.getUniformLocation(Program, "use_filter");
-          SkyBoxLocation = RT.GL.getUniformLocation(Program, "sky_box");
-          WorldTex = RT.GL.getUniformLocation(Program, "world_tex");
-          RandomTex = RT.GL.getUniformLocation(Program, "random");
-          TextureWidth = RT.GL.getUniformLocation(Program, "texture_width");
-
-          LightTex = RT.GL.getUniformLocation(Program, "light_tex");
-          NormalTex = RT.GL.getUniformLocation(Program, "normal_tex");
-          TranslucencyTex = RT.GL.getUniformLocation(Program, "translucency_tex");
-          ColorTex = RT.GL.getUniformLocation(Program, "tex");
-          // Set pixel density in canvas correctly.
-          RT.GL.viewport(0, 0, RT.GL.canvas.width, RT.GL.canvas.height);
-          // Enable depth buffer and therefore overlapping vertices.
-          RT.GL.enable(RT.GL.DEPTH_TEST);
-          RT.GL.depthMask(true);
-          // Cull (exclude from rendering) hidden vertices at the other side of objects.
-          RT.GL.enable(RT.GL.CULL_FACE);
-          // Set clear color for framebuffer.
-          RT.GL.clearColor(0, 0, 0, 0);
-          // Define Program with its currently bound shaders as the program to use for the webgl2 context.
-          RT.GL.useProgram(Program);
           // Create buffers.
-          [PositionBuffer, NormalBuffer, TexBuffer, TexSizeBuffer, TexNumBuffer, ColorBuffer, IdBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
-          // Create Textures for primary render.
-          RandomTexture = RT.GL.createTexture();
-
-          RT.PbrTexture = RT.GL.createTexture();
-          RT.TranslucencyTexture = RT.GL.createTexture();
-          RT.ColorTexture = RT.GL.createTexture();
-          // Create texture for all primary light sources in scene.
-          RT.LightTexture = RT.GL.createTexture();
-          // Init a world texture containing all information about world space.
-          RT.WorldTexture = RT.GL.createTexture();
-          // Create random texture.
-          randomTextureBuilder();
+          [PositionBuffer, IdBuffer, TexBuffer, ColorBuffer, NormalBuffer, TexNumBuffer] = [RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer(), RT.GL.createBuffer()];
           // Bind and set buffer parameters.
           [
             // Bind world space position buffer.
             [PositionBuffer, Position, 3, false],
+            // Surface id buffer.
+            [IdBuffer, IdLoc, 4, false],
+            // Set barycentric texture coordinates.
+            [TexBuffer, TexCoord, 2, true],
             // Bind color buffer.
-            [ColorBuffer, Color, 3, false],
+            [ColorBuffer, Color, 3, true],
             // Set normals.
             [NormalBuffer, Normal, 3, false],
             // Set Texture number (id) in buffer.
-            [TexNumBuffer, TexNum, 3, true],
-            // Set barycentric texture coordinates.
-            [TexBuffer, TexCoord, 2, true],
-            // Surface id buffer.
-            [IdBuffer, IdLoc, 2, true]
+            [TexNumBuffer, TexNum, 3, false],
 
           ].forEach((item) => {
             RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, item[0]);
             RT.GL.enableVertexAttribArray(item[1]);
             RT.GL.vertexAttribPointer(item[1], item[2], RT.GL.FLOAT, item[3], 0, 0);
           });
-          // Create frame buffers and textures to be rendered to.
-          [Framebuffer, OriginalRenderTexture, IdRenderTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture()];
-
-          renderTextureBuilder();
-
-          for (let i = 0; i < DenoiserPasses + 1; i++){
-            // Create post program buffers and uniforms.
-            RT.GL.bindVertexArray(POST_VAO[i]);
-            RT.GL.useProgram(PostProgram[i]);
-            // Bind uniforms.
-            ColorRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color");
-            ColorIpRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color_ip");
-            OriginalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_original_color");
-            IdRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_id");
-            PostVertexBuffer[i] = RT.GL.createBuffer();
-            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
-            RT.GL.enableVertexAttribArray(PostPosition[i]);
-            RT.GL.vertexAttribPointer(PostPosition[i], 2, RT.GL.FLOAT, false, 0, 0);
-            // Fill buffer with data for two verices.
-            RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
-            RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
-            PostFramebuffer[i] = RT.GL.createFramebuffer();
-          }
-
-          // Post processing (end of render pipeline).
-          KernelTexture = RT.GL.createTexture();
-
-          postRenderTextureBuilder();
-          // Create post program buffers and uniforms.
-          RT.GL.bindVertexArray(KERNEL_VAO);
-          RT.GL.useProgram(KernelProgram);
-
-          KernelVertexBuffer = RT.GL.createBuffer();
-
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, KernelVertexBuffer);
-          RT.GL.enableVertexAttribArray(KernelPosition);
-          RT.GL.vertexAttribPointer(KernelPosition, 2, RT.GL.FLOAT, false, 0, 0);
-          // Fill buffer with data for two verices.
-          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, KernelVertexBuffer);
-          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
         }
+
+        // Create frame buffers and textures to be rendered to.
+        [Framebuffer, OriginalRenderTexture, IdRenderTexture] = [RT.GL.createFramebuffer(), RT.GL.createTexture(), RT.GL.createTexture()];
+
+        renderTextureBuilder();
+
+        for (let i = 0; i < DenoiserPasses + 1; i++){
+          // Create post program buffers and uniforms.
+          RT.GL.bindVertexArray(POST_VAO[i]);
+          RT.GL.useProgram(PostProgram[i]);
+          // Bind uniforms.
+          ColorRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color");
+          ColorIpRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_color_ip");
+          OriginalRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_original_color");
+          IdRenderTex[i] = RT.GL.getUniformLocation(PostProgram[i], "pre_render_id");
+          PostVertexBuffer[i] = RT.GL.createBuffer();
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
+          RT.GL.enableVertexAttribArray(PostPosition[i]);
+          RT.GL.vertexAttribPointer(PostPosition[i], 2, RT.GL.FLOAT, false, 0, 0);
+          // Fill buffer with data for two verices.
+          RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, PostVertexBuffer[i]);
+          RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
+          PostFramebuffer[i] = RT.GL.createFramebuffer();
+        }
+
+        // Post processing (end of render pipeline).
+        KernelTexture = RT.GL.createTexture();
+
+        postRenderTextureBuilder();
+        // Create post program buffers and uniforms.
+        RT.GL.bindVertexArray(KERNEL_VAO);
+        RT.GL.useProgram(KernelProgram);
+
+        KernelVertexBuffer = RT.GL.createBuffer();
+
+        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, KernelVertexBuffer);
+        RT.GL.enableVertexAttribArray(KernelPosition);
+        RT.GL.vertexAttribPointer(KernelPosition, 2, RT.GL.FLOAT, false, 0, 0);
+        // Fill buffer with data for two verices.
+        RT.GL.bindBuffer(RT.GL.ARRAY_BUFFER, KernelVertexBuffer);
+        RT.GL.bufferData(RT.GL.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), RT.GL.DYNAMIC_DRAW);
       }
       // Prepare Renderengine.
       prepareEngine();
