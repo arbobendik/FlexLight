@@ -71,8 +71,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// Animate ligth sources.
 		rt.LIGHT =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
-		rt.LIGHT[0].strength = 10;
-		rt.LIGHT[1].strength = 10;
+		rt.LIGHT[1].strength = 1000;
 		rt.UPDATE_LIGHT();
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;
