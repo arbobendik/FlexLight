@@ -106,6 +106,7 @@ const RayTracer = (target_canvas) => {
       let textureWidth = Math.floor(512 / RT.TEXTURE_SIZES[0]);
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
       canvas.width = width * textureWidth;
       canvas.height = height * RT.PBR_TEXTURE.length;
       RT.PBR_TEXTURE.forEach(async (item, i) => {
@@ -130,6 +131,7 @@ const RayTracer = (target_canvas) => {
       let textureWidth = Math.floor(512 / RT.TEXTURE_SIZES[0]);
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
       canvas.width = width * textureWidth;
       canvas.height = height * RT.TRANSLUCENCY_TEXTURE.length;
       RT.TRANSLUCENCY_TEXTURE.forEach(async (item, i) => {
@@ -159,6 +161,7 @@ const RayTracer = (target_canvas) => {
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
       canvas.width = width * textureWidth;
       canvas.height = height * RT.TEXTURE.length;
 
@@ -182,7 +185,7 @@ const RayTracer = (target_canvas) => {
       for (let i = 0; i < RT.LIGHT.length; i++)
       {
         // Set default value.
-        let strength = 20;
+        let strength = 200;
         // Overwrite default if set.
         if (typeof(RT.LIGHT[i].strength) !== "undefined") strength = RT.LIGHT[i].strength;
         // Push light location to Texture.
@@ -391,7 +394,8 @@ const RayTracer = (target_canvas) => {
 
       // Test if ray intersects triangle and return intersection.
       vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n, vec3 on){
-        // if(length(r) == 0.0) return vec4(p, 0.0);
+        // Can't intersect with triangle with the same normal as the origin.
+        if (n == on) return vec4(0.0);
         // Get distance to intersection point.
         float s = dot(n, a - p) / dot(n, r);
         // Ensure that ray triangle intersection is between light source and texture.
@@ -463,7 +467,6 @@ const RayTracer = (target_canvas) => {
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
           if (n != vec3(0.0)){
-            // if (n == origin_normal) continue;
             vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
             // Test if triangle intersects ray.
             vec4 current_intersection = rayTriangle(min_len, ray, origin, a, b, c, n, origin_normal);
@@ -509,7 +512,6 @@ const RayTracer = (target_canvas) => {
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
           if (n != vec3(0.0)){
-            // if (n == origin_normal) return false;
             vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
             // Test if triangle intersects ray and return true if there is shadow.
             if (rayTriangle(length(light - origin), ray, origin, a, b, c, n, origin_normal).xyz != vec3(0.0)) return true;
@@ -528,7 +530,7 @@ const RayTracer = (target_canvas) => {
 
       float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
         // Calculate intensity of light reflection, which decreases squared over distance.
-        float intensity = strength / (1.0 + length(light_ray));
+        float intensity = strength / pow(1.0 + length(light_ray),2.0);
         // Process specularity of ray in view from origin's perspective.
         vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
         float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
@@ -634,7 +636,7 @@ const RayTracer = (target_canvas) => {
                vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
                // Update pixel color if coordinate is not in shadow.
                if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * last_color * importancy_factor;
+                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
                }
              }
            }
