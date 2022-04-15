@@ -31,9 +31,9 @@ document.addEventListener("DOMContentLoaded", async function(){
   // Move camera out of center.
   rt.Z = -20;
 	// Set primary light source.
-	rt.LIGHT = [[0, 4.95, 0]];
-	// Modify brightness of first one to be brighter (default is 3)
-	rt.LIGHT[0].strength = 5;
+	rt.LIGHT = [[0, 4, 0]];
+	// Modify brightness.
+	rt.LIGHT[0].strength = 30;
 	// Generate side planes of box.
 	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);

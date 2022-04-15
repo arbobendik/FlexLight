@@ -15,8 +15,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt.PBR_TEXTURE.push(normal_tex, cuboid_tex);
 	// Set light source.
 	rt.LIGHT = [[0, 10, 0]];
-	// Modify brightness to be brighter (default is 3)
-	rt.LIGHT[0].strength = 8;
+	// Modify brightness.
+	rt.LIGHT[0].strength = 100;
 	// Generate plane.
 	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
