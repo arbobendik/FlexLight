@@ -21,8 +21,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	});
 
 	// Set camera perspective and position.
-	[rt.X, rt.Y, rt.Z] = [-8, 5, -8];
-	[rt.FX, rt.FY] = [0.440, 0.435];
+	[rt.X, rt.Y, rt.Z] = [-8, 7, -11];
+	[rt.FX, rt.FY] = [0.440, 0.55];
 
   rt.LIGHT = [[0.5, 1, 0.5], [0, 20, 0]];
 
@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseGlowTex, smoothMetallicTex);
 
   // Generate translucency texture for cube.
-  let translucencyTex = await rt.GENERATE_TRANSLUCENCY_TEX([1, 0, 1.3 / 4], 1, 1);
+  let translucencyTex = await rt.GENERATE_TRANSLUCENCY_TEX([0.7, 0, 1.3 / 4], 1, 1);
   rt.TRANSLUCENCY_TEXTURE.push(translucencyTex);
 
 	// Set texture Sizes.
