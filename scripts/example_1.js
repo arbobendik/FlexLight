@@ -21,8 +21,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	});
 
 	// Set camera perspective and position.
-	[rt.X, rt.Y, rt.Z] = [-12, 5, -18];
-	[rt.FX, rt.FY] = [0.440, 0.235];
+	[rt.X, rt.Y, rt.Z] = [-8, 5, -8];
+	[rt.FX, rt.FY] = [0.440, 0.435];
 
   rt.LIGHT = [[0.5, 1, 0.5], [0, 20, 0]];
 
