@@ -51,12 +51,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 
   // Create large ground plane.
   let groundPlane = rt.PLANE([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
-  let backPlane = rt.PLANE([10,19,10],[-10,19,10],[-10,-1,10],[10,-1,10],[0,0,1]);
-  let sidePlane = rt.PLANE([-10,19,10],[-10,19,-10],[-10,-1,-10],[-10,-1,10],[1,0,0]);
+
 	// Set normal texture for each plane.
 	groundPlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  backPlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  sidePlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
 
 	// Generate a few cuboids on surface.
   let cuboids = [
@@ -130,7 +127,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Append plane tree and object tree to render queue.
 	rt.QUEUE.push(groundPlane, objectTree);
   // Increase max reflections, because translucent objects need more reflections to look good.
-  rt.REFLECTIONS = 7;
+  rt.MAX_REFLECTIONS = 4;
 	// Start render engine.
 	rt.START();
 

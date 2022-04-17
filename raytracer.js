@@ -22,7 +22,7 @@ const RayTracer = (target_canvas) => {
     // Quality settings.
     SAMPLES: 1,
     SCALE: 1,
-    MAX_REFLECTIONS: 5,
+    MAX_REFLECTIONS: 3,
     MIN_IMPORTANCY: 0.3,
     FILTER: true,
     ANTIALIASING: true,
@@ -355,7 +355,7 @@ const RayTracer = (target_canvas) => {
       uniform sampler2D random;
 
       uniform sampler2D translucency_tex;
-      uniform sampler2D normal_tex;
+      uniform sampler2D pbr_tex;
       uniform sampler2D tex;
       // Texture with all primary light sources of scene.
       uniform sampler2D light_tex;
@@ -364,11 +364,6 @@ const RayTracer = (target_canvas) => {
       layout(location = 1) out vec4 render_color_ip;
       layout(location = 2) out vec4 render_original_color;
       layout(location = 3) out vec4 render_id;
-
-      // Global constants.
-      // Declare null vector as constant.
-      const vec3 null = vec3(0.0);
-      const float shadow_bias = 0.00001;
 
       // Prevent blur over shadow border or over (close to) perfect reflections.
       float first_in_shadow = 0.0;
@@ -386,68 +381,62 @@ const RayTracer = (target_canvas) => {
         return texture(atlas, atlas_coords);
       }
 
-      float triangleSurface(mat3 vertices){
-        vec3 ab = vertices[1] - vertices[0];
-        vec3 ac = vertices[2] - vertices[0];
+      float triangleSurface(mat3 t){
+        vec3 ab = t[1] - t[0];
+        vec3 ac = t[2] - t[0];
         return 0.5 * length(cross(ab, ac));
       }
 
       // Test if ray intersects triangle and return intersection.
-      vec4 rayTriangle(float l, vec3 r, vec3 p, vec3 a, vec3 b, vec3 c, vec3 n, vec3 on){
+      mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
         // Can't intersect with triangle with the same normal as the origin.
-        if (n == on) return vec4(0.0);
+        if (n == on) return mat2x4(0);
         // Get distance to intersection point.
-        float s = dot(n, a - p) / dot(n, r);
+        float s = dot(n, t[0] - p) / dot(n, r);
         // Ensure that ray triangle intersection is between light source and texture.
-        if (s > l || s <= shadow_bias) return vec4(0.0);
+        if (s > l || s <= 0.0) return mat2x4(0);
         // Calculate intersection point.
         vec3 d = (s * r) + p;
         // Test if point on plane is in Triangle by looking for each edge if point is in or outside.
-        vec3 v0 = c - a;
-        vec3 v1 = b - a;
-        vec3 v2 = d - a;
-        // Precalculate dot products.
-        float d00 = dot(v0, v0);
-        float d01 = - dot(v0, v1);
-        float d02 = dot(v0, v2);
-        float d11 = dot(v1, v1);
-        float d12 = dot(v1, v2);
-        // Compute coordinates with optemized dot products.
-        float i = dot(vec2(d11, d01), vec2(d00, - d01));
-        float u = dot(vec2(d11, d01), vec2(d02, d12)) / i;
-        float v = dot(vec2(d12, d01), vec2(d00, d02)) / i;
-        // Return if ray intersects triangle or not.
-        if ((u > shadow_bias) && (v > shadow_bias) && (u + v < 1.0 - shadow_bias)){
-          return vec4(d, s);
+        mat3 e = mat3(d, d, d) - t;
+        vec3 uvw = vec3(
+          length(cross(e[1], e[2])),
+          length(cross(e[2], e[0])),
+          length(cross(e[0], e[1]))
+        );
+
+        uvw /= dot(uvw, vec3(1.0));
+
+        if ((min(uvw.x, uvw.y) > 0.0) && (uvw.x + uvw.y < 1.0)){
+          return mat2x4(vec4(d, s), vec4(uvw, 0));
         }else{
-          return vec4(0.0);
+          return mat2x4(0);
         }
       }
 
       // Don't return intersection point, because we're looking for a specific triangle.
-      bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner){
-        vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
-        vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
-        vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
-        float lowest = max(max(min(v1.x, v1.y), min(v2.x, v2.y)), min(v3.x, v3.y));
-        float highest = min(min(max(v1.x, v1.y), max(v2.x, v2.y)), max(v3.x, v3.y));
+      bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
+        mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
+
+        // vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
+        // vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
+        // vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
+
+        float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
+        float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
         // Cuboid is behind ray.
-        if (highest < 0.0) return false;
         // Ray points in cuboid direction, but doesn't intersect.
-        if (lowest > highest) return false;
-        return true;
+        return max(lowest, 0.0) <= highest;
       }
 
       // Test for closest ray triangle intersection.
       // Return intersection position in world space (rayTracer.xyz).
       // Return index of target triangle in world_tex (rayTracer.w).
-      vec4 rayTracer(vec3 ray, vec3 origin, vec3 origin_normal){
+      mat2x4 rayTracer(vec3 ray, vec3 origin, vec3 origin_normal){
         // Precompute inverse of ray for AABB cuboid intersection test.
         vec3 inv_ray = 1.0 / ray;
-        // Which triangle (number) reflects ray.
-        int target_triangle = -1;
         // Latest intersection which is now closest to origin.
-        vec3 intersection = vec3(0.0);
+        mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
         // Length to latest intersection.
         float min_len = 1.0 / 0.0;
         // Get texture size as max iteration value.
@@ -456,39 +445,39 @@ const RayTracer = (target_canvas) => {
         for (int i = 0; i < size; i++){
           // Get position of current triangle/vertex in world_tex.
           ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
-          // Read point a and normal from traingle.
+          // Read triangle and normal from world tex.
           vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
-          vec3 a = texelFetch(world_tex, index, 0).xyz;
-          vec3 b = texelFetch(world_tex, index + ivec2(1, 0), 0).xyz;
-          // Break if all values are zero and texture already ended.
-          if (mat3(n,a,b) == mat3(vec3(0.0),vec3(0.0),vec3(0.0))) break;
+          mat3 t = mat3(
+            texelFetch(world_tex, index, 0).xyz,
+            texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
+            texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+          );
           // Fetch triangle coordinates from world texture.
           //  Two cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
-          if (n != vec3(0.0)){
-            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
+          if (n != vec3(0)){
             // Test if triangle intersects ray.
-            vec4 current_intersection = rayTriangle(min_len, ray, origin, a, b, c, n, origin_normal);
+            mat2x4 current_intersection = rayTriangle(min_len, ray, origin, t, n, origin_normal);
             // Test if ray even intersects.
-            if (current_intersection != vec4(0.0)){
-              min_len = current_intersection.w;
-              target_triangle = i;
-              intersection = current_intersection.xyz;
+            if (current_intersection != mat2x4(0)){
+              min_len = current_intersection[0].w;
+              intersection = current_intersection;
+              intersection[1].w = float(i);
             }
-          }else{
+          } else if (t == mat3(0)) {
+            // Break if all values are zero and texture already ended.
+            break;
+          } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
             // Test if Ray intersects bounding volume.
-            // a = x x2 y
-            // b = y2 z z2
-            if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
-              vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
-              // If it doesn't intersect, skip shadow test for all elements in bounding volume.
-              i += int(c.x);
-            }
+            // t[0] = x x2 y
+            // t[1] = y2 z z2
+            // If it doesn't intersect, skip shadow test for all elements in bounding volume.
+            i += int(t[2].x);
           }
         }
         // Return if pixel is in shadow or not.
-        return vec4(intersection, float(target_triangle));
+        return intersection;
       }
 
       // Simplified rayTracer test only if ray intersects anything.
@@ -501,27 +490,29 @@ const RayTracer = (target_canvas) => {
         for (int i = 0; i < size; i++){
           // Get position of current triangle/vertex in world_tex.
           ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
-          // Read point a and normal from traingle.
+          // Read normal and triangle from world_tex.
           vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
-          vec3 a = texelFetch(world_tex, index, 0).xyz;
-          vec3 b = texelFetch(world_tex, index + ivec2(1, 0), 0).xyz;
-          // Break if all values are zero and texture already ended.
-          if (mat3(n, a, b) == mat3(vec3(0.0),vec3(0.0),vec3(0.0))) break;
           // Fetch triangle coordinates from world texture.
+          mat3 t = mat3(
+            texelFetch(world_tex, index, 0).xyz,
+            texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
+            texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+          );
           //  Three cases:
           //   - normal is not 0 0 0 --> normal vertex
           //   - normal is 0 0 0 --> beginning of new bounding volume
-          if (n != vec3(0.0)){
-            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
+          if (n != vec3(0)) {
             // Test if triangle intersects ray and return true if there is shadow.
-            if (rayTriangle(length(light - origin), ray, origin, a, b, c, n, origin_normal).xyz != vec3(0.0)) return true;
-          }else if (!rayCuboid(inv_ray, origin, vec3(a.x, a.z, b.y), vec3(a.y, b.x, b.z))){
+            if (rayTriangle(length(light - origin), ray, origin, t, n, origin_normal) != mat2x4(0)) return true;
+          } else if (t == mat3(0)) {
+            // Break if all values are zero and texture already ended.
+            break;
+          } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
             // Test if Ray intersects bounding volume.
-            // a = x x2 y
-            // b = y2 z z2
-            vec3 c = texelFetch(world_tex, index + ivec2(2, 0), 0).xyz;
+            // t[0] = x x2 y
+            // t[1] = y2 z z2
             // If it doesn't intersect, skip ahadow test for all elements in bounding volume.
-            i += int(c.x);
+            i += int(t[2].x);
           }
         }
         // Tested all triangles, but there is no intersection.
@@ -534,7 +525,7 @@ const RayTracer = (target_canvas) => {
         // Process specularity of ray in view from origin's perspective.
         vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
         float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-        float specular = pow(dot(normal, halfVector), 300.0 / intensity) * 10.0 * metallicity;
+        float specular = pow(dot(normal, halfVector), 300.0 / intensity) * 8.0 * metallicity;
         // Determine final color and return it.
         if (specular > 0.0) return light * intensity + specular * intensity;
         // Return just light if specular is negative.
@@ -543,15 +534,15 @@ const RayTracer = (target_canvas) => {
 
       float fresnel(vec3 normal, vec3 lightDir) {
         // Apply fresnel effect.
-        return dot(normal, normalize(lightDir));
+        return dot(normal, lightDir);
       }
 
-      vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 rough_normal, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
+      vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
         // Set bool to false when filter becomes necessary
         bool dont_filter = true;
         // Use additive color mixing technique, so start with black.
-        vec3 final_color = vec3(0.0);
-        vec3 importancy_factor = vec3(1.0);
+        vec3 final_color = vec3(0);
+        vec3 importancy_factor = vec3(1);
         // Ray currently traced.
         vec3 active_ray = normalize(position - origin);
         // Ray from last_position to light source.
@@ -559,10 +550,9 @@ const RayTracer = (target_canvas) => {
         // Triangle ray lastly intersected with is last_position.w.
         vec3 last_position = position;
         vec3 last_normal = normal;
-        vec3 last_rough_normal = rough_normal;
         // Remember color of triangle ray intersected lastly.
         // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter.
-        vec3 last_color = vec3(1.0);
+        vec3 last_color = vec3(1);
         // Pack roughness, metallicity and emissiveness in one vector for simplicity.
         vec3 last_rme = rme;
         // Pack all translucency related values in one vector.
@@ -573,10 +563,15 @@ const RayTracer = (target_canvas) => {
           // Generate pseudo random vector.
           vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
           vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
+          // Alter normal according to roughness value.
+          vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
+
           // Handle fresnel reflection.
           bool fresnel_reflect = abs(fresnel(last_normal, active_ray)) <= abs(random_vec.y);;
           // object is solid by chance or because of the fresnel effect.
           bool is_solid = last_tpo.x <= abs(random_vec.x) || fresnel_reflect;
+          // Intersection of ray with triangle.
+          mat2x4 intersection;
 
           // Handle translucency and skip rest of light calculation
           if (is_solid){
@@ -600,99 +595,82 @@ const RayTracer = (target_canvas) => {
                 first_in_shadow += pow(2.0, - float(i + 3));
               }
             }
-          }
-          // Break out of the loop after color is calculated if i was the last iteration.
-          if (i == bounces - 1) break;
-          if(is_solid) {
+            // Break out of the loop after color is calculated if i was the last iteration.
+            if (i == bounces - 1) break;
             // Calculate reflecting ray.
             active_ray = normalize(mix(reflect(active_ray, last_normal), random_vec, last_rme.x));
             if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
-          }else{
+            // Calculate next intersection.
+            intersection = rayTracer(active_ray, last_position, last_normal);
+            // Stop loop if there is no intersection and ray goes in the void.
+            if (intersection[0] == vec4(0)) break;
+          } else {
+            // Break out of the loop after color is calculated if i was the last iteration.
+            if (i == bounces - 1) break;
             float ratio = last_tpo.z * 4.0;
 
             if (dot(active_ray, last_normal) <= 0.0){
-              active_ray = normalize(active_ray + 1.0 * refract(normalize(active_ray), last_rough_normal, 1.0 / ratio));
+              active_ray = normalize(active_ray + 1.0 * refract(active_ray, last_rough_normal, 1.0 / ratio));
             }else{
-              active_ray = normalize(active_ray + 1.0 * refract(normalize(active_ray), - last_rough_normal, ratio));
+              active_ray = normalize(active_ray + 1.0 * refract(active_ray, - last_rough_normal, ratio));
+            }
+            // Calculate next intersection.
+            intersection = rayTracer(active_ray, last_position, last_normal);
+            // Stop loop if there is no intersection and ray goes in the void.
+            if (intersection[0] == vec4(0)) {
+              last_origin = 2.0 * last_position - last_origin;
+              for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+                // Read light position.
+                vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
+                // Read light strength from texture.
+                float strength = texture(light_tex, vec2(1.0, float(j))).x;
+                // Skip if strength is negative or zero.
+                if (strength <= 0.0) continue;
+                // Recalculate position -> light vector.
+                vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
+                // Update pixel color if coordinate is not in shadow.
+                if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
+                  final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
+                }
+              }
+              break;
             }
           }
-          // Calculate next intersection.
-          vec4 intersection = rayTracer(active_ray, last_position, last_normal);
           // Get position of current triangle/vertex in world_tex.
-          ivec2 index = ivec2(mod(intersection.w, 64.0) * 8.0, intersection.w / 64.0);
-          // Stop loop if there is no intersection and ray goes in the void.
-          if (intersection.xyz == null) {
-           // Stop loop if there is no intersection and ray goes in the void.
-           if(!is_solid){
-             last_origin = 2.0 * last_position - last_origin;
-             for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-               // Read light position.
-               vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
-               // Read light strength from texture.
-               float strength = texture(light_tex, vec2(1.0, float(j))).x;
-               // Skip if strength is negative or zero.
-               if (strength <= 0.0) continue;
-               // Recalculate position -> light vector.
-               vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
-               // Update pixel color if coordinate is not in shadow.
-               if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-                 final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
-               }
-             }
-           }
-           break;
-         }
+          ivec2 index = ivec2(mod(intersection[1].w, 64.0) * 8.0, intersection[1].w / 64.0);
           // Calculate barycentric coordinates to map textures.
           // Read UVs of vertices.
           vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
           vec3 v_uvs_2 = texelFetch(world_tex, index + ivec2(7, 0), 0).xyz;
 
           mat3x2 vertex_uvs = mat3x2(vec2(v_uvs_1.xy), vec2(v_uvs_1.z, v_uvs_2.x), vec2(v_uvs_2.yz));
-          // Get vertices of triangle.
-          mat3 vertices = mat3(
-            texelFetch(world_tex, index, 0).xyz,
-            texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
-            texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
-          );
-          // Calculate sub surfaces of triangles.
-          vec3 sub_surfaces = vec3(
-            triangleSurface(mat3(intersection.xyz, vertices[1], vertices[2])),
-            triangleSurface(mat3(intersection.xyz, vertices[2], vertices[0])),
-            triangleSurface(mat3(intersection.xyz, vertices[0], vertices[1]))
-          );
-
-          float surface_sum = sub_surfaces.x + sub_surfaces.y + sub_surfaces.z;
-          sub_surfaces = sub_surfaces / surface_sum;
           // Interpolate final barycentric coordinates.
-          vec2 barycentric = vertex_uvs * sub_surfaces;
+          vec2 barycentric = vertex_uvs * intersection[1].xyz;
           // Read triangle normal.
           vec3 tex_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
           // Default last_color to color of target triangle.
-          last_color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
           // Multiply with texture value if available.
+          last_color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
           if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
           // Default roughness, metallicity and emissiveness.
-          last_rme.x = 0.5;
-          rme.y = 0.5;
-          rme.z = 0.0;
           // Set roughness to texture value if texture is defined.
-          if (tex_nums.y != -1.0){
-            last_rme.x = lookup(normal_tex, vec3(barycentric, tex_nums.y)).x;
-            last_rme.y = lookup(normal_tex, vec3(barycentric, tex_nums.y)).y;
-            rme.z = lookup(normal_tex, vec3(barycentric, tex_nums.y)).z * 4.0;
-          }
+          last_rme = vec3(0.5, 0.5, 0.0);
+          if (tex_nums.y != -1.0) last_rme = lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0);
+          // Update tpo for next pass.
+          last_tpo = vec3(0.0, 1.0, 0.25);
+          if (tex_nums.z != -1.0) last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
           // Update parameters.
           last_origin = last_position;
-          last_position = intersection.xyz;
+          last_position = intersection[0].xyz;
           last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
-          // Apply emissive texture.
-          final_color += rme.z * last_color * importancy_factor;
+          // Apply emissive texture and ambient light.
+          final_color += sky_box * importancy_factor;
+          final_color += last_rme.z * last_color * importancy_factor;
           // Fresnel effect.
           last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
-          last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
           // Lock filter ids if surface isn't perfectly reflective.
-          if(rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter){
-            render_id += pow(2.0, - float(i + 1)) * vec4(vec2(int(intersection.w)/65535, int(intersection.w)/255), last_rme.xy);
+          if(rme.x < 0.01 && tpo.x == 0.0 && dont_filter){
+            render_id += pow(2.0, - float(i + 1)) * vec4(int(intersection[1].w)/65535, int(intersection[1].w)/255, last_rme.xy);
           }else{
             dont_filter = false;
           }
@@ -700,17 +678,8 @@ const RayTracer = (target_canvas) => {
           // Precalculate importancy_factor for next iteration.
           // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
           importancy_factor *= last_color;
-          if (is_solid) importancy_factor *= rme.y;
-          // Update tpo for next pass.
-
-          if (tex_nums.z == -1.0){
-            last_tpo = vec3(0.0, 1.0, 0.25);
-          }else{
-            last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
-          }
+          if (is_solid) importancy_factor *= last_rme.y;
         }
-        // Apply global illumination.
-        final_color += sky_box * importancy_factor;
         // Return final pixel color.
         return final_color;
       }
@@ -740,7 +709,7 @@ const RayTracer = (target_canvas) => {
         // Pack fresnel_roughness, metallicity and emissiveness in one vector (roughness, metallicity, emissiveness) => rme.
         vec3 rme = vec3(0.5, 0.5, 0.0);
         if (texture_nums.y != -1.0){
-          rme = lookup(normal_tex, vec3(tex_coord, texture_nums.y)).xyz;
+          rme = lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz;
           rme.z = rme.z * 4.0;
         }
         // Default to non translucent object (translucency, particle density, optical density) => tpo.
@@ -754,8 +723,6 @@ const RayTracer = (target_canvas) => {
         // Start hybrid ray tracing on a per light source base.
         // Directly add emissive light of original surface to final_color.
         vec3 final_color = vec3(0.0);
-        // Addapt outer loop iterations depending on how many light sources there are.
-        int samples = samples;
         // Generate multiple samples.
         for (int i = 0; i < samples; i++){
           if (mod(float(i), 2.0) == 0.0){
@@ -770,17 +737,13 @@ const RayTracer = (target_canvas) => {
           if (0.0 >= tpo.x) {
             // Set color of object itself.
             final_color += rme.z * tex_color.xyz;
-            // Alter normal and color according to texture and normal texture.
-            vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, max_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
           }else{
-            // Alter normal and color according to texture and normal texture.
-            vec3 rough_normal = normalize(mix(normal, random_vec, rme.x));
             // Next position
-            vec3 next_position = rayTracer(normalize(position - player), position, normal).xyz;
+            vec3 next_position = rayTracer(normalize(position - player), position, normal)[1].xyz;
             // Calculate pixel for specific normal.
-            final_color += lightTrace(world_tex, light_tex, player, position, rough_normal, normal, rme, tpo, i, max_reflections);
+            final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
           }
         }
         // Render all relevant information to 4 textures for the post processing shader.
@@ -788,9 +751,10 @@ const RayTracer = (target_canvas) => {
           render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
           return;
         }
-        render_color = vec4(mod(final_color / float(samples), 1.0), 1.0);
+        final_color /= float(samples);
+        render_color = vec4(mod(final_color, 1.0), 1.0);
         // 16 bit HDR for improved filtering.
-        render_color_ip = vec4(floor(final_color / float(samples)) / 255.0, 1.0);
+        render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
         render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
         render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
       }
@@ -1076,7 +1040,7 @@ const RayTracer = (target_canvas) => {
         var TimeElapsed = performance.now();
         var Frames = 0;
         // Internal GL objects.
-        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, NormalTex, TranslucencyTex, ColorTex, LightTex;
+        var Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, SkyBoxLocation, TextureWidth, WorldTex, RandomTex, PbrTex, TranslucencyTex, ColorTex, LightTex;
         // Init Buffers.
         var PositionBuffer, NormalBuffer, TexBuffer, ColorBuffer, TexSizeBuffer, TexNumBuffer, IdBuffer, SurfaceBuffer, TriangleBuffer;
         // Init Texture elements.
@@ -1352,7 +1316,7 @@ const RayTracer = (target_canvas) => {
         // Pass random texture to GPU.
         RT.GL.uniform1i(RandomTex, 1);
         // Pass pbr texture to GPU.
-        RT.GL.uniform1i(NormalTex, 2);
+        RT.GL.uniform1i(PbrTex, 2);
         // Pass pbr texture to GPU.
         RT.GL.uniform1i(TranslucencyTex, 3);
         // Pass texture to GPU.
@@ -1630,7 +1594,7 @@ const RayTracer = (target_canvas) => {
         TextureWidth = RT.GL.getUniformLocation(Program, "texture_width");
 
         LightTex = RT.GL.getUniformLocation(Program, "light_tex");
-        NormalTex = RT.GL.getUniformLocation(Program, "normal_tex");
+        PbrTex = RT.GL.getUniformLocation(Program, "pbr_tex");
         TranslucencyTex = RT.GL.getUniformLocation(Program, "translucency_tex");
         ColorTex = RT.GL.getUniformLocation(Program, "tex");
         // Enable depth buffer and therefore overlapping vertices.
