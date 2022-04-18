@@ -8,25 +8,25 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	rt = RayTracer(canvas);
+	rt = new rayTracer(canvas);
 	// Create 2 pbr metallic textures.
-	let roughTex = await rt.GENERATE_PBR_TEX([0,0.3, 0], 1, 1);
-  let smoothTex = await rt.GENERATE_PBR_TEX([0.3, 0.5, 0], 1, 1);
+	let roughTex = await rt.textureFromRME([0,0.3, 0], 1, 1);
+  let smoothTex = await rt.textureFromRME([0.3, 0.5, 0], 1, 1);
 
-	rt.PBR_TEXTURE.push(roughTex, smoothTex);
+	rt.pbrTextures.push(roughTex, smoothTex);
   // Move camera out of center.
   rt.Z = -20;
 	// Set primary light source.
-	rt.LIGHT = [[0, 4, 0]];
+	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness of first one to be brighter (default is 3)
-	rt.LIGHT[0].strength = 30;
+	rt.primaryLightSources[0].strength = 30;
 	// Generate side planes of box.
-	let bottom_plane = rt.PLANE([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
-  let top_plane = rt.PLANE([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
-  let back_plane = rt.PLANE([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[0,0,-1]);
-	let front_plane = rt.PLANE([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15],[0,0,1]);
-  let left_plane = rt.PLANE([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15],[1,0,0]);
-  let right_plane = rt.PLANE([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5],[-1,0,0]);
+	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
+  let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
+  let back_plane = rt.plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[0,0,-1]);
+	let front_plane = rt.plane([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15],[0,0,1]);
+  let left_plane = rt.plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15],[1,0,0]);
+  let right_plane = rt.plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5],[-1,0,0]);
 
   // Make planes diffuse.
 	bottom_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
@@ -42,12 +42,12 @@ document.addEventListener("DOMContentLoaded", async function(){
 	var [t0, t1, t2, t3] = [[x+1, y2, z], [x2, y2, z+1], [x2-1, y2, z2], [x, y2, z2-1]]
 	// Generate rotated cube object from planes.
   c[0] = [x, x2, y, y2, z, z2];
-  c[1] = rt.PLANE(t0,t1,t2,t3,[0,1,0]);
-  c[2] = rt.PLANE(t1,b1,b2,t2,[1,0,0]);
-  c[3] = rt.PLANE(t2,b2,b3,t3,[0,0,1]);
-  c[4] = rt.PLANE(b3,b2,b1,b0,[0,-1,0]);
-  c[5] = rt.PLANE(t3,b3,b0,t0,[-1,0,0]);
-  c[6] = rt.PLANE(t0,b0,b1,t1,[0,0,-1]);
+  c[1] = rt.plane(t0,t1,t2,t3,[0,1,0]);
+  c[2] = rt.plane(t1,b1,b2,t2,[1,0,0]);
+  c[3] = rt.plane(t2,b2,b3,t3,[0,0,1]);
+  c[4] = rt.plane(b3,b2,b1,b0,[0,-1,0]);
+  c[5] = rt.plane(t3,b3,b0,t0,[-1,0,0]);
+  c[6] = rt.plane(t0,b0,b1,t1,[0,0,-1]);
 
 	// Set textures for cube.
   let cube_colors = [
@@ -69,9 +69,9 @@ document.addEventListener("DOMContentLoaded", async function(){
 		bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane
 	];
 	// Push both objects to render queue.
-	rt.QUEUE.push(box, c);
+	rt.queue.push(box, c);
 	// Start render engine.
-	rt.START();
+	rt.render();
 
 	// Add FPS counter to top-right corner.
 	var fpsCounter = document.createElement("div");
@@ -81,8 +81,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 	setInterval(async function(){
 		fpsCounter.textContent = rt.FPS;
     // Update textures every second.
-		rt.UPDATE_TEXTURE();
-		rt.UPDATE_PBR_TEXTURE();
-    rt.UPDATE_TRANSLUCENCY_TEXTURE();
+		rt.updateTextures();
+		rt.updatePbrTextures();
+    rt.updateTranslucencyTextures();
 	},1000);
 });

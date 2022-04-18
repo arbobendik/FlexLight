@@ -34,6 +34,7 @@ class rayTracer {
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
+	#playerHandler;
   // Internal gl texture variables of texture atlases
   #worldTexture = null;
   #pbrTexture = null;
@@ -788,10 +789,18 @@ class rayTracer {
     }
   }
   `;
-  // Create new rayTracer from canvas
+  // Create new rayTracer from canvas and setup movement
   constructor (targetCanvas) {
     this.#canvas = targetCanvas;
     this.#gl = targetCanvas.getContext("webgl2");
+		this.#playerHandler = new PlayerHandler(this);
+		this.#playerHandler.KEYMAP
+			.registerKey("KeyW", "FORWARD")
+			.registerKey("KeyA", "LEFT")
+			.registerKey("KeyS", "BACKWARD")
+			.registerKey("KeyD", "RIGHT")
+			.registerKey("Space", "UP")
+			.registerKey("ShiftLeft", "DOWN");
   }
 
   // Make canvas read only accessible
@@ -1165,7 +1174,9 @@ class rayTracer {
     }
 
     // Internal render engine Functions
-    function frameCycle () {
+    function frameCycle (time) {
+			// update movement
+			rt.#playerHandler.update(time);
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
       if (State[0] !== rt.filter || State[1] !== rt.renderQuality) {
@@ -1226,8 +1237,8 @@ class rayTracer {
       rt.#gl.uniform1f(MinImportancyLocation, rt.minImportancy);
       // Instuct shader to render for filter or not
       rt.#gl.uniform1i(FilterLocation, rt.filter);
-      // Set global illumination
-      rt.#gl.uniform3f(AmbientLocation, rt.ambient[0], rt.ambient[1], rt.ambient[2]);
+      // Set global illumination 
+      rt.#gl.uniform3f(AmbientLocation, rt.ambientLight[0], rt.ambientLight[1], rt.ambientLight[2]);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(512 / rt.standardTextureSizes[0]));
       // Pass whole current world space as data structure to GPU

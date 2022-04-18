@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async function(){
   rt.primaryLightSources[0].intensity = 100;
   rt.primaryLightSources[1].intensity = 100;
 	// Set ambient illumination
-	rt.ambient = [0.1,0.1,0.1];
+	rt.ambientLight = [0.1,0.1,0.1];
 
 	// Create varying roughness texture for the surface
 	let normalTex = new Image();
