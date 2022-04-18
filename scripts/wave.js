@@ -8,22 +8,22 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	rt = RayTracer(canvas);
+	rt = new rayTracer(canvas);
 	// Make plane defuser.
-	let normal_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0], 1, 1);
-	let cuboid_tex = await rt.GENERATE_PBR_TEX([0.5, 0.5, 0.05], 1, 1);
-	rt.PBR_TEXTURE.push(normal_tex, cuboid_tex);
+	let normal_tex = await rt.textureFromRME([0.5, 0.5, 0], 1, 1);
+	let cuboid_tex = await rt.textureFromRME([0.5, 0.5, 0.05], 1, 1);
+	rt.pbrTextures.push(normal_tex, cuboid_tex);
 	// Set light source.
-	rt.LIGHT = [[0, 10, 0]];
+	rt.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	rt.LIGHT[0].strength = 100;
+	rt.primaryLightSources[0].strength = 100;
 	// Generate plane.
-	let this_plane = rt.PLANE([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
+	let this_plane = rt.plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
 	// Push both objects to render queue.
-	rt.QUEUE.push(this_plane);
+	rt.queue.push(this_plane);
 	// Start render engine.
-	rt.START();
+	rt.render();
 	// Add FPS counter to top-right corner.
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	setInterval(function(){
 		fpsCounter.textContent = rt.FPS;
 		// Update texture atlases.
-		rt.UPDATE_PBR_TEXTURE();
+		rt.updatePbrTextures();
 	},1000);
 
 	// Set power of 2 square length.
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	var drawMap = (pot, x, y, notSquare) => {
 		// Base case.
 		if (pot == 0){
-			let cuboid = rt.CUBOID(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
+			let cuboid = rt.cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
 			for (let i = 1; i <= 6; i++){
 				cuboid[i].textureNums = new Array(6).fill([-1,1,-1]).flat();
@@ -89,6 +89,6 @@ document.addEventListener("DOMContentLoaded", async function(){
 		// Increase iterator.
 		t += 0.02;
 		// Package cuboids together in a shared bounding volume.
-		rt.QUEUE[1] = drawMap(2 * power, 0, 0, false);
+		rt.queue[1] = drawMap(2 * power, 0, 0, false);
 	}, 100/6);
 });
