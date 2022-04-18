@@ -54,7 +54,7 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 	canvas.addEventListener("focus", function() {
 		this.requestPointerLock();
 	});
-	
+
 	document.addEventListener("pointerlockchange", function(event) {
 		handler.isListening = !handler.isListening;
 		if (handler.isListening) handler.savedTime = event.timeStamp;
@@ -63,11 +63,11 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 			canvas.blur();
 		}
 	});
-	
+
 	canvas.addEventListener("keydown", function(event) {
 		if (event.repeat) return;
-		
-		
+
+
 		if (event.code in handler.KEYMAP) {
 			handler.update(event.timeStamp);
 			handler.updateMovement(handler.KEYMAP[event.code]);

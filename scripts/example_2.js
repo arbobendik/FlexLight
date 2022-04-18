@@ -57,11 +57,11 @@ document.addEventListener("DOMContentLoaded", async function(){
 	document.body.appendChild(fpsCounter);
   // Update Counter periodically.
 	setInterval(function(){
-		fpsCounter.textContent = rt.FPS;
+		fpsCounter.textContent = rt.fps;
 		// Update textures every second.
-		rt.UPDATE_TEXTURE();
-		rt.UPDATE_PBR_TEXTURE();
-    rt.UPDATE_TRANSLUCENCY_TEXTURE();
+		rt.updateTextures();
+		rt.updatePbrTextures();
+    rt.updateTranslucencyTextures();
 	},1000);
 
 	// Init iterator variable for simple animations.
@@ -74,7 +74,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// Animate light sources.
 		rt.primaryLightSources =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
-		rt.primaryLightSources[1].strength = 1000;
+    rt.primaryLightSources[0].intensity = 100;
+		rt.primaryLightSources[1].intensity = 800;
 		rt.updatePrimaryLightSources();
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;

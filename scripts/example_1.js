@@ -24,7 +24,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	[rt.x, rt.y, rt.z] = [-8, 7, -11];
 	[rt.fx, rt.fy] = [0.440, 0.55];
 
-  rt.primaryLightSources = [[0.5, 1, 0.5], [0, 20, 0]];
+  rt.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
 
 	// Make light dimmer (default = 200)
   rt.primaryLightSources[0].intensity = 100;

@@ -155,20 +155,23 @@ class rayTracer {
     // Calculate intersection point
     vec3 d = (s * r) + p;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
-    mat3 e = mat3(d, d, d) - t;
-    vec3 uvw = vec3(
-      length(cross(e[1], e[2])),
-      length(cross(e[2], e[0])),
-      length(cross(e[0], e[1]))
-    );
+    vec3 v0 = t[1] - t[0];
+    vec3 v1 = t[2] - t[0];
+    vec3 v2 = d - t[0];
+    float d00 = dot(v0, v0);
+    float d01 = dot(v0, v1);
+    float d11 = dot(v1, v1);
+    float d20 = dot(v2, v0);
+    float d21 = dot(v2, v1);
+    float denom = d00 * d11 - d01 * d01;
 
-    uvw /= dot(uvw, vec3(1.0));
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u =  1.0 - v - w;
 
-    if ((min(uvw.x, uvw.y) > 0.0) && (uvw.x + uvw.y < 1.0)){
-      return mat2x4(vec4(d, s), vec4(uvw, 0));
-    }else{
-      return mat2x4(0);
-    }
+    if (min(u, v) < 0.0 || u + v > 1.0) return mat2x4(0);
+    // Return uvw and intersection point on triangle.
+    return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
@@ -260,7 +263,7 @@ class rayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, n, origin_normal) != mat2x4(0)) return true;
+        if (rayTriangle(length(light - origin), ray, origin, t, n, origin_normal)[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
@@ -268,7 +271,7 @@ class rayTracer {
         // Test if Ray intersects bounding volume
         // t[0] = x x2 y
         // t[1] = y2 z z2
-        // If it doesn't intersect, skip ahadow test for all elements in bounding volume
+        // If it doesn't intersect, skip shadow test for all elements in bounding volume
         i += int(t[2].x);
       }
     }
@@ -317,6 +320,12 @@ class rayTracer {
     // Iterate over each bounce and modify color accordingly
     for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy / SQRT3; i++){
 
+      // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
+      importancy_factor *= last_color;
+      // Apply emissive texture and ambient light
+      final_color += ambient * last_color * importancy_factor;
+      final_color += last_rme.z * last_color * importancy_factor;
+
       // Generate pseudo random vector
       vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
@@ -347,7 +356,7 @@ class rayTracer {
           vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * last_color * importancy_factor;
+            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
           }else if(dont_filter && last_tpo.x == 0.0){
             first_in_shadow += pow(2.0, - float(i + 3));
           }
@@ -420,9 +429,7 @@ class rayTracer {
       last_origin = last_position;
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
-      // Apply emissive texture and ambient light
-      final_color += ambient * importancy_factor;
-      final_color += last_rme.z * last_color * importancy_factor;
+
       // Fresnel effect
       last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
       // Lock filter ids if surface isn't perfectly reflective
@@ -432,10 +439,6 @@ class rayTracer {
         dont_filter = false;
       }
       if (i==0) first_ray_length = length(last_position - last_origin) / length(position - origin);
-      // Precalculate importancy_factor for next iteration
-      // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
-      importancy_factor *= last_color;
-      if (is_solid) importancy_factor *= last_rme.y;
     }
     // Return final pixel color
     return final_color;
@@ -444,22 +447,18 @@ class rayTracer {
   void main(){
     float id = vertex_id.x * 65535.0 + vertex_id.y;
     ivec2 index = ivec2(mod(id, 64.0) * 8.0, id / 64.0);
-
+    // Read base attributes from world texture.
     vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
     vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
     vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
     // Test if pixel is in frustum or not
     if (clip_space.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
-    // Test if textures are even set otherwise default to 0.5 / color
+    // Test if textures are even set otherwise use defaults.
     // Default tex_color to color
     vec3 tex_color = color;
     // Multiply with texture value if texture is defined
     if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x)).xyz;
-    // Skip path tracing if random value determines that this pixel shouldn't be fully calculated
-    // to enable lower pathtracing resolutions than native
-    vec2 random_coord = vec2(0.0);
-    vec3 random_vec = vec3(0.0);
     // Default roughness and metallicity
     // Pack fresnel_roughness, metallicity and emissiveness in one vector (roughness, metallicity, emissiveness) => rme
     vec3 rme = vec3(0.5, 0.5, 0.0);
@@ -477,29 +476,12 @@ class rayTracer {
     rme.x = rme.x * mix(1.0, fresnel(normal, player - position), rme.y);
     // Start hybrid ray tracing on a per light source base
     // Directly add emissive light of original surface to final_color
-    vec3 final_color = vec3(0.0);
+    vec3 final_color = vec3(0);
     // Generate multiple samples
     for (int i = 0; i < samples; i++){
-      if (mod(float(i), 2.0) == 0.0){
-        random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * cos(float(i)), 1.0);
-        random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
-      }else{
-        // Invert vector every second sample instead of getting a new one
-        // --> smoother image
-        random_vec = - random_vec;
-      }
-      // Decide if ray will go through object or reflect
-      if (0.0 >= tpo.x) {
-        // Set color of object itself
-        final_color += rme.z * tex_color.xyz;
-        // Calculate pixel for specific normal
-        final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
-      }else{
-        // Next position
-        vec3 next_position = rayTracer(normalize(position - player), position, normal)[1].xyz;
-        // Calculate pixel for specific normal
-        final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
-      }
+      // Set color of object itself
+      // Calculate pixel for specific normal
+      final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
     }
     // Render all relevant information to 4 textures for the post processing shader
     if (use_filter == 0){
@@ -512,7 +494,6 @@ class rayTracer {
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
     render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
     render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
-    // render_color = vec4(tex_color.xyz * forwardTrace(normal, texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0); - position, player, position, rme.y, 200.0) ,1.0);
   }
   `;
   #postProcessGlsl = `#version 300 es
@@ -1237,7 +1218,7 @@ class rayTracer {
       rt.#gl.uniform1f(MinImportancyLocation, rt.minImportancy);
       // Instuct shader to render for filter or not
       rt.#gl.uniform1i(FilterLocation, rt.filter);
-      // Set global illumination 
+      // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.ambientLight[0], rt.ambientLight[1], rt.ambientLight[2]);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(512 / rt.standardTextureSizes[0]));
@@ -1283,7 +1264,7 @@ class rayTracer {
       // Set buffers
       [
         [PositionBuffer, vertices],
-        [IdBuffer, ids.flat()],
+        [IdBuffer, ids],
         [TexBuffer, uvs]
       ].forEach(function(item){
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);

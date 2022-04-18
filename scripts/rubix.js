@@ -15,11 +15,11 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	rt.pbrTextures.push(roughTex, smoothTex);
   // Move camera out of center.
-  rt.Z = -20;
+  rt.z = -20;
 	// Set primary light source.
 	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness of first one to be brighter (default is 3)
-	rt.primaryLightSources[0].strength = 30;
+	rt.primaryLightSources[0].intensity = 100;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);

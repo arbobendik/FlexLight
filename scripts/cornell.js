@@ -29,11 +29,13 @@ document.addEventListener("DOMContentLoaded", async function(){
   let translucencyTex = await rt.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
   rt.translucencyTextures.push(translucencyTex);
   // Move camera out of center.
-  rt.Z = -20;
+  rt.z = -20;
 	// Set primary light source.
 	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].strength = 30;
+	rt.primaryLightSources[0].intensity = 20;
+  // Increase maximum ambount of light bounces per ray.
+  rt.maxReflections = 5;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
@@ -94,7 +96,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
 	setInterval(async function(){
-		fpsCounter.textContent = rt.FPS;
+		fpsCounter.textContent = rt.fps;
     // Update textures every second.
 		rt.updateTextures();
 		rt.updatePbrTextures();
