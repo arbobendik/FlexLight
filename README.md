@@ -14,7 +14,7 @@ You can create triangles, planes and even cuboids with this library.
 ### Getting started
 To generate a new RayTracer, you need to write the following line of code:
 ```javascript
-var rt = new RayTracer(canvas);
+var rt = new rayTracer(canvas);
 ```
 
 Loader format:
