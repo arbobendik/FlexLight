@@ -16,7 +16,7 @@ window.addEventListener("load", async function(){
 	// Set light source.
 	rt.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].strength = 100;
+	rt.primaryLightSources[0].intensity = 100;
 	// Generate plane.
 	let this_plane = rt.plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
@@ -39,8 +39,8 @@ window.addEventListener("load", async function(){
 	let power = 2;
 	let sideLength = 2 ** power;
 	// Set camera perspective and position.
-	[rt.X, rt.Y, rt.Z] = [-4 - sideLength, 3 + power, -4];
-	[rt.FX, rt.FY] = [0.25 * Math.PI, 0.6];
+	[rt.x, rt.y, rt.z] = [-4 - sideLength, 3 + power, -4];
+	[rt.fx, rt.fy] = [0.25 * Math.PI, 0.6];
 	// Colors.
 	let colors = [];
 	// assign each pillar a color.

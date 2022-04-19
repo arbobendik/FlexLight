@@ -32,7 +32,7 @@ window.addEventListener("load", async function(){
   rt.translucencyTextures.push(translucencyTex);
 
   // Move camera out of center.
-  rt.Z = -20;
+  rt.z = -20;
 
 	// Remove primary light source in favour of emissive.
 	rt.primaryLightSources = [];
