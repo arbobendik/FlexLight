@@ -1134,8 +1134,6 @@ class rayTracer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
-			// update movement
-			rt.#playerHandler.update(Millis);
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
