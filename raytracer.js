@@ -776,13 +776,6 @@ class rayTracer {
     this.#canvas = targetCanvas;
     this.#gl = targetCanvas.getContext("webgl2");
 		this.#playerHandler = new PlayerHandler(this);
-		this.#playerHandler.KEYMAP
-			.registerKey("KeyW", "FORWARD")
-			.registerKey("KeyA", "LEFT")
-			.registerKey("KeyS", "BACKWARD")
-			.registerKey("KeyD", "RIGHT")
-			.registerKey("Space", "UP")
-			.registerKey("ShiftLeft", "DOWN");
   }
 
   // Make canvas read only accessible
