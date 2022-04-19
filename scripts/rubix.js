@@ -2,7 +2,7 @@
 // Declare RayTracer global.
 var rt;
 // Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", async function(){
+window.addEventListener("load", async function(){
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
