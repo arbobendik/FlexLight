@@ -2,7 +2,7 @@
 
 ## JavaScript + WebGL 2
 
-### [DEMO](https://arbobendik.github.io/web-ray-tracer/)
+### [DEMO](https://arbobendik.github.io/web-ray-tracer/index.html)
 
 ### Description
 Generates a canvas and scenery through JavaScript and traces the flow of light in real time.
