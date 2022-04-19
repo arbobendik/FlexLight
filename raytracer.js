@@ -539,9 +539,9 @@ class rayTracer {
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-    vec4 color = center_color + center_color_ip * 255.0;
+    vec4 color = vec4(0);;
 
-    float count = 1.0;
+    float count = 0.0;
     int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 3) radius = 3;
@@ -594,17 +594,20 @@ class rayTracer {
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
 
-    vec4 color = center_color + center_color_ip * 255.0;
+    vec4 color = vec4(0);
 
-    float count = 1.0;
-    int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float count = 0.0;
+    float radius = round(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
-    if (radius > 5) radius = 5;
+    if (radius > 5.0) radius = 5.0;
+    int diameter = 2 * int(radius) + 1;
 
     // Apply blur filter on image
-    for (int i = 0; i < radius; i++){
-      for (int j = 0; j < radius; j++){
-        ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 3.0);
+    for (int i = 0; i < diameter; i++){
+      for (int j = 0; j < diameter; j++){
+        vec2 texel_offset = vec2(i, j) - radius;
+        if (length(texel_offset) >= radius) continue;
+        ivec2 coords = ivec2(vec2(texel) + texel_offset * 1.0);
         vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -663,7 +666,6 @@ class rayTracer {
     return fxaa_luma(fetch(x, y));
   }
 
-
   // Local contrast checker from NVIDIA FXAA white paper
   vec2 fxaa_contrast(int x, int y) {
     return vec2(
@@ -698,7 +700,6 @@ class rayTracer {
     blend_l = min(FXAA_SUBPIX_CAP, blend_l);
     return blend_l;
   }
-
 
   void main() {
     // Get texture size

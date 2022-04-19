@@ -28,7 +28,7 @@ window.addEventListener("load", async function(){
 
 	// Make light dimmer (default = 200)
   rt.primaryLightSources[0].intensity = 100;
-  rt.primaryLightSources[0].variation = 2;
+  rt.primaryLightSources[0].variation = 0.5;
   rt.primaryLightSources[1].intensity = 100;
 	// Set ambient illumination
 	rt.ambientLight = [0.1,0.1,0.1];
