@@ -84,6 +84,7 @@ class rayTracer {
   #fragmentGlsl = `#version 300 es
 
   #define SQRT3 1.7320508075688772
+  #define BIAS 0.0001
 
   precision highp float;
   precision highp sampler2D;
@@ -102,7 +103,6 @@ class rayTracer {
   uniform int use_filter;
   // Get global illumination color, intensity
   uniform vec3 ambient;
-
 
   // Textures in parallel for texture atlas
   uniform int texture_width;
@@ -151,7 +151,7 @@ class rayTracer {
     // Get distance to intersection point
     float s = dot(n, t[0] - p) / dot(n, r);
     // Ensure that ray triangle intersection is between light source and texture
-    if (s > l || s <= 0.0) return mat2x4(0);
+    if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
     vec3 d = (s * r) + p;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
@@ -169,7 +169,7 @@ class rayTracer {
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
 
-    if (min(u, v) < 0.0 || u + v > 1.0) return mat2x4(0);
+    if (min(u, v) < BIAS || u + v > 1.0) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -186,7 +186,7 @@ class rayTracer {
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
     // Ray points in cuboid direction, but doesn't intersect
-    return max(lowest, 0.0) <= highest;
+    return max(lowest, BIAS) <= highest;
   }
 
   // Test for closest ray triangle intersection
@@ -327,7 +327,7 @@ class rayTracer {
       final_color += last_rme.z * last_color * importancy_factor;
 
       // Generate pseudo random vector
-      vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
+      vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
@@ -494,6 +494,10 @@ class rayTracer {
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
     render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
     render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
+    // (sin(float(i)) + cos(float(sample_n)
+    //vec2 random_coord_0 = mod(clip_space.xy / clip_space.z + 1.0, 1.0);
+    //vec2 random_coord_1 = clip_space.xy;
+    //render_color = vec4((texture(random, random_coord_0).xyz), 1.0);
   }
   `;
   #postProcessGlsl = `#version 300 es
