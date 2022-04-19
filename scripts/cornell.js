@@ -2,7 +2,7 @@
 // Declare RayTracer global.
 var rt;
 // Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", async function(){
+window.addEventListener("load", async function(){
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -33,9 +33,10 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Set primary light source.
 	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].intensity = 20;
+	rt.primaryLightSources[0].intensity = 12;
   // Increase maximum ambount of light bounces per ray.
-  rt.maxReflections = 5;
+  rt.maxReflections = 7;
+  rt.minImportancy = 0.5;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);

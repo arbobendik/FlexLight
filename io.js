@@ -14,6 +14,7 @@ Object.assign(PlayerHandler.KeyMap, {
 	UP: 2,
 	BACKWARD: -3,
 	FORWARD: 3,
+	// MOVEMENT SENSITIVITY
 	MOUSE_X: 4,
 	MOUSE_Y: 2,
 	MOVEMENT_SPEED: 0.01
@@ -66,7 +67,6 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 
 	canvas.addEventListener("keydown", function(event) {
 		if (event.repeat) return;
-
 
 		if (event.code in handler.KEYMAP) {
 			handler.update(event.timeStamp);

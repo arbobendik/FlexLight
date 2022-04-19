@@ -2,7 +2,7 @@
 // Declare RayTracer global.
 var rt;
 // Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", async function(){
+window.addEventListener("load", async function(){
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -10,16 +10,18 @@ document.addEventListener("DOMContentLoaded", async function(){
 	// Create new RayTracer (rt) for canvas.
 	rt = new rayTracer(canvas);
 	// Create 2 pbr metallic textures.
-	let roughTex = await rt.textureFromRME([0,0.3, 0], 1, 1);
+	let roughTex = await rt.textureFromRME([0,0, 0], 1, 1);
   let smoothTex = await rt.textureFromRME([0.3, 0.5, 0], 1, 1);
 
 	rt.pbrTextures.push(roughTex, smoothTex);
   // Move camera out of center.
   rt.z = -20;
+
+  rt.maxReflections = 8;
 	// Set primary light source.
 	rt.primaryLightSources = [[0, 4, 0]];
-	// Modify brightness of first one to be brighter (default is 3)
-	rt.primaryLightSources[0].intensity = 100;
+	// Modify brightness of first one to be dimmer
+	rt.primaryLightSources[0].intensity = 5;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
@@ -79,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
 	setInterval(async function(){
-		fpsCounter.textContent = rt.FPS;
+		fpsCounter.textContent = rt.fps;
     // Update textures every second.
 		rt.updateTextures();
 		rt.updatePbrTextures();
