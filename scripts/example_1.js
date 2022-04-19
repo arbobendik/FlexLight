@@ -1,15 +1,15 @@
 "use strict";
-// Declare RayTracer global.
+// Declare RayTracer global
 var rt;
-// Wait until DOM is loaded.
+// Wait until DOM is loaded
 document.addEventListener("DOMContentLoaded", async function(){
-	// Create new canvas.
+	// Create new canvas
 	var canvas = document.createElement("canvas");
-	// Append it to body.
+	// Append it to body
 	document.body.appendChild(canvas);
-	// Create new RayTracer (rt) for canvas.
-	rt = RayTracer(canvas);
-	// Set Textures 0, 1, 2.
+	// Create new RayTracer (rt) for canvas
+	rt = new rayTracer(canvas);
+	// Set Textures 0, 1, 2
 	[
 		"textures/grass.jpg",     // 0
 		"textures/dirt_side.jpg", // 1
@@ -17,55 +17,52 @@ document.addEventListener("DOMContentLoaded", async function(){
 	].forEach((item, i) => {
 		let img = new Image();
 	  img.src = item;
-	  rt.TEXTURE.push(img);
+	  rt.textures.push(img);
 	});
 
-	// Set camera perspective and position.
-	[rt.X, rt.Y, rt.Z] = [-8, 7, -11];
-	[rt.FX, rt.FY] = [0.440, 0.55];
+	// Set camera perspective and position
+	[rt.x, rt.y, rt.z] = [-8, 7, -11];
+	[rt.fx, rt.fy] = [0.440, 0.55];
 
-  rt.LIGHT = [[0.5, 1, 0.5], [0, 20, 0]];
+  rt.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
 
-	// Make light brighter.
-	rt.LIGHT[0].strength = 200;
-  rt.LIGHT[0].strength = 100;
-	// Set skylight.
-	rt.SKYBOX = [0.1,0.1,0.1];
+	// Make light dimmer (default = 200)
+  rt.primaryLightSources[0].intensity = 100;
+  rt.primaryLightSources[1].intensity = 100;
+	// Set ambient illumination
+	rt.ambientLight = [0.1,0.1,0.1];
 
-	// Create varying roughness texture for the surface.
+	// Create varying roughness texture for the surface
 	let normalTex = new Image();
 	normalTex.src = "./textures/normal.png";
-	// Generate new more diffuse texture for the grass block.
-	let diffuseTex = await rt.GENERATE_PBR_TEX([1, 0, 0], 1, 1);
-  let diffuseGlowTex = await rt.GENERATE_PBR_TEX([1, 0, 0.5], 1, 1);
-  let smoothMetallicTex = await rt.GENERATE_PBR_TEX([0, 0.5, 0], 1, 1);
-	// Add those textures to render queue.
-	rt.PBR_TEXTURE.push(normalTex, diffuseTex, diffuseGlowTex, smoothMetallicTex);
+	// Generate new more diffuse texture for the grass block
+	let diffuseTex = await rt.textureFromRME([1, 0, 0], 1, 1);
+  let diffuseGlowTex = await rt.textureFromRME([1, 0, 0.5], 1, 1);
+  let smoothMetallicTex = await rt.textureFromRME([0, 0.5, 0], 1, 1);
+	// Add those textures to render queue
+	rt.pbrTextures.push(normalTex, diffuseTex, diffuseGlowTex, smoothMetallicTex);
 
-  // Generate translucency texture for cube.
-  let translucencyTex = await rt.GENERATE_TRANSLUCENCY_TEX([0.7, 0, 1.3 / 4], 1, 1);
-  rt.TRANSLUCENCY_TEXTURE.push(translucencyTex);
+  // Generate translucency texture for cube
+  let translucencyTex = await rt.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
+  rt.translucencyTextures.push(translucencyTex);
 
-	// Set texture Sizes.
-	rt.TEXTURE_SIZES = [12, 12];
+	// Set texture Sizes
+	rt.standardTextureSizes = [12, 12];
 
-  // Create large ground plane.
-  let groundPlane = rt.PLANE([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
-  let backPlane = rt.PLANE([10,19,10],[-10,19,10],[-10,-1,10],[10,-1,10],[0,0,1]);
-  let sidePlane = rt.PLANE([-10,19,10],[-10,19,-10],[-10,-1,-10],[-10,-1,10],[1,0,0]);
-	// Set normal texture for each plane.
+  // Create large ground plane
+  let groundPlane = rt.plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
+
+	// Set normal texture for each plane
 	groundPlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  backPlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  sidePlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
 
-	// Generate a few cuboids on surface.
+	// Generate a few cuboids on surface
   let cuboids = [
-    rt.CUBOID(-1.5, 4.5, -1, 2, 1.5, 2.5),
-    rt.CUBOID(-1.5, 1.5, -1, 2, -2, -1),
-    rt.CUBOID(0.5, 1.5, -1, 2, -1, 0),
-    rt.CUBOID(-1.5, -0.5, -1, 2, - 1, 0)
+    rt.cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
+    rt.cuboid(-1.5, 1.5, -1, 2, -2, -1),
+    rt.cuboid(0.5, 1.5, -1, 2, -1, 0),
+    rt.cuboid(-1.5, -0.5, -1, 2, - 1, 0)
   ];
-  // Color all cuboid in center.
+  // Color all cuboid in center
   for (let i = 0; i < 4; i++){
     let color = new Array(6).fill([Math.sqrt(Math.random()), Math.sqrt(Math.random()), Math.sqrt(Math.random())]).flat();
     for (let j = 1; j <= 6; j++) cuboids[i][j].colors = color;
@@ -74,13 +71,13 @@ document.addEventListener("DOMContentLoaded", async function(){
   for (let i = 1; i <= 6; i++){
     for (let j = 0; j < 4; j++) cuboids[j][i].textureNums = new Array(6).fill([-1,3,0]).flat();
   }
-	// Spawn cube with grass block textures.
-	let grassCube = rt.CUBOID(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);
-  // Spawn red glowing cube.
-	let redCube = rt.CUBOID(4, 5, 1.5, 2.5, 5.2, 6.2);
-  let wall = rt.CUBOID(2.5, 7.5, -1, 1.5, 5, 7);
+	// Spawn cube with grass block textures
+	let grassCube = rt.cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);
+  // Spawn red glowing cube
+	let redCube = rt.cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
+  let wall = rt.cuboid(2.5, 7.5, -1, 1.5, 5, 7);
 
-  // Make redCube red and emissive.
+  // Make redCube red and emissive
   for (let i = 1; i <= 6; i++){
     redCube[i].textureNums = new Array(6).fill([-1,2,0]).flat();
     redCube[i].colors = new Array(6).fill([1,0,0]).flat();
@@ -88,8 +85,8 @@ document.addEventListener("DOMContentLoaded", async function(){
 
   wall[6].textureNums = new Array(6).fill([-1,1,-1]).flat();
   wall[1].textureNums = new Array(6).fill([-1,1,-1]).flat();
-	// Set different textures for different sides of the array.
-	// And make cube full diffuse.
+	// Set different textures for different sides of the array
+	// And make cube full diffuse
 	grassCube[1].textureNums = new Array(6).fill([0,1,-1]).flat();
 	grassCube[2].textureNums = new Array(6).fill([1,1,-1]).flat();
 	grassCube[3].textureNums = new Array(6).fill([1,1,-1]).flat();
@@ -97,7 +94,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	grassCube[5].textureNums = new Array(6).fill([1,1,-1]).flat();
 	grassCube[6].textureNums = new Array(6).fill([1,1,-1]).flat();
 
-  // Pack cuboids in tree structure to increase raytracing effiecency.
+  // Pack cuboids in tree structure to increase raytracing effiecency
   let cuboidTree = [
     [-1.5, 4.5, -1, 2, -2, 2.5],
     cuboids[0],
@@ -111,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async function(){
       ]
     ]
   ];
-  // Pack cube and wall in tree structure.
+  // Pack cube and wall in tree structure
   let cubeWallTree = [
     [2.5, 7.5, -1, 2.5, 5, 7],
     wall,
@@ -121,29 +118,29 @@ document.addEventListener("DOMContentLoaded", async function(){
       redCube
     ]
   ];
-  // Pack all trees together to one tree with all objects on the plane.
+  // Pack all trees together to one tree with all objects on the plane
 	let objectTree = [
 	  [-1.5, 7.5, -1, 2.5, -2, 7],
 	  cuboidTree,
 	  cubeWallTree
 	];
-	// Append plane tree and object tree to render queue.
-	rt.QUEUE.push(groundPlane, objectTree);
-  // Increase max reflections, because translucent objects need more reflections to look good.
-  rt.REFLECTIONS = 7;
-	// Start render engine.
-	rt.START();
+	// Append plane tree and object tree to render queue
+	rt.queue.push(groundPlane, objectTree);
+  // Increase max reflections, because translucent objects need more reflections to look good
+  rt.maxReflections = 4;
+	// Start render engine
+	rt.render();
 
-	// Add FPS counter to top-right corner.
+	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
-	// Append it to body.
+	// Append it to body
 	document.body.appendChild(fpsCounter);
-	// Update Counter periodically.
+	// Update Counter periodically
 	setInterval(function(){
-		fpsCounter.textContent = rt.FPS;
-		// Update textures every second.
-		rt.UPDATE_TEXTURE();
-		rt.UPDATE_PBR_TEXTURE();
-    rt.UPDATE_TRANSLUCENCY_TEXTURE();
+		fpsCounter.textContent = rt.fps;
+		// Update textures every second
+		rt.updateTextures();
+    rt.updatePbrTextures();
+    rt.updateTranslucencyTextures();
 	},1000);
 });
