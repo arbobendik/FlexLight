@@ -84,6 +84,7 @@ class rayTracer {
   #fragmentGlsl = `#version 300 es
 
   #define SQRT3 1.7320508075688772
+  #define BIAS 0.0001
 
   precision highp float;
   precision highp sampler2D;
@@ -102,7 +103,6 @@ class rayTracer {
   uniform int use_filter;
   // Get global illumination color, intensity
   uniform vec3 ambient;
-
 
   // Textures in parallel for texture atlas
   uniform int texture_width;
@@ -151,7 +151,7 @@ class rayTracer {
     // Get distance to intersection point
     float s = dot(n, t[0] - p) / dot(n, r);
     // Ensure that ray triangle intersection is between light source and texture
-    if (s > l || s <= 0.0) return mat2x4(0);
+    if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
     vec3 d = (s * r) + p;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
@@ -169,7 +169,7 @@ class rayTracer {
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
 
-    if (min(u, v) < 0.0 || u + v > 1.0) return mat2x4(0);
+    if (min(u, v) < BIAS || u + v > 1.0) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -186,7 +186,7 @@ class rayTracer {
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
     // Ray points in cuboid direction, but doesn't intersect
-    return max(lowest, 0.0) <= highest;
+    return max(lowest, BIAS) <= highest;
   }
 
   // Test for closest ray triangle intersection
@@ -327,7 +327,7 @@ class rayTracer {
       final_color += last_rme.z * last_color * importancy_factor;
 
       // Generate pseudo random vector
-      vec2 random_coord = mod(((clip_space.xy / clip_space.z) + 1.0) * (sin(float(i)) + cos(float(sample_n))), 1.0);
+      vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
@@ -350,10 +350,13 @@ class rayTracer {
           vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
           // Read light strength from texture
           float strength = texture(light_tex, vec2(1.0, float(j))).x;
+          float variation = texture(light_tex, vec2(1.0, float(j))).y;
+          // Alter light source position according to variation.
+          light += random_vec * variation;
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
-          vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
+          vec3 active_light_ray = light - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
@@ -390,6 +393,9 @@ class rayTracer {
             vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
             // Read light strength from texture
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
+            float variation = texture(light_tex, vec2(1.0, float(j))).y;
+            // Alter light source position according to variation.
+            light += random_vec * 1.0;//variation;
             // Skip if strength is negative or zero
             if (strength <= 0.0) continue;
             // Recalculate position -> light vector
@@ -493,7 +499,11 @@ class rayTracer {
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
     render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
-    render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
+    render_id += vec4(vertex_id.zw, 0.5 * (filter_roughness + rme.y), first_in_shadow);
+    // (sin(float(i)) + cos(float(sample_n)
+    //vec2 random_coord_0 = mod(clip_space.xy / clip_space.z + 1.0, 1.0);
+    //vec2 random_coord_1 = clip_space.xy;
+    //render_color = vec4((texture(random, random_coord_0).xyz), 1.0);
   }
   `;
   #postProcessGlsl = `#version 300 es
@@ -585,7 +595,7 @@ class rayTracer {
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
-    vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
 
     vec4 color = center_color + center_color_ip * 255.0;
 
@@ -598,7 +608,7 @@ class rayTracer {
     for (int i = 0; i < radius; i++){
       for (int j = 0; j < radius; j++){
         ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 3.0);
-        vec4 id = texelFetch(pre_render_id, coords, 0);
+        vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
         if (id == center_id){
@@ -915,12 +925,14 @@ class rayTracer {
     {
       // Set default value
       let intensity = this.defaultLightIntensity;
-      // Overwrite default if set
+      let variation = 0.4;
+      // Overwrite with default if not set
       if (typeof(this.primaryLightSources[i].intensity) !== "undefined") intensity = this.primaryLightSources[i].intensity;
+      if (typeof(this.primaryLightSources[i].variation) !== "undefined") variation = this.primaryLightSources[i].variation;
       // Push light location to Texture
       lightTexArray.push(this.primaryLightSources[i][0], this.primaryLightSources[i][1], this.primaryLightSources[i][2]);
       // Push intensity and 0, 0 to texture, because RGB texture format needs 3x values per row
-      lightTexArray.push(intensity, 0, 0);
+      lightTexArray.push(intensity, variation, 0);
     }
     if (this.primaryLightSources.length !== 0){
       this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(lightTexArray));
