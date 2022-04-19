@@ -26,6 +26,12 @@ PlayerHandler.KeyMap.prototype.registerKey = function(key, value) {
 	return this;
 }
 
+// Handle frames
+PlayerHandler.prototype.frame = function(time) {
+	this.update(time);
+	requestAnimationFrame(this.frame.bind(this));
+}
+
 // Generic movement handler
 PlayerHandler.prototype.update = function(time) {
 	if (this.isListening) {
@@ -97,4 +103,5 @@ function PlayerHandler(targetRenderer) {
 	this.targetRenderer = targetRenderer;
 	this.setupForCanvas(targetRenderer.canvas);
 	this.resetMovement();
+	requestAnimationFrame(this.frame.bind(this));
 }
