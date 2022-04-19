@@ -2,13 +2,11 @@
 
 ## JavaScript + WebGL 2
 
-### Changes
-You can now dynamically load the scenes listed on the [demo page](https://arbobendik.github.io/web-ray-tracer/)!
-Unload a page by clearing the site cache (Hard Reload).
+### [DEMO](https://arbobendik.github.io/web-ray-tracer/)
 
 ### Description
 Generates a canvas and scenery through JavaScript and traces the flow of light in real time.
-It is possible to manipulate the scenes to your heart's content by creating a script in scenes and adding it to the loader.
+It is possible to manipulate the scenes to your heart's content in the scene folder.
 You can create triangles, planes and even cuboids with this library.
 
 ### Getting started
