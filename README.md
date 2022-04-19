@@ -2,13 +2,11 @@
 
 ## JavaScript + WebGL 2
 
-### Changes
-You can now dynamically load the scenes listed on the [demo page](https://arbobendik.github.io/web-ray-tracer/)!
-Unload a page by clearing the site cache (Hard Reload).
+### [DEMO](https://arbobendik.github.io/web-ray-tracer/)
 
 ### Description
 Generates a canvas and scenery through JavaScript and traces the flow of light in real time.
-It is possible to manipulate the scenes to your heart's content by creating a script in scenes and adding it to the loader.
+It is possible to manipulate the scenes to your heart's content in the scene folder.
 You can create triangles, planes and even cuboids with this library.
 
 ### Getting started
@@ -16,13 +14,6 @@ To generate a new RayTracer, you need to write the following line of code:
 ```javascript
 var rt = new rayTracer(canvas);
 ```
-
-Loader format:
-```html
-<option value = "filename">Description</option>
-```
-There is **no file-ending**!
-Always add content at the bottom, the top-most option will be ignored.
 
 Primary light sources can be added via the librarys rt.primaryLightSources object.The engine supports custom textures,
 pbr (rough, metallic) textures with emissives and several physical effects like the fresnel effect.
