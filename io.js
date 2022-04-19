@@ -98,7 +98,13 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 
 // Generate a new PlayerHandlerObject
 function PlayerHandler(targetRenderer) {
-	this.KEYMAP = new PlayerHandler.KeyMap();
+	this.KEYMAP = new PlayerHandler.KeyMap()
+		.registerKey("KeyW", "FORWARD")
+		.registerKey("KeyA", "LEFT")
+		.registerKey("KeyS", "BACKWARD")
+		.registerKey("KeyD", "RIGHT")
+		.registerKey("Space", "UP")
+		.registerKey("ShiftLeft", "DOWN");
 	this.isListening = false;
 	this.targetRenderer = targetRenderer;
 	this.setupForCanvas(targetRenderer.canvas);
