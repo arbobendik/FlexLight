@@ -1,0 +1,19 @@
+body {
+	background-color: #222;
+	color: #fff;
+	font: 4vmin monospace, sans-serif;
+	margin: 0px;
+}
+
+canvas {
+	image-rendering: pixelated;
+	display: block;
+	width: 100vw;
+	height: 100vh;
+}
+
+div {
+	position: fixed;
+	right: 0px;
+	top: 0px;
+}

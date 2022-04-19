@@ -2,4 +2,3 @@ test_fast_api_setup/venv
 test_fast_api_setup/.idea
 test_fast_api_setup/__pycache__/
 test_fast_api_setup/players.db
-experimental
