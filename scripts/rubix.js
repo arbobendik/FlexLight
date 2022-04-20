@@ -10,7 +10,7 @@ window.addEventListener("load", async function(){
 	// Create new RayTracer (rt) for canvas.
 	rt = new rayTracer(canvas);
 	// Create 2 pbr metallic textures.
-	let roughTex = await rt.textureFromRME([0,0, 0], 1, 1);
+	let roughTex = await rt.textureFromRME([0, 0, 0], 1, 1);
   let smoothTex = await rt.textureFromRME([0.3, 0.5, 0], 1, 1);
 
 	rt.pbrTextures.push(roughTex, smoothTex);
