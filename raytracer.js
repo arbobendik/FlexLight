@@ -792,15 +792,12 @@ class rayTracer {
     // Create Image element
     let imgData = partCtx.createImageData(width, height);
     // Set imgArray as image source
-    imgData.data.set(array, 0);
+    imgData.data.set(new Uint8ClampedArray(array), 0);
     // Set image data in canvas
     partCtx.putImageData(imgData, 0, 0);
     // Set part canvas as image source
     let image = new Image();
-    await partCanvas.toBlob(function(blob) {
-			image.src = URL.createObjectURL(blob);
-			URL.revokeObjectURL(image.src);
-		});
+    image.src = await partCanvas.toDataURL();
     return await image;
   }
   // Generate pbr texture (roughness, metallicity, emissiveness)
