@@ -4,18 +4,23 @@
 	<head>
 		<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
 		<meta name="viewport" content="width=device-width, initial-scale=1"/>
-		<script src="load.js" defer></script>
+		<link href = "style.css" rel = "stylesheet"/>
+		<script src="load.js"></script>
+		<script src="io.js"></script>
+		<script src="raytracer.js"></script>
 	</head>
 	<body>
 		<h1>Select a scene to watch</h1>
-		<select id="select">
-			<option>Scenes</option>
-			<option value="example1">Example 1</option>
-			<option value="example2">Example 2</option>
-			<option value="cornell">Cornell</option>
-			<option value="emissive">Emissive</option>
-			<option value="rubix">Rubix</option>
-			<option value="wave">Wave</option>
-		</select>
+		<form id = "form" action = "." method = "GET">
+			<select name="v">
+				<option>Scenes</option>
+				<option value="example1">Example 1</option>
+				<option value="example2">Example 2</option>
+				<option value="cornell">Cornell</option>
+				<option value="emissive">Emissive</option>
+				<option value="rubix">Rubix</option>
+				<option value="wave">Wave</option>
+			</select>
+		</form>
 	</body>
 </html>
