@@ -72,17 +72,18 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 	});
 
 	canvas.addEventListener("keydown", function(event) {
-		if (event.repeat) return;
-
-		if (event.code in handler.KEYMAP) {
+		if (event.code in handler.pressedKeys) {
+			if (handler.pressedKeys[event.code]) return;
 			handler.update(event.timeStamp);
+			handler.pressedKeys[event.code] = true;
 			handler.updateMovement(handler.KEYMAP[event.code]);
 		}
 	});
 
 	canvas.addEventListener("keyup", function(event) {
-		if (event.code in handler.KEYMAP) {
+		if (event.code in handler.pressedKeys && handler.pressedKeys[event.code]) {
 			handler.update(event.timeStamp);
+			handler.pressedKeys[event.code] = false;
 			handler.updateMovement(-handler.KEYMAP[event.code]);
 		}
 	});
@@ -105,6 +106,14 @@ function PlayerHandler(targetRenderer) {
 		.registerKey("KeyD", "RIGHT")
 		.registerKey("Space", "UP")
 		.registerKey("ShiftLeft", "DOWN");
+	this.pressedKeys = {
+		KeyW: false,
+		KeyA: false,
+		KeyS: false,
+		KeyD: false,
+		Space: false,
+		ShiftLeft: false
+	};
 	this.isListening = false;
 	this.targetRenderer = targetRenderer;
 	this.setupForCanvas(targetRenderer.canvas);
