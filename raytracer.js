@@ -170,7 +170,7 @@ class rayTracer {
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
 
-    if (min(u, v) < BIAS || u + v > 1.0) return mat2x4(0);
+    if (min(u, v) <= BIAS || u + v >= 1.0 + BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -324,8 +324,8 @@ class rayTracer {
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
-      final_color += ambient * last_color * importancy_factor;
-      final_color += last_rme.z * last_color * importancy_factor;
+      final_color += ambient * importancy_factor;
+      final_color += last_rme.z * importancy_factor;
 
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
@@ -445,7 +445,7 @@ class rayTracer {
       }else{
         dont_filter = false;
       }
-      if (i==0) first_ray_length = length(last_position - last_origin) / length(position - origin);
+      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin),1.0);
     }
     // Return final pixel color
     return final_color;
@@ -539,7 +539,7 @@ class rayTracer {
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-    vec4 color = vec4(0);;
+    vec4 color = vec4(0);
 
     float count = 0.0;
     int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
@@ -549,9 +549,7 @@ class rayTracer {
     // Apply blur filter on image
     for (int i = 0; i < radius; i++){
       for (int j = 0; j < radius; j++){
-        ivec2 coords = ivec2(
-          vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius)
-        );
+        ivec2 coords = texel + ivec2((vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius));
         vec4 id = texelFetch(pre_render_id, coords, 0);
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -563,9 +561,9 @@ class rayTracer {
       }
     }
     if (center_color.w > 0.0){
-      // Set out color for render texture for the antialiasing filter
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);;
+      // Set out color for render texture for the antialiasing filter
+      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
     }else{
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
@@ -597,7 +595,7 @@ class rayTracer {
     vec4 color = vec4(0);
 
     float count = 0.0;
-    float radius = round(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 5.0) radius = 5.0;
     int diameter = 2 * int(radius) + 1;

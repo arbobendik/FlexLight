@@ -19,7 +19,7 @@
 		styleSheet.href = "style.css";
 		styleSheet.rel = "stylesheet";
 		document.head.appendChild(styleSheet);
-		
+
 		const ioScript = document.createElement("script");
 		ioScript.src = "io.js";
 		document.head.appendChild(ioScript);

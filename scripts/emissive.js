@@ -11,7 +11,7 @@ window.addEventListener("load", async function(){
 	rt = new rayTracer(canvas);
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.textureFromRME([1, 0, 0], 1, 1);
-	let roughLight = await rt.textureFromRME([1, 0, 0.2], 1, 1);
+	let roughLight = await rt.textureFromRME([1, 0, 0.1], 1, 1);
   let smoothTex = await rt.textureFromRME([0, 0, 0], 1, 1);
   let caroTex = await rt.textureFromRME(
 		[
@@ -36,6 +36,8 @@ window.addEventListener("load", async function(){
 
 	// Remove primary light source in favour of emissive.
 	rt.primaryLightSources = [];
+  // Increase maximum ambount of light bounces per ray.
+  rt.maxReflections = 6;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
 	let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
