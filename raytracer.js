@@ -169,7 +169,7 @@ class rayTracer {
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
 
-    if (min(u, v) < BIAS || u + v > 1.0) return mat2x4(0);
+    if (min(u, v) <= BIAS || u + v >= 1.0 + BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -317,14 +317,15 @@ class rayTracer {
     vec3 last_rme = rme;
     // Pack all translucency related values in one vector
     vec3 last_tpo = tpo;
+
     // Iterate over each bounce and modify color accordingly
-    for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy / SQRT3; i++){
+    for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
 
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
-      final_color += ambient * last_color * importancy_factor;
-      final_color += last_rme.z * last_color * importancy_factor;
+      final_color += ambient * importancy_factor;
+      final_color += last_rme.z * importancy_factor;
 
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
@@ -350,10 +351,13 @@ class rayTracer {
           vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
           // Read light strength from texture
           float strength = texture(light_tex, vec2(1.0, float(j))).x;
+          float variation = texture(light_tex, vec2(1.0, float(j))).y;
+          // Alter light source position according to variation.
+          light += random_vec * variation;
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
-          vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
+          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
@@ -390,6 +394,9 @@ class rayTracer {
             vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
             // Read light strength from texture
             float strength = texture(light_tex, vec2(1.0, float(j))).x;
+						float variation = texture(light_tex, vec2(1.0, float(j))).y;
+            // Alter light source position according to variation.
+            light += random_vec * variation;
             // Skip if strength is negative or zero
             if (strength <= 0.0) continue;
             // Recalculate position -> light vector
@@ -430,15 +437,15 @@ class rayTracer {
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
 
-      // Fresnel effect
-      last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
       // Lock filter ids if surface isn't perfectly reflective
       if(rme.x < 0.01 && tpo.x == 0.0 && dont_filter){
         render_id += pow(2.0, - float(i + 1)) * vec4(int(intersection[1].w)/65535, int(intersection[1].w)/255, last_rme.xy);
       }else{
         dont_filter = false;
       }
-      if (i==0) first_ray_length = length(last_position - last_origin) / length(position - origin);
+      // Fresnel effect
+      last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
+      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin),1.0);
     }
     // Return final pixel color
     return final_color;
@@ -493,11 +500,7 @@ class rayTracer {
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
     render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
-    render_id += vec4(vertex_id.zw, first_in_shadow, 0.5 * (filter_roughness + rme.y));
-    // (sin(float(i)) + cos(float(sample_n)
-    //vec2 random_coord_0 = mod(clip_space.xy / clip_space.z + 1.0, 1.0);
-    //vec2 random_coord_1 = clip_space.xy;
-    //render_color = vec4((texture(random, random_coord_0).xyz), 1.0);
+		render_id += vec4(vertex_id.zw, 0.5 * (filter_roughness + rme.y), first_in_shadow);
   }
   `;
   #postProcessGlsl = `#version 300 es
@@ -536,9 +539,9 @@ class rayTracer {
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
 
-    vec4 color = center_color + center_color_ip * 255.0;
+    vec4 color = vec4(0);
 
-    float count = 1.0;
+    float count = 0.0;
     int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 3) radius = 3;
@@ -546,9 +549,7 @@ class rayTracer {
     // Apply blur filter on image
     for (int i = 0; i < radius; i++){
       for (int j = 0; j < radius; j++){
-        ivec2 coords = ivec2(
-          vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius)
-        );
+        ivec2 coords = texel + ivec2((vec2(i, j) - floor(float(radius) * 0.5)) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + radius));
         vec4 id = texelFetch(pre_render_id, coords, 0);
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -560,9 +561,9 @@ class rayTracer {
       }
     }
     if (center_color.w > 0.0){
-      // Set out color for render texture for the antialiasing filter
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);;
+      // Set out color for render texture for the antialiasing filter
+      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
     }else{
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
@@ -589,20 +590,23 @@ class rayTracer {
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
-    vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
 
-    vec4 color = center_color + center_color_ip * 255.0;
+    vec4 color = vec4(0);
 
-    float count = 1.0;
-    int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float count = 0.0;
+    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
-    if (radius > 5) radius = 5;
+    if (radius > 5.0) radius = 5.0;
+    int diameter = 2 * int(radius) + 1;
 
     // Apply blur filter on image
-    for (int i = 0; i < radius; i++){
-      for (int j = 0; j < radius; j++){
-        ivec2 coords = ivec2(vec2(texel) + (vec2(i, j) - floor(float(radius) * 0.5)) * 3.0);
-        vec4 id = texelFetch(pre_render_id, coords, 0);
+    for (int i = 0; i < diameter; i++){
+      for (int j = 0; j < diameter; j++){
+        vec2 texel_offset = vec2(i, j) - radius;
+        if (length(texel_offset) >= radius) continue;
+        ivec2 coords = ivec2(vec2(texel) + texel_offset * 3.0);
+        vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
         if (id == center_id){
@@ -660,7 +664,6 @@ class rayTracer {
     return fxaa_luma(fetch(x, y));
   }
 
-
   // Local contrast checker from NVIDIA FXAA white paper
   vec2 fxaa_contrast(int x, int y) {
     return vec2(
@@ -695,7 +698,6 @@ class rayTracer {
     blend_l = min(FXAA_SUBPIX_CAP, blend_l);
     return blend_l;
   }
-
 
   void main() {
     // Get texture size
@@ -764,14 +766,7 @@ class rayTracer {
         break;
       }
     }
-
     out_color = color / pixel_count;
-
-    if(horz_span){
-      //out_color = vec4(0.0, 0.0, 1.0, 1.0);
-    }else{
-      //out_color = vec4(1.0, 0.0, 0.0, 1.0);
-    }
   }
   `;
   // Create new rayTracer from canvas and setup movement
@@ -779,13 +774,6 @@ class rayTracer {
     this.#canvas = targetCanvas;
     this.#gl = targetCanvas.getContext("webgl2");
 		this.#playerHandler = new PlayerHandler(this);
-		this.#playerHandler.KEYMAP
-			.registerKey("KeyW", "FORWARD")
-			.registerKey("KeyA", "LEFT")
-			.registerKey("KeyS", "BACKWARD")
-			.registerKey("KeyD", "RIGHT")
-			.registerKey("Space", "UP")
-			.registerKey("ShiftLeft", "DOWN");
   }
 
   // Make canvas read only accessible
@@ -793,29 +781,30 @@ class rayTracer {
     return this.#canvas;
   }
 
-  // Generate texture from rgb array
-  async textureFromRGB (array, width, height) {
+  textureFromRGB = async (array, width, height) => await rayTracer.textureFromRGB (array, width, height);
+  // Generate texture from rgb array in static function to have function precompiled
+  static async textureFromRGB (array, width, height) {
     var partCanvas = document.createElement('canvas');
     var partCtx = partCanvas.getContext('2d');
     partCanvas.width = width;
     partCanvas.height = height;
-    // Convert texel data to uint8
-    let imgArray = new Uint8ClampedArray(array);
+		// Disable image smoothing to get non-blury pixel values
+		partCtx.imageSmoothingEnabled = false;
     // Create Image element
     let imgData = partCtx.createImageData(width, height);
     // Set imgArray as image source
-    imgData.data.set(imgArray, 0);
+    imgData.data.set(new Uint8ClampedArray(array), 0);
     // Set image data in canvas
     partCtx.putImageData(imgData, 0, 0);
-    // Disable image smoothing to get non-blury pixel values
-    partCtx.imageSmoothingEnabled = false;
     // Set part canvas as image source
     let image = new Image();
     image.src = await partCanvas.toDataURL();
     return await image;
   }
+  // Make static function callable from object
+  textureFromRME = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
   // Generate pbr texture (roughness, metallicity, emissiveness)
-  async textureFromRME(array, width, height) {
+  static async textureFromRME(array, width, height) {
     // Create new array
     let texelArray = [];
     // Convert image to Uint8 format
@@ -824,35 +813,41 @@ class rayTracer {
     return await this.textureFromRGB(texelArray, width, height);
   }
   // Generate translucency texture (translucency, particle density, optical density)
-  async textureFromTPO (array, width, height) {
-    // Pbr images are generated the same way
-    return await this.textureFromRME(array, width, height);
-  }
+  // Pbr images are generated the same way
+  textureFromTPO = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
 
   // Functions to update texture atlases to add more textures during runtime
+	#updateTextureType (type, fakeTextureWidth) {
+		// Test if there is even a texture
+		if (type.length === 0) {
+			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
+			return;
+		}
+
+		const [width, height] = this.standardTextureSizes;
+		const textureWidth = Math.floor(512 / width);
+
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+
+		canvas.width = width * textureWidth;
+		canvas.height = height * type.length;
+		ctx.imageSmoothingEnabled = false;
+
+		type.forEach(async (texture, i) => {
+			// textureWidth for third argument was 3 for regular textures
+			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
+		});
+		this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+	}
   updatePbrTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    // Test if there is even a texture
-    if (this.pbrTextures.length === 0){
-      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-      return;
-    }
-    let [width, height] = this.standardTextureSizes;
-    let textureWidth = Math.floor(512 / this.standardTextureSizes[0]);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    canvas.width = width * textureWidth;
-    canvas.height = height * this.pbrTextures.length;
-    this.pbrTextures.forEach(async (item, i) => {
-      // Draw element on atlas canvas
-      ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/textureWidth), width, height);
-    });
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+
+		this.#updateTextureType(this.pbrTextures);
   }
   updateTranslucencyTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
@@ -860,23 +855,8 @@ class rayTracer {
     // Set data texture details and tell webgl, that no mip maps are required
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    // Test if there is even a texture
-    if (this.translucencyTextures.length === 0){
-      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-      return;
-    }
-    let [width, height] = this.standardTextureSizes;
-    let textureWidth = Math.floor(512 / this.standardTextureSizes[0]);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    canvas.width = width * textureWidth;
-    canvas.height = height * this.translucencyTextures.length;
-    this.translucencyTextures.forEach(async (item, i) => {
-      // Draw element on atlas canvas
-      ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/textureWidth), width, height);
-    });
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+
+		this.#updateTextureType(this.translucencyTextures);
   }
   updateTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
@@ -886,22 +866,8 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-    // Test if there is even a texture
-    if (this.textures.length === 0){
-      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-      return;
-    }
-    let [width, height] = this.standardTextureSizes;
-    let textureWidth = Math.floor(512 / this.standardTextureSizes[0]);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    canvas.width = width * textureWidth;
-    canvas.height = height * this.textures.length;
-    this.textures.forEach(async (item, i) => {
-        ctx.drawImage(item, width*(i%textureWidth), height*Math.floor(i/3), width, height);
-    });
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data)));
+
+		this.#updateTextureType(this.textures);
   }
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
@@ -913,27 +879,26 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
 
+		// Don't update light sources if there is none
+		if (this.primaryLightSources.length === 0) {
+			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
+			return;
+		}
+
     var lightTexArray = [];
-    // Iterate over light sources and default intensity value if not set
-    for (let i = 0; i < this.primaryLightSources.length; i++)
-    {
-      // Set default value
-      let intensity = this.defaultLightIntensity;
-      // Overwrite default if set
-      if (typeof(this.primaryLightSources[i].intensity) !== "undefined") intensity = this.primaryLightSources[i].intensity;
-      // Push light location to Texture
-      lightTexArray.push(this.primaryLightSources[i][0], this.primaryLightSources[i][1], this.primaryLightSources[i][2]);
-      // Push intensity and 0, 0 to texture, because RGB texture format needs 3x values per row
-      lightTexArray.push(intensity, 0, 0);
-    }
-    if (this.primaryLightSources.length !== 0){
-      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(lightTexArray));
-    }else{
-      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array([0, 0, 0]));
-    }
+    // Iterate over light sources
+		this.primaryLightSources.forEach(lightSource => {
+			// Set intensity to lightSource intensity or default if not specified
+			const intensity = Object.is(lightSource.intensity)? this.defaultIntensity : lightSource.intensity;
+			const variation = Object.is(lightSource.variation)? 0.4 : lightSource.variation;
+			// push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
+			lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], intensity, variation, 0);
+		});
+
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
   updateScene () {
-    let id = 0
+    let id = 0;
     // Set data variable for texels in world space texture
     var data = [];
     // Build simple AABB tree (Axis aligned bounding box)
@@ -1006,7 +971,6 @@ class rayTracer {
     var rt = this;
     // Initialize internal globals of render functiod
     // The millis variable is needed to calculate fps and movement speed
-    var Millis = performance.now();
     var TimeElapsed = performance.now();
     // Total frames calculated since last meassured
     var Frames = 0;
@@ -1023,7 +987,7 @@ class rayTracer {
     // Set post program array
     var PostProgram = [];
     // Set DenoiserPasses
-    var DenoiserPasses = 6;
+    var DenoiserPasses = 5;
     // Create textures for Framebuffers in PostPrograms
     var RenderTexture = new Array(DenoiserPasses + 1);
     var IpRenderTexture = new Array(DenoiserPasses + 1);
@@ -1033,9 +997,11 @@ class rayTracer {
     var OriginalRenderTex = new Array(DenoiserPasses + 1);
     var IdRenderTex = new Array(DenoiserPasses + 1);
     // Create caching textures for denoising
-    new Array(DenoiserPasses + 1).fill(null).forEach((item, i)=>{
-      [RenderTexture[i], IpRenderTexture[i], DepthTexture[i]] = [this.#gl.createTexture(), this.#gl.createTexture(), this.#gl.createTexture()];
-    });
+		for (let i = 0; i < DenoiserPasses + 1; i ++) {
+				RenderTexture[i] = this.#gl.createTexture();
+				IpRenderTexture[i] = this.#gl.createTexture();
+				DepthTexture[i] = this.#gl.createTexture();
+    }
     // Create buffers for vertices in PostPrograms
     var PostVertexBuffer = new Array(DenoiserPasses + 1);
     var PostFramebuffer = new Array(DenoiserPasses + 1);
@@ -1047,11 +1013,8 @@ class rayTracer {
     var AntialiasingPosition = 0;
     // Create different Vaos for different rendering/filtering steps in pipeline
     var Vao = this.#gl.createVertexArray();
-    var PostVao = new Array(DenoiserPasses + 1);
-    // Dynamically generate enough Vaos for each denoise pass
-    new Array(DenoiserPasses + 1).fill(null).forEach((item, i)=>{
-      PostVao[i] = this.#gl.createVertexArray();
-    });
+		// Generate enough Vaos for each denoise pass
+    var PostVao = new Array(DenoiserPasses + 1).map(() => this.#gl.createVertexArray());
     var AntialiasingVao = this.#gl.createVertexArray();
 
     // Check if recompile is needed
@@ -1065,12 +1028,12 @@ class rayTracer {
     });
     // Function to handle canvas resize
     function resize(){
-    	rt.#canvas.width = rt.#canvas.clientWidth * rt.renderQuality;
-    	rt.#canvas.height = rt.#canvas.clientHeight * rt.renderQuality;
-    	rt.#gl.viewport(0, 0, rt.#gl.canvas.width, rt.#gl.canvas.height);
+			const canvas = rt.canvas;
+    	canvas.width = canvas.clientWidth * rt.renderQuality;
+    	canvas.height = canvas.clientHeight * rt.renderQuality;
+    	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
       // Generate Random variable after each resize
-    	Random = [];
-      for (let i = 0; i < rt.#gl.canvas.width * rt.#gl.canvas.height * 3; i++) Random.push(Math.random() * 255);
+    	Random = new Uint8Array(3 * canvas.width * canvas.height).map(() => 256 * Math.random());
       // Rebuild textures with every resize
       randomTextureBuilder();
       renderTextureBuilder();
@@ -1107,6 +1070,7 @@ class rayTracer {
         return program;
       }
     }
+
     function randomTextureBuilder(){
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, RandomTexture);
       // Fill texture with pseudo random pixels
@@ -1115,7 +1079,7 @@ class rayTracer {
       // Set data texture details and tell webgl, that no mip maps are required
       rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.LINEAR);
       rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.LINEAR);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGB8, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGB, rt.#gl.UNSIGNED_BYTE, new Uint8Array(Random));
+      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGB8, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGB, rt.#gl.UNSIGNED_BYTE, Random);
       rt.#gl.generateMipmap(rt.#gl.TEXTURE_2D);
     }
     function renderTextureBuilder(){
@@ -1159,9 +1123,8 @@ class rayTracer {
     }
 
     // Internal render engine Functions
-    function frameCycle (time) {
-			// update movement
-			rt.#playerHandler.update(time);
+    function frameCycle (Millis) {
+			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
       if (State[0] !== rt.filter || State[1] !== rt.renderQuality) {
@@ -1177,14 +1140,13 @@ class rayTracer {
       } else {
         renderFrameRtRaw();
       }
-      // Update Millis variable for movement
-      Millis = performance.now();
       // Update frame counter
       Frames ++;
       // Calculate Fps
-      if ((performance.now() - TimeElapsed) >= 500) {
-        rt.fps = (1000 * Frames / (performance.now() - TimeElapsed)).toFixed(0);
-        [TimeElapsed, Frames] = [performance.now(), 0];
+			const timeDifference = Millis - TimeElapsed;
+      if (timeDifference > 500) {
+        rt.fps = (1000 * Frames / timeDifference).toFixed(0);
+        [TimeElapsed, Frames] = [Millis, 0];
       }
     }
 
@@ -1239,6 +1201,7 @@ class rayTracer {
       // Pass texture with all primary light sources in the scene
       rt.#gl.uniform1i(LightTex, 5);
     }
+
     function fillBuffers() {
       let vertices = [];
       let ids = [];
@@ -1253,26 +1216,26 @@ class rayTracer {
             // flatten sub element of queue
             flattenQUEUE(item[i]);
           }
-        }else{
-          vertices.push(item.vertices);
-          id ++;
+        } else {
+					id ++;
           for(let i = 0; i < item.ids.length; i+=2) {
             ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
           }
+					vertices.push(item.vertices);
           uvs.push(item.uvs);
           length += item.arrayLength;
         }
       };
       // Start recursion
-      rt.queue.forEach((item, i) => {flattenQUEUE(item)});
+      rt.queue.forEach(item => flattenQUEUE(item));
       // Set buffers
       [
         [PositionBuffer, vertices],
         [IdBuffer, ids],
         [TexBuffer, uvs]
-      ].forEach(function(item){
+      ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1].flat()), rt.#gl.STATIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1].flat()), rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
       rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
@@ -1462,8 +1425,6 @@ class rayTracer {
       rt.#worldTexture = rt.#gl.createTexture();
       // Create random texture
       randomTextureBuilder();
-      // Set pixel density in canvas correctly
-      rt.#gl.viewport(0, 0, rt.#gl.canvas.width, rt.#gl.canvas.height);
       // Bind Attribute varying to their respective shader locations
       rt.#gl.bindAttribLocation(Program, Position, "position_3d");
       rt.#gl.bindAttribLocation(Program, IdLoc, "id");
@@ -1502,7 +1463,7 @@ class rayTracer {
         rt.#gl.vertexAttribPointer(PostPosition[i], 2, rt.#gl.FLOAT, false, 0, 0);
         // Fill buffer with data for two verices
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
         PostFramebuffer[i] = rt.#gl.createFramebuffer();
       }
 
@@ -1521,7 +1482,7 @@ class rayTracer {
       rt.#gl.vertexAttribPointer(AntialiasingPosition, 2, rt.#gl.FLOAT, false, 0, 0);
       // Fill buffer with data for two verices
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
     }
     // Prepare Renderengine
     prepareEngine();
@@ -1531,7 +1492,7 @@ class rayTracer {
   // Axis aligned cuboid element prototype
   cuboid (x, x2, y, y2, z, z2) {
     // Create surface elements for cuboid
-    let surfaces = new Array(2);
+    let surfaces = new Array(7);
     surfaces[0] = [x, x2, y, y2, z, z2];
     surfaces[1] = this.plane([x,y2,z],[x2,y2,z],[x2,y2,z2],[x,y2,z2]);
     surfaces[2] = this.plane([x2,y2,z],[x2,y,z],[x2,y,z2],[x2,y2,z2]);
