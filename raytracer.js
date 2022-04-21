@@ -985,7 +985,7 @@ class rayTracer {
     // Set post program array
     var PostProgram = [];
     // Set DenoiserPasses
-    var DenoiserPasses = 6;
+    var DenoiserPasses = 5;
     // Create textures for Framebuffers in PostPrograms
     var RenderTexture = new Array(DenoiserPasses + 1);
     var IpRenderTexture = new Array(DenoiserPasses + 1);
