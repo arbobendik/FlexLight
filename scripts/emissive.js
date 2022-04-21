@@ -1,8 +1,10 @@
 "use strict";
 // Declare RayTracer global.
 var rt;
-// Wait until DOM is loaded.
-document.addEventListener("DOMContentLoaded", async function(){
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -11,7 +13,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 	rt = new rayTracer(canvas);
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.textureFromRME([1, 0, 0], 1, 1);
-	let roughLight = await rt.textureFromRME([1, 0, 0.2], 1, 1);
+	let roughLight = await rt.textureFromRME([1, 0, 0.1], 1, 1);
   let smoothTex = await rt.textureFromRME([0, 0, 0], 1, 1);
   let caroTex = await rt.textureFromRME(
 		[
@@ -32,10 +34,12 @@ document.addEventListener("DOMContentLoaded", async function(){
   rt.translucencyTextures.push(translucencyTex);
 
   // Move camera out of center.
-  rt.Z = -20;
+  rt.z = -20;
 
 	// Remove primary light source in favour of emissive.
 	rt.primaryLightSources = [];
+  // Increase maximum ambount of light bounces per ray.
+  rt.maxReflections = 6;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
 	let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
@@ -100,4 +104,4 @@ document.addEventListener("DOMContentLoaded", async function(){
 		rt.updatePbrTextures();
     rt.updateTranslucencyTextures();
 	},1000);
-});
+}

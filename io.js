@@ -14,6 +14,7 @@ Object.assign(PlayerHandler.KeyMap, {
 	UP: 2,
 	BACKWARD: -3,
 	FORWARD: 3,
+	// MOVEMENT SENSITIVITY
 	MOUSE_X: 4,
 	MOUSE_Y: 2,
 	MOVEMENT_SPEED: 0.01
@@ -23,6 +24,12 @@ Object.assign(PlayerHandler.KeyMap, {
 PlayerHandler.KeyMap.prototype.registerKey = function(key, value) {
 	this[key] = PlayerHandler.KeyMap[value];
 	return this;
+}
+
+// Handle frames
+PlayerHandler.prototype.frame = function(time) {
+	this.update(time);
+	requestAnimationFrame(this.frame.bind(this));
 }
 
 // Generic movement handler
@@ -65,18 +72,18 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 	});
 
 	canvas.addEventListener("keydown", function(event) {
-		if (event.repeat) return;
-
-
-		if (event.code in handler.KEYMAP) {
+		if (event.code in handler.pressedKeys) {
+			if (handler.pressedKeys[event.code]) return;
 			handler.update(event.timeStamp);
+			handler.pressedKeys[event.code] = true;
 			handler.updateMovement(handler.KEYMAP[event.code]);
 		}
 	});
 
 	canvas.addEventListener("keyup", function(event) {
-		if (event.code in handler.KEYMAP) {
+		if (event.code in handler.pressedKeys && handler.pressedKeys[event.code]) {
 			handler.update(event.timeStamp);
+			handler.pressedKeys[event.code] = false;
 			handler.updateMovement(-handler.KEYMAP[event.code]);
 		}
 	});
@@ -92,9 +99,24 @@ PlayerHandler.prototype.setupForCanvas = function(canvas) {
 
 // Generate a new PlayerHandlerObject
 function PlayerHandler(targetRenderer) {
-	this.KEYMAP = new PlayerHandler.KeyMap();
+	this.KEYMAP = new PlayerHandler.KeyMap()
+		.registerKey("KeyW", "FORWARD")
+		.registerKey("KeyA", "LEFT")
+		.registerKey("KeyS", "BACKWARD")
+		.registerKey("KeyD", "RIGHT")
+		.registerKey("Space", "UP")
+		.registerKey("ShiftLeft", "DOWN");
+	this.pressedKeys = {
+		KeyW: false,
+		KeyA: false,
+		KeyS: false,
+		KeyD: false,
+		Space: false,
+		ShiftLeft: false
+	};
 	this.isListening = false;
 	this.targetRenderer = targetRenderer;
 	this.setupForCanvas(targetRenderer.canvas);
 	this.resetMovement();
+	requestAnimationFrame(this.frame.bind(this));
 }

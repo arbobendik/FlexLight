@@ -17,3 +17,23 @@ div {
 	right: 0px;
 	top: 0px;
 }
+
+select {
+	background-color: #c0c0c0;
+	border-radius: 8px;
+  font-size: inherit;
+  font-weight: bolder;
+  padding: 6px;
+  border: 0px none;
+}
+
+#controlPanel {
+  position: fixed;
+	left: 2vmin;
+	top: 2vmin;
+  max-width: 200px;
+  word-wrap: break-word;
+  background-color: #c0c0c040;
+  font-size: 0.5em;
+  backdrop-filter: blur(8px);
+}

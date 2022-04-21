@@ -1,8 +1,10 @@
 "use strict";
 // Declare RayTracer global
 var rt;
-// Wait until DOM is loaded
-document.addEventListener("DOMContentLoaded", async function(){
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
 	// Create new canvas
 	var canvas = document.createElement("canvas");
 	// Append it to body
@@ -28,6 +30,7 @@ document.addEventListener("DOMContentLoaded", async function(){
 
 	// Make light dimmer (default = 200)
   rt.primaryLightSources[0].intensity = 100;
+  rt.primaryLightSources[0].variation = 0.2;
   rt.primaryLightSources[1].intensity = 100;
 	// Set ambient illumination
 	rt.ambientLight = [0.1,0.1,0.1];
@@ -143,4 +146,4 @@ document.addEventListener("DOMContentLoaded", async function(){
     rt.updatePbrTextures();
     rt.updateTranslucencyTextures();
 	},1000);
-});
+};
