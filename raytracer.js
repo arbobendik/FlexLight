@@ -356,7 +356,7 @@ class rayTracer {
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
-          vec3 active_light_ray = light - last_position;
+          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
@@ -780,8 +780,9 @@ class rayTracer {
     return this.#canvas;
   }
 
-  // Generate texture from rgb array
-  async textureFromRGB (array, width, height) {
+  textureFromRGB = async (array, width, height) => await rayTracer.textureFromRGB (array, width, height);
+  // Generate texture from rgb array in static function to have function precompiled
+  static async textureFromRGB (array, width, height) {
     var partCanvas = document.createElement('canvas');
     var partCtx = partCanvas.getContext('2d');
     partCanvas.width = width;
@@ -799,8 +800,10 @@ class rayTracer {
     image.src = await partCanvas.toDataURL();
     return await image;
   }
+  // Make static function callable from object
+  textureFromRME = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
   // Generate pbr texture (roughness, metallicity, emissiveness)
-  async textureFromRME(array, width, height) {
+  static async textureFromRME(array, width, height) {
     // Create new array
     let texelArray = [];
     // Convert image to Uint8 format
@@ -809,10 +812,8 @@ class rayTracer {
     return await this.textureFromRGB(texelArray, width, height);
   }
   // Generate translucency texture (translucency, particle density, optical density)
-  async textureFromTPO (array, width, height) {
-    // Pbr images are generated the same way
-    return await this.textureFromRME(array, width, height);
-  }
+  // Pbr images are generated the same way
+  textureFromTPO = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
 
   // Functions to update texture atlases to add more textures during runtime
 	#updateTextureType (type, fakeTextureWidth) {
