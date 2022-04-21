@@ -1,8 +1,10 @@
 "use strict";
 // Declare RayTracer global.
 var rt;
-// Wait until DOM is loaded.
-window.addEventListener("load", async function(){
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -10,13 +12,14 @@ window.addEventListener("load", async function(){
 	// Create new RayTracer (rt) for canvas.
 	rt = new rayTracer(canvas);
 	// Make plane defuser.
-	let normal_tex = await rt.textureFromRME([0.5, 0.5, 0], 1, 1);
-	let cuboid_tex = await rt.textureFromRME([0.5, 0.5, 0.05], 1, 1);
+	let normal_tex = await rt.textureFromRME([0.1, 0.5, 0], 1, 1);
+	let cuboid_tex = await rt.textureFromRME([0.5, 0, 0], 1, 1);
 	rt.pbrTextures.push(normal_tex, cuboid_tex);
 	// Set light source.
 	rt.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].intensity = 100;
+	rt.primaryLightSources[0].intensity = 150;
+  rt.ambient = [0.1, 0.1, 0.1];
 	// Generate plane.
 	let this_plane = rt.plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
 	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
@@ -91,4 +94,4 @@ window.addEventListener("load", async function(){
 		// Package cuboids together in a shared bounding volume.
 		rt.queue[1] = drawMap(2 * power, 0, 0, false);
 	}, 100/6);
-});
+}

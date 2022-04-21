@@ -317,8 +317,9 @@ class rayTracer {
     vec3 last_rme = rme;
     // Pack all translucency related values in one vector
     vec3 last_tpo = tpo;
+
     // Iterate over each bounce and modify color accordingly
-    for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy / SQRT3; i++){
+    for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
 
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
