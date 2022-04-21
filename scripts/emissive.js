@@ -1,8 +1,10 @@
 "use strict";
 // Declare RayTracer global.
 var rt;
-// Wait until DOM is loaded.
-window.addEventListener("load", async function(){
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
 	// Append it to body.
@@ -102,4 +104,4 @@ window.addEventListener("load", async function(){
 		rt.updatePbrTextures();
     rt.updateTranslucencyTextures();
 	},1000);
-});
+}
