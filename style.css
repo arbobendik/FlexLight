@@ -19,8 +19,7 @@ div {
 }
 
 select {
-	background-color: #c0c0c0;
-	border-radius: 8px;
+	background-color: #909090;
   font-size: inherit;
   font-weight: bolder;
   padding: 6px;
@@ -29,11 +28,12 @@ select {
 
 #controlPanel {
   position: fixed;
+  padding: 10px;
 	left: 2vmin;
 	top: 2vmin;
   max-width: 200px;
   word-wrap: break-word;
-  background-color: #c0c0c040;
-  font-size: 0.5em;
-  backdrop-filter: blur(8px);
+  background-color: #c0c0c038;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
 }
