@@ -35,7 +35,6 @@ class rayTracer {
   #gl;
   #canvas;
 	#playerHandler;
-	fpsElement;
   // Internal gl texture variables of texture atlases
   #worldTexture = null;
   #pbrTexture = null;
@@ -437,14 +436,14 @@ class rayTracer {
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
 
-      // Fresnel effect
-      last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
       // Lock filter ids if surface isn't perfectly reflective
       if(rme.x < 0.01 && tpo.x == 0.0 && dont_filter){
         render_id += pow(2.0, - float(i + 1)) * vec4(int(intersection[1].w)/65535, int(intersection[1].w)/255, last_rme.xy);
       }else{
         dont_filter = false;
       }
+      // Fresnel effect
+      last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
       if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin),1.0);
     }
     // Return final pixel color
@@ -605,7 +604,7 @@ class rayTracer {
       for (int j = 0; j < diameter; j++){
         vec2 texel_offset = vec2(i, j) - radius;
         if (length(texel_offset) >= radius) continue;
-        ivec2 coords = ivec2(vec2(texel) + texel_offset * 1.0);
+        ivec2 coords = ivec2(vec2(texel) + texel_offset * 3.0);
         vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
