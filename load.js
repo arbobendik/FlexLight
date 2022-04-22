@@ -15,14 +15,26 @@ function load(search) {
     // Get form elements
 		const scriptForm = document.getElementById("scriptForm");
     const parameterForm = document.getElementById("parameterForm");
-    // Restore values
+    // Restore values in raytracer
     ["filter", "antialiasing"].forEach((item) => {
       rt[item] = (localStorage.getItem(item) ?? rt[item].toString()) === "true";
       parameterForm.children[item].checked = rt[item];
     });
-    ["samplesPerRay", "renderQuality", "maxReflections", "minImportancy"].forEach((item) => {
+    var sliderVariables = ["samplesPerRay", "renderQuality", "maxReflections", "minImportancy"];
+    sliderVariables.forEach((item) => {
       rt[item] = Number(localStorage.getItem(item) ?? rt[item]);
       parameterForm.children[item].value = rt[item];
+    });
+    // Load slider variables
+    document.querySelectorAll("output").forEach((item, i) => {
+      item.value = rt[sliderVariables[i]];
+      // Define silider
+      var slider = parameterForm.children[sliderVariables[i]];
+      // Live update slider variables
+      slider.addEventListener("input", () => {
+        console.log(slider.value);
+        item.value = slider.value;
+      });
     });
 		if (search.has("v")) {
 			scriptForm[0].value = search.get("v");
@@ -42,5 +54,6 @@ function load(search) {
         localStorage.setItem(item, rt[item]);
       });
     });
+
 	}, {once: true});
 }
