@@ -980,8 +980,6 @@ class rayTracer {
     var PositionBuffer, IdBuffer, TexBuffer;
     // Init Texture elements
     var RandomTexture, Random;
-    // Linkers for GLATTRIBARRAYS
-    var [Position, IdLoc, TexCoord] = [0, 1, 2];
     // Framebuffer, Post Program buffers and textures
     var Framebuffer, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
     // Set post program array
@@ -1005,12 +1003,8 @@ class rayTracer {
     // Create buffers for vertices in PostPrograms
     var PostVertexBuffer = new Array(DenoiserPasses + 1);
     var PostFramebuffer = new Array(DenoiserPasses + 1);
-    // Linkers for GLATTRIBARRAYS in PostPrograms
-    var PostPosition = [0, 0, 0]
     // Convolution-Antialiasing program and its buffers and textures
     var AntialiasingProgram, AntialiasingVertexBuffer, AntialiasingTexture, AntialiasingTex;
-    // Linkers for GLATTRIBARRAYS in AntialiasingProgram
-    var AntialiasingPosition = 0;
     // Create different Vaos for different rendering/filtering steps in pipeline
     var Vao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
@@ -1425,23 +1419,19 @@ class rayTracer {
       rt.#worldTexture = rt.#gl.createTexture();
       // Create random texture
       randomTextureBuilder();
-      // Bind Attribute varying to their respective shader locations
-      rt.#gl.bindAttribLocation(Program, Position, "position_3d");
-      rt.#gl.bindAttribLocation(Program, IdLoc, "id");
-      rt.#gl.bindAttribLocation(Program, TexCoord, "tex_pos");
       // Create buffers
       [PositionBuffer, IdBuffer, TexBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
         // Bind world space position buffer
-        [PositionBuffer, Position, 3, false],
+        [PositionBuffer, 3, false],
         // Surface id buffer
-        [IdBuffer, IdLoc, 4, false],
+        [IdBuffer, 4, false],
         // Set barycentric texture coordinates
-        [TexBuffer, TexCoord, 2, true]
-      ].forEach((item) => {
+        [TexBuffer, 2, true]
+      ].forEach((item, i) => {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.enableVertexAttribArray(item[1]);
-        rt.#gl.vertexAttribPointer(item[1], item[2], rt.#gl.FLOAT, item[3], 0, 0);
+        rt.#gl.enableVertexAttribArray(i);
+        rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
       });
       // Create frame buffers and textures to be rendered to
       [Framebuffer, OriginalRenderTexture, IdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture(), rt.#gl.createTexture()];
@@ -1459,8 +1449,8 @@ class rayTracer {
         IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_id");
         PostVertexBuffer[i] = rt.#gl.createBuffer();
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
-        rt.#gl.enableVertexAttribArray(PostPosition[i]);
-        rt.#gl.vertexAttribPointer(PostPosition[i], 2, rt.#gl.FLOAT, false, 0, 0);
+        rt.#gl.enableVertexAttribArray(0);
+        rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
         // Fill buffer with data for two verices
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
         rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
@@ -1478,8 +1468,8 @@ class rayTracer {
       AntialiasingVertexBuffer = rt.#gl.createBuffer();
 
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
-      rt.#gl.enableVertexAttribArray(AntialiasingPosition);
-      rt.#gl.vertexAttribPointer(AntialiasingPosition, 2, rt.#gl.FLOAT, false, 0, 0);
+      rt.#gl.enableVertexAttribArray(0);
+      rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
       // Fill buffer with data for two verices
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
       rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
