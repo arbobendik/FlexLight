@@ -42,7 +42,7 @@ function load(search) {
 			scriptForm.submit();
 		}
     // Reload if scene changes
-    scriptForm.addEventListener("change", scriptForm.submit);
+    scriptForm.addEventListener("change", () => location.search = "?v=" + scriptForm[0].value);
     // Update gl quality params on form change
     parameterForm.addEventListener("change", () => {
       ["filter", "antialiasing"].forEach((item) => {
