@@ -285,9 +285,11 @@ class rayTracer {
     // Process specularity of ray in view from origin's perspective
     vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
     float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-    float specular = pow(dot(normal, halfVector), 300.0 / intensity) * 8.0 * metallicity;
+    // Somehow f***ing Windows fails to perform pow(x, 300.0 / intensity) so enjoy this dirty workaround
+    float pow300 = pow(pow(pow(pow(dot(normal, halfVector), 5.0), 5.0), 4.0), 3.0 / intensity);
+    float specular =  pow300 * 8.0 * metallicity;
     // Determine final color and return it
-    if (specular > 0.0) return light * intensity + specular * intensity;
+    if (specular > 0.0 && intensity > 0.0) return light * intensity + specular * intensity;
     // Return just light if specular is negative
     return light * intensity;
   }
