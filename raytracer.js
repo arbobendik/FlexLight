@@ -43,24 +43,18 @@ class rayTracer {
   #lightTexture = null;
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
-
   precision highp float;
-
   in vec3 position_3d;
   in vec4 id;
   in vec2 tex_pos;
-
   uniform vec3 camera_position;
   uniform vec2 perspective;
   uniform vec4 conf;
-
   out vec3 position;
   out vec2 tex_coord;
   out vec3 clip_space;
-
   flat out vec4 vertex_id;
   flat out vec3 player;
-
   void main(){
     vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz);
     vec2 translate_px = vec2(
@@ -82,20 +76,15 @@ class rayTracer {
   }
   `;
   #fragmentGlsl = `#version 300 es
-
   #define SQRT3 1.7320508075688772
   #define BIAS 0.0001
-
   precision highp float;
   precision highp sampler2D;
-
   in vec3 position;
   in vec2 tex_coord;
   in vec3 clip_space;
-
   flat in vec4 vertex_id;
   flat in vec3 player;
-
   // Quality configurators
   uniform int samples;
   uniform int max_reflections;
@@ -103,29 +92,24 @@ class rayTracer {
   uniform int use_filter;
   // Get global illumination color, intensity
   uniform vec3 ambient;
-
   // Textures in parallel for texture atlas
   uniform int texture_width;
   // Texture with information about all triangles in scene
   uniform sampler2D world_tex;
   // Random texture to multiply with normal map to simulate rough surfaces
   uniform sampler2D random;
-
   uniform sampler2D translucency_tex;
   uniform sampler2D pbr_tex;
   uniform sampler2D tex;
   // Texture with all primary light sources of scene
   uniform sampler2D light_tex;
-
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
   layout(location = 2) out vec4 render_original_color;
   layout(location = 3) out vec4 render_id;
-
   // Prevent blur over shadow border or over (close to) perfect reflections
   float first_in_shadow = 0.0;
   float first_ray_length = 1.0;
-
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords){
     float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
@@ -137,13 +121,11 @@ class rayTracer {
     // Return texel on requested location
     return texture(atlas, atlas_coords);
   }
-
   float triangleSurface(mat3 t){
     vec3 ab = t[1] - t[0];
     vec3 ac = t[2] - t[0];
     return 0.5 * length(cross(ab, ac));
   }
-
   // Test if ray intersects triangle and return intersection
   mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
     // Can't intersect with triangle with the same normal as the origin
@@ -164,31 +146,25 @@ class rayTracer {
     float d20 = dot(v2, v0);
     float d21 = dot(v2, v1);
     float denom = d00 * d11 - d01 * d01;
-
     float v = (d11 * d20 - d01 * d21) / denom;
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
-
     if (min(u, v) <= BIAS || u + v >= 1.0 + BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
-
   // Don't return intersection point, because we're looking for a specific triangle
   bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
     mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
-
     // vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
     // vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
     // vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
-
     float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
     // Ray points in cuboid direction, but doesn't intersect
     return max(lowest, BIAS) <= highest;
   }
-
   // Test for closest ray triangle intersection
   // Return intersection position in world space (rayTracer.xyz)
   // Return index of target triangle in world_tex (rayTracer.w)
@@ -239,7 +215,6 @@ class rayTracer {
     // Return if pixel is in shadow or not
     return intersection;
   }
-
   // Simplified rayTracer test only if ray intersects anything
   bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
     // Precompute inverse of ray for AABB cuboid intersection test
@@ -278,27 +253,22 @@ class rayTracer {
     // Tested all triangles, but there is no intersection
     return false;
   }
-
   float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
     // Calculate intensity of light reflection, which decreases squared over distance
     float intensity = strength / pow(1.0 + length(light_ray),2.0);
     // Process specularity of ray in view from origin's perspective
     vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
     float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-    // Somehow f***ing Windows fails to perform pow(x, 300.0 / intensity) so enjoy this dirty workaround
-    float pow300 = pow(pow(pow(pow(dot(normal, halfVector), 5.0), 5.0), 4.0), 3.0 / intensity);
-    float specular =  pow300 * 8.0 * metallicity;
+    float specular = pow(abs(dot(normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
     // Determine final color and return it
-    if (specular > 0.0 && intensity > 0.0) return light * intensity + specular * intensity;
+    if (dot(normal, halfVector) > 0.0) return light * intensity + specular * intensity;
     // Return just light if specular is negative
     return light * intensity;
   }
-
   float fresnel(vec3 normal, vec3 lightDir) {
     // Apply fresnel effect
     return dot(normal, lightDir);
   }
-
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
     bool dont_filter = true;
@@ -319,16 +289,13 @@ class rayTracer {
     vec3 last_rme = rme;
     // Pack all translucency related values in one vector
     vec3 last_tpo = tpo;
-
     // Iterate over each bounce and modify color accordingly
     for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
-
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
       final_color += ambient * importancy_factor;
       final_color += last_rme.z * importancy_factor;
-
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
@@ -336,14 +303,12 @@ class rayTracer {
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
       if (dot(last_rough_normal, last_normal) <= 0.0) last_rough_normal = - last_rough_normal;
-
       // Handle fresnel reflection
       bool fresnel_reflect = abs(fresnel(last_normal, active_ray)) <= abs(random_vec.y);;
       // object is solid by chance or because of the fresnel effect
       bool is_solid = last_tpo.x <= abs(random_vec.x) || fresnel_reflect;
       // Intersection of ray with triangle
       mat2x4 intersection;
-
       // Handle translucency and skip rest of light calculation
       if (is_solid){
         // If ray fresnel reflects from inside an transparent object,
@@ -382,7 +347,6 @@ class rayTracer {
         // Break out of the loop after color is calculated if i was the last iteration
         if (i == bounces - 1) break;
         float ratio = last_tpo.z * 4.0;
-
         if (dot(active_ray, last_normal) <= 0.0){
           active_ray = normalize(active_ray + 1.0 * refract(active_ray, last_rough_normal, 1.0 / ratio));
         }else{
@@ -419,7 +383,6 @@ class rayTracer {
       // Read UVs of vertices
       vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
       vec3 v_uvs_2 = texelFetch(world_tex, index + ivec2(7, 0), 0).xyz;
-
       mat3x2 vertex_uvs = mat3x2(vec2(v_uvs_1.xy), vec2(v_uvs_1.z, v_uvs_2.x), vec2(v_uvs_2.yz));
       // Interpolate final barycentric coordinates
       vec2 barycentric = vertex_uvs * intersection[1].xyz;
@@ -440,7 +403,6 @@ class rayTracer {
       last_origin = last_position;
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
-
       // Lock filter ids if surface isn't perfectly reflective
       if(rme.x < 0.01 && tpo.x == 0.0 && dont_filter){
         render_id += pow(2.0, - float(i + 1)) * vec4(int(intersection[1].w)/65535, int(intersection[1].w)/255, last_rme.xy);
@@ -454,7 +416,6 @@ class rayTracer {
     // Return final pixel color
     return final_color;
   }
-
   void main(){
     float id = vertex_id.x * 65535.0 + vertex_id.y;
     ivec2 index = ivec2(mod(id, 64.0) * 8.0, id / 64.0);
@@ -509,11 +470,9 @@ class rayTracer {
   }
   `;
   #postProcessGlsl = `#version 300 es
-
   in vec2 position_2d;
   // Pass clip space position to fragment shader
   out vec2 clip_space;
-
   void main(){
     vec2 pos = position_2d * 2.0 - 1.0;
     // Set final clip space position
@@ -522,35 +481,27 @@ class rayTracer {
   }
   `;
   #filterGlsl = `#version 300 es
-
   precision highp float;
   in vec2 clip_space;
-
   uniform sampler2D pre_render_color;
   uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_normal;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
-
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
-
   void main(){
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
-
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
-
     vec4 color = vec4(0);
-
     float count = 0.0;
     int radius = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 3) radius = 3;
-
     // Apply blur filter on image
     for (int i = 0; i < radius; i++){
       for (int j = 0; j < radius; j++){
@@ -558,7 +509,6 @@ class rayTracer {
         vec4 id = texelFetch(pre_render_id, coords, 0);
         vec4 next_color = texelFetch(pre_render_color, coords, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-
         if (id == center_id){
           color += next_color + next_color_ip * 255.0;
           count ++;
@@ -576,35 +526,26 @@ class rayTracer {
   }
   `;
   #finalFilterGlsl = `#version 300 es
-
   precision highp float;
   in vec2 clip_space;
-
   uniform sampler2D pre_render_color;
   uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
-
   out vec4 out_color;
-
   void main(){
-
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
-
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
     vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
-
     vec4 color = vec4(0);
-
     float count = 0.0;
     float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 5.0) radius = 5.0;
     int diameter = 2 * int(radius) + 1;
-
     // Apply blur filter on image
     for (int i = 0; i < diameter; i++){
       for (int j = 0; j < diameter; j++){
@@ -636,39 +577,29 @@ class rayTracer {
   }
   `;
   #fxaaGlsl = `#version 300 es
-
   // Define FXAA constants
   #define FXAA_EDGE_THRESHOLD_MIN 1.0 / 32.0
   #define FXAA_EDGE_THRESHOLD 1.0 / 4.0
-
   #define FXAA_SUBPIX_TRIM 0.0
   #define FXAA_SUBPIX_TRIM_SCALE 1.0
   #define FXAA_SUBPIX_CAP 7.0 / 8.0
-
   #define FXAA_SEARCH_STEPS 6
-
   precision highp float;
-
   in vec2 clip_space;
   uniform sampler2D pre_render;
   out vec4 out_color;
-
   vec2 texel;
-
   vec4 fetch(int x, int y) {
     return texelFetch(pre_render, ivec2(texel) + ivec2(x, y), 0);
   }
-
   // Color to luminance conversion from NVIDIA FXAA white paper
   float fxaa_luma(vec4 rgba) {
     return (rgba.y * (0.587/0.299) + rgba.x) * rgba.w;
   }
-
   float tex_luma(int x, int y) {
     // Devide length through square root of 3 to have a maximum length of 1
     return fxaa_luma(fetch(x, y));
   }
-
   // Local contrast checker from NVIDIA FXAA white paper
   vec2 fxaa_contrast(int x, int y) {
     return vec2(
@@ -676,14 +607,12 @@ class rayTracer {
       max(tex_luma(x, y), max(max(tex_luma(x, y-1), tex_luma(x-1, y)), max(tex_luma(x, y+1), tex_luma(x+1, y))))
     );
   }
-
   // Local low contrast checker from NVIDIA FXAA white paper
   bool fxaa_is_low_contrast(int x, int y) {
     vec2 range_min_max = fxaa_contrast(x, y);
     float range = range_min_max.y - range_min_max.x;
     return (range < max(FXAA_EDGE_THRESHOLD_MIN, range_min_max.y * FXAA_EDGE_THRESHOLD));
   }
-
   vec4 blur_3x3(int x, int y) {
     return 1.0 / 9.0 * (
         fetch(x-1,y-1) + fetch(  x,y-1) + fetch(x+1,y-1)
@@ -691,7 +620,6 @@ class rayTracer {
       + fetch(x-1,y+1) + fetch(  x,y+1) + fetch(x+1,y+1)
     );
   }
-
   float fxaa_sub_pixel_aliasing(int x, int y) {
     float luma_l = 0.25 * (tex_luma(x,y-1) + tex_luma(x-1,y) + tex_luma(x+1,y) + tex_luma(x,y+1));
     float range_l = abs(luma_l - tex_luma(x, y));
@@ -703,56 +631,44 @@ class rayTracer {
     blend_l = min(FXAA_SUBPIX_CAP, blend_l);
     return blend_l;
   }
-
   void main() {
     // Get texture size
     texel = vec2(textureSize(pre_render, 0)) * clip_space;
-
     vec4 original_color = fetch(0, 0);
     float original_luma = tex_luma(0, 0);
-
     mat3 luma = mat3(
       vec3(tex_luma(-1,-1),tex_luma(0,-1),tex_luma(1,-1)),
       vec3(tex_luma(-1, 0),tex_luma(0, 0),tex_luma(1, 0)),
       vec3(tex_luma(-1, 1),tex_luma(0, 1),tex_luma(1, 1))
     );
-
     // Edge detection from NVIDIA FXAA white paper
     float edge_vert =
       abs((0.25 * luma[0].x) + (-0.5 * luma[0].y) + (0.25 * luma[0].z)) +
       abs((0.50 * luma[1].x) + (-1.0 * luma[1].y) + (0.50 * luma[1].z)) +
       abs((0.25 * luma[2].x) + (-0.5 * luma[2].y) + (0.25 * luma[2].z));
-
     float edge_horz =
       abs((0.25 * luma[0].x) + (-0.5 * luma[1].x) + (0.25 * luma[2].x)) +
       abs((0.50 * luma[0].y) + (-1.0 * luma[1].y) + (0.50 * luma[2].y)) +
       abs((0.25 * luma[0].z) + (-0.5 * luma[1].z) + (0.25 * luma[2].z));
-
     bool horz_span = edge_horz >= edge_vert;
     ivec2 step = ivec2(0, 1);
     if (horz_span) step = ivec2(1, 0);
-
     if (fxaa_is_low_contrast(0, 0)) {
       out_color = original_color;
       return;
     }
-
     ivec2 pos_n = - step;
     ivec2 pos_p = step;
-
     vec4 color = original_color;
     float pixel_count = 1.0;
-
     bool done_n = false;
     bool done_p = false;
-
     // Luma of neighbour with highest contrast
     float luma_mcn = max(
       max(abs(luma[0].y - luma[1].y), abs(luma[1].z - luma[1].y)),
       max(abs(luma[2].y - luma[1].y), abs(luma[1].x - luma[1].y))
     );
     float gradient = abs(luma_mcn - luma[1].y);
-
     for (int i = 0; i < FXAA_SEARCH_STEPS; i++) {
       // Blend pixel with 3x3 box filter to preserve sub pixel detail
       if (!done_n) {
