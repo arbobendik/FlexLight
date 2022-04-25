@@ -32,7 +32,6 @@ function load(search) {
       var slider = parameterForm.children[sliderVariables[i]];
       // Live update slider variables
       slider.addEventListener("input", () => {
-        console.log(slider.value);
         item.value = slider.value;
       });
     });
