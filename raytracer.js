@@ -332,6 +332,8 @@ class rayTracer {
       vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
+      // Fix for Windows devices, invert last_rough_normal if it points under the surface.
+      if (dot(last_rough_normal, last_normal) <= 0.0) last_rough_normal = - last_rough_normal;
 
       // Handle fresnel reflection
       bool fresnel_reflect = abs(fresnel(last_normal, active_ray)) <= abs(random_vec.y);;
@@ -490,12 +492,13 @@ class rayTracer {
       // Calculate pixel for specific normal
       final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
     }
+    // Average ray colors over samples.
+    final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
     if (use_filter == 0){
-      render_color = vec4(final_color / float(samples) * tex_color.xyz, 1.0);
+      render_color = vec4((final_color) * tex_color.xyz, 1.0);
       return;
     }
-    final_color /= float(samples);
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
