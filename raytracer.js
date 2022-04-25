@@ -466,7 +466,7 @@ class rayTracer {
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
     render_original_color = vec4(tex_color.xyz, rme.x * first_ray_length + 0.1);
-		render_id += vec4(vertex_id.zw, 0.5 * (filter_roughness + rme.y), first_in_shadow);
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, first_in_shadow);
   }
   `;
   #postProcessGlsl = `#version 300 es
