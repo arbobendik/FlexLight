@@ -82,7 +82,7 @@ async function buildScene() {
 
   // Make redCube red and emissive
   for (let i = 1; i <= 6; i++){
-    redCube[i].textureNums = new Array(6).fill([-1,2,0]).flat();
+    redCube[i].textureNums = new Array(6).fill([-1,2,-1]).flat();
     redCube[i].colors = new Array(6).fill([1,0,0]).flat();
   }
 
