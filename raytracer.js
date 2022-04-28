@@ -77,7 +77,7 @@ class rayTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.7320508075688772
-  #define BIAS 0.0001
+  #define BIAS 0.000003814697265625
   precision highp float;
   precision highp sampler2D;
   in vec3 position;
@@ -274,7 +274,7 @@ class rayTracer {
   }
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
-    bool dont_filter = true;
+    bool dont_filter = (rme.x < 0.01 && tpo.x == 0.0);
     // Use additive color mixing technique, so start with black
     vec3 final_color = vec3(0);
     vec3 importancy_factor = vec3(1);
@@ -333,7 +333,7 @@ class rayTracer {
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
-          } else if (dont_filter) {
+          } else if (dont_filter || i == 0) {
             first_in_shadow += pow(2.0, - float(i + 3));
           }
         }
@@ -402,7 +402,6 @@ class rayTracer {
       last_tpo = vec3(0.0, 1.0, 0.25);
       if (tex_nums.z != -1.0) last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
       // Test if filter is already necessary
-      dont_filter = last_rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter;
       if(dont_filter){
         // Set color in filter
         original_color *= last_color;
@@ -410,10 +409,11 @@ class rayTracer {
         // Add filtering intensity for respective surface
         original_rmex += last_rme.x;
         // Update render id
-        render_id += pow(2.0, - float(i + 1)) * vec4(int(intersection[1].w)/65535, int(intersection[1].w)/255, (last_rme.x * 2.0 + last_rme.y) / 6.0, 0);
+        render_id += pow(2.0, - float(i + 2)) * vec4(intersection[1].w/65535.0, intersection[1].w/255.0, (last_rme.x * 2.0 + last_rme.y) / 3.0, 0);
       }else{
         dont_filter = false;
       }
+      dont_filter = (last_rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter);
       // Update other parameters
       last_origin = last_position;
       last_position = intersection[0].xyz;
@@ -468,13 +468,13 @@ class rayTracer {
     final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
     if (use_filter == 0){
-      render_color = vec4((final_color) * tex_color.xyz * original_color, 1.0);
+      render_color = vec4((final_color) * tex_color.xyz, 1.0);
       return;
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
-    render_original_color = vec4(tex_color.xyz * original_color, (rme.x + (tpo.x) * 0.5 + original_rmex) * (first_ray_length + 0.1));
+    render_original_color = vec4(tex_color.xyz * original_color, (rme.x + original_rmex + 0.0625 * tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (rme.x * 2.0 + rme.y) / 6.0, first_in_shadow);
   }
   `;
