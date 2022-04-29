@@ -29,11 +29,11 @@ async function buildScene() {
   rt.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
 
 	// Make light dimmer (default = 200)
-  rt.primaryLightSources[0].intensity = 100;
+  rt.primaryLightSources[0].intensity = 70;
   rt.primaryLightSources[0].variation = 0.2;
   rt.primaryLightSources[1].intensity = 100;
 	// Set ambient illumination
-	rt.ambientLight = [0.1,0.1,0.1];
+	rt.ambientLight = [0.05,0.05,0.05];
 
 	// Create varying roughness texture for the surface
 	let normalTex = new Image();
@@ -41,7 +41,7 @@ async function buildScene() {
 	// Generate new more diffuse texture for the grass block
 	let diffuseTex = await rt.textureFromRME([1, 0, 0], 1, 1);
   let diffuseGlowTex = await rt.textureFromRME([1, 0, 0.5], 1, 1);
-  let smoothMetallicTex = await rt.textureFromRME([0, 0.5, 0], 1, 1);
+  let smoothMetallicTex = await rt.textureFromRME([0, 0.2, 0], 1, 1);
 	// Add those textures to render queue
 	rt.pbrTextures.push(normalTex, diffuseTex, diffuseGlowTex, smoothMetallicTex);
 
@@ -82,7 +82,7 @@ async function buildScene() {
 
   // Make redCube red and emissive
   for (let i = 1; i <= 6; i++){
-    redCube[i].textureNums = new Array(6).fill([-1,2,0]).flat();
+    redCube[i].textureNums = new Array(6).fill([-1,2,-1]).flat();
     redCube[i].colors = new Array(6).fill([1,0,0]).flat();
   }
 
