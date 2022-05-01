@@ -44,8 +44,12 @@ PlayerHandler.prototype.update = function(time) {
 	}
 }
 
+// Reset movement and release all keys
 PlayerHandler.prototype.resetMovement = function() {
 	this.movement = [0, 0, 0];
+	for (const key in this.keysPressed) {
+		this.keysPressed[key] = false;
+	}
 }
 
 // Change movement when pressing a key
