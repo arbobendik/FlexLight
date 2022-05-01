@@ -77,7 +77,7 @@ class rayTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.7320508075688772
-  #define BIAS 0.000003814697265625
+  #define BIAS 0.0000152587890625
   precision highp float;
   precision highp sampler2D;
   in vec3 position;
@@ -108,7 +108,6 @@ class rayTracer {
   layout(location = 2) out vec4 render_original_color;
   layout(location = 3) out vec4 render_id;
   // Prevent blur over shadow border or over (close to) perfect reflections
-  float first_in_shadow = 0.0;
   float first_ray_length = 1.0;
   // Accumulate color of mirror reflections
   float original_rmex = 0.0;
@@ -152,7 +151,7 @@ class rayTracer {
     float v = (d11 * d20 - d01 * d21) / denom;
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
-    if (min(u, v) <= BIAS || u + v >= 1.0 + BIAS) return mat2x4(0);
+    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -274,7 +273,9 @@ class rayTracer {
   }
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
-    bool dont_filter = (rme.x < 0.01 && tpo.x == 0.0);
+    bool dont_filter = true;
+    float last_filter_roughness = 0.0;
+    float last_id = 0.0;
     // Use additive color mixing technique, so start with black
     vec3 final_color = vec3(0);
     vec3 importancy_factor = vec3(1);
@@ -310,6 +311,22 @@ class rayTracer {
       float fresnel_reflect = abs(fresnel(last_normal, active_ray));
       // object is solid by chance or because of the fresnel effect
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
+      // Test if filter is already necessary
+      if (dont_filter && i != 0) {
+        // Set color in filter
+        original_color *= last_color;
+        last_color = vec3(1.0);
+        // Add filtering intensity for respective surface
+        original_rmex += last_filter_roughness;
+        // Update render id
+        render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+        render_color_ip.w += 0.5;
+      }
+      dont_filter = ((last_rme.x < 0.01 && is_solid || !is_solid) && dont_filter);
+      if (dont_filter && is_solid && last_tpo.x > 0.01) {
+        render_id.w = 1.0;
+        dont_filter = false;
+      }
       // Intersection of ray with triangle
       mat2x4 intersection;
       // Handle translucency and skip rest of light calculation
@@ -334,7 +351,7 @@ class rayTracer {
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
           } else if (dont_filter || i == 0) {
-            first_in_shadow += pow(2.0, - float(i + 3));
+            render_id.w += pow(2.0, - float(i + 2));
           }
         }
         // Break out of the loop after color is calculated if i was the last iteration
@@ -401,26 +418,16 @@ class rayTracer {
       // Update tpo for next pass
       last_tpo = vec3(0.0, 1.0, 0.25);
       if (tex_nums.z != -1.0) last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
-      // Test if filter is already necessary
-      if(dont_filter){
-        // Set color in filter
-        original_color *= last_color;
-        last_color = vec3(1.0);
-        // Add filtering intensity for respective surface
-        original_rmex += last_rme.x;
-        // Update render id
-        render_id += pow(2.0, - float(i + 2)) * vec4(intersection[1].w/65535.0, intersection[1].w/255.0, (last_rme.x * 2.0 + last_rme.y) / 3.0, 0);
-      }else{
-        dont_filter = false;
-      }
-      dont_filter = (last_rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter);
       // Update other parameters
+      last_id = intersection[1].w;
       last_origin = last_position;
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+      // Preserve original roughness for filter pass
+      last_filter_roughness = last_rme.x;
       // Fresnel effect
       last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
-      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin),1.0);
+      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin), 1.0);
     }
     // Return final pixel color
     return final_color;
@@ -467,22 +474,22 @@ class rayTracer {
     // Average ray colors over samples.
     final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
-    if (use_filter == 0){
+    if (use_filter == 0) {
       render_color = vec4((final_color) * tex_color.xyz, 1.0);
       return;
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
-    render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
+    render_color_ip = vec4(floor(final_color) / 255.0, 0.5);
     render_original_color = vec4(tex_color.xyz * original_color, (rme.x + original_rmex + 0.0625 * tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (rme.x * 2.0 + rme.y) / 6.0, first_in_shadow);
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, 0);
   }
   `;
   #postProcessGlsl = `#version 300 es
   in vec2 position_2d;
   // Pass clip space position to fragment shader
   out vec2 clip_space;
-  void main(){
+  void main() {
     vec2 pos = position_2d * 2.0 - 1.0;
     // Set final clip space position
     gl_Position = vec4(pos, 0, 1);
@@ -499,7 +506,7 @@ class rayTracer {
   uniform sampler2D pre_render_id;
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
-  void main(){
+  void main() {
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
@@ -511,15 +518,15 @@ class rayTracer {
     int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     if (diameter > 3) diameter = 3;
     // Force max radius
-    if (diameter != 0){
+    if (diameter != 0) {
       // Apply blur filter on image
-      for (int i = 0; i < diameter; i++){
-        for (int j = 0; j < diameter; j++){
+      for (int i = 0; i < diameter; i++) {
+        for (int j = 0; j < diameter; j++) {
           ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + diameter));
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id == center_id){
+          if (id == center_id) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -529,11 +536,11 @@ class rayTracer {
       count = 1.0;
       color = center_color + center_color_ip * 255.0;
     }
-    if (center_color.w > 0.0){
+    if (center_color.w > 0.0) {
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
       // Set out color for render texture for the antialiasing filter
       render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
-    }else{
+    } else {
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
     }
@@ -553,24 +560,24 @@ class rayTracer {
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
-    vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
+    vec4 center_id = texelFetch(pre_render_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
     float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 5.0) radius = 5.0;
     int diameter = 2 * int(radius) + 1;
-    if (diameter != 1){
+    if (diameter != 1) {
       // Apply blur filter on image
-      for (int i = 0; i < diameter; i++){
-        for (int j = 0; j < diameter; j++){
+      for (int i = 0; i < diameter; i++) {
+        for (int j = 0; j < diameter; j++) {
           vec2 texel_offset = vec2(i, j) - radius;
           if (length(texel_offset) >= radius) continue;
           ivec2 coords = ivec2(vec2(texel) + texel_offset * 3.0);
-          vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
+          vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id == center_id){
+          if (id.xyz == center_id.xyz || max(id.w, center_id.w) == 1.0) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -580,7 +587,7 @@ class rayTracer {
       count = 1.0;
       color = center_color + center_color_ip * 255.0;
     }
-    if (center_color.w > 0.0){
+    if (center_color.w > 0.0) {
       // Set out target_color for render texture for the antialiasing filter
       vec3 hdr_color = color.xyz * center_original_color.xyz / count;
       // Apply Reinhard tone mapping
@@ -590,7 +597,7 @@ class rayTracer {
       hdr_color = pow(4.0 * hdr_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
       // Set tone mapped color as out_color
       out_color = vec4(hdr_color, 1.0);
-    }else{
+    } else {
       out_color = vec4(0.0, 0.0, 0.0, 0.0);
     }
   }
@@ -1421,6 +1428,10 @@ class rayTracer {
   }
   // Axis aligned cuboid element prototype
   cuboid (x, x2, y, y2, z, z2) {
+    // Add BIAS of 2^(-16)
+    let b = 0.00152587890625;
+    [x, y, z] = [x + b, y + b, z + b];
+    [x2, y2, z2] = [x2 - b, y2 - b, z2 - b];
     // Create surface elements for cuboid
     let surfaces = new Array(7);
     surfaces[0] = [x, x2, y, y2, z, z2];

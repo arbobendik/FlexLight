@@ -24,6 +24,7 @@ async function buildScene() {
 	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness of first one to be dimmer
 	rt.primaryLightSources[0].intensity = 5;
+  rt.primaryLightSources[0].variation = 0;
 	// Generate side planes of box.
 	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5],[0,1,0]);
   let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15],[0,-1,0]);
