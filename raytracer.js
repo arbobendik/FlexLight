@@ -309,7 +309,7 @@ class rayTracer {
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
         // Set color in filter
-        original_color *= last_color;
+        if (sample_n == 0) original_color *= last_color;
         last_color = vec3(1.0);
         // Add filtering intensity for respective surface
         original_rmex += last_filter_roughness;
