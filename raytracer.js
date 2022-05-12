@@ -123,11 +123,6 @@ class rayTracer {
     // Return texel on requested location
     return texture(atlas, atlas_coords);
   }
-  float triangleSurface(mat3 t){
-    vec3 ab = t[1] - t[0];
-    vec3 ac = t[2] - t[0];
-    return 0.5 * length(cross(ab, ac));
-  }
   // Test if ray intersects triangle and return intersection
   mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
     // Can't intersect with triangle with the same normal as the origin
@@ -322,7 +317,8 @@ class rayTracer {
         render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
         render_color_ip.w += 0.5;
       }
-      dont_filter = ((last_rme.x < 0.01 && is_solid || !is_solid) && dont_filter);
+      // Update dont_filter variable
+      dont_filter = ((last_rme.x < 0.01 && is_solid) && dont_filter);
       if (dont_filter && is_solid && last_tpo.x > 0.01) {
         render_id.w = 1.0;
         dont_filter = false;
@@ -337,16 +333,16 @@ class rayTracer {
         //  Calculate primary light sources for this pass if ray hits non translucent object
         for (int j = 0; j < textureSize(light_tex, 0).y; j++){
           // Read light position
-          vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
+          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
           // Read light strength from texture
-          float strength = texture(light_tex, vec2(1.0, float(j))).x;
-          float variation = texture(light_tex, vec2(1.0, float(j))).y;
+          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
           // Alter light source position according to variation.
           light += random_vec * variation;
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
-          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
+          vec3 active_light_ray = texelFetch(light_tex, ivec2(0, j), 0).xyz - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
@@ -377,16 +373,16 @@ class rayTracer {
         last_origin = 2.0 * last_position - last_origin;
           for (int j = 0; j < textureSize(light_tex, 0).y; j++){
             // Read light position
-            vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
+            vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
             // Read light strength from texture
-            float strength = texture(light_tex, vec2(1.0, float(j))).x;
-            float variation = texture(light_tex, vec2(1.0, float(j))).y;
+            float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+            float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
             // Alter light source position according to variation.
             light += random_vec * variation;
             // Skip if strength is negative or zero
             if (strength <= 0.0) continue;
             // Recalculate position -> light vector
-            vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
+            vec3 active_light_ray = texelFetch(light_tex, ivec2(0, j), 0).xyz - last_position;
             // Update pixel color if coordinate is not in shadow
             if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
               final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
@@ -408,16 +404,12 @@ class rayTracer {
       vec3 tex_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
       // Default last_color to color of target triangle
       // Multiply with texture value if available
-      last_color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
-      if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
-      // Lock filter ids if surface isn't perfectly reflective
+      last_color = mix(texelFetch(world_tex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(barycentric, tex_nums.x)).xyz, sign(tex_nums.x + 1.0));
       // Default roughness, metallicity and emissiveness
       // Set roughness to texture value if texture is defined
-      last_rme = vec3(0.5, 0.5, 0.0);
-      if (tex_nums.y != -1.0) last_rme = lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0);
+      last_rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(tex_nums.y + 1.0));
       // Update tpo for next pass
-      last_tpo = vec3(0.0, 1.0, 0.25);
-      if (tex_nums.z != -1.0) last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
+      last_tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz, sign(tex_nums.z + 1.0));
       // Update other parameters
       last_id = intersection[1].w;
       last_origin = last_position;
@@ -444,20 +436,12 @@ class rayTracer {
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default tex_color to color
-    vec3 tex_color = color;
-    // Multiply with texture value if texture is defined
-    if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x)).xyz;
-    // Default roughness and metallicity
-    // Pack fresnel_roughness, metallicity and emissiveness in one vector (roughness, metallicity, emissiveness) => rme
-    vec3 rme = vec3(0.5, 0.5, 0.0);
-    if (texture_nums.y != -1.0){
-      rme = lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz;
-      rme.z = rme.z * 4.0;
-    }
+    vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
+    // Default roughness, metallicity and emissiveness
+    // Set roughness to texture value if texture is defined
+    vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
     // Default to non translucent object (translucency, particle density, optical density) => tpo
-    vec3 tpo = vec3(0);
-    // Get translucency variables
-    if (texture_nums.z != -1.0) tpo = lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz;
+    vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
     // Preserve original roughness for filter pass
     float filter_roughness = rme.x;
     // Fresnel effect
@@ -516,8 +500,8 @@ class rayTracer {
     vec4 color = vec4(0);
     float count = 0.0;
     int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
-    if (diameter > 3) diameter = 3;
     // Force max radius
+    if (diameter > 3) diameter = 3;
     if (diameter != 0) {
       // Apply blur filter on image
       for (int i = 0; i < diameter; i++) {
@@ -565,7 +549,7 @@ class rayTracer {
     float count = 0.0;
     float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
-    if (radius > 5.0) radius = 5.0;
+    if (radius > 6.0) radius = 6.0;
     int diameter = 2 * int(radius) + 1;
     if (diameter != 1) {
       // Apply blur filter on image
@@ -577,7 +561,7 @@ class rayTracer {
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id.xyz == center_id.xyz || max(id.w, center_id.w) == 1.0) {
+          if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
