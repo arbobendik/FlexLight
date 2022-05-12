@@ -342,7 +342,7 @@ class rayTracer {
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
-          vec3 active_light_ray = texelFetch(light_tex, ivec2(0, j), 0).xyz - last_position;
+          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
@@ -371,23 +371,23 @@ class rayTracer {
         // Calculate next intersection
         intersection = rayTracer(active_ray, last_position, last_normal);
         last_origin = 2.0 * last_position - last_origin;
-          for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-            // Read light position
-            vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
-            // Read light strength from texture
-            float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
-            float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
-            // Alter light source position according to variation.
-            light += random_vec * variation;
-            // Skip if strength is negative or zero
-            if (strength <= 0.0) continue;
-            // Recalculate position -> light vector
-            vec3 active_light_ray = texelFetch(light_tex, ivec2(0, j), 0).xyz - last_position;
-            // Update pixel color if coordinate is not in shadow
-            if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-              final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
-            }
+        for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+          // Read light position
+          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
+          // Read light strength from texture
+          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
+          // Alter light source position according to variation.
+          light += random_vec * variation;
+          // Skip if strength is negative or zero
+          if (strength <= 0.0) continue;
+          // Recalculate position -> light vector
+          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
+          // Update pixel color if coordinate is not in shadow
+          if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
+            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
           }
+        }
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
