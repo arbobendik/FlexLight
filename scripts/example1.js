@@ -76,15 +76,9 @@ async function buildScene() {
     rt.cuboid(-1.5, -0.5, -1, 2, - 1, 0)
   ];
 
-  let randoms = [
-    [ 0.22493245131260875, 0.5543967940649911, 0.6289086581844462 ],
-    [ 0.771993977557972, 0.49260080529621514, 0.7337048334902866 ],
-    [ 0.460463006671198, 0.9934776892893268, 0.487425642102445 ],
-    [ 0.8686779977922835, 0.8605405777919427, 0.7679083836122562 ]
-  ];
   // Color all cuboid in center
   for (let i = 0; i < 4; i++){
-    let color = new Array(6).fill(randoms[i]).flat();
+    let color = new Array(6).fill([Math.random(), Math.random(), Math.random()]).flat();
     for (let j = 1; j <= 6; j++) cuboids[i][j].colors = color;
   }
 
