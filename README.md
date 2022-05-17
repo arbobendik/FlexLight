@@ -41,20 +41,8 @@ The library (ray tracer object) offers many more options and functions that can'
 
 ### Screenshots
 
-![](screenshots/screen2.png?raw=true)
-example_0 (scale = 2 (1080p -> 4k), samples = 8)
-
-
-
-![](screenshots/cornell.png?raw=true)
-![](screenshots/emissive.png?raw=true)
-![](screenshots/wave.png?raw=true)
-
-
-### More screenshots (deprecated versions):
-
-![](screenshots/screen3.png?raw=true)
-
-![](screenshots/screen1.png?raw=true)
-
 ![](screenshots/screen0.png?raw=true)
+![](screenshots/screen1.png?raw=true)
+![](screenshots/screen2.png?raw=true)
+![](screenshots/screen3.png?raw=true)
+![](screenshots/screen4.png?raw=true)
