@@ -14,6 +14,8 @@ class rayTracer {
   renderQuality = 1;
   maxReflections = 3;
   minImportancy = 0.3;
+  firstPasses = 0;
+  secondPasses = 0;
   filter = true;
   antialiasing = true;
   // Camera and frustrum settings
@@ -77,7 +79,7 @@ class rayTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.7320508075688772
-  #define BIAS 0.000003814697265625
+  #define BIAS 0.0000152587890625
   precision highp float;
   precision highp sampler2D;
   in vec3 position;
@@ -108,7 +110,6 @@ class rayTracer {
   layout(location = 2) out vec4 render_original_color;
   layout(location = 3) out vec4 render_id;
   // Prevent blur over shadow border or over (close to) perfect reflections
-  float first_in_shadow = 0.0;
   float first_ray_length = 1.0;
   // Accumulate color of mirror reflections
   float original_rmex = 0.0;
@@ -123,11 +124,6 @@ class rayTracer {
     );
     // Return texel on requested location
     return texture(atlas, atlas_coords);
-  }
-  float triangleSurface(mat3 t){
-    vec3 ab = t[1] - t[0];
-    vec3 ac = t[2] - t[0];
-    return 0.5 * length(cross(ab, ac));
   }
   // Test if ray intersects triangle and return intersection
   mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
@@ -152,7 +148,7 @@ class rayTracer {
     float v = (d11 * d20 - d01 * d21) / denom;
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
-    if (min(u, v) <= BIAS || u + v >= 1.0 + BIAS) return mat2x4(0);
+    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -274,7 +270,9 @@ class rayTracer {
   }
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
-    bool dont_filter = (rme.x < 0.01 && tpo.x == 0.0);
+    bool dont_filter = true;
+    float last_filter_roughness = 0.0;
+    float last_id = 0.0;
     // Use additive color mixing technique, so start with black
     vec3 final_color = vec3(0);
     vec3 importancy_factor = vec3(1);
@@ -310,6 +308,23 @@ class rayTracer {
       float fresnel_reflect = abs(fresnel(last_normal, active_ray));
       // object is solid by chance or because of the fresnel effect
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
+      // Test if filter is already necessary
+      if (dont_filter && i != 0) {
+        // Set color in filter
+        if (sample_n == 0) original_color *= last_color;
+        last_color = vec3(1.0);
+        // Add filtering intensity for respective surface
+        original_rmex += last_filter_roughness;
+        // Update render id
+        render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+        render_color_ip.w += 0.5;
+      }
+      // Update dont_filter variable
+      dont_filter = ((last_rme.x < 0.01 && is_solid) && dont_filter);
+      if (dont_filter && is_solid && last_tpo.x > 0.01) {
+        render_id.w = 1.0;
+        dont_filter = false;
+      }
       // Intersection of ray with triangle
       mat2x4 intersection;
       // Handle translucency and skip rest of light calculation
@@ -320,10 +335,10 @@ class rayTracer {
         //  Calculate primary light sources for this pass if ray hits non translucent object
         for (int j = 0; j < textureSize(light_tex, 0).y; j++){
           // Read light position
-          vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
+          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
           // Read light strength from texture
-          float strength = texture(light_tex, vec2(1.0, float(j))).x;
-          float variation = texture(light_tex, vec2(1.0, float(j))).y;
+          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
           // Alter light source position according to variation.
           light += random_vec * variation;
           // Skip if strength is negative or zero
@@ -334,7 +349,7 @@ class rayTracer {
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
           } else if (dont_filter || i == 0) {
-            first_in_shadow += pow(2.0, - float(i + 3));
+            render_id.w += pow(2.0, - float(i + 2));
           }
         }
         // Break out of the loop after color is calculated if i was the last iteration
@@ -358,23 +373,23 @@ class rayTracer {
         // Calculate next intersection
         intersection = rayTracer(active_ray, last_position, last_normal);
         last_origin = 2.0 * last_position - last_origin;
-          for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-            // Read light position
-            vec3 light = texture(light_tex, vec2(0.0, float(j))).xyz * vec3(-1.0, 1.0, 1.0);
-            // Read light strength from texture
-            float strength = texture(light_tex, vec2(1.0, float(j))).x;
-            float variation = texture(light_tex, vec2(1.0, float(j))).y;
-            // Alter light source position according to variation.
-            light += random_vec * variation;
-            // Skip if strength is negative or zero
-            if (strength <= 0.0) continue;
-            // Recalculate position -> light vector
-            vec3 active_light_ray = texture(light_tex, vec2(0.0, float(j))).xyz - last_position;
-            // Update pixel color if coordinate is not in shadow
-            if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-              final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
-            }
+        for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+          // Read light position
+          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
+          // Read light strength from texture
+          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
+          // Alter light source position according to variation.
+          light += random_vec * variation;
+          // Skip if strength is negative or zero
+          if (strength <= 0.0) continue;
+          // Recalculate position -> light vector
+          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
+          // Update pixel color if coordinate is not in shadow
+          if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
+            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
           }
+        }
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
@@ -391,36 +406,22 @@ class rayTracer {
       vec3 tex_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
       // Default last_color to color of target triangle
       // Multiply with texture value if available
-      last_color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
-      if (tex_nums.x != -1.0) last_color *= lookup(tex, vec3(barycentric, tex_nums.x)).xyz;
-      // Lock filter ids if surface isn't perfectly reflective
+      last_color = mix(texelFetch(world_tex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(barycentric, tex_nums.x)).xyz, sign(tex_nums.x + 1.0));
       // Default roughness, metallicity and emissiveness
       // Set roughness to texture value if texture is defined
-      last_rme = vec3(0.5, 0.5, 0.0);
-      if (tex_nums.y != -1.0) last_rme = lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0);
+      last_rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(tex_nums.y + 1.0));
       // Update tpo for next pass
-      last_tpo = vec3(0.0, 1.0, 0.25);
-      if (tex_nums.z != -1.0) last_tpo = lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz;
-      // Test if filter is already necessary
-      if(dont_filter){
-        // Set color in filter
-        original_color *= last_color;
-        last_color = vec3(1.0);
-        // Add filtering intensity for respective surface
-        original_rmex += last_rme.x;
-        // Update render id
-        render_id += pow(2.0, - float(i + 2)) * vec4(intersection[1].w/65535.0, intersection[1].w/255.0, (last_rme.x * 2.0 + last_rme.y) / 3.0, 0);
-      }else{
-        dont_filter = false;
-      }
-      dont_filter = (last_rme.x < 0.01 && last_tpo.x == 0.0 && dont_filter);
+      last_tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz, sign(tex_nums.z + 1.0));
       // Update other parameters
+      last_id = intersection[1].w;
       last_origin = last_position;
       last_position = intersection[0].xyz;
       last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+      // Preserve original roughness for filter pass
+      last_filter_roughness = last_rme.x;
       // Fresnel effect
       last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
-      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin),1.0);
+      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin), 1.0);
     }
     // Return final pixel color
     return final_color;
@@ -437,20 +438,12 @@ class rayTracer {
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default tex_color to color
-    vec3 tex_color = color;
-    // Multiply with texture value if texture is defined
-    if (texture_nums.x != -1.0) tex_color *= lookup(tex, vec3(tex_coord, texture_nums.x)).xyz;
-    // Default roughness and metallicity
-    // Pack fresnel_roughness, metallicity and emissiveness in one vector (roughness, metallicity, emissiveness) => rme
-    vec3 rme = vec3(0.5, 0.5, 0.0);
-    if (texture_nums.y != -1.0){
-      rme = lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz;
-      rme.z = rme.z * 4.0;
-    }
+    vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
+    // Default roughness, metallicity and emissiveness
+    // Set roughness to texture value if texture is defined
+    vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
     // Default to non translucent object (translucency, particle density, optical density) => tpo
-    vec3 tpo = vec3(0);
-    // Get translucency variables
-    if (texture_nums.z != -1.0) tpo = lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz;
+    vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
     // Preserve original roughness for filter pass
     float filter_roughness = rme.x;
     // Fresnel effect
@@ -467,34 +460,83 @@ class rayTracer {
     // Average ray colors over samples.
     final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
-    if (use_filter == 0){
+    if (use_filter == 0) {
       render_color = vec4((final_color) * tex_color.xyz, 1.0);
       return;
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
-    render_color_ip = vec4(floor(final_color) / 255.0, 1.0);
+    render_color_ip = vec4(floor(final_color) / 255.0, 0.5);
     render_original_color = vec4(tex_color.xyz * original_color, (rme.x + original_rmex + 0.0625 * tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (rme.x * 2.0 + rme.y) / 6.0, first_in_shadow);
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, 0);
   }
   `;
   #postProcessGlsl = `#version 300 es
   in vec2 position_2d;
   // Pass clip space position to fragment shader
   out vec2 clip_space;
-  void main(){
+  void main() {
     vec2 pos = position_2d * 2.0 - 1.0;
     // Set final clip space position
     gl_Position = vec4(pos, 0, 1);
     clip_space = position_2d;
   }
   `;
-  #filterGlsl = `#version 300 es
+  #firstFilterGlsl = `#version 300 es
   precision highp float;
   in vec2 clip_space;
   uniform sampler2D pre_render_color;
   uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_normal;
+  uniform sampler2D pre_render_original_color;
+  uniform sampler2D pre_render_id;
+  layout(location = 0) out vec4 render_color;
+  layout(location = 1) out vec4 render_color_ip;
+  void main() {
+    // Get texture size
+    ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
+    vec4 center_color = texelFetch(pre_render_color, texel, 0);
+    vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
+    vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+    vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    vec4 color = vec4(0);
+    float count = 0.0;
+    int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    // Force max radius
+    if (diameter > 3) diameter = 3;
+    if (diameter != 0) {
+      // Apply blur filter on image
+      for (int i = 0; i < diameter; i++) {
+        for (int j = 0; j < diameter; j++) {
+          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + diameter));
+          vec4 id = texelFetch(pre_render_id, coords, 0);
+          vec4 next_color = texelFetch(pre_render_color, coords, 0);
+          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
+          if (id == center_id) {
+            color += next_color + next_color_ip * 255.0;
+            count ++;
+          }
+        }
+      }
+    } else {
+      count = 1.0;
+      color = center_color + center_color_ip * 255.0;
+    }
+    if (center_color.w > 0.0) {
+      render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
+      // Set out color for render texture for the antialiasing filter
+      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
+    } else {
+      render_color = vec4(0.0);
+      render_color_ip = vec4(0.0);
+    }
+  }
+  `;
+  #secondFilterGlsl = `#version 300 es
+  precision highp float;
+  in vec2 clip_space;
+  uniform sampler2D pre_render_color;
+  uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
   layout(location = 0) out vec4 render_color;
@@ -508,18 +550,21 @@ class rayTracer {
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
-    int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
-    if (diameter > 3) diameter = 3;
+    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
-    if (diameter != 0){
+    if (radius > 2.0) radius = 2.0;
+    int diameter = 2 * int(radius) + 1;
+    if (diameter != 1) {
       // Apply blur filter on image
-      for (int i = 0; i < diameter; i++){
-        for (int j = 0; j < diameter; j++){
-          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + diameter));
+      for (int i = 0; i < diameter; i++) {
+        for (int j = 0; j < diameter; j++) {
+          vec2 texel_offset = vec2(i, j) - radius;
+          if (length(texel_offset) >= radius) continue;
+          ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.0);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id == center_id){
+          if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -529,11 +574,11 @@ class rayTracer {
       count = 1.0;
       color = center_color + center_color_ip * 255.0;
     }
-    if (center_color.w > 0.0){
+    if (center_color.w > 0.0) {
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
       // Set out color for render texture for the antialiasing filter
       render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
-    }else{
+    } else {
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
     }
@@ -553,24 +598,24 @@ class rayTracer {
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
-    vec3 center_id = texelFetch(pre_render_id, texel, 0).xyz;
+    vec4 center_id = texelFetch(pre_render_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
     float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
-    if (radius > 5.0) radius = 5.0;
+    if (radius > 3.0) radius = 3.0;
     int diameter = 2 * int(radius) + 1;
-    if (diameter != 1){
+    if (diameter != 1) {
       // Apply blur filter on image
-      for (int i = 0; i < diameter; i++){
-        for (int j = 0; j < diameter; j++){
+      for (int i = 0; i < diameter; i++) {
+        for (int j = 0; j < diameter; j++) {
           vec2 texel_offset = vec2(i, j) - radius;
           if (length(texel_offset) >= radius) continue;
-          ivec2 coords = ivec2(vec2(texel) + texel_offset * 3.0);
-          vec3 id = texelFetch(pre_render_id, coords, 0).xyz;
+          ivec2 coords = ivec2(vec2(texel) + texel_offset);
+          vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id == center_id){
+          if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -580,7 +625,7 @@ class rayTracer {
       count = 1.0;
       color = center_color + center_color_ip * 255.0;
     }
-    if (center_color.w > 0.0){
+    if (center_color.w > 0.0) {
       // Set out target_color for render texture for the antialiasing filter
       vec3 hdr_color = color.xyz * center_original_color.xyz / count;
       // Apply Reinhard tone mapping
@@ -590,7 +635,7 @@ class rayTracer {
       hdr_color = pow(4.0 * hdr_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
       // Set tone mapped color as out_color
       out_color = vec4(hdr_color, 1.0);
-    }else{
+    } else {
       out_color = vec4(0.0, 0.0, 0.0, 0.0);
     }
   }
@@ -924,31 +969,29 @@ class rayTracer {
     var Framebuffer, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
     // Set post program array
     var PostProgram = [];
-    // Set DenoiserPasses
-    var DenoiserPasses = 5;
     // Create textures for Framebuffers in PostPrograms
-    var RenderTexture = new Array(DenoiserPasses + 1);
-    var IpRenderTexture = new Array(DenoiserPasses + 1);
-    var DepthTexture = new Array(DenoiserPasses + 1);
-    var RenderTex = new Array(DenoiserPasses + 1);
-    var IpRenderTex = new Array(DenoiserPasses + 1);
-    var OriginalRenderTex = new Array(DenoiserPasses + 1);
-    var IdRenderTex = new Array(DenoiserPasses + 1);
+    var RenderTexture = new Array(5);
+    var IpRenderTexture = new Array(5);
+    var DepthTexture = new Array(5);
+    var RenderTex = new Array(5);
+    var IpRenderTex = new Array(5);
+    var OriginalRenderTex = new Array(5);
+    var IdRenderTex = new Array(5);
     // Create caching textures for denoising
-		for (let i = 0; i < DenoiserPasses + 1; i ++) {
+		for (let i = 0; i < 5; i ++) {
 				RenderTexture[i] = this.#gl.createTexture();
 				IpRenderTexture[i] = this.#gl.createTexture();
 				DepthTexture[i] = this.#gl.createTexture();
     }
     // Create buffers for vertices in PostPrograms
-    var PostVertexBuffer = new Array(DenoiserPasses + 1);
-    var PostFramebuffer = new Array(DenoiserPasses + 1);
+    var PostVertexBuffer = new Array(5);
+    var PostFramebuffer = new Array(5);
     // Convolution-Antialiasing program and its buffers and textures
     var AntialiasingProgram, AntialiasingVertexBuffer, AntialiasingTexture, AntialiasingTex;
     // Create different Vaos for different rendering/filtering steps in pipeline
     var Vao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
-    var PostVao = new Array(DenoiserPasses + 1).map(() => this.#gl.createVertexArray());
+    var PostVao = new Array(5).map(() => this.#gl.createVertexArray());
     var AntialiasingVao = this.#gl.createVertexArray();
 
     // Check if recompile is needed
@@ -972,6 +1015,9 @@ class rayTracer {
       randomTextureBuilder();
       renderTextureBuilder();
       antialiasingRenderTextureBuilder();
+
+      rt.firstPasses = 1 + Math.round(Math.sqrt(canvas.width * canvas.height) / 200);
+      rt.secondPasses = 1 + Math.round(Math.sqrt(canvas.width * canvas.height) / 50);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1199,37 +1245,44 @@ class rayTracer {
       }
       // Apply post processing
       {
-        for (let i = 0; i < DenoiserPasses; i++){
+        // Save last used program slot
+        let n = 0;
+        for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
+          // Look for next free compatible program slot
+          let np1 = (i%2)^1;
+          if (rt.firstPasses <= i) np1 += 2;
           // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[i]);
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
           // Set attachments to use for framebuffer
           rt.#gl.drawBuffers([
             rt.#gl.COLOR_ATTACHMENT0,
             rt.#gl.COLOR_ATTACHMENT1
           ]);
           // Configure framebuffer for color and depth
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[i+1], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[i+1], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[i+1], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np1], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np1], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np1], 0);
           // Clear depth and color buffers from last frame
           rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
           // Push pre rendered textures to next shader (post processing)
-          [RenderTexture[i], IpRenderTexture[i], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
             rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
             rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           });
           // Switch program and Vao
-          rt.#gl.useProgram(PostProgram[i]);
-          rt.#gl.bindVertexArray(PostVao[i]);
+          rt.#gl.useProgram(PostProgram[n]);
+          rt.#gl.bindVertexArray(PostVao[n]);
           // Pass pre rendered texture to shader
-          rt.#gl.uniform1i(RenderTex[i], 0);
-          rt.#gl.uniform1i(IpRenderTex[i], 1);
+          rt.#gl.uniform1i(RenderTex[n], 0);
+          rt.#gl.uniform1i(IpRenderTex[n], 1);
           // Pass original color texture to GPU
-          rt.#gl.uniform1i(OriginalRenderTex[i], 2);
+          rt.#gl.uniform1i(OriginalRenderTex[n], 2);
           // Pass vertex_id texture to GPU
-          rt.#gl.uniform1i(IdRenderTex[i], 3);
+          rt.#gl.uniform1i(IdRenderTex[n], 3);
           // Post processing drawcall
           rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+          // Save current program slot in n for next pass
+          n = np1;
         }
       }
       // Last denoise pass
@@ -1241,7 +1294,7 @@ class rayTracer {
         // Configure framebuffer for color and depth
         if (rt.antialiasing) {
           // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[DenoiserPasses]);
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, AntialiasingTexture, 0);
         } else {
           // Render to canvas now
@@ -1249,21 +1302,23 @@ class rayTracer {
         }
         // Clear depth and color buffers from last frame
         rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+        let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
         // Push pre rendered textures to next shader (post processing)
-        [RenderTexture[DenoiserPasses], IpRenderTexture[DenoiserPasses], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
           rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         });
         // Switch program and VAO
-        rt.#gl.useProgram(PostProgram[DenoiserPasses]);
-        rt.#gl.bindVertexArray(PostVao[DenoiserPasses]);
+        rt.#gl.useProgram(PostProgram[4]);
+        rt.#gl.bindVertexArray(PostVao[4]);
         // Pass pre rendered texture to shader
-        rt.#gl.uniform1i(RenderTex[DenoiserPasses], 0);
-        rt.#gl.uniform1i(IpRenderTex[DenoiserPasses], 1);
+        rt.#gl.uniform1i(RenderTex[4], 0);
+        rt.#gl.uniform1i(IpRenderTex[4], 1);
         // Pass original color texture to GPU
-        rt.#gl.uniform1i(OriginalRenderTex[DenoiserPasses], 2);
+        rt.#gl.uniform1i(OriginalRenderTex[4], 2);
         // Pass vertex_id texture to GPU
-        rt.#gl.uniform1i(IdRenderTex[DenoiserPasses], 3);
+        rt.#gl.uniform1i(IdRenderTex[4], 3);
         // Post processing drawcall
         rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       }
@@ -1303,15 +1358,25 @@ class rayTracer {
         { source: rt.#vertexGlsl, type: rt.#gl.VERTEX_SHADER },
         { source: rt.#fragmentGlsl, type: rt.#gl.FRAGMENT_SHADER }
       ]);
+
       // Compile shaders and link them into PostProgram global
-      for (let i = 0; i < DenoiserPasses; i++){
+      for (let i = 0; i < 2; i++){
         PostProgram[i] = buildProgram([
           { source: rt.#postProcessGlsl, type: rt.#gl.VERTEX_SHADER },
-          { source: rt.#filterGlsl, type: rt.#gl.FRAGMENT_SHADER }
+          { source: rt.#firstFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
         ]);
       }
+
       // Compile shaders and link them into PostProgram global
-      PostProgram[DenoiserPasses] = buildProgram([
+      for (let i = 2; i < 4; i++){
+        PostProgram[i] = buildProgram([
+          { source: rt.#postProcessGlsl, type: rt.#gl.VERTEX_SHADER },
+          { source: rt.#secondFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
+        ]);
+      }
+
+      // Compile shaders and link them into PostProgram global
+      PostProgram[4] = buildProgram([
         { source: rt.#postProcessGlsl, type: rt.#gl.VERTEX_SHADER },
         { source: rt.#finalFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
       ]);
@@ -1378,7 +1443,7 @@ class rayTracer {
 
       renderTextureBuilder();
 
-      for (let i = 0; i < DenoiserPasses + 1; i++){
+      for (let i = 0; i < 5; i++){
         // Create post program buffers and uniforms
         rt.#gl.bindVertexArray(PostVao[i]);
         rt.#gl.useProgram(PostProgram[i]);
@@ -1421,6 +1486,10 @@ class rayTracer {
   }
   // Axis aligned cuboid element prototype
   cuboid (x, x2, y, y2, z, z2) {
+    // Add BIAS of 2^(-16)
+    let b = 0.00152587890625;
+    [x, y, z] = [x + b, y + b, z + b];
+    [x2, y2, z2] = [x2 - b, y2 - b, z2 - b];
     // Create surface elements for cuboid
     let surfaces = new Array(7);
     surfaces[0] = [x, x2, y, y2, z, z2];
