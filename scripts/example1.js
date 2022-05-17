@@ -11,15 +11,25 @@ async function buildScene() {
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas
 	rt = new rayTracer(canvas);
-	// Set Textures 0, 1, 2
+	// Set Textures 0, 1, 2, 3, 4
 	[
 		"textures/grass.jpg",     // 0
 		"textures/dirt_side.jpg", // 1
-	  "textures/dirt.jpeg"      // 2
+	  "textures/dirt.jpeg",     // 2
+    "textures/redstone.png",   // 3
+    "textures/lamp.jpg"    //4
 	].forEach((item, i) => {
 		let img = new Image();
 	  img.src = item;
 	  rt.textures.push(img);
+	});
+
+  [
+		"textures/redstone_pbr.png"     // 0
+	].forEach((item, i) => {
+		let img = new Image();
+	  img.src = item;
+	  rt.pbrTextures.push(img);
 	});
 
 	// Set camera perspective and position
@@ -43,20 +53,20 @@ async function buildScene() {
   let diffuseGlowTex = await rt.textureFromRME([1, 0, 0.5], 1, 1);
   let smoothMetallicTex = await rt.textureFromRME([0, 0.2, 0], 1, 1);
 	// Add those textures to render queue
-	rt.pbrTextures.push(normalTex, diffuseTex, diffuseGlowTex, smoothMetallicTex);
+	rt.pbrTextures.push(normalTex, diffuseTex, smoothMetallicTex, diffuseGlowTex);
 
   // Generate translucency texture for cube
   let translucencyTex = await rt.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
   rt.translucencyTextures.push(translucencyTex);
 
 	// Set texture Sizes
-	rt.standardTextureSizes = [12, 12];
+	rt.standardTextureSizes = [192, 192];
 
   // Create large ground plane
   let groundPlane = rt.plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
 
 	// Set normal texture for each plane
-	groundPlane.textureNums = new Array(6).fill([-1,0,-1]).flat();
+	groundPlane.textureNums = new Array(6).fill([-1,1,-1]).flat();
 
 	// Generate a few cuboids on surface
   let cuboids = [
@@ -65,37 +75,51 @@ async function buildScene() {
     rt.cuboid(0.5, 1.5, -1, 2, -1, 0),
     rt.cuboid(-1.5, -0.5, -1, 2, - 1, 0)
   ];
+
+  let randoms = [
+    [ 0.22493245131260875, 0.5543967940649911, 0.6289086581844462 ],
+    [ 0.771993977557972, 0.49260080529621514, 0.7337048334902866 ],
+    [ 0.460463006671198, 0.9934776892893268, 0.487425642102445 ],
+    [ 0.8686779977922835, 0.8605405777919427, 0.7679083836122562 ]
+  ];
   // Color all cuboid in center
   for (let i = 0; i < 4; i++){
-    let color = new Array(6).fill([Math.sqrt(Math.random()), Math.sqrt(Math.random()), Math.sqrt(Math.random())]).flat();
+    let color = new Array(6).fill(randoms[i]).flat();
     for (let j = 1; j <= 6; j++) cuboids[i][j].colors = color;
   }
 
   for (let i = 1; i <= 6; i++){
     for (let j = 0; j < 4; j++) cuboids[j][i].textureNums = new Array(6).fill([-1,3,0]).flat();
   }
-	// Spawn cube with grass block textures
+	// Spawn cubes with grass block textures
 	let grassCube = rt.cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);
-  // Spawn red glowing cube
+  let grassCube2 = rt.cuboid(-3, -2, -1, 0, -5.2, -4.2);
+  // Spawn redstone cube
 	let redCube = rt.cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
+  // Spawn red glowing cube
+  let lantern = rt.cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
   let wall = rt.cuboid(2.5, 7.5, -1, 1.5, 5, 7);
 
   // Make redCube red and emissive
   for (let i = 1; i <= 6; i++){
-    redCube[i].textureNums = new Array(6).fill([-1,2,-1]).flat();
-    redCube[i].colors = new Array(6).fill([1,0,0]).flat();
+    redCube[i].textureNums = new Array(6).fill([3,0,-1]).flat();
+
+    lantern[i].textureNums = new Array(6).fill([4,4,-1]).flat();
   }
 
-  wall[6].textureNums = new Array(6).fill([-1,1,-1]).flat();
-  wall[1].textureNums = new Array(6).fill([-1,1,-1]).flat();
+  wall[6].textureNums = new Array(6).fill([-1,2,-1]).flat();
+  wall[1].textureNums = new Array(6).fill([-1,2,-1]).flat();
 	// Set different textures for different sides of the array
 	// And make cube full diffuse
-	grassCube[1].textureNums = new Array(6).fill([0,1,-1]).flat();
-	grassCube[2].textureNums = new Array(6).fill([1,1,-1]).flat();
-	grassCube[3].textureNums = new Array(6).fill([1,1,-1]).flat();
-	grassCube[4].textureNums = new Array(6).fill([2,1,-1]).flat();
-	grassCube[5].textureNums = new Array(6).fill([1,1,-1]).flat();
-	grassCube[6].textureNums = new Array(6).fill([1,1,-1]).flat();
+  [grassCube, grassCube2].forEach((item, i) => {
+    item[1].textureNums = new Array(6).fill([0,2,-1]).flat();
+    item[2].textureNums = new Array(6).fill([1,2,-1]).flat();
+    item[3].textureNums = new Array(6).fill([1,2,-1]).flat();
+    item[4].textureNums = new Array(6).fill([2,2,-1]).flat();
+    item[5].textureNums = new Array(6).fill([1,2,-1]).flat();
+    item[6].textureNums = new Array(6).fill([1,2,-1]).flat();
+  });
+
 
   // Pack cuboids in tree structure to increase raytracing effiecency
   let cuboidTree = [
@@ -121,11 +145,18 @@ async function buildScene() {
       redCube
     ]
   ];
+
+  let cubeTree = [
+    [-3, -0.5, -1, 0, -5.2, -2.8],
+    grassCube2,
+    lantern
+  ];
   // Pack all trees together to one tree with all objects on the plane
 	let objectTree = [
-	  [-1.5, 7.5, -1, 2.5, -2, 7],
+	  [-6.5, 7.5, -1, 2.5, -5.2, 7],
 	  cuboidTree,
-	  cubeWallTree
+	  cubeWallTree,
+    cubeTree
 	];
 	// Append plane tree and object tree to render queue
 	rt.queue.push(groundPlane, objectTree);

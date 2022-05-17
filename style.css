@@ -1,8 +1,9 @@
 body {
 	background-color: #222;
 	color: #fff;
-	font: 4vmin monospace, sans-serif;
-	margin: 0px;
+	font-size: 4vh;
+  font-family: serif;
+	margin: 0;
 }
 
 canvas {
@@ -14,16 +15,17 @@ canvas {
 
 div {
 	position: fixed;
-	right: 0px;
-	top: 0px;
+	right: 0;
+	top: 0;
 }
 
 select {
 	background-color: #909090;
   font-size: inherit;
   font-weight: bolder;
-  padding: 6px;
-  border: 0px none;
+  padding: 1vh;
+  border: 0 none;
+  border-radius: 1vh;
 }
 
 label {
@@ -34,14 +36,21 @@ output {
   display: inline-block;
 }
 
+.slider {
+  width: 70%;
+}
+
 #controlPanel {
+  box-shadow: -10px -10px 25px #555, 15px 15px 25px #000;
   position: fixed;
-  padding: 10px;
-	left: 2vmin;
-	top: 2vmin;
-  max-width: 200px;
+  padding: 1vh;
+	left: 3vh;
+	top: 14vh;
+  width: 26vh;
   word-wrap: break-word;
-  background-color: #c0c0c038;
-  font-size: 12px;
+  background-color: #c0c0c0c8;
+  font-size: 2vh;
+  color: #333;
   backdrop-filter: blur(10px);
+  border-radius: 1.5vh;
 }
