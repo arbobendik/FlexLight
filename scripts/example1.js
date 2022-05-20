@@ -60,7 +60,7 @@ async function buildScene() {
   rt.translucencyTextures.push(translucencyTex);
 
 	// Set texture Sizes
-	rt.standardTextureSizes = [192, 192];
+	rt.standardTextureSizes = [16, 16];
 
   // Create large ground plane
   let groundPlane = rt.plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);

@@ -80,6 +80,7 @@ class rayTracer {
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.7320508075688772
   #define BIAS 0.0000152587890625
+  #define TrianglesPerRow 256
   precision highp float;
   precision highp sampler2D;
   in vec3 position;
@@ -175,11 +176,11 @@ class rayTracer {
     // Length to latest intersection
     float min_len = 1.0 / 0.0;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * 64;
+    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
+      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
       // Read triangle and normal from world tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       mat3 t = mat3(
@@ -219,11 +220,11 @@ class rayTracer {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / ray;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * 64;
+    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
+      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
       // Read normal and triangle from world_tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
@@ -295,18 +296,17 @@ class rayTracer {
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
-      final_color += ambient * importancy_factor;
-      final_color += last_rme.z * importancy_factor;
+      final_color = (ambient + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
-      vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
+      vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
       if (dot(last_rough_normal, last_normal) <= 0.0) last_rough_normal = - last_rough_normal;
       // Handle fresnel reflection
       float fresnel_reflect = abs(fresnel(last_normal, active_ray));
-      // object is solid by chance or because of the fresnel effect
+      // object is solid or translucent by chance because of the fresnel effect
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
@@ -340,7 +340,7 @@ class rayTracer {
           float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
           float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
           // Alter light source position according to variation.
-          light += random_vec * variation;
+          light = random_vec * variation + light;
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
@@ -394,7 +394,7 @@ class rayTracer {
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(intersection[1].w, 64.0) * 8.0, intersection[1].w / 64.0);
+      ivec2 index = ivec2(mod(intersection[1].w, float(TrianglesPerRow)) * 8.0, intersection[1].w / float(TrianglesPerRow));
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
       vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
@@ -428,7 +428,7 @@ class rayTracer {
   }
   void main(){
     float id = vertex_id.x * 65535.0 + vertex_id.y;
-    ivec2 index = ivec2(mod(id, 64.0) * 8.0, id / 64.0);
+    ivec2 index = ivec2(mod(id, float(TrianglesPerRow)) * 8.0, id / float(TrianglesPerRow));
     // Read base attributes from world texture.
     vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
     vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
@@ -810,7 +810,7 @@ class rayTracer {
 		}
 
 		const [width, height] = this.standardTextureSizes;
-		const textureWidth = Math.floor(512 / width);
+		const textureWidth = Math.floor(2048 / width);
 
 		const canvas = document.createElement("canvas");
 		const ctx = canvas.getContext("2d");
@@ -937,17 +937,17 @@ class rayTracer {
     }
     // Fill texture with data pixels
     for (let i = 0; i < this.queue.length; i++) fillData(this.queue[i]);
-    // Round up data to next higher multiple of 1536
-    data.push(new Array(1536 - data.length % 1536).fill(0));
+    // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
+    data.push(new Array(6144 - data.length % 6144).fill(0));
     data = data.flat();
-    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 64 vertecies per line)
-    var dataHeight = data.length / 1536;
+    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
+    var dataHeight = data.length / 6144;
     // Manipulate actual webgl texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 512, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
@@ -1167,7 +1167,7 @@ class rayTracer {
       // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.ambientLight[0], rt.ambientLight[1], rt.ambientLight[2]);
       // Set width of height and normal texture
-      rt.#gl.uniform1i(TextureWidth, Math.floor(512 / rt.standardTextureSizes[0]));
+      rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.standardTextureSizes[0]));
       // Pass whole current world space as data structure to GPU
       rt.#gl.uniform1i(WorldTex, 0);
       // Pass random texture to GPU
