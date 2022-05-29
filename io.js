@@ -1,126 +1,110 @@
-"use strict";
+'use strict';
 
-PlayerHandler.KeyMap = function() {}
-
-/*	Map directions into coordinates
-
-		the absolute values of the numbers represent the dimensions
-		negative numbers mean negative movements in a dimension
-*/
-Object.assign(PlayerHandler.KeyMap, {
-	RIGHT: -1,
-	LEFT: 1,
-	DOWN: -2,
-	UP: 2,
-	BACKWARD: -3,
-	FORWARD: 3,
-	// MOVEMENT SENSITIVITY
-	MOUSE_X: 4,
-	MOUSE_Y: 2,
-	MOVEMENT_SPEED: 0.01
-});
-
-// Add handling for events i.e.: PlayerHandlerObject.KEYMAP.registerKey("KeyW", "FORWARD")
-PlayerHandler.KeyMap.prototype.registerKey = function(key, value) {
-	this[key] = PlayerHandler.KeyMap[value];
-	return this;
-}
-
-// Handle frames
-PlayerHandler.prototype.frame = function(time) {
-	this.update(time);
-	requestAnimationFrame(this.frame.bind(this));
-}
-
-// Generic movement handler
-PlayerHandler.prototype.update = function(time) {
-	if (this.isListening) {
-		const r = this.targetRenderer;
-		const difference = (time - this.savedTime) * PlayerHandler.KeyMap.MOVEMENT_SPEED;
-		r.x += difference * (this.movement[0] * Math.cos(r.fx) + this.movement[2] * Math.sin(r.fx));
-		r.y += difference * this.movement[1];
-		r.z += difference * (this.movement[2] * Math.cos(r.fx) - this.movement[0] * Math.sin(r.fx));
-		this.savedTime = time;
-	}
-}
-
-// Reset movement and release all keys
-PlayerHandler.prototype.resetMovement = function() {
-	this.movement = [0, 0, 0];
-	for (const key in this.keysPressed) {
-		this.keysPressed[key] = false;
-	}
-}
-
-// Change movement when pressing a key
-PlayerHandler.prototype.updateMovement = function(value) {
-	this.movement[Math.abs(value) - 1] += Math.sign(value);
-}
-
-// Set up Events for a CanvasElement for handling inputs and mouse movements
-PlayerHandler.prototype.setupForCanvas = function(canvas) {
-	const handler = this;
-
-	canvas.tabIndex = 0;
-	canvas.addEventListener("focus", function() {
-		this.requestPointerLock();
-	});
-
-	document.addEventListener("pointerlockchange", function(event) {
-		handler.isListening = !handler.isListening;
-		if (handler.isListening) handler.savedTime = event.timeStamp;
-		else {
-			handler.resetMovement();
-			canvas.blur();
-		}
-	});
-
-	canvas.addEventListener("keydown", function(event) {
-		if (event.code in handler.pressedKeys) {
-			if (handler.pressedKeys[event.code]) return;
-			handler.update(event.timeStamp);
-			handler.pressedKeys[event.code] = true;
-			handler.updateMovement(handler.KEYMAP[event.code]);
-		}
-	});
-
-	canvas.addEventListener("keyup", function(event) {
-		if (event.code in handler.pressedKeys && handler.pressedKeys[event.code]) {
-			handler.update(event.timeStamp);
-			handler.pressedKeys[event.code] = false;
-			handler.updateMovement(-handler.KEYMAP[event.code]);
-		}
-	});
-
-	canvas.addEventListener("mousemove", function(event) {
-		if (!handler.isListening) return;
-		const speed = [PlayerHandler.KeyMap.MOUSE_X / canvas.width, PlayerHandler.KeyMap.MOUSE_Y / canvas.height];
-		var movement = [speed[0] * event.movementX, speed[1] * event.movementY];
-		handler.targetRenderer.fx -= movement[0];
-		if (2 * Math.abs(handler.targetRenderer.fy + movement[1]) < Math.PI) handler.targetRenderer.fy += movement[1];
-	});
-}
-
-// Generate a new PlayerHandlerObject
-function PlayerHandler(targetRenderer) {
-	this.KEYMAP = new PlayerHandler.KeyMap()
-		.registerKey("KeyW", "FORWARD")
-		.registerKey("KeyA", "LEFT")
-		.registerKey("KeyS", "BACKWARD")
-		.registerKey("KeyD", "RIGHT")
-		.registerKey("Space", "UP")
-		.registerKey("ShiftLeft", "DOWN");
-	this.pressedKeys = {
-		KeyW: false,
-		KeyA: false,
-		KeyS: false,
-		KeyD: false,
-		Space: false,
-		ShiftLeft: false
+// Generate a new io object
+export class WebIo {
+	static #translationMap = {
+		right: -1,
+		left: 1,
+		down: -2,
+		up: 2,
+		backward: -3,
+		forward: 3
 	};
-	this.isListening = false;
-	this.targetRenderer = targetRenderer;
-	this.setupForCanvas(targetRenderer.canvas);
-	this.resetMovement();
-	requestAnimationFrame(this.frame.bind(this));
+
+  #isListening = false;
+  #savedTime;
+
+  #keyMap = {};
+	#pressedKeys = {};
+  #movement = [0, 0, 0];
+  // movement sensitivity
+  mouseX = 4;
+  mouseY = 2;
+  movementSpeed = 0.01;
+
+  camera;
+
+  constructor (canvas, camera) {
+  	this.registerKey('KeyW', 'forward');
+  	this.registerKey('KeyA', 'left');
+  	this.registerKey('KeyS', 'backward');
+  	this.registerKey('KeyD', 'right');
+  	this.registerKey('Space', 'up');
+  	this.registerKey('ShiftLeft', 'down');
+  	this.camera = camera;
+    window.camera = camera;
+  	this.setupForCanvas(canvas);
+  	requestAnimationFrame(this.frame);
+  }
+
+  registerKey = (key, value) => {
+    this.#keyMap[key] = WebIo.#translationMap[value];
+    this.#pressedKeys[key] = false;
+  }
+
+  frame = () => {
+  	this.update(performance.now());
+  	requestAnimationFrame(this.frame);
+  }
+
+  update = (time) => {
+  	if (!this.#isListening) return;
+		const c = this.camera;
+		const difference = (time - this.#savedTime) * this.movementSpeed;
+		c.x += difference * (this.#movement[0] * Math.cos(c.fx) + this.#movement[2] * Math.sin(c.fx));
+		c.y += difference * this.#movement[1];
+		c.z += difference * (this.#movement[2] * Math.cos(c.fx) - this.#movement[0] * Math.sin(c.fx));
+		this.#savedTime = time;
+  }
+
+  resetMovement = () => {
+    for (const key in this.#pressedKeys) this.#pressedKeys[key] = false;
+  }
+
+  updateMovement = (value) => {
+    this.#movement[Math.abs(value) - 1] += Math.sign(value);
+  }
+
+  setupForCanvas = (canvas) => {
+    const io = this;
+
+  	canvas.tabIndex = 0;
+  	canvas.addEventListener('focus', function() {
+  		this.requestPointerLock();
+  	});
+
+  	document.addEventListener('pointerlockchange', function(event) {
+  		io.#isListening = !io.#isListening;
+  		if (io.#isListening) io.#savedTime = event.timeStamp;
+  		else {
+  			io.resetMovement();
+  			canvas.blur();
+  		}
+  	});
+
+  	canvas.addEventListener('keydown', function(event) {
+  		if (event.code in io.#pressedKeys) {
+  			if (io.#pressedKeys[event.code]) return;
+  			io.update(event.timeStamp);
+  			io.#pressedKeys[event.code] = true;
+  			io.updateMovement(io.#keyMap[event.code]);
+  		}
+  	});
+
+  	canvas.addEventListener('keyup', function(event) {
+  		if (event.code in io.#pressedKeys && io.#pressedKeys[event.code]) {
+  			io.update(event.timeStamp);
+  			io.#pressedKeys[event.code] = false;
+  			io.updateMovement(- io.#keyMap[event.code]);
+  		}
+  	});
+
+  	canvas.addEventListener('mousemove', function(event) {
+  		if (!io.#isListening) return;
+  		const speed = [io.mouseX / canvas.width, io.mouseY / canvas.height];
+  		var movement = [speed[0] * event.movementX, speed[1] * event.movementY];
+  		io.camera.fx -= movement[0];
+  		if (2 * Math.abs(io.camera.fy + movement[1]) < Math.PI) io.camera.fy += movement[1];
+  	});
+  }
 }
