@@ -3,7 +3,8 @@
 load(new URLSearchParams(location.search));
 
 function load(search) {
-	document.currentScript.remove();
+	if(document.currentScript !== null) document.currentScript.remove();
+
 
 	if (search.has("v")) {
 		const script = document.createElement("script");
