@@ -10,7 +10,7 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	rt = new rayTracer(canvas);
+	rt = new RayTracer(canvas);
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.textureFromRME([1, 0, 0], 1, 1);
 	let roughLight = await rt.textureFromRME([1, 0, 0.1], 1, 1);

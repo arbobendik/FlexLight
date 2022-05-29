@@ -1,4 +1,5 @@
 "use strict";
+
 // Declare RayTracer global
 var rt;
 // Start scene buider
@@ -10,7 +11,8 @@ async function buildScene() {
 	// Append it to body
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas
-	rt = new rayTracer(canvas);
+  let fl = new FlexLight (canvas);
+	rt = fl.renderer;
 	// Set Textures 0, 1, 2, 3, 4
 	[
 		"textures/grass.jpg",     // 0
@@ -33,8 +35,8 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position
-	[rt.x, rt.y, rt.z] = [-8, 7, -11];
-	[rt.fx, rt.fy] = [0.440, 0.55];
+	[fl.camera.x, fl.camera.y, fl.camera.z] = [-8, 7, -11];
+	[fl.camera.fx, fl.camera.fy] = [0.440, 0.55];
 
   rt.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
 

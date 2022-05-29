@@ -1,6 +1,6 @@
-"use strict";
+'use strict';
 
-class rayTracer {
+export class RayTracer {
   // Configurable runtime properties of the raytracer (public attributes)
   primaryLightSources = [[0, 10, 0]];
   defaultLightIntensity = 200;
@@ -18,13 +18,9 @@ class rayTracer {
   secondPasses = 0;
   filter = true;
   antialiasing = true;
-  // Camera and frustrum settings
-  x = 0;
-  y = 0;
-  z = 0;
-  fx = 0;
-  fy = 0;
-  fov = Math.PI;
+
+  camera;
+
   // Performance metric
   fps = 0;
   // The queue object contains all data of all vertices in the scene
@@ -36,7 +32,6 @@ class rayTracer {
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
-	#playerHandler;
   // Internal gl texture variables of texture atlases
   #worldTexture = null;
   #pbrTexture = null;
@@ -755,10 +750,10 @@ class rayTracer {
   }
   `;
   // Create new rayTracer from canvas and setup movement
-  constructor (targetCanvas) {
-    this.#canvas = targetCanvas;
-    this.#gl = targetCanvas.getContext("webgl2");
-		this.#playerHandler = new PlayerHandler(this);
+  constructor (canvas, camera) {
+    this.#canvas = canvas;
+    this.camera = camera;
+    this.#gl = canvas.getContext('webgl2');
   }
 
   // Make canvas read only accessible
@@ -766,7 +761,7 @@ class rayTracer {
     return this.#canvas;
   }
 
-  textureFromRGB = async (array, width, height) => await rayTracer.textureFromRGB (array, width, height);
+  textureFromRGB = async (array, width, height) => await RayTracer.textureFromRGB (array, width, height);
   // Generate texture from rgb array in static function to have function precompiled
   static async textureFromRGB (array, width, height) {
     var partCanvas = document.createElement('canvas');
@@ -787,7 +782,7 @@ class rayTracer {
     return await image;
   }
   // Make static function callable from object
-  textureFromRME = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
+  textureFromRME = async (array, width, height) => await RayTracer.textureFromRME (array, width, height);
   // Generate pbr texture (roughness, metallicity, emissiveness)
   static async textureFromRME(array, width, height) {
     // Create new array
@@ -799,7 +794,7 @@ class rayTracer {
   }
   // Generate translucency texture (translucency, particle density, optical density)
   // Pbr images are generated the same way
-  textureFromTPO = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
+  textureFromTPO = async (array, width, height) => await RayTracer.textureFromRME (array, width, height);
 
   // Functions to update texture atlases to add more textures during runtime
 	#updateTextureType (type, fakeTextureWidth) {
@@ -812,8 +807,8 @@ class rayTracer {
 		const [width, height] = this.standardTextureSizes;
 		const textureWidth = Math.floor(2048 / width);
 
-		const canvas = document.createElement("canvas");
-		const ctx = canvas.getContext("2d");
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
 
 		canvas.width = width * textureWidth;
 		canvas.height = height * type.length;
@@ -1000,7 +995,7 @@ class rayTracer {
 
     // Detect mouse movements
     // Handle canvas resize
-    window.addEventListener("resize", function(){
+    window.addEventListener('resize', function(){
     	resize();
     });
     // Function to handle canvas resize
@@ -1151,11 +1146,11 @@ class rayTracer {
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
       // Set 3d camera position
-      rt.#gl.uniform3f(CameraPosition, rt.x, rt.y, rt.z);
+      rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      rt.#gl.uniform2f(Perspective, rt.fx, rt.fy);
+      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
       // Set amount of samples per ray
       rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
       // Set max reflections per ray
@@ -1388,22 +1383,22 @@ class rayTracer {
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, "camera_position");
-      Perspective = rt.#gl.getUniformLocation(Program, "perspective");
-      RenderConf = rt.#gl.getUniformLocation(Program, "conf");
-      SamplesLocation = rt.#gl.getUniformLocation(Program, "samples");
-      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, "max_reflections");
-      MinImportancyLocation = rt.#gl.getUniformLocation(Program, "min_importancy");
-      FilterLocation = rt.#gl.getUniformLocation(Program, "use_filter");
-      AmbientLocation = rt.#gl.getUniformLocation(Program, "ambient");
-      WorldTex = rt.#gl.getUniformLocation(Program, "world_tex");
-      RandomTex = rt.#gl.getUniformLocation(Program, "random");
-      TextureWidth = rt.#gl.getUniformLocation(Program, "texture_width");
+      CameraPosition = rt.#gl.getUniformLocation(Program, 'camera_position');
+      Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
+      RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
+      SamplesLocation = rt.#gl.getUniformLocation(Program, 'samples');
+      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'max_reflections');
+      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'min_importancy');
+      FilterLocation = rt.#gl.getUniformLocation(Program, 'use_filter');
+      AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
+      WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
+      RandomTex = rt.#gl.getUniformLocation(Program, 'random');
+      TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
 
-      LightTex = rt.#gl.getUniformLocation(Program, "light_tex");
-      PbrTex = rt.#gl.getUniformLocation(Program, "pbr_tex");
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, "translucency_tex");
-      Tex = rt.#gl.getUniformLocation(Program, "tex");
+      LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
+      PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
+      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
+      Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
       rt.#gl.depthMask(true);
@@ -1448,10 +1443,10 @@ class rayTracer {
         rt.#gl.bindVertexArray(PostVao[i]);
         rt.#gl.useProgram(PostProgram[i]);
         // Bind uniforms
-        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_color");
-        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_color_ip");
-        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_original_color");
-        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_id");
+        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color');
+        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color_ip');
+        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_color');
+        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_id');
         PostVertexBuffer[i] = rt.#gl.createBuffer();
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
         rt.#gl.enableVertexAttribArray(0);

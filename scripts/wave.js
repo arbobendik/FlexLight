@@ -10,7 +10,8 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	rt = new rayTracer(canvas);
+  let fl = new FlexLight (canvas);
+	rt = fl.renderer;
 	// Make plane defuser.
 	let normal_tex = await rt.textureFromRME([0.1, 0.5, 0], 1, 1);
 	let cuboid_tex = await rt.textureFromRME([0.5, 0, 0], 1, 1);
