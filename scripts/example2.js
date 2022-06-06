@@ -18,8 +18,8 @@ async function buildScene() {
 	rt.pbrTextures.push(normal_tex);
 
 	// Set camera perspective and position.
-	[rt.x, rt.y, rt.z] = [-12, 5, -18];
-	[rt.fx, rt.fy] = [0.440, 0.235];
+	[fl.camera.x, fl.camera.y, fl.camera.z] = [-12, 5, -18];
+	[fl.camera.fx, fl.camera.fy] = [0.440, 0.235];
 
 	// Set two light sources.
 	rt.primaryLightSources = [[0, 10, 0], [5, 5, 5]];

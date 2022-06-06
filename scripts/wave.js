@@ -43,8 +43,8 @@ async function buildScene() {
 	let power = 2;
 	let sideLength = 2 ** power;
 	// Set camera perspective and position.
-	[rt.x, rt.y, rt.z] = [-4 - sideLength, 3 + power, -4];
-	[rt.fx, rt.fy] = [0.25 * Math.PI, 0.6];
+	[fl.camera.x, fl.camera.y, fl.camera.z] = [-4 - sideLength, 3 + power, -4];
+	[fl.camera.fx, fl.camera.fy] = [0.25 * Math.PI, 0.6];
 	// Colors.
 	let colors = [];
 	// assign each pillar a color.

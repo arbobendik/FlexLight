@@ -18,17 +18,17 @@ function load(search) {
     const parameterForm = document.getElementById("parameterForm");
     // Restore values in raytracer
     ["filter", "antialiasing"].forEach((item) => {
-      rt[item] = (localStorage.getItem(item) ?? rt[item].toString()) === "true";
-      parameterForm.children[item].checked = rt[item];
+      renderer[item] = (localStorage.getItem(item) ?? renderer[item].toString()) === "true";
+      parameterForm.children[item].checked = renderer[item];
     });
     var sliderVariables = ["samplesPerRay", "renderQuality", "maxReflections", "minImportancy"];
     sliderVariables.forEach((item) => {
-      rt[item] = Number(localStorage.getItem(item) ?? rt[item]);
-      parameterForm.children[item].value = rt[item];
+      renderer[item] = Number(localStorage.getItem(item) ?? renderer[item]);
+      parameterForm.children[item].value = renderer[item];
     });
     // Load slider variables
     document.querySelectorAll("output").forEach((item, i) => {
-      item.value = rt[sliderVariables[i]];
+      item.value = renderer[sliderVariables[i]];
       // Define silider
       var slider = parameterForm.children[sliderVariables[i]];
       // Live update slider variables
@@ -46,12 +46,12 @@ function load(search) {
     // Update gl quality params on form change
     parameterForm.addEventListener("change", () => {
       ["filter", "antialiasing"].forEach((item) => {
-        rt[item] = parameterForm.children[item].checked;
-        localStorage.setItem(item, rt[item]);
+        renderer[item] = parameterForm.children[item].checked;
+        localStorage.setItem(item, renderer[item]);
       });
       ["samplesPerRay", "renderQuality", "maxReflections", "minImportancy"].forEach((item) => {
-        rt[item] = Number(parameterForm.children[item].value);
-        localStorage.setItem(item, rt[item]);
+        renderer[item] = Number(parameterForm.children[item].value);
+        localStorage.setItem(item, renderer[item]);
       });
     });
 
