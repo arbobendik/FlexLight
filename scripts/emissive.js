@@ -10,7 +10,8 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(canvas);
 	// Create new RayTracer (rt) for canvas.
-	rt = new RayTracer(canvas);
+  let fl = new FlexLight (canvas);
+  rt = fl.renderer;
 	// Create 2 pbr metallic textures.
 	let roughTex = await rt.textureFromRME([1, 0, 0], 1, 1);
 	let roughLight = await rt.textureFromRME([1, 0, 0.1], 1, 1);
@@ -34,7 +35,7 @@ async function buildScene() {
   rt.translucencyTextures.push(translucencyTex);
 
   // Move camera out of center.
-  rt.z = -20;
+  fl.camera.z = -20;
 
 	// Remove primary light source in favour of emissive.
 	rt.primaryLightSources = [];
