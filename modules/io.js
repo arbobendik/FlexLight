@@ -32,7 +32,6 @@ export class WebIo {
   	this.registerKey('Space', 'up');
   	this.registerKey('ShiftLeft', 'down');
   	this.camera = camera;
-    window.camera = camera;
   	this.setupForCanvas(canvas);
   	requestAnimationFrame(this.frame);
   }
@@ -69,42 +68,42 @@ export class WebIo {
     const io = this;
 
   	canvas.tabIndex = 0;
-  	canvas.addEventListener('focus', function() {
-  		this.requestPointerLock();
-  	});
+  	canvas.onfocus = () => {
+  		canvas.requestPointerLock();
+  	};
 
-  	document.addEventListener('pointerlockchange', function(event) {
+  	document.onpointerlockchange = (event) => {
   		io.#isListening = !io.#isListening;
   		if (io.#isListening) io.#savedTime = event.timeStamp;
   		else {
   			io.resetMovement();
   			canvas.blur();
   		}
-  	});
+  	};
 
-  	canvas.addEventListener('keydown', function(event) {
+  	canvas.onkeydown = (event) => {
   		if (event.code in io.#pressedKeys) {
   			if (io.#pressedKeys[event.code]) return;
   			io.update(event.timeStamp);
   			io.#pressedKeys[event.code] = true;
   			io.updateMovement(io.#keyMap[event.code]);
   		}
-  	});
+  	};
 
-  	canvas.addEventListener('keyup', function(event) {
+  	canvas.onkeyup = (event) => {
   		if (event.code in io.#pressedKeys && io.#pressedKeys[event.code]) {
   			io.update(event.timeStamp);
   			io.#pressedKeys[event.code] = false;
   			io.updateMovement(- io.#keyMap[event.code]);
   		}
-  	});
+  	};
 
-  	canvas.addEventListener('mousemove', function(event) {
+  	canvas.onmousemove = (event) => {
   		if (!io.#isListening) return;
   		const speed = [io.mouseX / canvas.width, io.mouseY / canvas.height];
   		var movement = [speed[0] * event.movementX, speed[1] * event.movementY];
   		io.camera.fx -= movement[0];
   		if (2 * Math.abs(io.camera.fy + movement[1]) < Math.PI) io.camera.fy += movement[1];
-  	});
+  	};
   }
 }

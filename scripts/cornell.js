@@ -32,7 +32,7 @@ async function buildScene() {
   let translucencyTex = await rt.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
   rt.translucencyTextures.push(translucencyTex);
   // Move camera out of center.
-  rt.z = -20;
+  fl.camera.z = -20;
 	// Set primary light source.
 	rt.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.

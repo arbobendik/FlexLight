@@ -1,28 +1,35 @@
 'use strict';
 
-import {Camera} from './camera.js';
-import {RayTracer} from './raytracer.js';
-import {WebIo} from './io.js';
+import {Camera} from './modules/camera.js';
+import {Scene} from './modules/scene.js';
+import {RayTracer} from './modules/raytracer.js';
+import {WebIo} from './modules/io.js';
 
 export class FlexLight {
   #idRenderer;
   #idIo;
-
   #canvas;
+
   camera;
+  #scene;
   #renderer;
   #io;
 
   constructor (canvas) {
     this.#canvas = canvas;
     this.camera = new Camera();
-    this.#renderer = new RayTracer(canvas, this.camera);
+    this.#scene = new Scene();
+    this.#renderer = new RayTracer(canvas, this.camera, this.#scene);
     this.#io = new WebIo(canvas, this.camera);
     this.#io.renderer = this.#renderer;
   }
 
   get canvas () {
     return this.#canvas;
+  }
+
+  get scene () {
+    return this.#scene;
   }
 
   get renderer () {
@@ -39,12 +46,19 @@ export class FlexLight {
     this.io(this.#idIo);
   }
 
+  set scene (scene) {
+    this.#scene = scene;
+    this.#renderer.scene = scene;
+  }
+
   set renderer (renderer) {
     this.#idRenderer = renderer ?? 'raytracer';
     switch (this.#idRenderer) {
       case 'raytracer':
-        this.#renderer = new RayTracer(this.#canvas, this.camera);
+        this.#renderer = new RayTracer(this.#canvas, this.camera, this.#scene);
         break;
+      default:
+        console.error("Renderer option " + this.#idRenderer + " doesn't exist.");
     }
   }
 
@@ -54,6 +68,8 @@ export class FlexLight {
       case 'web':
         this.#io = new WebIo(this.#canvas, this.camera);
         break;
+      default:
+        console.error("Io option " + this.#idIo + " doesn't exist.");
     }
     this.#io.renderer = this.#renderer;
   }
