@@ -3,6 +3,7 @@
 import {Camera} from './modules/camera.js';
 import {Scene} from './modules/scene.js';
 import {RayTracer} from './modules/raytracer.js';
+import {Rasterizer} from './modules/rasterizer.js';
 import {WebIo} from './modules/io.js';
 
 export class FlexLight {
@@ -19,7 +20,7 @@ export class FlexLight {
     this.#canvas = canvas;
     this.camera = new Camera();
     this.#scene = new Scene();
-    this.#renderer = new RayTracer(canvas, this.camera, this.#scene);
+    this.#renderer = new Rasterizer(canvas, this.camera, this.#scene);
     this.#io = new WebIo(canvas, this.camera);
     this.#io.renderer = this.#renderer;
   }
@@ -52,10 +53,14 @@ export class FlexLight {
   }
 
   set renderer (renderer) {
-    this.#idRenderer = renderer ?? 'raytracer';
+    this.#idRenderer = renderer ?? 'rasterizer';
+    this.#renderer.halt();
     switch (this.#idRenderer) {
       case 'raytracer':
         this.#renderer = new RayTracer(this.#canvas, this.camera, this.#scene);
+        break;
+      case 'rasterizer':
+        this.#renderer = new Rasterizer(this.#canvas, this.camera, this.#scene);
         break;
       default:
         console.error("Renderer option " + this.#idRenderer + " doesn't exist.");
