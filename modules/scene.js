@@ -10,7 +10,7 @@ export class Scene {
   primaryLightSources = [[0, 10, 0]];
   defaultLightIntensity = 200;
   defaultLightVariation = 0.4;
-  ambientLight = [0, 0, 0];
+  ambientLight = [0.1, 0.1, 0.1];
   textures = [];
   pbrTextures = [];
   translucencyTextures = [];
@@ -63,6 +63,7 @@ export class Scene {
 
 class Object3D {
   setColor (r, g, b) {
+    if (Array.isArray(r)) [r, g, b] = r;
     if (this.indexable) {
       for (let i = 1; i < this.length; i++) this[i].setColor(r, g, b);
     } else {
@@ -76,6 +77,9 @@ class Object3D {
       this.textureNums = new Array(this.length).fill([tex, pbr, trans]).flat();
     }
   }
+  /*moveVector(x, y, z) {
+
+  }*/
   constructor (length, indexable) {
     this.length = length;
     this.indexable = indexable;

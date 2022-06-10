@@ -1,9 +1,6 @@
 "use strict";
-
-// Declare globals
-var renderer;
-var camera;
-var scene;
+// Declare engine global
+var engine;
 // Start scene buider
 buildScene();
 // Build example scene
@@ -13,13 +10,11 @@ async function buildScene() {
 	// Append it to body
 	document.body.appendChild(canvas);
 	// Create new engine object for canvas
-  let fl = new FlexLight (canvas);
-  fl.renderer = 'raytracer';
-  fl.io = 'web';
+  engine = new FlexLight (canvas);
+  engine.io = 'web';
 
-	renderer = fl.renderer;
-  camera = fl.camera;
-  scene = fl.scene;
+  let camera = engine.camera;
+  let scene = engine.scene;
 	// Set Textures 0, 1, 2, 3, 4
 	[
 		"textures/grass.jpg",     // 0
@@ -42,8 +37,8 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position
-	[fl.camera.x, fl.camera.y, fl.camera.z] = [-8, 7, -11];
-	[fl.camera.fx, fl.camera.fy] = [0.440, 0.55];
+	[camera.x, camera.y, camera.z] = [-8, 7, -11];
+	[camera.fx, camera.fy] = [0.440, 0.55];
 
   scene.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
 
@@ -158,9 +153,9 @@ async function buildScene() {
 	// Append plane tree and object tree to render queue
 	scene.queue.push(groundPlane, objectTree);
   // Increase max reflections, because translucent objects need more reflections to look good
-  renderer.maxReflections = 4;
+  engine.renderer.maxReflections = 4;
 	// Start render engine
-	renderer.render();
+	engine.renderer.render();
 
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
@@ -168,10 +163,10 @@ async function buildScene() {
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically
 	setInterval(function(){
-		fpsCounter.textContent = renderer.fps;
+		fpsCounter.textContent = engine.renderer.fps;
 		// Update textures every second
-		renderer.updateTextures();
-    renderer.updatePbrTextures();
-    renderer.updateTranslucencyTextures();
+		engine.renderer.updateTextures();
+    engine.renderer.updatePbrTextures();
+    engine.renderer.updateTranslucencyTextures();
 	},1000);
 };

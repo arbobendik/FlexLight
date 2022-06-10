@@ -23,19 +23,22 @@
 				</select>
 			</form>
 			<form id = "parameterForm">
+        <label for = "raytracing">Raytracing</label>
+        <input id = "raytracing" type = "checkbox" checked></input>
 				<label for = "filter">Filter</label>
 				<input id = "filter" type = "checkbox"/>
 				<label for = "antialiasing">Antialiasing</label>
 				<input id = "antialiasing" type = "checkbox"></input>
+        <br>
+        <label for = "renderQuality">Resolution</label>
+        <output>1</output>
+        <br>
+        <input class = "slider" id = "renderQuality" type = "range" min = "0.1" max = "2" step = "0.1" value = "1"/>
+        <br>
 				<label for = "samplesPerRay">Sample Count</label>
         <output>1</output>
         <br>
 				<input class = "slider" id = "samplesPerRay" type = "range" min = "1" max = "8" value = "1"/>
-        <br>
-				<label for = "renderQuality">Resolution</label>
-        <output>1</output>
-        <br>
-				<input class = "slider" id = "renderQuality" type = "range" min = "0.1" max = "2" step = "0.1" value = "1"/>
         <br>
 				<label for = "maxReflections">Number of reflections</label>
         <output>3</output>

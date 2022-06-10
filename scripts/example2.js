@@ -1,48 +1,48 @@
 "use strict";
-// Declare RayTracer global.
-var rt;
+// Declare engine global.
+var engine;
 // Start scene buider
 buildScene();
 // Build example scene
 async function buildScene() {
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
-	// Append it to body.
+  // Append it to body.
 	document.body.appendChild(canvas);
-	// Create new RayTracer (rt) for canvas.
-  let fl = new FlexLight (canvas);
-	rt = fl.renderer;
+  engine = new FlexLight (canvas);
+  engine.io = 'web';
 
-	// Make plane defuser.
-	let normal_tex = await rt.textureFromRME([0.5, 0, 0], 1, 1);
-	rt.pbrTextures.push(normal_tex);
+  let camera = engine.camera;
+  let scene = engine.scene;
+	// Create pbr textures.
+	let normal_tex = await scene.textureFromRME([0.5, 0, 0], 1, 1);
+	scene.pbrTextures.push(normal_tex);
 
 	// Set camera perspective and position.
-	[fl.camera.x, fl.camera.y, fl.camera.z] = [-12, 5, -18];
-	[fl.camera.fx, fl.camera.fy] = [0.440, 0.235];
+	[camera.x, camera.y, camera.z] = [-12, 5, -18];
+	[camera.fx, camera.fy] = [0.440, 0.235];
 
 	// Set two light sources.
-	rt.primaryLightSources = [[0, 10, 0], [5, 5, 5]];
-	rt.primaryLightSources[0].intensity = 100;
-	rt.primaryLightSources[1].intensity = 100;
+	scene.primaryLightSources = [[0, 10, 0], [5, 5, 5]];
+	scene.primaryLightSources[0].intensity = 100;
+	scene.primaryLightSources[1].intensity = 100;
 
 	// Generate plane.
-	let this_plane = rt.plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
+	let this_plane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
+  this_plane.setTextureNums(-1, 0, -1);
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [];
-	r[0] = rt.cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5);
-	r[1] = rt.cuboid(-1.5, 1.5, -1, 2, -2, -1);
-	r[2] = rt.cuboid(0.5, 1.5, -1, 2, -1, 0);
-	r[3] = rt.cuboid(-1.5, -0.5, -1, 2, -1, 0);
+	r[0] = scene.Cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5);
+	r[1] = scene.Cuboid(-1.5, 1.5, -1, 2, -2, -1);
+	r[2] = scene.Cuboid(0.5, 1.5, -1, 2, -1, 0);
+	r[3] = scene.Cuboid(-1.5, -0.5, -1, 2, -1, 0);
 	// Color all cuboids in center.
 	for (let i = 0; i < 4; i++){
-		let color = new Array(6).fill([Math.random(), Math.random(), Math.random()]).flat();
-		for (let j = 1; j < 7; j++) r[i][j].colors = color;
+    r[i].setColor(Math.random() * 255, Math.random() * 255, Math.random() * 255);
 	}
 
 	// Spawn cube.
-	let cube = rt.cuboid(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
+	let cube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
 	  [-1.5, 6.5, -1, 2.5, -2, 6.5],
@@ -50,9 +50,9 @@ async function buildScene() {
 	  cube
 	];
 	// Push both objects to render queue.
-	rt.queue.push(this_plane, objects);
+	scene.queue.push(this_plane, objects);
 	// Start render engine.
-	rt.render();
+	engine.renderer.render();
 
 	// Add FPS counter to top-right corner.
 	var fpsCounter = document.createElement("div");
@@ -60,11 +60,11 @@ async function buildScene() {
 	document.body.appendChild(fpsCounter);
   // Update Counter periodically.
 	setInterval(function(){
-		fpsCounter.textContent = rt.fps;
+		fpsCounter.textContent = engine.renderer.fps;
 		// Update textures every second.
-		rt.updateTextures();
-		rt.updatePbrTextures();
-    rt.updateTranslucencyTextures();
+		engine.renderer.updateTextures();
+		engine.renderer.updatePbrTextures();
+    engine.renderer.updateTranslucencyTextures();
 	},1000);
 
 	// Init iterator variable for simple animations.
@@ -76,20 +76,20 @@ async function buildScene() {
 		// Precalculate sin and cos.
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// Animate light sources.
-		rt.primaryLightSources =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
-    rt.primaryLightSources[0].intensity = 100;
-		rt.primaryLightSources[1].intensity = 800;
-		rt.updatePrimaryLightSources();
+		scene.primaryLightSources =  [[20*sin, 8, 20*cos], [2*cos, 80, 10*sin]];
+    scene.primaryLightSources[0].intensity = 100;
+		scene.primaryLightSources[1].intensity = 800;
+		engine.renderer.updatePrimaryLightSources();
 		// Calculate new width for this frame.
 		let newX = 6.5 + 4 * sin;
 		// Create new resized R0 object.
-		let newR0 = rt.cuboid(-1.5 + newX, 1.5 + newX, -1, 2, 1.5, 2.5);
+		let newR0 = scene.Cuboid(-1.5 + newX, 1.5 + newX, -1, 2, 1.5, 2.5);
 		// Color new cuboid.
 		for (let j = 1; j < 7; j++) newR0[j].colors = r[0][j].colors;
 		// Update bounding boxes.
-		rt.queue[1][0] = [-1.5, 6.5 + newX, -1, 2.5, -2, 6.5];
-		rt.queue[1][1][0] = [-1.5, 4.5 + newX, -1, 2, -2, 2.5];
+		scene.queue[1][0] = [-1.5, 6.5 + newX, -1, 2.5, -2, 6.5];
+		scene.queue[1][1][0] = [-1.5, 4.5 + newX, -1, 2, -2, 2.5];
 		// Push element in QUEUE.
-		rt.queue[1][1][1] = newR0;
+		scene.queue[1][1][1] = newR0;
 	}, 100/6);
 }

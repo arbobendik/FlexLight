@@ -1,6 +1,6 @@
 "use strict";
-// Declare RayTracer global.
-var rt;
+// Declare engine global.
+var engine;
 // Start scene buider
 buildScene();
 // Build example scene
@@ -9,61 +9,61 @@ async function buildScene() {
 	var canvas = document.createElement("canvas");
 	// Append it to body.
 	document.body.appendChild(canvas);
-	// Create new RayTracer (rt) for canvas.
-  let fl = new FlexLight (canvas);
-	rt = fl.renderer;
-	// Make plane defuser.
-	let normal_tex = await rt.textureFromRME([0.1, 0.5, 0], 1, 1);
-	let cuboid_tex = await rt.textureFromRME([0.5, 0, 0], 1, 1);
-	rt.pbrTextures.push(normal_tex, cuboid_tex);
+  engine = new FlexLight(canvas);
+  engine.io = 'web';
+
+  let camera = engine.camera;
+  let scene = engine.scene;
+	// Create pbr textures.
+	let normal_tex = await scene.textureFromRME([0.1, 0.5, 0], 1, 1);
+	let cuboid_tex = await scene.textureFromRME([0.5, 0, 0], 1, 1);
+	scene.pbrTextures.push(normal_tex, cuboid_tex);
 	// Set light source.
-	rt.primaryLightSources = [[0, 10, 0]];
+	scene.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].intensity = 150;
-  rt.ambient = [0.1, 0.1, 0.1];
+  scene.primaryLightSources[0].intensity = 150;
+  scene.ambient = [0.1, 0.1, 0.1];
 	// Generate plane.
-	let this_plane = rt.plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-	this_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
+	let this_plane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
+  this_plane.setTextureNums(-1, 0, -1);
 	// Push both objects to render queue.
-	rt.queue.push(this_plane);
+	scene.queue.push(this_plane);
 	// Start render engine.
-	rt.render();
+	engine.renderer.render();
 	// Add FPS counter to top-right corner.
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
 	setInterval(function(){
-		fpsCounter.textContent = rt.FPS;
+		fpsCounter.textContent = engine.renderer.fps;
 		// Update texture atlases.
-		rt.updatePbrTextures();
+		engine.renderer.updatePbrTextures();
 	},1000);
 
 	// Set power of 2 square length.
 	let power = 2;
 	let sideLength = 2 ** power;
 	// Set camera perspective and position.
-	[fl.camera.x, fl.camera.y, fl.camera.z] = [-4 - sideLength, 3 + power, -4];
-	[fl.camera.fx, fl.camera.fy] = [0.25 * Math.PI, 0.6];
+	[camera.x, camera.y, camera.z] = [-4 - sideLength, 3 + power, -4];
+	[camera.fx, camera.fy] = [0.25 * Math.PI, 0.6];
 	// Colors.
 	let colors = [];
 	// assign each pillar a color.
 	for (let i = 0; i < sideLength; i++){
 		let row = [];
-		for (let j = 0; j < sideLength; j++) row.push([Math.random(), Math.random(), Math.random()]);
+		for (let j = 0; j < sideLength; j++) row.push([Math.random() * 255, Math.random() * 255, Math.random() * 255]);
 		colors.push(row);
 	}
 
 	// Declare recursive function to build recursive structure for maximal bounding box performance increase.
 	var drawMap = (pot, x, y, notSquare) => {
 		// Base case.
-		if (pot == 0){
-			let cuboid = rt.cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
+		if (pot === 0){
+			let cuboid = scene.Cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
-			for (let i = 1; i <= 6; i++){
-				cuboid[i].textureNums = new Array(6).fill([-1,1,-1]).flat();
-				cuboid[i].colors = new Array(6).fill(colors[x][y]).flat();
-			}
+      cuboid.setTextureNums(-1, 1, -1);
+      cuboid.setColor(colors[x][y]);
 			return cuboid;
 		}
 		// Decide to split vertically or horizontally.
@@ -93,6 +93,6 @@ async function buildScene() {
 		// Increase iterator.
 		t += 0.02;
 		// Package cuboids together in a shared bounding volume.
-		rt.queue[1] = drawMap(2 * power, 0, 0, false);
+		scene.queue[1] = drawMap(2 * power, 0, 0, false);
 	}, 100/6);
 }
