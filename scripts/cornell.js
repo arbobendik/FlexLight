@@ -1,6 +1,6 @@
 "use strict";
-// Declare RayTracer global.
-var rt;
+// Declare engine global.
+var engine;
 // Start scene buider
 buildScene();
 // Build example scene
@@ -9,12 +9,15 @@ async function buildScene() {
 	var canvas = document.createElement("canvas");
 	// Append it to body.
 	document.body.appendChild(canvas);
-	// Create new RayTracer (rt) for canvas.
-	rt = new rayTracer(canvas);
-	// Create 2 pbr metallic textures.
-	let roughTex = await rt.textureFromRME([1, 0, 0], 1, 1);
-  let smoothTex = await rt.textureFromRME([0, 0, 0], 1, 1);
-  let caroTex = await rt.textureFromRME(
+  engine = new FlexLight (canvas);
+  engine.io = 'web';
+
+  let camera = engine.camera;
+  let scene = engine.scene;
+	// Create pbr textures.
+	let roughTex = await scene.textureFromRME([1, 0, 0], 1, 1);
+  let smoothTex = await scene.textureFromRME([0, 0, 0], 1, 1);
+  let caroTex = await scene.textureFromRME(
 		[
 			Array(64).fill([
 				Array(64).fill([1, 0, 0.2]).flat(),
@@ -26,57 +29,47 @@ async function buildScene() {
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	rt.pbrTextures.push(roughTex, caroTex, smoothTex);
+	scene.pbrTextures.push(roughTex, caroTex, smoothTex);
   // Generate translucency texture for cube.
-  let translucencyTex = await rt.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
-  rt.translucencyTextures.push(translucencyTex);
+  let translucencyTex = await scene.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
+  scene.translucencyTextures.push(translucencyTex);
   // Move camera out of center.
-  rt.z = -20;
+  camera.z = -20;
 	// Set primary light source.
-	rt.primaryLightSources = [[0, 4, 0]];
+	scene.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	rt.primaryLightSources[0].intensity = 12;
-  // Increase maximum ambount of light bounces per ray.
-  rt.maxReflections = 7;
-  rt.minImportancy = 0.5;
+	scene.primaryLightSources[0].intensity = 12;
 	// Generate side planes of box.
-	let bottom_plane = rt.plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
-  let top_plane = rt.plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
-  let back_plane = rt.plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5]);
-	let front_plane = rt.plane([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15]);
-  let left_plane = rt.plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15]);
-  let right_plane = rt.plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
+	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
+  let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
+  let back_plane = scene.Plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5]);
+	let front_plane = scene.Plane([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15]);
+  let left_plane = scene.Plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15]);
+  let right_plane = scene.Plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
 
   // Make planes diffuse.
-	bottom_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  top_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-	back_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-	front_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  left_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
-  right_plane.textureNums = new Array(6).fill([-1,0,-1]).flat();
+  [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => item.setTextureNums(-1, 0, -1));
   // Color left and right plane.
-  left_plane.colors = new Array(6).fill([1, 0, 0]).flat();
-  right_plane.colors = new Array(6).fill([0, 1, 0]).flat();
+  left_plane.setColor(255, 0, 0);
+  right_plane.setColor(0, 255, 0);
 	// Generate a few cuboids in the box with respective bounding box.
 	let r = [[], []];
-	r[0] = rt.cuboid(-3, -1.5, -5, -2, -1, 1);
+	r[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
+  r[0].setTextureNums(-1, 1, -1);
 	// Generate rotated cube object from planes.
 	var [x, x2, y, y2, z, z2] = [0, 3, -5, -1, -1, 2];
 	var [b0, b1, b2, b3] = [[x+1,  y, z], [x2,  y, z+1], [x2-1,  y, z2], [x,  y, z2-1]]
 	var [t0, t1, t2, t3] = [[x+1, y2, z], [x2, y2, z+1], [x2-1, y2, z2], [x, y2, z2-1]]
   r[1][0] = [x, x2, y, y2, z, z2];
-  r[1][1] = rt.plane(t0,t1,t2,t3,[0,1,0]);
-  r[1][2] = rt.plane(t1,b1,b2,t2,[1,0,0]);
-  r[1][3] = rt.plane(t2,b2,b3,t3,[0,0,1]);
-  r[1][4] = rt.plane(b3,b2,b1,b0,[0,-1,0]);
-  r[1][5] = rt.plane(t3,b3,b0,t0,[-1,0,0]);
-  r[1][6] = rt.plane(t0,b0,b1,t1,[0,0,-1]);
+  r[1][1] = scene.Plane(t0,t1,t2,t3,[0,1,0]);
+  r[1][2] = scene.Plane(t1,b1,b2,t2,[1,0,0]);
+  r[1][3] = scene.Plane(t2,b2,b3,t3,[0,0,1]);
+  r[1][4] = scene.Plane(b3,b2,b1,b0,[0,-1,0]);
+  r[1][5] = scene.Plane(t3,b3,b0,t0,[-1,0,0]);
+  r[1][6] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 	// Set textures for cuboids.
-	for (let i = 1; i <= 6; i++){
-		r[0][i].textureNums = new Array(6).fill([-1,1,-1]).flat();
-		// Make second cuboid smooth and semi-translucent.
-		r[1][i].textureNums = new Array(6).fill([-1,2,0]).flat();
-	}
+  // Make second cuboid smooth and semi-translucent.
+	for (let i = 1; i <= 6; i++) r[1][i].setTextureNums(-1, 2, 0);
 
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
@@ -89,20 +82,20 @@ async function buildScene() {
 		bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane
 	];
 	// Push both objects to render queue.
-	rt.queue.push(objects, box);
+	scene.queue.push(objects, box);
 	// Start render engine.
-	rt.render();
+	engine.renderer.render();
 
 	// Add FPS counter to top-right corner.
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
-	setInterval(async function(){
-		fpsCounter.textContent = rt.fps;
-    // Update textures every second.
-		rt.updateTextures();
-		rt.updatePbrTextures();
-    rt.updateTranslucencyTextures();
+  setInterval(function(){
+		fpsCounter.textContent = engine.renderer.fps;
+		// Update textures every second
+		engine.renderer.updateTextures();
+    engine.renderer.updatePbrTextures();
+    engine.renderer.updateTranslucencyTextures();
 	},1000);
 }

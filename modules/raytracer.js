@@ -1,14 +1,8 @@
-"use strict";
+'use strict';
 
-class rayTracer {
+export class RayTracer {
+  type = 'raytracer';
   // Configurable runtime properties of the raytracer (public attributes)
-  primaryLightSources = [[0, 10, 0]];
-  defaultLightIntensity = 200;
-  ambientLight = [0, 0, 0];
-  textures = [];
-  pbrTextures = [];
-  translucencyTextures = [];
-  standardTextureSizes = [64, 64];
   // Quality settings
   samplesPerRay = 1;
   renderQuality = 1;
@@ -18,25 +12,14 @@ class rayTracer {
   secondPasses = 0;
   filter = true;
   antialiasing = true;
-  // Camera and frustrum settings
-  x = 0;
-  y = 0;
-  z = 0;
-  fx = 0;
-  fy = 0;
-  fov = Math.PI;
   // Performance metric
   fps = 0;
-  // The queue object contains all data of all vertices in the scene
-  queue = [];
-  // Calculate cross product
-  #cross = (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
-  // Determines vector between 2 points
-  #vec_diff = (a, b) => a.map((item, i) => b[i] - item);
+
+  halt = () => this.#halt = true;
+  #halt = false;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
-	#playerHandler;
   // Internal gl texture variables of texture atlases
   #worldTexture = null;
   #pbrTexture = null;
@@ -69,7 +52,7 @@ class rayTracer {
     );
     vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
     // Set final clip space position
-    gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
+    gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
     position = position_3d;
     tex_coord = tex_pos;
     clip_space = vec3(translate_2d, translate_py.y);
@@ -80,6 +63,7 @@ class rayTracer {
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.7320508075688772
   #define BIAS 0.0000152587890625
+  #define TrianglesPerRow 256
   precision highp float;
   precision highp sampler2D;
   in vec3 position;
@@ -175,11 +159,11 @@ class rayTracer {
     // Length to latest intersection
     float min_len = 1.0 / 0.0;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * 64;
+    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
+      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
       // Read triangle and normal from world tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       mat3 t = mat3(
@@ -219,11 +203,11 @@ class rayTracer {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / ray;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * 64;
+    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), 64.0) * 8.0, i / 64);
+      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
       // Read normal and triangle from world_tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
@@ -295,18 +279,17 @@ class rayTracer {
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
-      final_color += ambient * importancy_factor;
-      final_color += last_rme.z * importancy_factor;
+      final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
-      vec3 random_vec = (texture(random, random_coord).xyz - 0.5) * 2.0;
+      vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
       if (dot(last_rough_normal, last_normal) <= 0.0) last_rough_normal = - last_rough_normal;
       // Handle fresnel reflection
       float fresnel_reflect = abs(fresnel(last_normal, active_ray));
-      // object is solid by chance or because of the fresnel effect
+      // object is solid or translucent by chance because of the fresnel effect
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
@@ -340,7 +323,7 @@ class rayTracer {
           float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
           float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
           // Alter light source position according to variation.
-          light += random_vec * variation;
+          light = random_vec * variation + light;
           // Skip if strength is negative or zero
           if (strength <= 0.0) continue;
           // Recalculate position -> light vector
@@ -394,7 +377,7 @@ class rayTracer {
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(intersection[1].w, 64.0) * 8.0, intersection[1].w / 64.0);
+      ivec2 index = ivec2(mod(intersection[1].w, float(TrianglesPerRow)) * 8.0, intersection[1].w / float(TrianglesPerRow));
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
       vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
@@ -428,7 +411,7 @@ class rayTracer {
   }
   void main(){
     float id = vertex_id.x * 65535.0 + vertex_id.y;
-    ivec2 index = ivec2(mod(id, 64.0) * 8.0, id / 64.0);
+    ivec2 index = ivec2(mod(id, float(TrianglesPerRow)) * 8.0, id / float(TrianglesPerRow));
     // Read base attributes from world texture.
     vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
     vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
@@ -755,51 +738,17 @@ class rayTracer {
   }
   `;
   // Create new rayTracer from canvas and setup movement
-  constructor (targetCanvas) {
-    this.#canvas = targetCanvas;
-    this.#gl = targetCanvas.getContext("webgl2");
-		this.#playerHandler = new PlayerHandler(this);
+  constructor (canvas, camera, scene) {
+    this.#canvas = canvas;
+    this.camera = camera;
+    this.scene = scene;
+    this.#gl = canvas.getContext('webgl2');
   }
 
   // Make canvas read only accessible
   get canvas () {
     return this.#canvas;
   }
-
-  textureFromRGB = async (array, width, height) => await rayTracer.textureFromRGB (array, width, height);
-  // Generate texture from rgb array in static function to have function precompiled
-  static async textureFromRGB (array, width, height) {
-    var partCanvas = document.createElement('canvas');
-    var partCtx = partCanvas.getContext('2d');
-    partCanvas.width = width;
-    partCanvas.height = height;
-		// Disable image smoothing to get non-blury pixel values
-		partCtx.imageSmoothingEnabled = false;
-    // Create Image element
-    let imgData = partCtx.createImageData(width, height);
-    // Set imgArray as image source
-    imgData.data.set(new Uint8ClampedArray(array), 0);
-    // Set image data in canvas
-    partCtx.putImageData(imgData, 0, 0);
-    // Set part canvas as image source
-    let image = new Image();
-    image.src = await partCanvas.toDataURL();
-    return await image;
-  }
-  // Make static function callable from object
-  textureFromRME = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
-  // Generate pbr texture (roughness, metallicity, emissiveness)
-  static async textureFromRME(array, width, height) {
-    // Create new array
-    let texelArray = [];
-    // Convert image to Uint8 format
-    for (let i = 0; i < array.length; i+=3) texelArray.push(array[i] * 255, array[i +1] * 255, array[i+2] * 255, 255);
-    // From here on rgb images are generated the same way
-    return await this.textureFromRGB(texelArray, width, height);
-  }
-  // Generate translucency texture (translucency, particle density, optical density)
-  // Pbr images are generated the same way
-  textureFromTPO = async (array, width, height) => await rayTracer.textureFromRME (array, width, height);
 
   // Functions to update texture atlases to add more textures during runtime
 	#updateTextureType (type, fakeTextureWidth) {
@@ -809,11 +758,11 @@ class rayTracer {
 			return;
 		}
 
-		const [width, height] = this.standardTextureSizes;
-		const textureWidth = Math.floor(512 / width);
+		const [width, height] = this.scene.standardTextureSizes;
+		const textureWidth = Math.floor(2048 / width);
 
-		const canvas = document.createElement("canvas");
-		const ctx = canvas.getContext("2d");
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
 
 		canvas.width = width * textureWidth;
 		canvas.height = height * type.length;
@@ -832,7 +781,7 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
 
-		this.#updateTextureType(this.pbrTextures);
+		this.#updateTextureType(this.scene.pbrTextures);
   }
   updateTranslucencyTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
@@ -841,7 +790,7 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
 
-		this.#updateTextureType(this.translucencyTextures);
+		this.#updateTextureType(this.scene.translucencyTextures);
   }
   updateTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
@@ -852,7 +801,7 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
 
-		this.#updateTextureType(this.textures);
+		this.#updateTextureType(this.scene.textures);
   }
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
@@ -865,22 +814,22 @@ class rayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
 
 		// Don't update light sources if there is none
-		if (this.primaryLightSources.length === 0) {
+		if (this.scene.primaryLightSources.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
 			return;
 		}
 
     var lightTexArray = [];
     // Iterate over light sources
-		this.primaryLightSources.forEach(lightSource => {
+		this.scene.primaryLightSources.forEach(lightSource => {
 			// Set intensity to lightSource intensity or default if not specified
-			const intensity = Object.is(lightSource.intensity)? this.defaultIntensity : lightSource.intensity;
-			const variation = Object.is(lightSource.variation)? 0.4 : lightSource.variation;
+			const intensity = Object.is(lightSource.intensity)? this.scene.defaultLightIntensity : lightSource.intensity;
+			const variation = Object.is(lightSource.variation)? this.scene.defaultLightVariation : lightSource.variation;
 			// push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
 			lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], intensity, variation, 0);
 		});
 
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
   updateScene () {
     let id = 0;
@@ -888,7 +837,8 @@ class rayTracer {
     var data = [];
     // Build simple AABB tree (Axis aligned bounding box)
     var fillData = async (item) => {
-      if (Array.isArray(item)){
+      //console.log(item);
+      if (Array.isArray(item) || item.indexable){
         let b = item[0];
         // Save position of len variable in array
         let len_pos = data.length;
@@ -911,14 +861,14 @@ class rayTracer {
         let n = item.normals;
         let t = item.textureNums;
         let uv = item.uvs;
-        let len = item.arrayLength;
+        let len = item.length;
         // Test if bounding volume is set
         if (item.bounding !== undefined){
           // Declare bounding volume of object
           let b = item.bounding;
           data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
           id++;
-        }else if (item.arrayLength > 3){
+        }else if (item.length > 3){
           // Warn if length is greater than 3
           console.warn(item);
           // A single triangle needs no bounding voume, so nothing happens in this case
@@ -936,24 +886,26 @@ class rayTracer {
       }
     }
     // Fill texture with data pixels
-    for (let i = 0; i < this.queue.length; i++) fillData(this.queue[i]);
-    // Round up data to next higher multiple of 1536
-    data.push(new Array(1536 - data.length % 1536).fill(0));
+    for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
+    data.push(new Array(6144 - data.length % 6144).fill(0));
     data = data.flat();
-    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 64 vertecies per line)
-    var dataHeight = data.length / 1536;
+    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
+    var dataHeight = data.length / 6144;
     // Manipulate actual webgl texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 512, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
 
   render() {
     var rt = this;
+    // Allow frame rendering
+    rt.#halt = false;
     // Initialize internal globals of render functiod
     // The millis variable is needed to calculate fps and movement speed
     var TimeElapsed = performance.now();
@@ -996,11 +948,8 @@ class rayTracer {
 
     // Check if recompile is needed
     var State = [this.filter, this.renderQuality];
-    // Add eventlisteners for movement and rotation
-
-    // Detect mouse movements
     // Handle canvas resize
-    window.addEventListener("resize", function(){
+    window.addEventListener('resize', function(){
     	resize();
     });
     // Function to handle canvas resize
@@ -1113,7 +1062,7 @@ class rayTracer {
         State = [rt.filter, rt.renderQuality];
       }
       // Request the browser to render frame with hardware acceleration
-      requestAnimationFrame(frameCycle);
+      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
       if (rt.filter) {
         renderFrameRt();
@@ -1151,11 +1100,11 @@ class rayTracer {
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
       // Set 3d camera position
-      rt.#gl.uniform3f(CameraPosition, rt.x, rt.y, rt.z);
+      rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      rt.#gl.uniform2f(Perspective, rt.fx, rt.fy);
+      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
       // Set amount of samples per ray
       rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
       // Set max reflections per ray
@@ -1165,9 +1114,9 @@ class rayTracer {
       // Instuct shader to render for filter or not
       rt.#gl.uniform1i(FilterLocation, rt.filter);
       // Set global illumination
-      rt.#gl.uniform3f(AmbientLocation, rt.ambientLight[0], rt.ambientLight[1], rt.ambientLight[2]);
+      rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
       // Set width of height and normal texture
-      rt.#gl.uniform1i(TextureWidth, Math.floor(512 / rt.standardTextureSizes[0]));
+      rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
       // Pass whole current world space as data structure to GPU
       rt.#gl.uniform1i(WorldTex, 0);
       // Pass random texture to GPU
@@ -1190,7 +1139,7 @@ class rayTracer {
       let length = 0;
       // Iterate through render queue and build arrays for GPU
       var flattenQUEUE = (item) => {
-        if (Array.isArray(item)){
+        if (Array.isArray(item) || item.indexable){
           // Iterate over all sub elements and skip bounding (item[0])
           for (let i = 1; i < item.length; i++){
             // flatten sub element of queue
@@ -1203,11 +1152,11 @@ class rayTracer {
           }
 					vertices.push(item.vertices);
           uvs.push(item.uvs);
-          length += item.arrayLength;
+          length += item.length;
         }
       };
       // Start recursion
-      rt.queue.forEach(item => flattenQUEUE(item));
+      rt.scene.queue.forEach(item => flattenQUEUE(item));
       // Set buffers
       [
         [PositionBuffer, vertices],
@@ -1338,6 +1287,7 @@ class rayTracer {
         rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       }
     }
+
     function renderFrameRtRaw(){
       {
         // If Filter variable is not set render to canvas directly
@@ -1388,22 +1338,22 @@ class rayTracer {
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, "camera_position");
-      Perspective = rt.#gl.getUniformLocation(Program, "perspective");
-      RenderConf = rt.#gl.getUniformLocation(Program, "conf");
-      SamplesLocation = rt.#gl.getUniformLocation(Program, "samples");
-      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, "max_reflections");
-      MinImportancyLocation = rt.#gl.getUniformLocation(Program, "min_importancy");
-      FilterLocation = rt.#gl.getUniformLocation(Program, "use_filter");
-      AmbientLocation = rt.#gl.getUniformLocation(Program, "ambient");
-      WorldTex = rt.#gl.getUniformLocation(Program, "world_tex");
-      RandomTex = rt.#gl.getUniformLocation(Program, "random");
-      TextureWidth = rt.#gl.getUniformLocation(Program, "texture_width");
+      CameraPosition = rt.#gl.getUniformLocation(Program, 'camera_position');
+      Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
+      RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
+      SamplesLocation = rt.#gl.getUniformLocation(Program, 'samples');
+      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'max_reflections');
+      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'min_importancy');
+      FilterLocation = rt.#gl.getUniformLocation(Program, 'use_filter');
+      AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
+      WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
+      RandomTex = rt.#gl.getUniformLocation(Program, 'random');
+      TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
 
-      LightTex = rt.#gl.getUniformLocation(Program, "light_tex");
-      PbrTex = rt.#gl.getUniformLocation(Program, "pbr_tex");
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, "translucency_tex");
-      Tex = rt.#gl.getUniformLocation(Program, "tex");
+      LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
+      PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
+      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
+      Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
       rt.#gl.depthMask(true);
@@ -1448,10 +1398,10 @@ class rayTracer {
         rt.#gl.bindVertexArray(PostVao[i]);
         rt.#gl.useProgram(PostProgram[i]);
         // Bind uniforms
-        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_color");
-        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_color_ip");
-        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_original_color");
-        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], "pre_render_id");
+        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color');
+        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color_ip');
+        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_color');
+        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_id');
         PostVertexBuffer[i] = rt.#gl.createBuffer();
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
         rt.#gl.enableVertexAttribArray(0);
@@ -1470,6 +1420,8 @@ class rayTracer {
       rt.#gl.bindVertexArray(AntialiasingVao);
       rt.#gl.useProgram(AntialiasingProgram);
 
+      AntialiasingTex = rt.#gl.getUniformLocation(AntialiasingProgram, 'pre_render');
+
       AntialiasingVertexBuffer = rt.#gl.createBuffer();
 
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
@@ -1483,66 +1435,5 @@ class rayTracer {
     prepareEngine();
     // Begin frame cycle
     frameCycle();
-  }
-  // Axis aligned cuboid element prototype
-  cuboid (x, x2, y, y2, z, z2) {
-    // Add BIAS of 2^(-16)
-    let b = 0.00152587890625;
-    [x, y, z] = [x + b, y + b, z + b];
-    [x2, y2, z2] = [x2 - b, y2 - b, z2 - b];
-    // Create surface elements for cuboid
-    let surfaces = new Array(7);
-    surfaces[0] = [x, x2, y, y2, z, z2];
-    surfaces[1] = this.plane([x,y2,z],[x2,y2,z],[x2,y2,z2],[x,y2,z2]);
-    surfaces[2] = this.plane([x2,y2,z],[x2,y,z],[x2,y,z2],[x2,y2,z2]);
-    surfaces[3] = this.plane([x2,y2,z2],[x2,y,z2],[x,y,z2],[x,y2,z2]);
-    surfaces[4] = this.plane([x,y,z2],[x2,y,z2],[x2,y,z],[x,y,z]);
-    surfaces[5] = this.plane([x,y2,z2],[x,y,z2],[x,y,z],[x,y2,z]);
-    surfaces[6] = this.plane([x,y2,z],[x,y,z],[x2,y,z],[x2,y2,z]);
-    return surfaces;
-  }
-  // Surface element prototype
-  plane (c0, c1, c2, c3) {
-    return {
-      // Set normals
-      normals: new Array(6).fill(this.#cross(this.#vec_diff(c0, c2), this.#vec_diff(c0, c1))).flat(),
-      // Set vertices
-      vertices: [c0,c1,c2,c2,c3,c0].flat(),
-      // Default color to white
-      colors: new Array(18).fill(1),
-      // Set UVs
-      uvs: [0,0,0,1,1,1,1,1,1,0,0,0],
-      // Set used textures
-      textureNums: new Array(6).fill([-1,-1,-1]).flat(),
-      // Define maximum bounding volume of cuboid
-      bounding: [Math.min(c0[0],c1[0],c2[0],c3[0]),
-                 Math.max(c0[0],c1[0],c2[0],c3[0]),
-                 Math.min(c0[1],c1[1],c2[1],c3[1]),
-                 Math.max(c0[1],c1[1],c2[1],c3[1]),
-                 Math.min(c0[2],c1[2],c2[2],c3[2]),
-                 Math.max(c0[2],c1[2],c2[2],c3[2])],
-      // Set default arrayLength for this object
-      arrayLength: 6
-    }
-  }
-  // Triangle element prototype
-  triangle (a, b, c) {
-    return {
-      // Generate surface normal
-      normals: new Array(3).fill(this.#cross(
-        this.#vec_diff(a, c),
-        this.#vec_diff(a, b)
-      )).flat(),
-      // Vertex for queue
-      vertices: [a,b,c].flat(),
-      // Default color to white
-      colors: new Array(9).fill(1),
-      // UVs to map textures on triangle
-      uvs: [0,0,0,1,1,1],
-      // Set used textures
-      textureNums: new Array(3).fill([-1,-1,-1]).flat(),
-      // Length in world data texture for this object
-      arrayLength: 3
-    }
   }
 }
