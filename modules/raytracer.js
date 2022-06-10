@@ -1,6 +1,7 @@
 'use strict';
 
 export class RayTracer {
+  type = 'raytracer';
   // Configurable runtime properties of the raytracer (public attributes)
   // Quality settings
   samplesPerRay = 1;
@@ -13,6 +14,9 @@ export class RayTracer {
   antialiasing = true;
   // Performance metric
   fps = 0;
+
+  halt = () => this.#halt = true;
+  #halt = false;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
@@ -48,7 +52,7 @@ export class RayTracer {
     );
     vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
     // Set final clip space position
-    gl_Position = vec4(translate_2d, - 0.99999999 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
+    gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
     position = position_3d;
     tex_coord = tex_pos;
     clip_space = vec3(translate_2d, translate_py.y);
@@ -275,7 +279,7 @@ export class RayTracer {
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
-      final_color = (ambient + last_rme.z) * importancy_factor + final_color;
+      final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
@@ -900,6 +904,8 @@ export class RayTracer {
 
   render() {
     var rt = this;
+    // Allow frame rendering
+    rt.#halt = false;
     // Initialize internal globals of render functiod
     // The millis variable is needed to calculate fps and movement speed
     var TimeElapsed = performance.now();
@@ -942,9 +948,6 @@ export class RayTracer {
 
     // Check if recompile is needed
     var State = [this.filter, this.renderQuality];
-    // Add eventlisteners for movement and rotation
-
-    // Detect mouse movements
     // Handle canvas resize
     window.addEventListener('resize', function(){
     	resize();
@@ -1059,7 +1062,7 @@ export class RayTracer {
         State = [rt.filter, rt.renderQuality];
       }
       // Request the browser to render frame with hardware acceleration
-      requestAnimationFrame(frameCycle);
+      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
       if (rt.filter) {
         renderFrameRt();
@@ -1284,6 +1287,7 @@ export class RayTracer {
         rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       }
     }
+
     function renderFrameRtRaw(){
       {
         // If Filter variable is not set render to canvas directly
@@ -1415,6 +1419,8 @@ export class RayTracer {
       // Create post program buffers and uniforms
       rt.#gl.bindVertexArray(AntialiasingVao);
       rt.#gl.useProgram(AntialiasingProgram);
+
+      AntialiasingTex = rt.#gl.getUniformLocation(AntialiasingProgram, 'pre_render');
 
       AntialiasingVertexBuffer = rt.#gl.createBuffer();
 
