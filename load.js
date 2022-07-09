@@ -40,9 +40,7 @@ function load(search) {
       // Define silider
       var slider = parameterForm.children[sliderVariables[i]];
       // Live update slider variables
-      slider.addEventListener('input', () => {
-        item.value = slider.value;
-      });
+      slider.addEventListener('input', () => item.value = slider.value);
     });
 		if (search.has('v')) {
 			scriptForm[0].value = search.get('v');

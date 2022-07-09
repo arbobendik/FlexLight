@@ -51,6 +51,6 @@ output {
   background-color: #c0c0c0c8;
   font-size: 2vh;
   color: #333;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(3vmin);
   border-radius: 1.5vh;
 }

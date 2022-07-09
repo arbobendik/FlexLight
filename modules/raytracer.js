@@ -533,7 +533,7 @@ export class RayTracer {
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
-    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float radius = floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
     // Force max radius
     if (radius > 2.0) radius = 2.0;
     int diameter = 2 * int(radius) + 1;
