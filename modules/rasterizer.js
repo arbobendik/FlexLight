@@ -6,6 +6,7 @@ export class Rasterizer {
   // Quality settings
   renderQuality = 1;
   antialiasing = true;
+  hdr = true;
   // Performance metric
   fps = 0;
 
@@ -69,6 +70,7 @@ export class Rasterizer {
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
   uniform int texture_width;
+  uniform int hdr;
   // Texture with information about all triangles in scene
   uniform sampler2D world_tex;
   // Random texture to multiply with normal map to simulate rough surfaces
@@ -224,13 +226,16 @@ export class Rasterizer {
     vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
     // Set color
     final_color *= tex_color;
-    // Apply Reinhard tone mapping
-    vec3 hdr_color = final_color / (final_color + vec3(1.0));
-    // Gamma correction
-    float gamma = 0.8;
-    hdr_color = pow(4.0 * hdr_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
-    // Set tone mapped color as out_color
-    render_color = vec4(hdr_color, 1.0);
+   
+    if (hdr == 1) {
+      // Apply Reinhard tone mapping
+      final_color = final_color / (final_color + vec3(1.0));
+      // Gamma correction
+      float gamma = 0.8;
+      final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+    }
+    render_color = vec4(final_color, 1.0);
+    
   }
   `;
   #postProcessGlsl = `#version 300 es
@@ -533,7 +538,7 @@ export class Rasterizer {
     // Total frames calculated since last meassured
     var Frames = 0;
     // Internal GL objects
-    var Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    var Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, HdrLocation, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     var PositionBuffer, IdBuffer, TexBuffer;
     // Framebuffer, other buffers and textures
@@ -663,6 +668,8 @@ export class Rasterizer {
       rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
+      // Enable or disable hdr
+      rt.#gl.uniform1i(HdrLocation, rt.hdr);
       // Pass whole current world space as data structure to GPU
       rt.#gl.uniform1i(WorldTex, 0);
       // Pass pbr texture to GPU
@@ -775,6 +782,7 @@ export class Rasterizer {
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
       WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
       TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
+      HdrLocation = rt.#gl.getUniformLocation(Program, 'hdr');
 
       LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
       PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
