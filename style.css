@@ -41,16 +41,16 @@ output {
 }
 
 #controlPanel {
-  box-shadow: -10px -10px 25px #555, 15px 15px 25px #000;
+  box-shadow: -10px -10px 25px #5556, 15px 15px 25px #0006;
   position: fixed;
   padding: 1vh;
 	left: 3vh;
 	top: 14vh;
   width: 26vh;
   word-wrap: break-word;
-  background-color: #c0c0c0c8;
+  background-color: #c0c0c060;
   font-size: 2vh;
   color: #333;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(3vmin);
   border-radius: 1.5vh;
 }

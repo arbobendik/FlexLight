@@ -16,7 +16,7 @@ async function buildScene() {
   let scene = engine.scene;
 	// Create pbr textures.
 	let normal_tex = await scene.textureFromRME([0.1, 0.5, 0], 1, 1);
-	let cuboid_tex = await scene.textureFromRME([0.5, 0, 0], 1, 1);
+	let cuboid_tex = await scene.textureFromRME([0.2, 0.3, 0], 1, 1);
 	scene.pbrTextures.push(normal_tex, cuboid_tex);
 	// Set light source.
 	scene.primaryLightSources = [[0, 10, 0]];

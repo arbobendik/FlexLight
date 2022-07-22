@@ -12,6 +12,7 @@ export class RayTracer {
   secondPasses = 0;
   filter = true;
   antialiasing = true;
+  hdr = true;
   // Performance metric
   fps = 0;
 
@@ -93,10 +94,13 @@ export class RayTracer {
   layout(location = 1) out vec4 render_color_ip;
   layout(location = 2) out vec4 render_original_color;
   layout(location = 3) out vec4 render_id;
+  layout(location = 4) out vec4 render_original_id;
   // Prevent blur over shadow border or over (close to) perfect reflections
   float first_ray_length = 1.0;
   // Accumulate color of mirror reflections
+  float glass_filter = 0.0;
   float original_rmex = 0.0;
+  float original_tpox = 0.0;
   vec3 original_color = vec3(1.0);
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords){
@@ -300,18 +304,21 @@ export class RayTracer {
         original_rmex += last_filter_roughness;
         // Update render id
         render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
-        render_color_ip.w += 0.5;
+        original_tpox += 1.0;
       }
       // Update dont_filter variable
-      dont_filter = ((last_rme.x < 0.01 && is_solid) && dont_filter);
-      if (dont_filter && is_solid && last_tpo.x > 0.01) {
-        render_id.w = 1.0;
-        dont_filter = false;
-      }
+      dont_filter = (dont_filter && (
+        (last_rme.x < 0.01 && is_solid)
+        || !is_solid
+        ));
       // Intersection of ray with triangle
       mat2x4 intersection;
       // Handle translucency and skip rest of light calculation
       if (is_solid) {
+        if (dont_filter && last_tpo.x > 0.5) {
+          glass_filter = 1.0;
+          dont_filter = false;
+        }
         // If ray fresnel reflects from inside an transparent object,
         // the surface faces in the opposite direction as usual
         if (dot(active_ray, last_normal) > 0.0) last_normal = - last_normal;
@@ -349,9 +356,9 @@ export class RayTracer {
         if (i == bounces - 1) break;
         float ratio = last_tpo.z * 4.0;
         if (dot(active_ray, last_normal) <= 0.0){
-          active_ray = normalize(active_ray + 1.0 * refract(active_ray, last_rough_normal, 1.0 / ratio));
+          active_ray = normalize(active_ray + 1.0 * refract(active_ray, last_normal, 1.0 / ratio));
         }else{
-          active_ray = normalize(active_ray + 1.0 * refract(active_ray, - last_rough_normal, ratio));
+          active_ray = normalize(active_ray + 1.0 * refract(active_ray, - last_normal, ratio));
         }
         // Calculate next intersection
         intersection = rayTracer(active_ray, last_position, last_normal);
@@ -371,11 +378,15 @@ export class RayTracer {
           // Update pixel color if coordinate is not in shadow
           if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
             final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
+          } else if (dont_filter || i == 0) {
+            render_id.w += pow(3.0, - float(i + 1));
           }
         }
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
+      // Update last used tpo.x value
+      if(dont_filter) original_tpox = last_tpo.x;
       // Get position of current triangle/vertex in world_tex
       ivec2 index = ivec2(mod(intersection[1].w, float(TrianglesPerRow)) * 8.0, intersection[1].w / float(TrianglesPerRow));
       // Calculate barycentric coordinates to map textures
@@ -427,6 +438,7 @@ export class RayTracer {
     vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
     // Default to non translucent object (translucency, particle density, optical density) => tpo
     vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
+    original_tpox = tpo.x;
     // Preserve original roughness for filter pass
     float filter_roughness = rme.x;
     // Fresnel effect
@@ -449,9 +461,10 @@ export class RayTracer {
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
-    render_color_ip = vec4(floor(final_color) / 255.0, 0.5);
+    render_color_ip = vec4(floor(final_color) / 255.0, glass_filter);
     render_original_color = vec4(tex_color.xyz * original_color, (rme.x + original_rmex + 0.0625 * tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, 0);
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, 0.0);
+    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, original_tpox);
   }
   `;
   #postProcessGlsl = `#version 300 es
@@ -473,25 +486,61 @@ export class RayTracer {
   uniform sampler2D pre_render_normal;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
+  uniform sampler2D pre_render_original_id;
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
+  layout(location = 2) out vec4 render_id;
   void main() {
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    render_id = center_id;
+    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
-    int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
+    
+    if (center_color_ip.w > 0.0) {
+      mat4 ids = mat4(0);
+      for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+          ivec2 coords = texel + ivec2(vec2(i, j) - 2.0);
+          vec4 id = texelFetch(pre_render_id, coords, 0);
+          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
+          if (next_color_ip.w <= 0.0) {
+            for (int k = 0; k < 3; k++) {
+              if (ids[k] == vec4(0.0)) {
+                ids[k] = id;
+                ids[3][k]++;
+                break;
+              } else if (ids[k] == id) {
+                ids[3][k]++;
+                break;
+              }
+            }
+          }
+        }
+      }
+      int id_number = 0;
+      for (int i = 0; i < 3; i++) {
+        if (ids[3][i] > ids[3][id_number]) id_number = i;
+      }
+      if (ids[3][id_number] > 1.0) {
+        render_id = ids[id_number];
+        center_color_ip.w = 0.0;
+      }
+    }
+    
     // Force max radius
     if (diameter > 3) diameter = 3;
     if (diameter != 0) {
       // Apply blur filter on image
       for (int i = 0; i < diameter; i++) {
         for (int j = 0; j < diameter; j++) {
-          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_original_color.w, 2.0) * float(i + j + diameter));
+          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * float(i + j + diameter));
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -508,10 +557,10 @@ export class RayTracer {
     if (center_color.w > 0.0) {
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
       // Set out color for render texture for the antialiasing filter
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
+      render_color_ip = vec4(floor(color.xyz / count) / 255.0, center_color_ip.w);
     } else {
-      render_color = vec4(0.0);
-      render_color_ip = vec4(0.0);
+      render_color = vec4(0);
+      render_color_ip = vec4(0);
     }
   }
   `;
@@ -522,18 +571,24 @@ export class RayTracer {
   uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
+  uniform sampler2D pre_render_original_id;
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
+  layout(location = 2) out vec4 render_original_color;
   void main(){
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
     vec4 color = vec4(0);
+    vec4 o_color = vec4(0);
+    float ipw = 0.0;
     float count = 0.0;
-    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float o_count = 0.0;
+    float radius = floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
     if (radius > 2.0) radius = 2.0;
     int diameter = 2 * int(radius) + 1;
@@ -545,9 +600,18 @@ export class RayTracer {
           if (length(texel_offset) >= radius) continue;
           ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.0);
           vec4 id = texelFetch(pre_render_id, coords, 0);
+          vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id.xyz == center_id.xyz) {
+          vec4 next_o_color = texelFetch(pre_render_original_color, coords, 0);
+          if (min(center_o_id.w, next_o_id.w) > 0.0 && (
+            (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz) || id == center_id)) {
+            color += next_color + next_color_ip * 255.0;
+            count ++;
+            ipw += next_color_ip.w;
+            o_color += next_o_color;
+            o_count++;
+          } else if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -555,15 +619,25 @@ export class RayTracer {
       }
     } else {
       count = 1.0;
-      color = center_color + center_color_ip * 255.0;
+      o_count = 1.0;
+      color = center_color + center_color_ip * 255.0;  
+      o_color = center_o_color;
+      ipw = center_color_ip.w;
     }
     if (center_color.w > 0.0) {
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
       // Set out color for render texture for the antialiasing filter
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, 1.0);
+      render_color_ip = vec4(floor(color.xyz / count) / 255.0, ipw);
+      if (o_count == 0.0) {
+        render_original_color = center_o_color;
+      } else {
+        // render_original_color = center_o_color;
+        render_original_color = o_color / o_count;
+      } 
     } else {
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
+      render_original_color = vec4(0.0);
     }
   }
   `;
@@ -574,17 +648,22 @@ export class RayTracer {
   uniform sampler2D pre_render_color_ip;
   uniform sampler2D pre_render_original_color;
   uniform sampler2D pre_render_id;
+  uniform sampler2D pre_render_original_id;
+  uniform int hdr;
   out vec4 out_color;
   void main(){
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
     vec4 center_color = texelFetch(pre_render_color, texel, 0);
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_original_color = texelFetch(pre_render_original_color, texel, 0);
+    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
     vec4 color = vec4(0);
+    vec4 o_color = vec4(0);
     float count = 0.0;
-    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_original_color.w));
+    float o_count = 0.0;
+    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
     if (radius > 3.0) radius = 3.0;
     int diameter = 2 * int(radius) + 1;
@@ -596,9 +675,16 @@ export class RayTracer {
           if (length(texel_offset) >= radius) continue;
           ivec2 coords = ivec2(vec2(texel) + texel_offset);
           vec4 id = texelFetch(pre_render_id, coords, 0);
+          vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id.xyz == center_id.xyz) {
+          vec4 next_o_color = texelFetch(pre_render_original_color, coords, 0);
+          if (max(next_color_ip.w, center_color_ip.w) > 0.0 && min(center_o_id.w, next_o_id.w) >= 0.5 && center_o_id.xyz == next_o_id.xyz) {
+            color += next_color + next_color_ip * 255.0;
+            count ++;
+            o_color += next_o_color;
+            o_count++;
+          } else if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -606,18 +692,26 @@ export class RayTracer {
       }
     } else {
       count = 1.0;
-      color = center_color + center_color_ip * 255.0;
+      o_count = 1.0;
+      color = center_color + center_color_ip * 255.0;  
+      o_color = center_o_color;
     }
     if (center_color.w > 0.0) {
       // Set out target_color for render texture for the antialiasing filter
-      vec3 hdr_color = color.xyz * center_original_color.xyz / count;
-      // Apply Reinhard tone mapping
-      hdr_color = hdr_color / (hdr_color + vec3(1.0));
-      // Gamma correction
-      float gamma = 0.8;
-      hdr_color = pow(4.0 * hdr_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
-      // Set tone mapped color as out_color
-      out_color = vec4(hdr_color, 1.0);
+      vec3 final_color = color.xyz / count;
+      if (o_count == 0.0) {
+        final_color *= center_o_color.xyz;
+      } else {
+        final_color *= o_color.xyz / o_count;
+      }
+      if (hdr == 1) {
+        // Apply Reinhard tone mapping
+        final_color = final_color / (final_color + vec3(1.0));
+        // Gamma correction
+        float gamma = 0.8;
+        final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+      }
+      out_color = vec4(final_color, 1.0);
     } else {
       out_color = vec4(0.0, 0.0, 0.0, 0.0);
     }
@@ -918,21 +1012,28 @@ export class RayTracer {
     // Init Texture elements
     var RandomTexture, Random;
     // Framebuffer, Post Program buffers and textures
-    var Framebuffer, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture;
+    var Framebuffer, OriginalRenderTexture, OriginalRenderTex, IdRenderTexture, OriginalIdRenderTexture;
     // Set post program array
     var PostProgram = [];
     // Create textures for Framebuffers in PostPrograms
     var RenderTexture = new Array(5);
     var IpRenderTexture = new Array(5);
     var DepthTexture = new Array(5);
+    var OriginalRenderTexture = new Array(2);
+    var IdRenderTexture = new Array(2);
+
     var RenderTex = new Array(5);
     var IpRenderTex = new Array(5);
     var OriginalRenderTex = new Array(5);
     var IdRenderTex = new Array(5);
+    var OriginalIdRenderTex = new Array(5);
+    var HdrLocation;
     // Create caching textures for denoising
 		for (let i = 0; i < 5; i ++) {
 				RenderTexture[i] = this.#gl.createTexture();
 				IpRenderTexture[i] = this.#gl.createTexture();
+        if (i < 2) OriginalRenderTexture[i] = this.#gl.createTexture();
+        if (i < 2) IdRenderTexture[i] = this.#gl.createTexture();
 				DepthTexture[i] = this.#gl.createTexture();
     }
     // Create buffers for vertices in PostPrograms
@@ -992,6 +1093,7 @@ export class RayTracer {
       rt.#gl.linkProgram(program);
       // Return Program if it links successfully
       if (!rt.#gl.getProgramParameter(program, rt.#gl.LINK_STATUS)){
+        console.log(shaders);
         // Log debug info and delete Program if Program fails to link
         console.warn(rt.#gl.getProgramInfoLog(program));
         rt.#gl.deleteProgram(program);
@@ -1013,7 +1115,7 @@ export class RayTracer {
     }
     function renderTextureBuilder(){
       // Init textures for denoiser
-      [RenderTexture, IpRenderTexture].forEach((parent) => {
+      [RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
         parent.forEach(function(item){
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
@@ -1033,7 +1135,7 @@ export class RayTracer {
         rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
       });
       // Init other textures
-      [OriginalRenderTexture, IdRenderTexture].forEach(function(item){
+      [OriginalIdRenderTexture].forEach(function(item){
         rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
         rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
@@ -1178,13 +1280,15 @@ export class RayTracer {
           rt.#gl.COLOR_ATTACHMENT0,
           rt.#gl.COLOR_ATTACHMENT1,
           rt.#gl.COLOR_ATTACHMENT2,
-          rt.#gl.COLOR_ATTACHMENT3
+          rt.#gl.COLOR_ATTACHMENT3,
+          rt.#gl.COLOR_ATTACHMENT4
         ]);
         // Configure framebuffer for color and depth
         rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
         rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture, 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture, 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
         rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
         // Clear depth and color buffers from last frame
         rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
@@ -1196,42 +1300,59 @@ export class RayTracer {
       {
         // Save last used program slot
         let n = 0;
+        let nId = 0;
+        let nOriginal = 0;
         for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
           // Look for next free compatible program slot
-          let np1 = (i%2)^1;
-          if (rt.firstPasses <= i) np1 += 2;
+          let np = (i%2)^1;
+          let npOriginal = ((i - rt.firstPasses)%2)^1;
+          if (rt.firstPasses <= i) np += 2;
           // Configure where the final image should go
           rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
           // Set attachments to use for framebuffer
           rt.#gl.drawBuffers([
             rt.#gl.COLOR_ATTACHMENT0,
-            rt.#gl.COLOR_ATTACHMENT1
+            rt.#gl.COLOR_ATTACHMENT1,
+            rt.#gl.COLOR_ATTACHMENT2
           ]);
           // Configure framebuffer for color and depth
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np1], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np1], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np1], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
+          if (rt.firstPasses <= i - 2) {
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
+          } else {
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
+          }
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
           // Clear depth and color buffers from last frame
           rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
           // Push pre rendered textures to next shader (post processing)
-          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
             rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
             rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           });
           // Switch program and Vao
           rt.#gl.useProgram(PostProgram[n]);
           rt.#gl.bindVertexArray(PostVao[n]);
-          // Pass pre rendered texture to shader
+          // Pass pre rendered texture to shad
           rt.#gl.uniform1i(RenderTex[n], 0);
           rt.#gl.uniform1i(IpRenderTex[n], 1);
           // Pass original color texture to GPU
           rt.#gl.uniform1i(OriginalRenderTex[n], 2);
           // Pass vertex_id texture to GPU
           rt.#gl.uniform1i(IdRenderTex[n], 3);
+          // Pass vertex_id of original vertex as a texture to GPU
+          rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
           // Post processing drawcall
           rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
           // Save current program slot in n for next pass
-          n = np1;
+          n = np;
+
+          if (rt.firstPasses <= i) {
+            nOriginal = npOriginal;
+          } else {
+            nId = np;
+          }
         }
       }
       // Last denoise pass
@@ -1253,8 +1374,10 @@ export class RayTracer {
         rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
 
         let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
+        let indexId = rt.firstPasses % 2;
+        let indexOriginal = rt.secondPasses % 2;
         // Push pre rendered textures to next shader (post processing)
-        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture, IdRenderTexture].forEach(function(item, i){
+        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
           rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         });
@@ -1268,6 +1391,10 @@ export class RayTracer {
         rt.#gl.uniform1i(OriginalRenderTex[4], 2);
         // Pass vertex_id texture to GPU
         rt.#gl.uniform1i(IdRenderTex[4], 3);
+        // Pass vertex_id of original vertex as a texture to GPU
+        rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
+        // Pass hdr variable to last post processing shader
+        rt.#gl.uniform1i(HdrLocation, rt.hdr);
         // Post processing drawcall
         rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       }
@@ -1389,7 +1516,7 @@ export class RayTracer {
         rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
       });
       // Create frame buffers and textures to be rendered to
-      [Framebuffer, OriginalRenderTexture, IdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture(), rt.#gl.createTexture()];
+      [Framebuffer, OriginalIdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
 
       renderTextureBuilder();
 
@@ -1402,6 +1529,8 @@ export class RayTracer {
         IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color_ip');
         OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_color');
         IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_id');
+        OriginalIdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_id');
+        if (i === 4) HdrLocation = rt.#gl.getUniformLocation(PostProgram[i], 'hdr');
         PostVertexBuffer[i] = rt.#gl.createBuffer();
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
         rt.#gl.enableVertexAttribArray(0);

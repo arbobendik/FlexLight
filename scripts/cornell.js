@@ -16,7 +16,6 @@ async function buildScene() {
   let scene = engine.scene;
 	// Create pbr textures.
 	let roughTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-  let smoothTex = await scene.textureFromRME([0, 0, 0], 1, 1);
   let caroTex = await scene.textureFromRME(
 		[
 			Array(64).fill([
@@ -29,10 +28,7 @@ async function buildScene() {
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	scene.pbrTextures.push(roughTex, caroTex, smoothTex);
-  // Generate translucency texture for cube.
-  let translucencyTex = await scene.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
-  scene.translucencyTextures.push(translucencyTex);
+	scene.pbrTextures.push(roughTex, caroTex);
   // Move camera out of center.
   camera.z = -20;
 	// Set primary light source.
@@ -69,7 +65,7 @@ async function buildScene() {
   r[1][6] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 	// Set textures for cuboids.
   // Make second cuboid smooth and semi-translucent.
-	for (let i = 1; i <= 6; i++) r[1][i].setTextureNums(-1, 2, 0);
+	for (let i = 1; i <= 6; i++) r[1][i].setTextureNums(-1, 0, -1);
 
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [
