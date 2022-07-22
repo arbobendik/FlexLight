@@ -24,7 +24,7 @@ function load(search) {
     renderer = engine.renderer;
     renderer.render();
     // Restore values in raytracer
-    ['filter', 'antialiasing'].forEach((item) => {
+    ['filter', 'antialiasing', 'hdr'].forEach((item) => {
       renderer[item] = (localStorage.getItem(item) ?? renderer[item].toString()) === 'true';
       parameterForm.children[item].checked = renderer[item];
     });
@@ -40,9 +40,7 @@ function load(search) {
       // Define silider
       var slider = parameterForm.children[sliderVariables[i]];
       // Live update slider variables
-      slider.addEventListener('input', () => {
-        item.value = slider.value;
-      });
+      slider.addEventListener('input', () => item.value = slider.value);
     });
 		if (search.has('v')) {
 			scriptForm[0].value = search.get('v');
@@ -53,8 +51,6 @@ function load(search) {
     scriptForm.addEventListener('change', () => location.search = '?v=' + scriptForm[0].value);
     // Update gl quality params on form change
     parameterForm.addEventListener('change', () => {
-      console.log(localStorage.getItem('raytracing'));
-      console.log(parameterForm.children['raytracing'].checked);
       if ((localStorage.getItem('raytracing') === 'true') !== parameterForm.children['raytracing'].checked) {
         localStorage.setItem('raytracing', parameterForm.children['raytracing'].checked);
         engine.renderer = parameterForm.children['raytracing'].checked ? 'raytracer' : 'rasterizer';
@@ -62,7 +58,7 @@ function load(search) {
         renderer.render();
       }
 
-      ['filter', 'antialiasing'].forEach((item) => {
+      ['filter', 'antialiasing', 'hdr'].forEach((item) => {
         renderer[item] = parameterForm.children[item].checked;
         localStorage.setItem(item, renderer[item]);
       });
