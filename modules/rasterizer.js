@@ -234,7 +234,7 @@ export class Rasterizer {
       float gamma = 0.8;
       final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
     }
-    render_color = vec4(final_color, 1.0);
+    render_color = vec4(final_color, 1.0 - tpo.x * 0.3);
     
   }
   `;
@@ -463,16 +463,15 @@ export class Rasterizer {
     var data = [];
     // Build simple AABB tree (Axis aligned bounding box)
     var fillData = async (item) => {
-      //console.log(item);
       if (Array.isArray(item) || item.indexable){
-        let b = item[0];
+        let b = item.bounding;
         // Save position of len variable in array
         let len_pos = data.length;
         // Begin bounding volume array
         data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
         id++;
         // Iterate over all sub elements and skip bounding (item[0])
-        for (let i = 1; i < item.length; i++){
+        for (let i = 0; i < item.length; i++){
           // Push sub elements in queue
           fillData(item[i]);
         }
@@ -528,7 +527,8 @@ export class Rasterizer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
 
-  render() {
+  async render() {
+    // start rendering
     var rt = this;
     // Allow frame rendering
     rt.#halt = false;
@@ -618,6 +618,8 @@ export class Rasterizer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
+      // generate bounding volumes
+      rt.scene.updateBoundings();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -691,8 +693,8 @@ export class Rasterizer {
       // Iterate through render queue and build arrays for GPU
       var flattenQUEUE = (item) => {
         if (Array.isArray(item) || item.indexable){
-          // Iterate over all sub elements and skip bounding (item[0])
-          for (let i = 1; i < item.length; i++){
+          // Iterate over all sub elements
+          for (let i = 0; i < item.length; i++){
             // flatten sub element of queue
             flattenQUEUE(item[i]);
           }
@@ -789,10 +791,13 @@ export class Rasterizer {
       TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
       Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
+      rt.#gl.enable(rt.#gl.BLEND);
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
+      rt.#gl.blendEquation(rt.#gl.FUNC_ADD);
+      rt.#gl.blendFuncSeparate(rt.#gl.ONE, rt.#gl.ONE_MINUS_SRC_ALPHA, rt.#gl.ONE, rt.#gl.ONE);
       rt.#gl.depthMask(true);
       // Cull (exclude from rendering) hidden vertices at the other side of objects
-      rt.#gl.enable(rt.#gl.CULL_FACE);
+      // rt.#gl.enable(rt.#gl.CULL_FACE);
       // Set clear color for framebuffer
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context

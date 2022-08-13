@@ -303,7 +303,11 @@ export class RayTracer {
         // Add filtering intensity for respective surface
         original_rmex += last_filter_roughness;
         // Update render id
-        render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+        if (original_tpox > 0.0) {
+          render_id += pow(2.0, - float(i + 0)) * vec4(last_normal.xy, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+        } else {
+          render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+        }
         original_tpox += 1.0;
       }
       // Update dont_filter variable
@@ -505,9 +509,9 @@ export class RayTracer {
     
     if (center_color_ip.w > 0.0) {
       mat4 ids = mat4(0);
-      for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 5; j++) {
-          ivec2 coords = texel + ivec2(vec2(i, j) - 2.0);
+      for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+          ivec2 coords = texel + ivec2(vec2(i, j) - 1.0);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
           if (next_color_ip.w <= 0.0) {
@@ -528,19 +532,22 @@ export class RayTracer {
       for (int i = 0; i < 3; i++) {
         if (ids[3][i] > ids[3][id_number]) id_number = i;
       }
-      if (ids[3][id_number] > 1.0) {
+      if (ids[3][id_number] >= 1.0) {
         render_id = ids[id_number];
         center_color_ip.w = 0.0;
+      } else {
+        render_id = ids[id_number];
+        center_color_ip.w = 1.0;
       }
     }
     
     // Force max radius
-    if (diameter > 3) diameter = 3;
+    if (diameter > 5) diameter = 5;
     if (diameter != 0) {
       // Apply blur filter on image
       for (int i = 0; i < diameter; i++) {
         for (int j = 0; j < diameter; j++) {
-          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * float(i + j + diameter));
+          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * 3.0);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -590,7 +597,7 @@ export class RayTracer {
     float o_count = 0.0;
     float radius = floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
-    if (radius > 2.0) radius = 2.0;
+    if (radius > 4.0) radius = 4.0;
     int diameter = 2 * int(radius) + 1;
     if (diameter != 1) {
       // Apply blur filter on image
@@ -598,7 +605,7 @@ export class RayTracer {
         for (int j = 0; j < diameter; j++) {
           vec2 texel_offset = vec2(i, j) - radius;
           if (length(texel_offset) >= radius) continue;
-          ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.0);
+          ivec2 coords = ivec2(vec2(texel) + texel_offset * 1.5);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
@@ -845,7 +852,7 @@ export class RayTracer {
   }
 
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type, fakeTextureWidth) {
+	#updateTextureType (type) {
 		// Test if there is even a texture
 		if (type.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
@@ -933,14 +940,14 @@ export class RayTracer {
     var fillData = async (item) => {
       //console.log(item);
       if (Array.isArray(item) || item.indexable){
-        let b = item[0];
+        let b = item.bounding;
         // Save position of len variable in array
         let len_pos = data.length;
         // Begin bounding volume array
         data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
         id++;
         // Iterate over all sub elements and skip bounding (item[0])
-        for (let i = 1; i < item.length; i++){
+        for (let i = 0; i < item.length; i++){
           // Push sub elements in queue
           fillData(item[i]);
         }
@@ -962,7 +969,7 @@ export class RayTracer {
           let b = item.bounding;
           data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
           id++;
-        }else if (item.length > 3){
+        } else if (item.length > 3) {
           // Warn if length is greater than 3
           console.warn(item);
           // A single triangle needs no bounding voume, so nothing happens in this case
@@ -996,7 +1003,8 @@ export class RayTracer {
     this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
 
-  render() {
+  async render() {
+    // start rendering
     var rt = this;
     // Allow frame rendering
     rt.#halt = false;
@@ -1066,8 +1074,8 @@ export class RayTracer {
       renderTextureBuilder();
       antialiasingRenderTextureBuilder();
 
-      rt.firstPasses = 1 + Math.round(Math.sqrt(canvas.width * canvas.height) / 200);
-      rt.secondPasses = 1 + Math.round(Math.sqrt(canvas.width * canvas.height) / 50);
+      rt.firstPasses = 1 + Math.round(Math.max(canvas.width, canvas.height) / 250);
+      rt.secondPasses = 1 + Math.round(Math.max(canvas.width, canvas.height) / 250);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1155,6 +1163,8 @@ export class RayTracer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
+      // generate bounding volumes
+      rt.scene.updateBoundings();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -1184,8 +1194,9 @@ export class RayTracer {
     function texturesToGPU() {
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
-      // Set world-texture
+      // set world-texture
       rt.updateScene();
+      // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
 
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
@@ -1242,8 +1253,8 @@ export class RayTracer {
       // Iterate through render queue and build arrays for GPU
       var flattenQUEUE = (item) => {
         if (Array.isArray(item) || item.indexable){
-          // Iterate over all sub elements and skip bounding (item[0])
-          for (let i = 1; i < item.length; i++){
+          // Iterate over all sub elements
+          for (let i = 0; i < item.length; i++){
             // flatten sub element of queue
             flattenQUEUE(item[i]);
           }
@@ -1482,6 +1493,7 @@ export class RayTracer {
       TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
       Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
+      rt.#gl.disable(rt.#gl.BLEND);
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
       rt.#gl.depthMask(true);
       // Cull (exclude from rendering) hidden vertices at the other side of objects
