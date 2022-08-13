@@ -44,12 +44,12 @@ async function buildScene() {
 	var [t0, t1, t2, t3] = [[x+1, y2, z], [x2, y2, z+1], [x2-1, y2, z2], [x, y2, z2-1]]
 	// Generate rotated cube object from planes.
   c = scene.Cuboid(x, x2, y, y2, z, z2);
-  c[1] = scene.Plane(t0,t1,t2,t3,[0,1,0]);
-  c[2] = scene.Plane(t1,b1,b2,t2,[1,0,0]);
-  c[3] = scene.Plane(t2,b2,b3,t3,[0,0,1]);
-  c[4] = scene.Plane(b3,b2,b1,b0,[0,-1,0]);
-  c[5] = scene.Plane(t3,b3,b0,t0,[-1,0,0]);
-  c[6] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
+  c[0] = scene.Plane(t0,t1,t2,t3,[0,1,0]);
+  c[1] = scene.Plane(t1,b1,b2,t2,[1,0,0]);
+  c[2] = scene.Plane(t2,b2,b3,t3,[0,0,1]);
+  c[3] = scene.Plane(b3,b2,b1,b0,[0,-1,0]);
+  c[4] = scene.Plane(t3,b3,b0,t0,[-1,0,0]);
+  c[5] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 
 	// Set textures for cube.
   let cube_colors = [
@@ -66,10 +66,7 @@ async function buildScene() {
     c[i].setTextureNums(-1, 1, -1);
   }
 
-	let box = [
-		[-5, 5, -5, 5, -15, 5],
-		bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane
-	];
+	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.
 	scene.queue.push(box, c);
 	// Start render engine.
