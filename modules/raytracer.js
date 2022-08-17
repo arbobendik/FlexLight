@@ -390,7 +390,7 @@ export class RayTracer {
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
       // Update last used tpo.x value
-      if(dont_filter) original_tpox = last_tpo.x;
+      if (dont_filter) original_tpox = last_tpo.x;
       // Get position of current triangle/vertex in world_tex
       ivec2 index = ivec2(mod(intersection[1].w, float(TrianglesPerRow)) * 8.0, intersection[1].w / float(TrianglesPerRow));
       // Calculate barycentric coordinates to map textures
@@ -547,7 +547,7 @@ export class RayTracer {
       // Apply blur filter on image
       for (int i = 0; i < diameter; i++) {
         for (int j = 0; j < diameter; j++) {
-          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * 3.0);
+          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * 3.5);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
@@ -597,7 +597,7 @@ export class RayTracer {
     float o_count = 0.0;
     float radius = floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
-    if (radius > 4.0) radius = 4.0;
+    if (radius > 3.0) radius = 3.0;
     int diameter = 2 * int(radius) + 1;
     if (diameter != 1) {
       // Apply blur filter on image
@@ -605,7 +605,7 @@ export class RayTracer {
         for (int j = 0; j < diameter; j++) {
           vec2 texel_offset = vec2(i, j) - radius;
           if (length(texel_offset) >= radius) continue;
-          ivec2 coords = ivec2(vec2(texel) + texel_offset * 1.5);
+          ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.5);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
@@ -1074,8 +1074,8 @@ export class RayTracer {
       renderTextureBuilder();
       antialiasingRenderTextureBuilder();
 
-      rt.firstPasses = 1 + Math.round(Math.max(canvas.width, canvas.height) / 250);
-      rt.secondPasses = 1 + Math.round(Math.max(canvas.width, canvas.height) / 250);
+      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 200);
+      rt.secondPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 250);
     }
     // Init canvas parameters and textures with resize
     resize();
