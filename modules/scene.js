@@ -58,12 +58,16 @@ export class Scene {
     const bias = 0.00152587890625;
     let minMax = new Array(6);
     if (Array.isArray(obj) || obj.indexable) {
-      minMax = this.updateBoundings (obj[0]);
-      for (let i = 1; i < obj.length; i++) {
-        // get updated bounding of lower element
-        let b = this.updateBoundings (obj[i]);
-        // update maximums and minimums
-        minMax = minMax.map((item, i) => (i % 2 === 0) ? Math.min(item, b[i] - bias) : Math.max(item, b[i] + bias));
+      if (obj.length === 0) {
+        console.error('problematic object structure', 'isArray:', Array.isArray(obj), 'indexable:', obj.indexable, 'object:', obj);
+      } else {
+        minMax = this.updateBoundings (obj[0]);
+        for (let i = 1; i < obj.length; i++) {
+          // get updated bounding of lower element
+          let b = this.updateBoundings (obj[i]);
+          // update maximums and minimums
+          minMax = minMax.map((item, i) => (i % 2 === 0) ? Math.min(item, b[i] - bias) : Math.max(item, b[i] + bias));
+        }
       }
     } else {
       let v = obj.vertices;
@@ -81,12 +85,88 @@ export class Scene {
   }
     
   // object constructors
-  // Axis aligned cuboid element prototype
+  // axis aligned cuboid element prototype
   Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2, this);
-  // Surface element prototype
+  // surface element prototype
   Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3, this);
-  // Triangle element prototype
+  // triangle element prototype
   Triangle = (a, b, c) => new Triangle (a, b, c, this);
+  // generate object from array
+  // create object from .obj file
+  fetchObjFile = async (path) => {
+    // get scene for reference inside object
+    let scene = this;
+    // final object variable 
+    let obj = [];
+    // collect parts of object
+    let v = [];
+    let vt = [];
+    let vn = [];
+    // line interpreter
+    let interpreteLine = line => {
+      let words = [];
+      // get array of words
+      line.split(' ').forEach(word => { if (word !== '') words.push(word) });
+      // interpret current line
+      switch (words[0]) {
+        case 'v':
+          // push vector
+          v.push([Number(words[1]), Number(words[2]), Number(words[3])]);
+          break;
+        case 'vt':
+          // push uv
+          vt.push([Number(words[1]), Number(words[2])]);
+          break;
+        case 'vn':
+          // push normal
+          vn.push([Number(words[1]), Number(words[2]), Number(words[3])]);
+          break;
+        case 'f':
+          // extract array indecies form string
+          let data = words.slice(1, words.length).map(word => word.split('/').map(numStr => Number(numStr)));
+          // test if new part should be a triangle or plane
+          if (words.length === 5) {
+            // generate plane with vertecies
+            let plane = new Plane (
+              v[data[3][0] - 1],
+              v[data[2][0] - 1],
+              v[data[1][0] - 1],
+              v[data[0][0] - 1],
+              scene
+            );
+            // set uvs according to .obj file
+            plane.uvs = [0, 3, 2, 2, 1, 0].map(i => vt[data[i][1] - 1]).flat();
+            // set normals according to .obj file
+            plane.normals = [0, 3, 2, 2, 1, 0].map(i => vn[data[i][2] - 1]).flat();
+            // push new plane in object array
+            obj.push(plane);
+          } else {
+             // generate triangle with vertecies
+             let triangle = new Triangle (
+              v[data[2][0] - 1],
+              v[data[1][0] - 1],
+              v[data[0][0] - 1],
+              scene
+            );
+            // set uvs according to .obj file
+            triangle.uvs = [2, 1, 0].map(i => vt[data[i][1] - 1]).flat();
+            // set normals according to .obj file
+            triangle.normals = [2, 1, 0].map(i => vn[data[i][2] - 1]).flat();
+            // push new plane in object array
+            obj.push(triangle);
+          }
+          break;
+      }
+    };
+    // fetch file and iterate over its lines
+    let text = await (await fetch(path)).text();
+    text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
+    // generate boundings for object and give it 
+    obj = new Bounding(obj, scene);
+    scene.updateBoundings(obj);
+    // return built object
+    return obj;
+  }
 }
 
 class Object3D {
@@ -109,19 +189,15 @@ class Object3D {
   move (x, y, z) {
     if (this.indexable) {
       for (let i = 0; i < this.length; i++) this[i].move(x, y, z, true);
-      this.bounding = [this.bounding[0] + x, this.bounding[1] + y, this.bounding[2] + z];
     } else {
       this.vertices = this.vertices.map((coord, i) => {
         switch (i % 3){
           case 0:
             return coord + x;
-          break;
           case 1:
             return coord + y;
-          break;
           case 2:
             return coord + z;
-          break;
         }
       });
     }
@@ -194,5 +270,12 @@ class Triangle extends Object3D {
     )).flat();
     // vertecies for queue
     this.vertices = [a,b,c].flat();
+  }
+}
+
+class Bounding extends Object3D {
+  constructor (array, scene) { 
+    super(array.length, true, scene);
+    array.forEach((item, i) => this[i] = item);
   }
 }
