@@ -24,24 +24,24 @@ async function buildScene() {
 		"textures/lamp.jpg"    //4
 	].forEach((item, i) => {
 		let img = new Image();
-	  img.src = item;
-	  scene.textures.push(img);
+	  	img.src = item;
+	  	scene.textures.push(img);
 	});
 
   	[
 		"textures/redstone_pbr.png"     // 0
 	].forEach((item, i) => {
 		let img = new Image();
-	  img.src = item;
-	  scene.pbrTextures.push(img);
+	  	img.src = item;
+	  	scene.pbrTextures.push(img);
 	});
 
 	// Set camera perspective and position
 	[camera.x, camera.y, camera.z] = [-8, 7, -11];
 	[camera.fx, camera.fy] = [0.440, 0.55];
 
-	scene.primaryLightSources = [[0.5, 1, 0.5], [0, 15, 2]];
-		// Make light dimmer (default = 200)
+	scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
+	// Make light dimmer (default = 200)
 	scene.primaryLightSources[0].intensity = 70;
 	scene.primaryLightSources[0].variation = 0.2;
 	scene.primaryLightSources[1].intensity = 100;
@@ -109,6 +109,9 @@ async function buildScene() {
 		item.bottom.setTextureNums(2, 2, -1);
 	});
 
+	//let obj = await scene.fetchObjFile('objects/cube.obj');
+	//obj.move(6, 0, -3);
+
 	// pack cuboids in tree structure to increase raytracing effiecency
 	let cuboidTree = [cuboids[0], [cuboids[1], [cuboids[2], cuboids[3]]]];
 	// pack cube and wall in tree structure
@@ -116,9 +119,9 @@ async function buildScene() {
 	let cubeTree = [grassCube2, lantern];
 	// pack all trees together to one tree with all objects on the plane
 	let objectTree = [
-	  cuboidTree,
-	  cubeWallTree,
-    cubeTree
+	  	cuboidTree,
+	 	cubeWallTree,
+    	cubeTree
 	];
 	// append plane tree and object tree to render queue
 	scene.queue.push(groundPlane, objectTree);
@@ -133,7 +136,7 @@ async function buildScene() {
 		fpsCounter.textContent = engine.renderer.fps;
 		// update textures every second
 		engine.renderer.updateTextures();
-    engine.renderer.updatePbrTextures();
-    engine.renderer.updateTranslucencyTextures();
+		engine.renderer.updatePbrTextures();
+		engine.renderer.updateTranslucencyTextures();
 	},1000);
 };

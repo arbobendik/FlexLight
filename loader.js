@@ -8,7 +8,7 @@ function load(search) {
 
 	if (search.has('v')) {
 		const script = document.createElement('script');
-		script.src = 'scripts/' + search.get('v') + '.js';
+		script.src = 'examples/' + search.get('v') + '.js';
 		document.head.appendChild(script);
 	}
 
