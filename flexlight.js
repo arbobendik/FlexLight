@@ -16,6 +16,8 @@ export class FlexLight {
   #renderer;
   #io;
 
+  //lol
+
   constructor (canvas) {
     this.#canvas = canvas;
     this.camera = new Camera();
