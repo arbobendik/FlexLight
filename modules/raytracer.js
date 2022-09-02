@@ -181,7 +181,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)){
         // Test if triangle intersects ray
-        mat2x4 current_intersection = rayTriangle(min_len, ray, origin, t, n, origin_normal);
+        mat2x4 current_intersection = rayTriangle(min_len, ray, origin, t, normalize(n), origin_normal);
         // Test if ray even intersects
         if (current_intersection != mat2x4(0)){
           min_len = current_intersection[0].w;
@@ -225,7 +225,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, n, origin_normal)[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - origin), ray, origin, t, normalize(n), origin_normal)[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
@@ -439,7 +439,7 @@ export class RayTracer {
     vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
     // Default roughness, metallicity and emissiveness
     // Set roughness to texture value if texture is defined
-    vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
+    vec3 rme = mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
     // Default to non translucent object (translucency, particle density, optical density) => tpo
     vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
     original_tpox = tpo.x;

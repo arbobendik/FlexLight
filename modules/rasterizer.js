@@ -103,7 +103,7 @@ export class Rasterizer {
     // Get distance to intersection point
     float s = dot(n, t[0] - p) / dot(n, r);
     // Ensure that ray triangle intersection is between light source and texture
-    if (s > l || s <= 0.0) return mat2x4(0);
+    if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
     vec3 d = (s * r) + p;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
@@ -119,7 +119,7 @@ export class Rasterizer {
     float v = (d11 * d20 - d01 * d21) / denom;
     float w = (d00 * d21 - d01 * d20) / denom;
     float u =  1.0 - v - w;
-    if (min(u, v) <= 0.0 || u + v >= 1.0) return mat2x4(0);
+    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
@@ -137,6 +137,7 @@ export class Rasterizer {
   }
   // Simplified rayTracer test only if ray intersects anything
   bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
+    // return false;
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / ray;
     // Get texture size as max iteration value
@@ -158,7 +159,7 @@ export class Rasterizer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, n, origin_normal)[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - origin), ray, origin, t, normalize(n), origin_normal)[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
@@ -463,7 +464,7 @@ export class Rasterizer {
     var data = [];
     // Build simple AABB tree (Axis aligned bounding box)
     var fillData = async (item) => {
-      if (Array.isArray(item) || item.indexable){
+      if (Array.isArray(item) || item.indexable) {
         let b = item.bounding;
         // Save position of len variable in array
         let len_pos = data.length;
@@ -471,7 +472,7 @@ export class Rasterizer {
         data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
         id++;
         // Iterate over all sub elements and skip bounding (item[0])
-        for (let i = 0; i < item.length; i++){
+        for (let i = 0; i < item.length; i++) {
           // Push sub elements in queue
           fillData(item[i]);
         }
@@ -479,7 +480,7 @@ export class Rasterizer {
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
         data[len_pos + 6] = len;
-      }else{
+      } else {
         // Alias object properties to simplify data texture assembly
         let v = item.vertices;
         let c = item.colors;
@@ -487,13 +488,29 @@ export class Rasterizer {
         let t = item.textureNums;
         let uv = item.uvs;
         let len = item.length;
+
+        //console.log(n[1]);
+        // transform normal vectors to unit vectors
+        let unitN = [];
+        for (let i = 0; i < n.length; i+=3) {
+          let v = [n[i], n[i+1], n[i+2]];
+          // get length
+          let length = Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2);
+          // devide by length
+          unitN.push(v[0] / length, v[1] / length, v[2] / length);
+        }
+        // replace n with n as unit vectors
+        n = unitN.flat();
+        // console.log(unitN.flat());
+        //console.log(unitN[1]);
+        
         // Test if bounding volume is set
-        if (item.bounding !== undefined){
+        if (item.bounding !== undefined) {
           // Declare bounding volume of object
           let b = item.bounding;
           data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
           id++;
-        }else if (item.length > 3){
+        } else if (item.length > 3) {
           // Warn if length is greater than 3
           console.warn(item);
           // A single triangle needs no bounding voume, so nothing happens in this case
