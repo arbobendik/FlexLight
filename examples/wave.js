@@ -25,7 +25,6 @@ async function buildScene() {
 	scene.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
 	scene.primaryLightSources[0].intensity = 200;
-	scene.ambient = [0.15, 0.15, 0.15];
 	// Generate plane.
 	let this_plane = scene.Plane([-100,-1,-100], [100,-1,-100], [100,-1,100], [-100,-1,100]);
   	this_plane.setTextureNums(-1, 0, -1);

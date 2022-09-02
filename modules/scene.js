@@ -135,24 +135,24 @@ export class Scene {
               scene
             );
             // set uvs according to .obj file
-            plane.uvs = [0, 3, 2, 2, 1, 0].map(i => vt[data[i][1] - 1]).flat();
+            plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
-            plane.normals = [0, 3, 2, 2, 1, 0].map(i => vn[data[i][2] - 1]).flat();
+            plane.normals = [3, 2, 1, 1, 0, 3].map(i => (vn[data[i][2] - 1] ?? plane.normals.slice(i * 3, i * 3 + 2))).flat();
             // push new plane in object array
             obj.push(plane);
           } else {
              // generate triangle with vertecies
              let triangle = new Triangle (
-              v[data[2][0] - 1],
-              v[data[1][0] - 1],
-              v[data[0][0] - 1],
+               v[data[2][0] - 1],
+               v[data[1][0] - 1],
+               v[data[0][0] - 1],
               scene
             );
             // set uvs according to .obj file
-            triangle.uvs = [2, 1, 0].map(i => vt[data[i][1] - 1]).flat();
+            triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
-            triangle.normals = [2, 1, 0].map(i => vn[data[i][2] - 1]).flat();
-            // push new plane in object array
+            triangle.normals = [2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat();
+            // triangle.setColor(triangle.normals[0] * 1000);
             obj.push(triangle);
           }
           break;
@@ -243,13 +243,6 @@ class Plane extends Object3D {
     this.normals = new Array(6).fill(cross(vec_diff(c0, c2), vec_diff(c0, c1))).flat();
     // set vertices
     this.vertices = [c0,c1,c2,c2,c3,c0].flat();
-    // define bounding volume of plane
-    this.bounding = [ Math.min(c0[0],c1[0],c2[0],c3[0]),
-                      Math.max(c0[0],c1[0],c2[0],c3[0]),
-                      Math.min(c0[1],c1[1],c2[1],c3[1]),
-                      Math.max(c0[1],c1[1],c2[1],c3[1]),
-                      Math.min(c0[2],c1[2],c2[2],c3[2]),
-                      Math.max(c0[2],c1[2],c2[2],c3[2]) ];
   }
 }
 
