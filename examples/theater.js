@@ -17,7 +17,7 @@ async function buildScene() {
   // Upload texture to GPU
   [
 		"textures/holz.jpg",     // 0
-	].forEach((item, i) => {
+	].forEach(item => {
 		let img = new Image();
 	  img.src = item;
 	  scene.textures.push(img);
@@ -33,6 +33,8 @@ async function buildScene() {
     new Array(11).fill([1, 0.1, 0]).flat(),
   ].flat(), 11, 3);
 	scene.pbrTextures.push(roughTex, smoothTex, backMirrorTex);
+
+  scene.translucencyTextures.push(await scene.textureFromTPO(1, 0, 0.6));
   // Move camera out of center.
   camera.x = 35;
   camera.y = 35;
@@ -63,13 +65,14 @@ async function buildScene() {
 
   // Make planes diffuse.
 	bottom_plane.setTextureNums(0, 1, -1);
-  back_plane.setTextureNums(0, 2, -1);
-  left_plane.setTextureNums(0, 0, -1);
-  right_plane.setTextureNums(0, 0, -1);
+  back_plane.setTextureNums(-1, 2, -1);
+  left_plane.setTextureNums(-1, 0, -1);
+  right_plane.setTextureNums(-1, 0, -1);
 
   // Create cube in center.
   let cube = scene.Cuboid(-3, 3, 0, 17, 2, 8);
-  cube.setColor (1, 0.3, 0.5);
+  cube.setColor(255, 80, 120);
+  //cube.setTextureNums(-1, -1, -1);
 
 	let box = [
 		bottom_plane, back_plane, left_plane, right_plane,
@@ -86,9 +89,10 @@ async function buildScene() {
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
 	setInterval(async function(){
-		fpsCounter.textContent = rt.fps;
-    // Update textures every second.
-		rt.updateTextures();
-		rt.updatePbrTextures();
+		fpsCounter.textContent = engine.renderer.fps;
+		// Update texture atlases.
+		engine.renderer.updateTextures();
+    engine.renderer.updatePbrTextures();
+		engine.renderer.updateTranslucencyTextures();
 	},1000);
 }
