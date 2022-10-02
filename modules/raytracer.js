@@ -65,8 +65,28 @@ export class RayTracer {
   #define SQRT3 1.7320508075688772
   #define BIAS 0.0000152587890625
   #define TrianglesPerRow 256
+
   precision highp float;
   precision highp sampler2D;
+
+  struct Ray {
+    vec3 direction;
+    vec3 origin;
+    vec3 normal;
+  };
+
+  struct Material {
+    vec3 color;
+    vec3 rme;
+    vec3 tpo;
+  };
+
+  struct Light {
+    vec3 origin;
+    float strength;
+    float variance;
+  };
+
   in vec3 position;
   in vec2 tex_coord;
   in vec3 clip_space;
@@ -114,15 +134,15 @@ export class RayTracer {
     return texture(atlas, atlas_coords);
   }
   // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
+  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n){
     // Can't intersect with triangle with the same normal as the origin
-    if (n == on) return mat2x4(0);
+    if (n == ray.normal) return mat2x4(0);
     // Get distance to intersection point
-    float s = dot(n, t[0] - p) / dot(n, r);
+    float s = dot(n, t[0] - ray.origin) / dot(n, normalize(ray.direction));
     // Ensure that ray triangle intersection is between light source and texture
     if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
-    vec3 d = (s * r) + p;
+    vec3 d = (s * normalize(ray.direction)) + ray.origin;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     vec3 v0 = t[1] - t[0];
     vec3 v1 = t[2] - t[0];
@@ -155,9 +175,9 @@ export class RayTracer {
   // Test for closest ray triangle intersection
   // Return intersection position in world space (rayTracer.xyz)
   // Return index of target triangle in world_tex (rayTracer.w)
-  mat2x4 rayTracer(vec3 ray, vec3 origin, vec3 origin_normal){
+  mat2x4 rayTracer(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / ray;
+    vec3 inv_ray = 1.0 / normalize(ray.direction);
     // Latest intersection which is now closest to origin
     mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
     // Length to latest intersection
@@ -181,7 +201,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)){
         // Test if triangle intersects ray
-        mat2x4 current_intersection = rayTriangle(min_len, ray, origin, t, normalize(n), origin_normal);
+        mat2x4 current_intersection = rayTriangle(min_len, ray, t, normalize(n));
         // Test if ray even intersects
         if (current_intersection != mat2x4(0)){
           min_len = current_intersection[0].w;
@@ -191,7 +211,7 @@ export class RayTracer {
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
+      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
         // Test if Ray intersects bounding volume
         // t[0] = x x2 y
         // t[1] = y2 z z2
@@ -203,9 +223,9 @@ export class RayTracer {
     return intersection;
   }
   // Simplified rayTracer test only if ray intersects anything
-  bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
+  bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / ray;
+    vec3 inv_ray = 1.0 / normalize(ray.direction);
     // Get texture size as max iteration value
     int size = textureSize(world_tex, 0).y * TrianglesPerRow;
     // Iterate through lines of texture
@@ -225,11 +245,11 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, normalize(n), origin_normal)[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - ray.origin), ray, t, normalize(n))[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
+      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
         // Test if Ray intersects bounding volume
         // t[0] = x x2 y
         // t[1] = y2 z z2
@@ -240,23 +260,47 @@ export class RayTracer {
     // Tested all triangles, but there is no intersection
     return false;
   }
-  float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
+  float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
     // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / pow(1.0 + length(light_ray),2.0);
+    float intensity = strength / pow(1.0 + length(ray.direction), 2.0);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
-    float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-    float specular = pow(abs(dot(normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
+    vec3 halfVector = normalize(normalize(ray.origin) + normalize(origin - ray.origin));
+    float light = abs(dot(normalize(ray.direction), ray.normal)) * (1.0 - metallicity);
+    float specular = pow(abs(dot(ray.normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
     // Determine final color and return it
-    if (dot(normal, halfVector) > 0.0) return light * intensity + specular * intensity;
+    if (dot(ray.normal, halfVector) > 0.0) return light * intensity + specular * intensity;
     // Return just light if specular is negative
     return light * intensity;
+  }
+  vec2 forEachLightSource (sampler2D light_tex, Ray ray, vec3 random_vec, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
+    vec2 result = vec2(0);
+    //  Calculate primary light sources for this pass if ray hits non translucent object
+    for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+      // Read light position
+      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
+      // Read light strength from texture
+      float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+      float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
+      // Alter light source position according to variation.
+      light = random_vec * variation + light;
+      // Skip if strength is negative or zero
+      if (strength <= 0.0) continue;
+      // Recalculate position -> light vector
+      Ray light_ray = Ray (light * vec3(-1.0, 1.0, 1.0) - ray.origin, ray.origin, normalize(last_rough_normal));
+      // Update pixel color if coordinate is not in shadow
+      if (!shadowTest(light_ray, light)) {
+        result.x += forwardTrace(light_ray, last_origin, last_rme.y, strength);
+      } else if (dont_filter || i == 0) {
+        result.y += pow(2.0, - float(i + 2));
+      }
+    }
+    return result;
   }
   float fresnel(vec3 normal, vec3 lightDir) {
     // Apply fresnel effect
     return dot(normal, lightDir);
   }
-  vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, vec3 position, vec3 normal, vec3 rme, vec3 tpo, int sample_n, int bounces){
+  vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, Ray first_ray, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
     bool dont_filter = true;
     float last_filter_roughness = 0.0;
@@ -264,13 +308,9 @@ export class RayTracer {
     // Use additive color mixing technique, so start with black
     vec3 final_color = vec3(0);
     vec3 importancy_factor = vec3(1);
-    // Ray currently traced
-    vec3 active_ray = normalize(position - origin);
-    // Ray from last_position to light source
     vec3 last_origin = origin;
-    // Triangle ray lastly intersected with is last_position.w
-    vec3 last_position = position;
-    vec3 last_normal = normal;
+    // Ray currently traced
+    Ray ray = Ray(first_ray.direction, first_ray.origin, first_ray.normal);
     // Remember color of triangle ray intersected lastly
     // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter
     vec3 last_color = vec3(1);
@@ -288,11 +328,11 @@ export class RayTracer {
       vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
       vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
       // Alter normal according to roughness value
-      vec3 last_rough_normal = normalize(mix(last_normal, random_vec, last_rme.x));
+      vec3 last_rough_normal = normalize(mix(ray.normal, random_vec, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
-      if (dot(last_rough_normal, last_normal) <= 0.0) last_rough_normal = - last_rough_normal;
+      if (dot(last_rough_normal, ray.normal) <= 0.0) last_rough_normal = - last_rough_normal;
       // Handle fresnel reflection
-      float fresnel_reflect = abs(fresnel(last_normal, active_ray));
+      float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
       // object is solid or translucent by chance because of the fresnel effect
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
       // Test if filter is already necessary
@@ -304,7 +344,7 @@ export class RayTracer {
         original_rmex += last_filter_roughness;
         // Update render id
         if (original_tpox > 0.0) {
-          render_id += pow(2.0, - float(i + 0)) * vec4(last_normal.xy, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+          render_id += pow(2.0, - float(i + 0)) * vec4(ray.normal.xy, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
         } else {
           render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
         }
@@ -325,67 +365,36 @@ export class RayTracer {
         }
         // If ray fresnel reflects from inside an transparent object,
         // the surface faces in the opposite direction as usual
-        if (dot(active_ray, last_normal) > 0.0) last_normal = - last_normal;
+        if (dot(ray.direction, ray.normal) > 0.0) ray.normal = - ray.normal;
         //  Calculate primary light sources for this pass if ray hits non translucent object
-        for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-          // Read light position
-          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
-          // Read light strength from texture
-          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
-          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
-          // Alter light source position according to variation.
-          light = random_vec * variation + light;
-          // Skip if strength is negative or zero
-          if (strength <= 0.0) continue;
-          // Recalculate position -> light vector
-          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
-          // Update pixel color if coordinate is not in shadow
-          if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)) {
-            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor;
-          } else if (dont_filter || i == 0) {
-            render_id.w += pow(2.0, - float(i + 2));
-          }
-        }
+        vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
+        final_color += fels.x * importancy_factor;
+        render_id.w += fels.y;
         // Break out of the loop after color is calculated if i was the last iteration
         if (i == bounces - 1) break;
         // Calculate reflecting ray
-        active_ray = normalize(mix(reflect(active_ray, last_normal), random_vec, last_rme.x));
-        if (dot(active_ray, last_normal) <= 0.0) active_ray = - active_ray;
+        ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
+        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(- 2.0 * ray.direction + ray.normal);
         // Calculate next intersection
-        intersection = rayTracer(active_ray, last_position, last_normal);
+        intersection = rayTracer(ray);
         // Stop loop if there is no intersection and ray goes in the void
         if (intersection[0] == vec4(0)) break;
       } else {
         // Break out of the loop after color is calculated if i was the last iteration
         if (i == bounces - 1) break;
         float ratio = last_tpo.z * 4.0;
-        if (dot(active_ray, last_normal) <= 0.0){
-          active_ray = normalize(active_ray + 1.0 * refract(active_ray, last_normal, 1.0 / ratio));
+        if (dot(ray.direction, ray.normal) <= 0.0){
+          ray.direction = normalize(ray.direction + 1.0 * refract(ray.direction, ray.normal, 1.0 / ratio));
         }else{
-          active_ray = normalize(active_ray + 1.0 * refract(active_ray, - last_normal, ratio));
+          ray.direction = normalize(ray.direction + 1.0 * refract(ray.direction, - ray.normal, ratio));
         }
         // Calculate next intersection
-        intersection = rayTracer(active_ray, last_position, last_normal);
-        last_origin = 2.0 * last_position - last_origin;
-        for (int j = 0; j < textureSize(light_tex, 0).y; j++){
-          // Read light position
-          vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
-          // Read light strength from texture
-          float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
-          float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
-          // Alter light source position according to variation.
-          light += random_vec * variation;
-          // Skip if strength is negative or zero
-          if (strength <= 0.0) continue;
-          // Recalculate position -> light vector
-          vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - last_position;
-          // Update pixel color if coordinate is not in shadow
-          if (!shadowTest(normalize(active_light_ray), light, last_position, last_normal)){
-            final_color += forwardTrace(last_rough_normal, active_light_ray, last_origin, last_position, last_rme.y, strength) * importancy_factor * (1.0 - fresnel_reflect);
-          } else if (dont_filter || i == 0) {
-            render_id.w += pow(3.0, - float(i + 1));
-          }
-        }
+        intersection = rayTracer(ray);
+        last_origin = 2.0 * ray.origin - last_origin;
+
+        vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
+        final_color += fels.x * importancy_factor * (1.0 - fresnel_reflect);
+        render_id.w += fels.y;
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
@@ -412,14 +421,14 @@ export class RayTracer {
       last_tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz, sign(tex_nums.z + 1.0));
       // Update other parameters
       last_id = intersection[1].w;
-      last_origin = last_position;
-      last_position = intersection[0].xyz;
-      last_normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+      last_origin = ray.origin;
+      ray.origin = intersection[0].xyz;
+      ray.normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
       // Preserve original roughness for filter pass
       last_filter_roughness = last_rme.x;
       // Fresnel effect
-      last_rme.x *= mix(1.0, fresnel(last_normal, last_origin - last_position), last_rme.y);
-      if (i==0) first_ray_length = min(length(last_position - last_origin) / length(position - origin), 1.0);
+      last_rme.x *= mix(1.0, fresnel(ray.normal, last_origin - ray.origin), last_rme.y);
+      if (i==0) first_ray_length = min(length(ray.origin - last_origin) / length(first_ray.origin - origin), 1.0);
     }
     // Return final pixel color
     return final_color;
@@ -436,17 +445,16 @@ export class RayTracer {
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default tex_color to color
-    vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
-    // Default roughness, metallicity and emissiveness
-    // Set roughness to texture value if texture is defined
-    vec3 rme = mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
-    // Default to non translucent object (translucency, particle density, optical density) => tpo
-    vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
-    original_tpox = tpo.x;
+    Material material = Material (
+      mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0))
+    );
+    original_tpox = material.tpo.x;
     // Preserve original roughness for filter pass
-    float filter_roughness = rme.x;
+    float filter_roughness = material.rme.x;
     // Fresnel effect
-    rme.x = rme.x * mix(1.0, fresnel(normal, player - position), rme.y);
+    material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
     // Start hybrid ray tracing on a per light source base
     // Directly add emissive light of original surface to final_color
     vec3 final_color = vec3(0);
@@ -454,21 +462,22 @@ export class RayTracer {
     for (int i = 0; i < samples; i++){
       // Set color of object itself
       // Calculate pixel for specific normal
-      final_color += lightTrace(world_tex, light_tex, player, position, normal, rme, tpo, i, max_reflections);
+      Ray ray = Ray (normalize(position - player), position, normalize(normal));
+      final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
     }
     // Average ray colors over samples.
     final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
     if (use_filter == 0) {
-      render_color = vec4((final_color) * tex_color.xyz, 1.0);
+      render_color = vec4((final_color) * material.color, 1.0);
       return;
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) / 255.0, glass_filter);
-    render_original_color = vec4(tex_color.xyz * original_color, (rme.x + original_rmex + 0.0625 * tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, 0.0);
-    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + rme.y) / 6.0, original_tpox);
+    render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, 0.0);
+    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, original_tpox);
   }
   `;
   #postProcessGlsl = `#version 300 es
