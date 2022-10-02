@@ -19,12 +19,12 @@ async function buildScene() {
   	let caroTex = await scene.textureFromRME(
 		[
 			Array(64).fill([
-				Array(64).fill([1, 0, 0.2]).flat(),
+				Array(64).fill([1, 0, 0.4]).flat(),
 				Array(64).fill([0.1, 1, 0]).flat()
 			].flat()).flat(),
 			Array(64).fill([
 				Array(64).fill([0.1, 1, 0]).flat(),
-				Array(64).fill([1, 0, 0.2]).flat()
+				Array(64).fill([1, 0, 0.4]).flat()
 			].flat()).flat()
 		].flat(),
 	128, 128);
@@ -34,7 +34,7 @@ async function buildScene() {
 	// Set primary light source.
 	scene.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 12;
+	scene.primaryLightSources[0].intensity = 20;
 	// Generate side planes of box.
 	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
   	let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
@@ -44,10 +44,13 @@ async function buildScene() {
   	let right_plane = scene.Plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
 
   	// Make planes diffuse.
-  	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => item.setTextureNums(-1, 0, -1));
+  	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
+		item.setTextureNums(-1, 0, -1);
+		left_plane.setColor(230, 230, 230);
+	});
   	// Color left and right plane.
-  	left_plane.setColor(255, 0, 0);
-  	right_plane.setColor(0, 255, 0);
+  	left_plane.setColor(220, 0, 0);
+  	right_plane.setColor(0, 150, 0);
 	// Generate a few cuboids in the box with respective bounding box.
 	let cube = [[], []];
 	cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);

@@ -15,23 +15,33 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normal_tex = await scene.textureFromRME([0.3, 0, 0], 1, 1);
-	scene.pbrTextures.push(normal_tex);
+	let normalTex = await scene.textureFromRME([0.3, 0, 0], 1, 1);
+	let clearTex = await scene.textureFromRME([0, 0, 0], 1, 1);
+	scene.pbrTextures.push(normalTex, clearTex);
+
+	let waterTex = await scene.textureFromTPO([1, 0.5, 1.3 / 4], 1, 1);
+	scene.translucencyTextures.push(waterTex);
 
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [-5, 2, -5];
 	[camera.fx, camera.fy] = [0.870, 0.235];
 
 	// Generate plane.
-	let this_plane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-	this_plane.setTextureNums(-1, 0, -1);
+	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
+	let plane = scene.Plane([-50,-10,-50],[50,-10,-50],[50,-10,50],[-50,-10,50],[0,1,0]);
+	waterCuboid.setTextureNums(-1, 1, 0);
+	waterCuboid.setColor(150, 210, 255);
 
-	let monke = await scene.fetchObjFile('objects/monke.obj');
+	//let monke = await scene.fetchObjFile('objects/cube.obj');
+	//monke.move(0, -0.5, 0);
 
-	scene.primaryLightSources = [[20, 10, 20]];
+	let cube = await scene.Cuboid(-2, 2, -10, 2, -2, 2);
+
+	scene.primaryLightSources = [[40, 50, 40]];
+	scene.primaryLightSources[0].intensity = 5000;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
-	scene.queue.push(this_plane, monke);
+	scene.queue.push(waterCuboid, plane, cube);
 	// Start render engine.
 	engine.renderer.render();
 
