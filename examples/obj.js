@@ -28,20 +28,20 @@ async function buildScene() {
 
 	// Generate plane.
 	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
-	let plane = scene.Plane([-50,-10,-50],[50,-10,-50],[50,-10,50],[-50,-10,50],[0,1,0]);
+	let plane = scene.Plane([-50,-1,-50],[50,-1,-50],[50,-1,50],[-50,-1,50],[0,1,0]);
 	waterCuboid.setTextureNums(-1, 1, 0);
 	waterCuboid.setColor(150, 210, 255);
 
-	//let monke = await scene.fetchObjFile('objects/cube.obj');
-	//monke.move(0, -0.5, 0);
+	let monke = await scene.fetchObjFile('objects/sphere_tri.obj');
+	monke.move(0, 0, 0);
 
-	let cube = await scene.Cuboid(-2, 2, -10, 2, -2, 2);
+	// let cube = await scene.Cuboid(-2, 2, -10, 2, -2, 2);
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 5000;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
-	scene.queue.push(waterCuboid, plane, cube);
+	scene.queue.push(plane, monke);
 	// Start render engine.
 	engine.renderer.render();
 

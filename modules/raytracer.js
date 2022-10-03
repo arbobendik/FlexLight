@@ -264,7 +264,7 @@ export class RayTracer {
     // Calculate intensity of light reflection, which decreases squared over distance
     float intensity = strength / pow(1.0 + length(ray.direction), 2.0);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalize(ray.origin) + normalize(origin - ray.origin));
+    vec3 halfVector = normalize(normalize(ray.direction) + normalize(origin - ray.origin));
     float light = abs(dot(normalize(ray.direction), ray.normal)) * (1.0 - metallicity);
     float specular = pow(abs(dot(ray.normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
     // Determine final color and return it
@@ -374,7 +374,7 @@ export class RayTracer {
         if (i == bounces - 1) break;
         // Calculate reflecting ray
         ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
-        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(- 2.0 * ray.direction + ray.normal);
+        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize((2.0 * ray.normal - vec3(1)) * ray.direction);
         // Calculate next intersection
         intersection = rayTracer(ray);
         // Stop loop if there is no intersection and ray goes in the void
@@ -1084,7 +1084,7 @@ export class RayTracer {
       antialiasingRenderTextureBuilder();
 
       rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 200);
-      rt.secondPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 250);
+      rt.secondPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 200);
     }
     // Init canvas parameters and textures with resize
     resize();
