@@ -374,7 +374,7 @@ export class RayTracer {
         if (i == bounces - 1) break;
         // Calculate reflecting ray
         ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
-        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize((2.0 * ray.normal - vec3(1)) * ray.direction);
+        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
         // Calculate next intersection
         intersection = rayTracer(ray);
         // Stop loop if there is no intersection and ray goes in the void
@@ -986,7 +986,7 @@ export class RayTracer {
         // Give item new id property to identify vertex in fragment shader
         item.ids = [];
         for (let i = 0; i < len * 3; i += 9){
-          let j = i/3*2;
+          let j = i / 3 * 2;
           // 1 vertex = 1 line in world texture
           // a, b, c, color, normal, texture_nums, UVs1, UVs2
           data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/3],c[i/3+1],c[i/3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);

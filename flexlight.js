@@ -1,5 +1,7 @@
 'use strict';
 
+
+import {Math} from './modules/math.js';
 import {Camera} from './modules/camera.js';
 import {Scene} from './modules/scene.js';
 import {RayTracer} from './modules/raytracer.js';
