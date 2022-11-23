@@ -7,5 +7,5 @@ export class Camera {
   z = 0;
   fx = 0;
   fy = 0;
-  fov = Math.PI;
+  fov = 1 / Math.PI;
 }

@@ -236,7 +236,7 @@ class Plane extends Object3D {
   constructor (c0, c1, c2, c3, scene) {
     super(6, false, scene);
     // set normals
-    this.normals = new Array(6).fill(Math.cross(Math.diff(c0, c2), Math.vediff(c0, c1))).flat();
+    this.normals = new Array(6).fill(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))).flat();
     // set vertices
     this.vertices = [c0,c1,c2,c2,c3,c0].flat();
   }
