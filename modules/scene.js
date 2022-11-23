@@ -1,10 +1,4 @@
-"use strict";
-
-// Calculate cross product
-let cross = (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
-// Determines vector between 2 points
-let vec_diff = (a, b) => a.map((item, i) => b[i] - item);
-
+'use strict';
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
@@ -91,6 +85,8 @@ export class Scene {
   Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3, this);
   // triangle element prototype
   Triangle = (a, b, c) => new Triangle (a, b, c, this);
+  // bounding element
+  Bounding = (array) => new Bounding (array, this);
   // generate object from array
   // create object from .obj file
   fetchObjFile = async (path) => {
@@ -128,10 +124,10 @@ export class Scene {
           if (words.length === 5) {
             // generate plane with vertecies
             let plane = new Plane (
-              v[data[3][0] - 1],
-              v[data[2][0] - 1],
-              v[data[1][0] - 1],
               v[data[0][0] - 1],
+              v[data[1][0] - 1],
+              v[data[2][0] - 1],
+              v[data[3][0] - 1],
               scene
             );
             // set uvs according to .obj file
@@ -240,7 +236,7 @@ class Plane extends Object3D {
   constructor (c0, c1, c2, c3, scene) {
     super(6, false, scene);
     // set normals
-    this.normals = new Array(6).fill(cross(vec_diff(c0, c2), vec_diff(c0, c1))).flat();
+    this.normals = new Array(6).fill(Math.cross(Math.diff(c0, c2), Math.vediff(c0, c1))).flat();
     // set vertices
     this.vertices = [c0,c1,c2,c2,c3,c0].flat();
   }
@@ -257,9 +253,9 @@ class Triangle extends Object3D {
   constructor (a, b, c, scene) {
     super(3, false, scene);
     // generate surface normal
-    this.normals = new Array(3).fill(cross(
-      vec_diff(a, c),
-      vec_diff(a, b)
+    this.normals = new Array(3).fill(Math.cross(
+      Math.diff(a, c),
+      Math.diff(a, b)
     )).flat();
     // vertecies for queue
     this.vertices = [a,b,c].flat();

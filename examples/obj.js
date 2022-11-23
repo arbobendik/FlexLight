@@ -32,7 +32,7 @@ async function buildScene() {
 	waterCuboid.setTextureNums(-1, 1, 0);
 	waterCuboid.setColor(150, 210, 255);
 
-	let monke = await scene.fetchObjFile('objects/sphere_tri.obj');
+	let monke = await scene.fetchObjFile('objects/monke.obj');
 	monke.move(0, 0, 0);
 
 	// let cube = await scene.Cuboid(-2, 2, -10, 2, -2, 2);
