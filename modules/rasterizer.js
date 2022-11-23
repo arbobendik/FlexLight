@@ -45,7 +45,7 @@ export class Rasterizer {
       move_3d.y * cos(perspective.y) + translate_px.y * sin(perspective.y),
       translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
     );
-    vec2 translate_2d = conf.x * vec2(translate_px.x / conf.y, translate_py.x);
+    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
     // Set final clip space position
     gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
     position = position_3d;
