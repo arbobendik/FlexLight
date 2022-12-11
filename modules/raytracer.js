@@ -975,7 +975,7 @@ export class RayTracer {
       // Rebuild textures with every resize
       randomTextureBuilder();
       renderTextureBuilder();
-      this.#AAObject.buildTexture();
+      if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
 
       rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 400);
       rt.secondPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 200);
@@ -1408,15 +1408,19 @@ export class RayTracer {
       }
 
       // Post processing (end of render pipeline)
-      switch (this.#antialiasing.toLowerCase()) {
-        case "fxaa":
-          this.AAObject = new FXAA(rt.#gl);
-          break;
-        case "taa":
-          this.AAObject = new TAA(rt.#gl);
-          break;
-        default:
-          this.AAObject = null;
+      if (rt.#antialiasing !== null) {
+        switch (this.#antialiasing.toLowerCase()) {
+          case "fxaa":
+            this.#AAObject = new FXAA(rt.#gl);
+            break;
+          case "taa":
+            this.#AAObject = new TAA(rt.#gl);
+            break;
+          default:
+            this.#AAObject = null;
+        }
+      } else {
+        this.#AAObject = null;
       }
     }
     // Prepare Renderengine

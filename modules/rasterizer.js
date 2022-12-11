@@ -482,7 +482,7 @@ export class Rasterizer {
     	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
       // Rebuild textures with every resize
       renderTextureBuilder();
-      this.#AAObject.buildTexture();
+      if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -696,16 +696,21 @@ export class Rasterizer {
       renderTextureBuilder();
 
       // Post processing (end of render pipeline)
-      switch (this.#antialiasing.toLowerCase()) {
-        case "fxaa":
-          this.#AAObject = new FXAA(rt.#gl);
-          break;
-        case "taa":
-          this.#AAObject = new TAA(rt.#gl);
-          break;
-        default:
-          this.#AAObject = null;
+      if (rt.#antialiasing !== null) {
+        switch (this.#antialiasing.toLowerCase()) {
+          case "fxaa":
+            this.#AAObject = new FXAA(rt.#gl);
+            break;
+          case "taa":
+            this.#AAObject = new TAA(rt.#gl);
+            break;
+          default:
+            this.#AAObject = null;
+        }
+      } else {
+        this.#AAObject = null;
       }
+      
     }
     // Prepare Renderengine
     prepareEngine();
