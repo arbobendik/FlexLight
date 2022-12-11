@@ -1,14 +1,20 @@
 'use strict';
 
+import { GLLib } from './gllib.js';
+import { FXAA } from './fxaa.js';
+import { TAA } from './taa.js';
+
 export class Rasterizer {
   type = 'rasterizer';
   // Configurable runtime properties (public attributes)
   // Quality settings
   renderQuality = 1;
-  antialiasing = true;
   hdr = true;
   // Performance metric
   fps = 0;
+
+  #antialiasing = 'taa';
+  #AAObject;
 
   halt = () => this.#halt = true;
   #halt = false;
@@ -239,143 +245,41 @@ export class Rasterizer {
     
   }
   `;
-  #postProcessGlsl = `#version 300 es
-  in vec2 position_2d;
-  // Pass clip space position to fragment shader
-  out vec2 clip_space;
-  void main() {
-    vec2 pos = position_2d * 2.0 - 1.0;
-    // Set final clip space position
-    gl_Position = vec4(pos, 0, 1);
-    clip_space = position_2d;
-  }
-  `;
-  #fxaaGlsl = `#version 300 es
-  // Define FXAA constants
-  #define FXAA_EDGE_THRESHOLD_MIN 1.0 / 32.0
-  #define FXAA_EDGE_THRESHOLD 1.0 / 4.0
-  #define FXAA_SUBPIX_TRIM 0.0
-  #define FXAA_SUBPIX_TRIM_SCALE 1.0
-  #define FXAA_SUBPIX_CAP 7.0 / 8.0
-  #define FXAA_SEARCH_STEPS 6
-  precision highp float;
-  in vec2 clip_space;
-  uniform sampler2D pre_render;
-  out vec4 out_color;
-  vec2 texel;
-  vec4 fetch(int x, int y) {
-    return texelFetch(pre_render, ivec2(texel) + ivec2(x, y), 0);
-  }
-  // Color to luminance conversion from NVIDIA FXAA white paper
-  float fxaa_luma(vec4 rgba) {
-    return (rgba.y * (0.587/0.299) + rgba.x) * rgba.w;
-  }
-  float tex_luma(int x, int y) {
-    // Devide length through square root of 3 to have a maximum length of 1
-    return fxaa_luma(fetch(x, y));
-  }
-  // Local contrast checker from NVIDIA FXAA white paper
-  vec2 fxaa_contrast(int x, int y) {
-    return vec2(
-      min(tex_luma(x, y), min(min(tex_luma(x, y-1), tex_luma(x-1, y)), min(tex_luma(x, y+1), tex_luma(x+1, y)))),
-      max(tex_luma(x, y), max(max(tex_luma(x, y-1), tex_luma(x-1, y)), max(tex_luma(x, y+1), tex_luma(x+1, y))))
-    );
-  }
-  // Local low contrast checker from NVIDIA FXAA white paper
-  bool fxaa_is_low_contrast(int x, int y) {
-    vec2 range_min_max = fxaa_contrast(x, y);
-    float range = range_min_max.y - range_min_max.x;
-    return (range < max(FXAA_EDGE_THRESHOLD_MIN, range_min_max.y * FXAA_EDGE_THRESHOLD));
-  }
-  vec4 blur_3x3(int x, int y) {
-    return 1.0 / 9.0 * (
-        fetch(x-1,y-1) + fetch(  x,y-1) + fetch(x+1,y-1)
-      + fetch(x-1,  y) + fetch(  x,  y) + fetch(x+1,  y)
-      + fetch(x-1,y+1) + fetch(  x,y+1) + fetch(x+1,y+1)
-    );
-  }
-  float fxaa_sub_pixel_aliasing(int x, int y) {
-    float luma_l = 0.25 * (tex_luma(x,y-1) + tex_luma(x-1,y) + tex_luma(x+1,y) + tex_luma(x,y+1));
-    float range_l = abs(luma_l - tex_luma(x, y));
-    // Get contrast range
-    vec2 range_min_max = fxaa_contrast(x, y);
-    float range = range_min_max.y - range_min_max.x;
-    float blend_l = max(0.0,
-    (range_l / range) - FXAA_SUBPIX_TRIM) * FXAA_SUBPIX_TRIM_SCALE;
-    blend_l = min(FXAA_SUBPIX_CAP, blend_l);
-    return blend_l;
-  }
-  void main() {
-    // Get texture size
-    texel = vec2(textureSize(pre_render, 0)) * clip_space;
-    vec4 original_color = fetch(0, 0);
-    float original_luma = tex_luma(0, 0);
-    mat3 luma = mat3(
-      vec3(tex_luma(-1,-1),tex_luma(0,-1),tex_luma(1,-1)),
-      vec3(tex_luma(-1, 0),tex_luma(0, 0),tex_luma(1, 0)),
-      vec3(tex_luma(-1, 1),tex_luma(0, 1),tex_luma(1, 1))
-    );
-    // Edge detection from NVIDIA FXAA white paper
-    float edge_vert =
-      abs((0.25 * luma[0].x) + (-0.5 * luma[0].y) + (0.25 * luma[0].z)) +
-      abs((0.50 * luma[1].x) + (-1.0 * luma[1].y) + (0.50 * luma[1].z)) +
-      abs((0.25 * luma[2].x) + (-0.5 * luma[2].y) + (0.25 * luma[2].z));
-    float edge_horz =
-      abs((0.25 * luma[0].x) + (-0.5 * luma[1].x) + (0.25 * luma[2].x)) +
-      abs((0.50 * luma[0].y) + (-1.0 * luma[1].y) + (0.50 * luma[2].y)) +
-      abs((0.25 * luma[0].z) + (-0.5 * luma[1].z) + (0.25 * luma[2].z));
-    bool horz_span = edge_horz >= edge_vert;
-    ivec2 step = ivec2(0, 1);
-    if (horz_span) step = ivec2(1, 0);
-    if (fxaa_is_low_contrast(0, 0)) {
-      out_color = original_color;
-      return;
-    }
-    ivec2 pos_n = - step;
-    ivec2 pos_p = step;
-    vec4 color = original_color;
-    float pixel_count = 1.0;
-    bool done_n = false;
-    bool done_p = false;
-    // Luma of neighbour with highest contrast
-    float luma_mcn = max(
-      max(abs(luma[0].y - luma[1].y), abs(luma[1].z - luma[1].y)),
-      max(abs(luma[2].y - luma[1].y), abs(luma[1].x - luma[1].y))
-    );
-    float gradient = abs(luma_mcn - luma[1].y);
-    for (int i = 0; i < FXAA_SEARCH_STEPS; i++) {
-      // Blend pixel with 3x3 box filter to preserve sub pixel detail
-      if (!done_n) {
-        vec4 local_blur_n = blur_3x3(pos_n.x, pos_n.y);
-        done_n = (abs(fxaa_luma(local_blur_n) - luma_mcn) >= gradient);
-        color += mix(fetch(pos_n.x, pos_n.y), local_blur_n, fxaa_sub_pixel_aliasing(pos_n.x, pos_n.y));
-        pixel_count++;
-        pos_n -= step;
-      } else if (!done_p) {
-        vec4 local_blur_p = blur_3x3(pos_p.x, pos_p.y);
-        done_p = (abs(fxaa_luma(local_blur_p) - luma_mcn) >= gradient);
-        color += mix(fetch(pos_p.x, pos_p.y), local_blur_p, fxaa_sub_pixel_aliasing(pos_p.x, pos_p.y));
-        pixel_count++;
-        pos_p += step;
-      } else {
-        break;
-      }
-    }
-    out_color = color / pixel_count;
-  }
-  `;
   // Create new rayTracer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
+    this.#AAObject = new TAA(this.#gl);
   }
 
   // Make canvas read only accessible
   get canvas () {
     return this.#canvas;
   }
+
+  get antialiasing () {
+    if (this.#antialiasing === null) return 'none';
+    return this.#antialiasing;
+  }
+
+  set antialiasing (val) {
+    switch (val.toLowerCase()) {
+      case 'fxaa':
+        this.#antialiasing = val;
+        this.#AAObject = new FXAA(this.#gl);
+        break;
+      case 'taa':
+        this.#antialiasing = val;
+        this.#AAObject = new TAA(this.#gl);
+        break;
+      default:
+        this.#antialiasing = null;
+        this.#AAObject = null;
+    }
+  }
+
 
   // Functions to update texture atlases to add more textures during runtime
 	#updateTextureType (type, fakeTextureWidth) {
@@ -501,8 +405,6 @@ export class Rasterizer {
         }
         // replace n with n as unit vectors
         n = unitN.flat();
-        // console.log(unitN.flat());
-        //console.log(unitN[1]);
         
         // Test if bounding volume is set
         if (item.bounding !== undefined) {
@@ -546,29 +448,26 @@ export class Rasterizer {
 
   async render() {
     // start rendering
-    var rt = this;
+    let rt = this;
     // Allow frame rendering
     rt.#halt = false;
     // Initialize internal globals of render functiod
     // The millis variable is needed to calculate fps and movement speed
-    var TimeElapsed = performance.now();
+    let TimeElapsed = performance.now();
     // Total frames calculated since last meassured
-    var Frames = 0;
+    let Frames = 0;
     // Internal GL objects
-    var Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, HdrLocation, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    let Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, HdrLocation, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    var PositionBuffer, IdBuffer, TexBuffer;
+    let PositionBuffer, IdBuffer, TexBuffer;
     // Framebuffer, other buffers and textures
-    var Framebuffer, RenderTexture, RenderTex;
-    var DepthTexture = this.#gl.createTexture();
-    // Convolution-Antialiasing program and its buffers and textures
-    var AntialiasingProgram, AntialiasingVertexBuffer;
+    let Framebuffer;
+    let DepthTexture = this.#gl.createTexture();
     // Create different Vaos for different rendering/filtering steps in pipeline
-    var Vao = this.#gl.createVertexArray();
-    var AntialiasingVao = this.#gl.createVertexArray();
+    let Vao = this.#gl.createVertexArray();
 
     // Check if recompile is needed
-    var State = this.renderQuality;
+    let State = this.renderQuality;
 
     // Detect mouse movements
     // Handle canvas resize
@@ -576,54 +475,19 @@ export class Rasterizer {
     	resize();
     });
     // Function to handle canvas resize
-    function resize(){
+    let resize = () => {
 			const canvas = rt.canvas;
     	canvas.width = canvas.clientWidth * rt.renderQuality;
     	canvas.height = canvas.clientHeight * rt.renderQuality;
     	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
       // Rebuild textures with every resize
       renderTextureBuilder();
+      this.#AAObject.buildTexture();
     }
     // Init canvas parameters and textures with resize
     resize();
 
-
-    function buildProgram(shaders){
-      // Create Program, compile and append vertex and fragment shader to it
-      let program = rt.#gl.createProgram();
-      // Compile GLSL shaders
-      shaders.forEach((item, i) => {
-        let shader = rt.#gl.createShader(item.type);
-        rt.#gl.shaderSource(shader, item.source);
-        rt.#gl.compileShader(shader);
-        // Append shader to Program if GLSL compiled successfully
-        if (rt.#gl.getShaderParameter(shader, rt.#gl.COMPILE_STATUS)){
-          rt.#gl.attachShader(program, shader);
-        }else{
-          // Log debug info and delete shader if shader fails to compile
-          console.warn(rt.#gl.getShaderInfoLog(shader));
-          rt.#gl.deleteShader(shader);
-        }
-      });
-      rt.#gl.linkProgram(program);
-      // Return Program if it links successfully
-      if (!rt.#gl.getProgramParameter(program, rt.#gl.LINK_STATUS)){
-        // Log debug info and delete Program if Program fails to link
-        console.warn(rt.#gl.getProgramInfoLog(program));
-        rt.#gl.deleteProgram(program);
-      }else{
-        return program;
-      }
-    }
-
-    function renderTextureBuilder(){
-      // Init textures for denoiser
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, RenderTexture);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.NEAREST);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_S, rt.#gl.CLAMP_TO_EDGE);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
+    function renderTextureBuilder() {
       // Init single channel depth texture
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, DepthTexture);
       rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
@@ -680,7 +544,13 @@ export class Rasterizer {
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
+      // Randomize camera position if Taa is enabled
+      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
+        let taaJitter = 1 / Math.min(rt.canvas.width, rt.canvas.height);
+        rt.#gl.uniform2f(Perspective, rt.camera.fx + Math.random() * taaJitter, rt.camera.fy + Math.random() * taaJitter);
+      } else  {
+        rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
+      }
       // Set fov and X/Y ratio of screen
       rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
       // Set global illumination
@@ -740,57 +610,37 @@ export class Rasterizer {
       rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
     }
 
-    function renderFrame() {
-      {
-        // Configure where the final image should go
-        if (rt.antialiasing) {
-          // Configure framebuffer for color and depth
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
-          rt.#gl.drawBuffers([
-            rt.#gl.COLOR_ATTACHMENT0
-          ]);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture, 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture, 0);
-        } else {
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
-        }
-
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
-        texturesToGPU();
-        fillBuffers();
-      }
-      // Apply antialiasing shader if enabled
-      if (rt.antialiasing) {
-        // Render to canvas now
+    let renderFrame = () => {
+      // Configure where the final image should go
+      if (this.#antialiasing !== null) {
+        // Configure framebuffer for color and depth
+        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
+        rt.#gl.drawBuffers([
+          rt.#gl.COLOR_ATTACHMENT0
+        ]);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture, 0);
+      } else {
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
-        // Make pre rendered texture TEXTURE0
-        rt.#gl.activeTexture(rt.#gl.TEXTURE0);
-        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, RenderTexture);
-        // Switch program and vao
-        rt.#gl.useProgram(AntialiasingProgram);
-        rt.#gl.bindVertexArray(AntialiasingVao);
-        // Pass pre rendered texture to shader
-        rt.#gl.uniform1i(RenderTex, 0);
-        // Post processing drawcall
-        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       }
+
+      // Clear depth and color buffers from last frame
+      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+      texturesToGPU();
+      fillBuffers();
+      /// Apply antialiasing shader if enabled
+      if (rt.#antialiasing !== null) this.#AAObject.renderFrame();
     }
 
-    function prepareEngine() {
+    let prepareEngine = () => {
       rt.updateTextures();
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
       // Compile shaders and link them into Program global
-      Program = buildProgram([
+      Program = GLLib.buildProgram(rt.#gl, [
         { source: rt.#vertexGlsl, type: rt.#gl.VERTEX_SHADER },
         { source: rt.#fragmentGlsl, type: rt.#gl.FRAGMENT_SHADER }
-      ]);
-      // Compile shaders and link them into AntialiasingProgram global
-      AntialiasingProgram = buildProgram([
-        { source: rt.#postProcessGlsl, type: rt.#gl.VERTEX_SHADER },
-        { source: rt.#fxaaGlsl, type: rt.#gl.FRAGMENT_SHADER }
       ]);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
@@ -842,24 +692,20 @@ export class Rasterizer {
         rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
       });
       // Create frame buffers and textures to be rendered to
-      [Framebuffer, RenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
-
+      Framebuffer = rt.#gl.createFramebuffer();
       renderTextureBuilder();
 
-      // Create post program buffers and uniforms
-      rt.#gl.bindVertexArray(AntialiasingVao);
-      rt.#gl.useProgram(AntialiasingProgram);
-
-      RenderTex = rt.#gl.getUniformLocation(AntialiasingProgram, 'pre_render');
-
-      AntialiasingVertexBuffer = rt.#gl.createBuffer();
-
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
-      rt.#gl.enableVertexAttribArray(0);
-      rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
-      // Fill buffer with data for two verices
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, AntialiasingVertexBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
+      // Post processing (end of render pipeline)
+      switch (this.#antialiasing.toLowerCase()) {
+        case "fxaa":
+          this.#AAObject = new FXAA(rt.#gl);
+          break;
+        case "taa":
+          this.#AAObject = new TAA(rt.#gl);
+          break;
+        default:
+          this.#AAObject = null;
+      }
     }
     // Prepare Renderengine
     prepareEngine();
