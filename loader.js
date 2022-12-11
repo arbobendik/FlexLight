@@ -18,30 +18,32 @@ function load(search) {
     // Get form elements
 		const scriptForm = document.getElementById('scriptForm');
     const parameterForm = document.getElementById('parameterForm');
+    const tickBoxes = ['filter', 'hdr'];
+    const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy', 'antialiasing'];
 
-    parameterForm.children['raytracing'].checked = (localStorage.getItem('raytracing') ?? 'true') === 'true';
-    engine.renderer = parameterForm.children['raytracing'].checked ? 'raytracer' : 'rasterizer';
+    document.getElementById('raytracing').checked = (localStorage.getItem('raytracing') ?? 'true') === 'true';
+    engine.renderer = document.getElementById('raytracing').checked ? 'raytracer' : 'rasterizer';
     renderer = engine.renderer;
     renderer.render();
     // Restore values in raytracer
-    ['filter', 'antialiasing', 'hdr'].forEach((item) => {
-      renderer[item] = (localStorage.getItem(item) ?? renderer[item].toString()) === 'true';
+    tickBoxes.forEach((item) => {
+      renderer[item] = (localStorage.getItem(item) ?? 'true') === 'true';
       parameterForm.children[item].checked = renderer[item];
     });
 
-    var sliderVariables = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy'];
-    sliderVariables.forEach((item) => {
-      renderer[item] = Number(localStorage.getItem(item) ?? renderer[item]);
+    sliders.forEach((item) => {
+      renderer[item] = (item === 'antialiasing') ? localStorage.getItem(item) ?? renderer[item] : Number(localStorage.getItem(item) ?? renderer[item]);
       parameterForm.children[item].value = renderer[item];
     });
     // Load slider variables
     document.querySelectorAll('output').forEach((item, i) => {
-      item.value = renderer[sliderVariables[i]];
-      // Define silider
-      var slider = parameterForm.children[sliderVariables[i]];
+      item.value = renderer[sliders[i]];
+      // Define silder
+      var slider = document.getElementById(sliders[i]);
       // Live update slider variables
       slider.addEventListener('input', () => item.value = slider.value);
     });
+
 		if (search.has('v')) {
 			scriptForm[0].value = search.get('v');
 		} else {
@@ -51,19 +53,20 @@ function load(search) {
     scriptForm.addEventListener('change', () => location.search = '?v=' + scriptForm[0].value);
     // Update gl quality params on form change
     parameterForm.addEventListener('change', () => {
-      if ((localStorage.getItem('raytracing') === 'true') !== parameterForm.children['raytracing'].checked) {
-        localStorage.setItem('raytracing', parameterForm.children['raytracing'].checked);
-        engine.renderer = parameterForm.children['raytracing'].checked ? 'raytracer' : 'rasterizer';
+      if ((localStorage.getItem('raytracing') === 'true') !== document.getElementById('raytracing').checked) {
+        localStorage.setItem('raytracing', document.getElementById('raytracing').checked);
+        engine.renderer = document.getElementById('raytracing').checked ? 'raytracer' : 'rasterizer';
         renderer = engine.renderer;
         renderer.render();
       }
 
-      ['filter', 'antialiasing', 'hdr'].forEach((item) => {
+      tickBoxes.forEach((item) => {
         renderer[item] = parameterForm.children[item].checked;
         localStorage.setItem(item, renderer[item]);
       });
-      ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy'].forEach((item) => {
-        renderer[item] = Number(parameterForm.children[item].value);
+
+      sliders.forEach((item) => {
+        renderer[item] = (item === 'antialiasing') ? parameterForm.children[item].value : Number(parameterForm.children[item].value);
         localStorage.setItem(item, renderer[item]);
       });
     });
