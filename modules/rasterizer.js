@@ -491,10 +491,7 @@ export class Rasterizer {
       // Init single channel depth texture
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, DepthTexture);
       rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.NEAREST);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_S, rt.#gl.CLAMP_TO_EDGE);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
+      GLLib.setTexParams(rt.#gl);
     }
 
     // Internal render engine Functions
@@ -546,7 +543,7 @@ export class Rasterizer {
       // Set x and y rotation of camera
       // Randomize camera position if Taa is enabled
       if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let taaJitter = 1 / Math.min(rt.canvas.width, rt.canvas.height);
+        let taaJitter = 2 / (3 * Math.min(rt.canvas.width, rt.canvas.height));
         rt.#gl.uniform2f(Perspective, rt.camera.fx + Math.random() * taaJitter, rt.camera.fy + Math.random() * taaJitter);
       } else  {
         rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
