@@ -1000,29 +1000,20 @@ export class RayTracer {
         parent.forEach(function(item){
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-          rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
-          rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.NEAREST);
-          rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_S, rt.#gl.CLAMP_TO_EDGE);
-          rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
+          GLLib.setTexParams(rt.#gl);
         });
       });
       // Init single channel depth textures
       DepthTexture.forEach((item) => {
         rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.NEAREST);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_S, rt.#gl.CLAMP_TO_EDGE);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
+        GLLib.setTexParams(rt.#gl);
       });
       // Init other textures
       [OriginalIdRenderTexture].forEach(function(item){
         rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.NEAREST);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.NEAREST);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_S, rt.#gl.CLAMP_TO_EDGE);
-        rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_WRAP_T, rt.#gl.CLAMP_TO_EDGE);
+        GLLib.setTexParams(rt.#gl);
       });
     }
 
@@ -1082,7 +1073,7 @@ export class RayTracer {
       // Set x and y rotation of camera
       // Randomize camera position if Taa is enabled
       if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let taaJitter = 1 / Math.min(rt.canvas.width, rt.canvas.height);
+        let taaJitter = 2 / (3 * Math.min(rt.canvas.width, rt.canvas.height));
         rt.#gl.uniform2f(Perspective, rt.camera.fx + Math.random() * taaJitter, rt.camera.fy + Math.random() * taaJitter);
       } else  {
         rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
@@ -1155,144 +1146,133 @@ export class RayTracer {
     }
 
     let renderFrameRt = () => {
-      {
+      // Configure where the final image should go
+      rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
+      rt.#gl.drawBuffers([
+        rt.#gl.COLOR_ATTACHMENT0,
+        rt.#gl.COLOR_ATTACHMENT1,
+        rt.#gl.COLOR_ATTACHMENT2,
+        rt.#gl.COLOR_ATTACHMENT3,
+        rt.#gl.COLOR_ATTACHMENT4
+      ]);
+      // Configure framebuffer for color and depth
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
+      // Clear depth and color buffers from last frame
+      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+      texturesToGPU();
+      fillBuffers();
+      // Apply post processing
+      // Save last used program slot
+      let n = 0;
+      let nId = 0;
+      let nOriginal = 0;
+      for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
+        // Look for next free compatible program slot
+        let np = (i%2)^1;
+        let npOriginal = ((i - rt.firstPasses)%2)^1;
+        if (rt.firstPasses <= i) np += 2;
         // Configure where the final image should go
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
+        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
+        // Set attachments to use for framebuffer
         rt.#gl.drawBuffers([
           rt.#gl.COLOR_ATTACHMENT0,
           rt.#gl.COLOR_ATTACHMENT1,
-          rt.#gl.COLOR_ATTACHMENT2,
-          rt.#gl.COLOR_ATTACHMENT3,
-          rt.#gl.COLOR_ATTACHMENT4
+          rt.#gl.COLOR_ATTACHMENT2
         ]);
         // Configure framebuffer for color and depth
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
-        texturesToGPU();
-        fillBuffers();
-      }
-      // Apply post processing
-      {
-        // Save last used program slot
-        let n = 0;
-        let nId = 0;
-        let nOriginal = 0;
-        for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
-          // Look for next free compatible program slot
-          let np = (i%2)^1;
-          let npOriginal = ((i - rt.firstPasses)%2)^1;
-          if (rt.firstPasses <= i) np += 2;
-          // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
-          // Set attachments to use for framebuffer
-          rt.#gl.drawBuffers([
-            rt.#gl.COLOR_ATTACHMENT0,
-            rt.#gl.COLOR_ATTACHMENT1,
-            rt.#gl.COLOR_ATTACHMENT2
-          ]);
-          // Configure framebuffer for color and depth
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
-          if (rt.firstPasses <= i - 2) {
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
-          } else {
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
-          }
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
-          // Clear depth and color buffers from last frame
-          rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-          // Push pre rendered textures to next shader (post processing)
-          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
-            rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-            rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-          });
-          // Switch program and Vao
-          rt.#gl.useProgram(PostProgram[n]);
-          rt.#gl.bindVertexArray(PostVao[n]);
-          // Pass pre rendered texture to shad
-          rt.#gl.uniform1i(RenderTex[n], 0);
-          rt.#gl.uniform1i(IpRenderTex[n], 1);
-          // Pass original color texture to GPU
-          rt.#gl.uniform1i(OriginalRenderTex[n], 2);
-          // Pass vertex_id texture to GPU
-          rt.#gl.uniform1i(IdRenderTex[n], 3);
-          // Pass vertex_id of original vertex as a texture to GPU
-          rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
-          // Post processing drawcall
-          rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
-          // Save current program slot in n for next pass
-          n = np;
-
-          if (rt.firstPasses <= i) {
-            nOriginal = npOriginal;
-          } else {
-            nId = np;
-          }
-        }
-      }
-      // Last denoise pass
-      {
-        rt.#gl.drawBuffers([
-          rt.#gl.COLOR_ATTACHMENT0,
-          rt.#gl.COLOR_ATTACHMENT1
-        ]);
-        // Configure framebuffer for color and depth
-        if (rt.#antialiasing) {
-          // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
+        if (rt.firstPasses <= i - 2) {
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
         } else {
-          // Render to canvas now
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
         }
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
         // Clear depth and color buffers from last frame
         rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
-        let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
-        let indexId = rt.firstPasses % 2;
-        let indexOriginal = rt.secondPasses % 2;
         // Push pre rendered textures to next shader (post processing)
-        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
+        [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
           rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         });
-        // Switch program and VAO
-        rt.#gl.useProgram(PostProgram[4]);
-        rt.#gl.bindVertexArray(PostVao[4]);
-        // Pass pre rendered texture to shader
-        rt.#gl.uniform1i(RenderTex[4], 0);
-        rt.#gl.uniform1i(IpRenderTex[4], 1);
+        // Switch program and Vao
+        rt.#gl.useProgram(PostProgram[n]);
+        rt.#gl.bindVertexArray(PostVao[n]);
+        // Pass pre rendered texture to shad
+        rt.#gl.uniform1i(RenderTex[n], 0);
+        rt.#gl.uniform1i(IpRenderTex[n], 1);
         // Pass original color texture to GPU
-        rt.#gl.uniform1i(OriginalRenderTex[4], 2);
+        rt.#gl.uniform1i(OriginalRenderTex[n], 2);
         // Pass vertex_id texture to GPU
-        rt.#gl.uniform1i(IdRenderTex[4], 3);
+        rt.#gl.uniform1i(IdRenderTex[n], 3);
         // Pass vertex_id of original vertex as a texture to GPU
-        rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
-        // Pass hdr variable to last post processing shader
-        rt.#gl.uniform1i(HdrLocation, rt.hdr);
+        rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
         // Post processing drawcall
         rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+        // Save current program slot in n for next pass
+        n = np;
+
+        if (rt.firstPasses <= i) {
+          nOriginal = npOriginal;
+        } else {
+          nId = np;
+        }
       }
+      // Last denoise pass
+      rt.#gl.drawBuffers([rt.#gl.COLOR_ATTACHMENT0, rt.#gl.COLOR_ATTACHMENT1]);
+      // Configure framebuffer for color and depth
+      if (rt.#antialiasing) {
+        // Configure where the final image should go
+        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+      } else {
+        // Render to canvas now
+        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+      }
+      // Clear depth and color buffers from last frame
+      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+      let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
+      let indexId = rt.firstPasses % 2;
+      let indexOriginal = rt.secondPasses % 2;
+      // Push pre rendered textures to next shader (post processing)
+      [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
+        rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+      });
+      // Switch program and VAO
+      rt.#gl.useProgram(PostProgram[4]);
+      rt.#gl.bindVertexArray(PostVao[4]);
+      // Pass pre rendered texture to shader
+      rt.#gl.uniform1i(RenderTex[4], 0);
+      rt.#gl.uniform1i(IpRenderTex[4], 1);
+      // Pass original color texture to GPU
+      rt.#gl.uniform1i(OriginalRenderTex[4], 2);
+      // Pass vertex_id texture to GPU
+      rt.#gl.uniform1i(IdRenderTex[4], 3);
+      // Pass vertex_id of original vertex as a texture to GPU
+      rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
+      // Pass hdr variable to last post processing shader
+      rt.#gl.uniform1i(HdrLocation, rt.hdr);
+      // Post processing drawcall
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
       // Apply antialiasing shader if enabled
       if (rt.#antialiasing) this.#AAObject.renderFrame();
     }
 
-    function renderFrameRtRaw(){
-      {
-        // If Filter variable is not set render to canvas directly
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-        texturesToGPU();
-        fillBuffers();
-      }
+    let renderFrameRtRaw = () => {
+      // If Filter variable is not set render to canvas directly
+      rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+      // Clear depth and color buffers from last frame
+      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+      texturesToGPU();
+      fillBuffers();
     }
 
     let prepareEngine = () => {

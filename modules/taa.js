@@ -21,10 +21,10 @@ export class TAA {
         ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
 
         mat4 c = mat4(
-            texelFetch(cache_1, texel + ivec2(0, 0), 0), 
-            texelFetch(cache_2, texel + ivec2(0, 0), 0),
-            texelFetch(cache_3, texel + ivec2(0, 0), 0),
-            texelFetch(cache_4, texel + ivec2(0, 0), 0)
+            texelFetch(cache_1, texel, 0), 
+            texelFetch(cache_2, texel, 0),
+            texelFetch(cache_3, texel, 0),
+            texelFetch(cache_4, texel, 0)
         );
 
         vec4 minRGB = vec4(1.0);
@@ -92,7 +92,7 @@ export class TAA {
             this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
             this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
         }
-    };
+    };  
 
     renderFrame = () => {
         // Rotate textures, delete last, add new
