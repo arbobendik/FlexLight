@@ -1,4 +1,6 @@
 'use strict';
+
+import { Math } from './math.js';
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
