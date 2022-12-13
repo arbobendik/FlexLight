@@ -7,6 +7,7 @@ const FRAMES = 5;
 
 export class TAA {
     textureIn;
+
     #shader = `#version 300 es
     precision highp float;
     in vec2 clip_space;
@@ -49,6 +50,9 @@ export class TAA {
     #vertexBuffer;
     #gl;
 
+    #currentVec = 0;
+    #randomVecs;
+
     constructor (gl) {
         this.#gl = gl;
         // Compile shaders and link them into program
@@ -72,25 +76,21 @@ export class TAA {
         // Fill buffer with data for two verices
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), gl.DYNAMIC_DRAW);
-
         this.buildTexture();
+
+        // Generate pseudo random vectors to prevent shaking.
+        this.#randomVecs = this.genPseudoRandomVecsWith0Sum(FRAMES, 2);
     }
 
     buildTexture = () => {
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.textureIn);
         this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
-        this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-        this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-        this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-        this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
+        GLLib.setTexParams(this.#gl);
+        
         for (let i = 0; i < FRAMES; i++) {
             this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textures[i]);
             this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
-            this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-            this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-            this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-            this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
+            GLLib.setTexParams(this.#gl);
         }
     };  
 
@@ -113,4 +113,30 @@ export class TAA {
         // Post processing drawcall
         this.#gl.drawArrays(this.#gl.TRIANGLES, 0, 6);
     }
-}
+
+    jitter = (canvas) => {
+        // Cycle through random vecs
+        this.#currentVec = (this.#currentVec + 1) % FRAMES;
+        // Scaling factor
+        let scale = 0.6 / Math.min(canvas.width, canvas.height);
+        // Return as easy to handle 2-dimensional vector
+        return { x: this.#randomVecs[this.#currentVec][0] * scale, y: this.#randomVecs[this.#currentVec][1] * scale };
+    }
+
+    // Generate n d-dimensional pseudo random vectors that all add up to 0.
+    genPseudoRandomVecsWith0Sum = (n, d) => {
+        let vecs = [[0, 1], [1, 0], [0, 0], [0, 0], [0, 0]];
+        let combined = [1, 1];
+        
+        for (let i = 2; i < n; i++) {
+            for (let j = 0; j < 2; j++) {
+                let min = Math.max(- Math.min(i + 1, n - 1 - i), combined[j] - 1);
+                let max = Math.min(Math.min(i + 1, n - 1 - i), combined[j] + 1);
+                vecs[i][j] = 0.5 * ((max + min) + (max - min) * Math.sign(Math.random() - 0.5) * (Math.random() * 0.5) ** (1 / 2)) - combined[j];
+                combined[j] += vecs[i][j];
+            }
+        }
+
+        return vecs;
+    }
+    }

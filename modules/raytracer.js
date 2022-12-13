@@ -1073,8 +1073,8 @@ export class RayTracer {
       // Set x and y rotation of camera
       // Randomize camera position if Taa is enabled
       if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let taaJitter = 2 / (3 * Math.min(rt.canvas.width, rt.canvas.height));
-        rt.#gl.uniform2f(Perspective, rt.camera.fx + Math.random() * taaJitter, rt.camera.fy + Math.random() * taaJitter);
+        let jitter = rt.#AAObject.jitter(rt.#canvas);
+        rt.#gl.uniform2f(Perspective, rt.camera.fx + jitter.x, rt.camera.fy + jitter.y);
       } else  {
         rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       }
