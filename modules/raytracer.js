@@ -207,7 +207,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)){
         // Test if triangle intersects ray
-        mat2x4 current_intersection = rayTriangle(min_len, ray, t, normalize(n));
+        mat2x4 current_intersection = rayTriangle(min_len, ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])));
         // Test if ray even intersects
         if (current_intersection != mat2x4(0)){
           min_len = current_intersection[0].w;
@@ -251,7 +251,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - ray.origin), ray, t, normalize(n))[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - ray.origin), ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])))[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;

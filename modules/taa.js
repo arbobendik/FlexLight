@@ -139,4 +139,4 @@ export class TAA {
 
         return vecs;
     }
-    }
+}
