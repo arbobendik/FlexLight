@@ -45,7 +45,7 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	// Add FPS counter to top-right corner.
+	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);

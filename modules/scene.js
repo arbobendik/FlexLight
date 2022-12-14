@@ -167,10 +167,10 @@ export class Scene {
           if (words.length === 5) {
             // generate plane with vertecies
             let plane = new Plane (
-              v[data[0][0] - 1],
-              v[data[1][0] - 1],
-              v[data[2][0] - 1],
               v[data[3][0] - 1],
+              v[data[2][0] - 1],
+              v[data[1][0] - 1],
+              v[data[0][0] - 1],           
               scene
             );
             // set uvs according to .obj file
@@ -180,11 +180,11 @@ export class Scene {
             // push new plane in object array
             obj.push(plane);
           } else {
-             // generate triangle with vertecies
-             let triangle = new Triangle (
-               v[data[2][0] - 1],
-               v[data[1][0] - 1],
-               v[data[0][0] - 1],
+            // generate triangle with vertecies
+            let triangle = new Triangle (
+              v[data[2][0] - 1],
+              v[data[1][0] - 1],
+              v[data[0][0] - 1],
               scene
             );
             // set uvs according to .obj file
@@ -276,10 +276,12 @@ class Plane extends Object3D {
   // set used textures
   textureNums = new Array(6).fill([-1,-1,-1]).flat();
 
+  normals;
+
   constructor (c0, c1, c2, c3, scene) {
     super(6, false, scene);
     // set normals
-    this.normals = new Array(6).fill(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))).flat();
+    this.normals = new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat();
     // set vertices
     this.vertices = [c0,c1,c2,c2,c3,c0].flat();
   }
@@ -292,6 +294,8 @@ class Triangle extends Object3D {
   uvs = [0,0,0,1,1,1];
   // set used textures
   textureNums = new Array(3).fill([-1,-1,-1]).flat();
+
+  normals;
 
   constructor (a, b, c, scene) {
     super(3, false, scene);

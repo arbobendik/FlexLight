@@ -16,7 +16,7 @@ Object.assign(Math, {
   // Determines vector between 2 points
   diff: (a, b) => a.map((item, i) => item - b[i]),
   // Normalize vector
-  normalize: (a) => a.map((item) => item / this.sum(... a)),
+  normalize: (a) => a.map((item) => item / Math.sqrt(a.reduce((p, c) => p + c ** 2, 0))),
   // Test if ray intersects triangle and return intersection
   rayTriangle: (l, rayOrigin, rayDirection, tA, tB, tC, n) => {
     const BIAS = 2 ** (-12);
