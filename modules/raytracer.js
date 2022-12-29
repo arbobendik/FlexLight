@@ -599,30 +599,33 @@ export class RayTracer {
     float ipw = 0.0;
     float count = 0.0;
     float o_count = 0.0;
-    float radius = floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
-    if (radius > 3.0) radius = 3.0;
+    float radius = min(floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w)), 4.0);
     int diameter = 2 * int(radius) + 1;
     if (diameter != 1) {
       // Apply blur filter on image
       for (int i = 0; i < diameter; i++) {
         for (int j = 0; j < diameter; j++) {
-          vec2 texel_offset = vec2(i, j) - radius;
-          if (length(texel_offset) >= radius) continue;
+          vec2 texel_offset = vec2(i, j) - floor(radius);
+          if (length(texel_offset) >= floor(radius)) continue;
           ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.5);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
           vec4 next_color = texelFetch(pre_render_color, coords, 0);
           vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
           vec4 next_o_color = texelFetch(pre_render_original_color, coords, 0);
-          if (min(center_o_id.w, next_o_id.w) > 0.0 && (
-            (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz) || id == center_id)) {
-            color += next_color + next_color_ip * 255.0;
-            count ++;
-            ipw += next_color_ip.w;
-            o_color += next_o_color;
-            o_count++;
-          } else if (id.xyz == center_id.xyz) {
+
+          if (min(center_o_id.w, next_o_id.w) > 0.0) {
+            if (id == center_id || (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz)) {
+              color += next_color + next_color_ip * 255.0;
+              count ++;
+              ipw += next_color_ip.w;
+              o_color += next_o_color;
+              o_count++;
+            }
+          }
+
+          if (id.xyz == center_id.xyz) {
             color += next_color + next_color_ip * 255.0;
             count ++;
           }
@@ -639,11 +642,7 @@ export class RayTracer {
       render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
       // Set out color for render texture for the antialiasing filter
       render_color_ip = vec4(floor(color.xyz / count) / 255.0, ipw);
-      if (o_count == 0.0) {
-        render_original_color = center_o_color;
-      } else {
-        render_original_color = o_color / o_count;
-      } 
+      render_original_color = (o_count == 0.0) ? center_o_color : o_color/ o_count;
     } else {
       render_color = vec4(0.0);
       render_color_ip = vec4(0.0);
@@ -683,6 +682,7 @@ export class RayTracer {
         for (int j = 0; j < diameter; j++) {
           vec2 texel_offset = vec2(i, j) - radius;
           if (length(texel_offset) >= radius) continue;
+
           ivec2 coords = ivec2(vec2(texel) + texel_offset);
           vec4 id = texelFetch(pre_render_id, coords, 0);
           vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
@@ -709,11 +709,8 @@ export class RayTracer {
     if (center_color.w > 0.0) {
       // Set out target_color for render texture for the antialiasing filter
       vec3 final_color = color.xyz / count;
-      if (o_count == 0.0) {
-        final_color *= center_o_color.xyz;
-      } else {
-        final_color *= o_color.xyz / o_count;
-      }
+      final_color *= (o_count == 0.0) ? center_o_color.xyz : o_color.xyz / o_count;
+
       if (hdr == 1) {
         // Apply Reinhard tone mapping
         final_color = final_color / (final_color + vec3(1.0));
@@ -978,7 +975,7 @@ export class RayTracer {
       if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
 
       rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 400);
-      rt.secondPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 200);
+      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 600);
     }
     // Init canvas parameters and textures with resize
     resize();

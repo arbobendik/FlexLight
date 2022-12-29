@@ -245,7 +245,7 @@ export class Rasterizer {
     
   }
   `;
-  // Create new rayTracer from canvas and setup movement
+  // Create new raysterizer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
     this.camera = camera;
