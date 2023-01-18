@@ -248,6 +248,14 @@ class Object3D {
   }
 }
 
+
+class Bounding extends Object3D {
+  constructor (array, scene) { 
+    super(array.length, true, scene);
+    array.forEach((item, i) => this[i] = item);
+  }
+}
+
 class Cuboid extends Object3D {
   constructor (x, x2, y, y2, z, z2, scene) {
     super(6, true, scene);
@@ -306,12 +314,5 @@ class Triangle extends Object3D {
     )).flat();
     // vertecies for queue
     this.vertices = [a,b,c].flat();
-  }
-}
-
-class Bounding extends Object3D {
-  constructor (array, scene) { 
-    super(array.length, true, scene);
-    array.forEach((item, i) => this[i] = item);
   }
 }
