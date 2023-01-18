@@ -48,7 +48,7 @@ export class RayTracer {
   flat out vec4 vertex_id;
   flat out vec3 player;
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz);
+    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);;
     vec2 translate_px = vec2(
       move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
       move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
@@ -64,7 +64,7 @@ export class RayTracer {
     tex_coord = tex_pos;
     clip_space = vec3(translate_2d, translate_py.y);
     vertex_id = id;
-    player = camera_position * vec3(-1.0, 1.0, 1.0);
+    player = camera_position;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -283,7 +283,7 @@ export class RayTracer {
     //  Calculate primary light sources for this pass if ray hits non translucent object
     for (int j = 0; j < textureSize(light_tex, 0).y; j++){
       // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
+      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
       float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
       float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
@@ -292,7 +292,7 @@ export class RayTracer {
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
       // Recalculate position -> light vector
-      Ray light_ray = Ray (light * vec3(-1.0, 1.0, 1.0) - ray.origin, ray.origin, normalize(last_rough_normal));
+      Ray light_ray = Ray (light - ray.origin, ray.origin, normalize(last_rough_normal));
       // Update pixel color if coordinate is not in shadow
       if (!shadowTest(light_ray, light)) {
         result.x += forwardTrace(light_ray, last_origin, last_rme.y, strength);
@@ -847,13 +847,15 @@ export class RayTracer {
     // Build simple AABB tree (Axis aligned bounding box)
     var fillData = async (item) => {
       if (Array.isArray(item) || item.indexable) {
+        if (item.length === 0) return;
+
         let b = item.bounding;
         // Save position of len variable in array
         let len_pos = data.length;
         // Begin bounding volume array
         data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
         id++;
-        // Iterate over all sub elements and skip bounding (item[0])
+        // Iterate over all sub elements
         for (let i = 0; i < item.length; i++) fillData(item[i]);
         let len = Math.floor((data.length - len_pos) / 24);
         // Set now calculated vertices length of bounding box

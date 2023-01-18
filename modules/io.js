@@ -3,8 +3,8 @@
 // Generate a new io object
 export class WebIo {
 	static #translationMap = {
-		right: -1,
-		left: 1,
+		right: 1,
+		left: -1,
 		down: -2,
 		up: 2,
 		backward: -3,
@@ -23,8 +23,9 @@ export class WebIo {
 	movementSpeed = 0.01;
 
 	camera;
+	renderer;
 
-	constructor (canvas, camera) {
+	constructor (canvas, camera, renderer) {
 		this.registerKey('KeyW', 'forward');
 		this.registerKey('KeyA', 'left');
 		this.registerKey('KeyS', 'backward');
@@ -32,6 +33,7 @@ export class WebIo {
 		this.registerKey('Space', 'up');
 		this.registerKey('ShiftLeft', 'down');
 		this.camera = camera;
+		this.renderer = renderer;
 		this.setupForCanvas(canvas);
 		requestAnimationFrame(this.frame);
 	}
@@ -50,19 +52,15 @@ export class WebIo {
 		if (!this.#isListening) return;
 			const c = this.camera;
 			const difference = (time - this.#savedTime) * this.movementSpeed;
-			c.x += difference * (this.#movement[0] * Math.cos(c.fx) + this.#movement[2] * Math.sin(c.fx));
+			c.x += difference * (this.#movement[0] * Math.cos(c.fx) - this.#movement[2] * Math.sin(c.fx));
 			c.y += difference * this.#movement[1];
-			c.z += difference * (this.#movement[2] * Math.cos(c.fx) - this.#movement[0] * Math.sin(c.fx));
+			c.z += difference * (this.#movement[2] * Math.cos(c.fx) + this.#movement[0] * Math.sin(c.fx));
 			this.#savedTime = time;
 	}
 
-	resetMovement = () => {
-		for (const key in this.#pressedKeys) this.#pressedKeys[key] = false;
-	}
+	resetMovement = () => { for (const key in this.#pressedKeys) this.#pressedKeys[key] = false };
 
-	updateMovement = (value) => {
-		this.#movement[Math.abs(value) - 1] += Math.sign(value);
-	}
+	updateMovement = (value) => this.#movement[Math.abs(value) - 1] += Math.sign(value);
 
 	setupForCanvas = (canvas) => {
 		const io = this;
