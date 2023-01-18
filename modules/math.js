@@ -14,14 +14,14 @@ Object.assign(Math, {
   mul: (a, b) => {
     const matMul = (A, B) => {
       let BT = Math.transpose(B);
-      let C = new Array(A.length).fill(0).map(() => new Array(B[0].length).fill(0));
+      let C = A.map(() => new Array(B[0].length).fill(0));
       return C.map((row, i) => row.map((e, j) => Math.dot(A[i], BT[j])));
     };
     const dim = (obj) => (Array.isArray(obj)) ? dim(obj[0]) + 1 : 0;
     const dimA = dim(a);
     const dimB = dim(b);
     if (dimA === 2 && dimB === 2) return matMul(a, b);
-    if (dimA === 2 && dimB === 1) return matMul(a, b.map((e) => [e]));
+    if (dimA === 2 && dimB === 1) return matMul(a, b.map((e) => [e])).flat();
     if (dimA === 2 && dimB === 0) return a.map((row) => row.map((e) => e * b));
     if (dimA === 0 && dimB === 2) return b.map((row) => row.map((e) => e * a));
     if (dimA === 1 && dimB === 1) return a.map((e, i) => Math.stabilize(e* b[i]));
@@ -39,7 +39,7 @@ Object.assign(Math, {
   diff: (a, b) => a.map((e, i) => e - b[i]),
   // Normalize vector
   normalize: (a) => {
-    let length = Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0)));
+    const length = Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0)));
     return a.map((e) => Math.stabilize(length) < Math.BIAS ? 0 : Math.stabilize(e / length));
   },
   // Orthogonalization
@@ -54,7 +54,7 @@ Object.assign(Math, {
   },
   // transpose matrix
   transpose: (A) => {
-    let C = new Array(A[0].length).fill(0).map(() => new Array(A.length).fill(0));
+    let C = A[0].map(() => new Array(A.length).fill(0));
     return C.map((row, i) => row.map((e, j) => A[j][i]));
   },
   // QR decomposition
@@ -69,10 +69,10 @@ Object.assign(Math, {
   moorePenrose: (A) => {
     let AT = Math.transpose(A);
     // Invert (A^T A) via QR decomposition
-    let QR = Math.qr(Math.mul(AT, A));
+    const QR = Math.qr(Math.mul(AT, A));
     let Rinv = new Array(QR.R.length);
     for (let i = QR.R.length - 1; i >= 0; i--) {
-      Rinv[i] = new Array(QR.R.length).fill(0).map((e, j) => i === j ? 1 : 0);
+      Rinv[i] = QR.R.map((e, j) => i === j ? 1 : 0);
       for (let j = QR.R.length - 1; j > i; j--) {
         Rinv[i] = Math.add(Rinv[i], Math.mul(Rinv[j], - QR.R[i][j] / QR.R[j][j]));
       }
@@ -81,34 +81,41 @@ Object.assign(Math, {
     // If current result doesn't work try Moore Penrose for AT
     if (Number.isNaN(Rinv[0][0])) return Math.transpose(Math.moorePenrose(AT));
     return Math.mul(Math.mul(Rinv, Math.transpose(QR.Q)), AT);
+  },
+  // linear regression of the points for a polynomial of n-th degree
+  regression: (points, n) => {
+    // Build matrix A
+    let A = points.map(() => new Array(n + 1));
+    for (let i = 0; i < points.length; i++) for (let j = 0; j <= n; j++) A[i][j] = points[i][0] ** j;
+    // Build vector b out of the y values
+    let b = points.map((item) => item[1]);
+    // Solve A^H A x = A^H b compute the pseudo inverse of A
+    return Math.mul(Math.moorePenrose(A), b);
+  },
+  // Test if ray intersects triangle and return point of intersection
+  rayTriangle: (rayOrigin, rayDirection, tA, tB, tC, n) => {
+    const BIAS = 2 ** (-12);
+    // Get distance to intersection point
+    const s = Math.dot(n, Math.diff(tA, rayOrigin)) / Math.dot(n, Math.normalize(rayDirection));
+    // Ensure that ray triangle intersection is between light source and texture
+    if (s <= BIAS) return Infinity;
+    // Calculate intersection point
+    let d = Math.add(Math.mul(s, Math.normalize(rayDirection)), rayOrigin);
+    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
+    let v0 = Math.diff(tB, tA);
+    let v1 = Math.diff(tC, tA);
+    let v2 = Math.diff(d, tA);
+    let d00 = Math.dot(v0, v0);
+    let d01 = Math.dot(v0, v1);
+    let d11 = Math.dot(v1, v1);
+    let d20 = Math.dot(v2, v0);
+    let d21 = Math.dot(v2, v1);
+    let denom = d00 * d11 - d01 * d01;
+    let v = (d11 * d20 - d01 * d21) / denom;
+    let w = (d00 * d21 - d01 * d20) / denom;
+    let u =  1 - v - w;
+    if (Math.min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return Infinity;
+    // Return point of intersection.
+    return s;
   }
 });
-
-/*
-// Test if ray intersects triangle and return intersection
-rayTriangle: function (l, rayOrigin, rayDirection, tA, tB, tC, n) {
-  const BIAS = 2 ** (-12);
-  // Get distance to intersection point
-  const s = Math.dot(n, Math.diff(t[0], rayOrigin)) / Math.dot(n, Math.normalize(rayDirection));
-  // Ensure that ray triangle intersection is between light source and texture
-  if (s > l || s <= BIAS) null;
-  // Calculate intersection point
-  let d = Math.mul(s, Math.normalize(rayDirection)) + rayOrigin;
-  // Test if point on plane is in Triangle by looking for each edge if point is in or outside
-  let v0 = Math.diff(tB, tA);
-  let v1 = Math.diff(tC, tA);
-  let v2 = Math.diff(d, tA);
-  let d00 = Math.dot(v0, v0);
-  let d01 = Math.dot(v0, v1);
-  let d11 = Math.dot(v1, v1);
-  let d20 = Math.dot(v2, v0);
-  let d21 = Math.dot(v2, v1);
-  let denom = d00 * d11 - d01 * d01;
-  let v = (d11 * d20 - d01 * d21) / denom;
-  let w = (d00 * d21 - d01 * d20) / denom;
-  let u =  1 - v - w;
-  if (Math.min(u, v) <= BIAS || u + v >= 1.0 - BIAS) null;
-  // Return u v w.
-  return [u, v, w];
-}
-*/
