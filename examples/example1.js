@@ -138,5 +138,5 @@ async function buildScene() {
 		engine.renderer.updateTextures();
 		engine.renderer.updatePbrTextures();
 		engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 1000);
 };

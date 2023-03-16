@@ -17,21 +17,21 @@ export class Scene {
   textureFromRGB = async (array, width, height) => await Scene.textureFromRGB (array, width, height);
   // Generate texture from rgb array in static function to have function precompiled
   static async textureFromRGB (array, width, height) {
-    var partCanvas = document.createElement('canvas');
-    var partCtx = partCanvas.getContext('2d');
-    partCanvas.width = width;
-    partCanvas.height = height;
-		// Disable image smoothing to get non-blury pixel values
-		partCtx.imageSmoothingEnabled = false;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = height;
+    // Disable image smoothing to get non-blury pixel values
+    ctx.imageSmoothingEnabled = false;
     // Create Image element
-    let imgData = partCtx.createImageData(width, height);
+    let imgData = ctx.createImageData(width, height);
     // Set imgArray as image source
     imgData.data.set(new Uint8ClampedArray(array), 0);
     // Set image data in canvas
-    partCtx.putImageData(imgData, 0, 0);
-    // Set part canvas as image source
+    ctx.putImageData(imgData, 0, 0);
+    // Set canvas as image source
     let image = new Image();
-    image.src = partCanvas.toDataURL();
+    image.src = canvas.toDataURL();
     return image;
   }
   // Make static function callable from object
@@ -41,7 +41,7 @@ export class Scene {
     // Create new array
     let texelArray = [];
     // Convert image to Uint8 format
-    for (let i = 0; i < array.length; i+=3) texelArray.push(array[i] * 255, array[i +1] * 255, array[i+2] * 255, 255);
+    for (let i = 0; i < array.length; i += 3) texelArray.push(array[i] * 255, array[i + 1] * 255, array[i+2] * 255, 255);
     // From here on rgb images are generated the same way
     return await this.textureFromRGB(texelArray, width, height);
   }
@@ -70,8 +70,8 @@ export class Scene {
       minMax = [v[0], v[0], v[1], v[1], v[2], v[2]];
       // get min and max values of veritces of object
       for (let i = 3; i < obj.vertices.length; i++) {
-        minMax[(i%3) * 2] = Math.min(minMax[(i%3) * 2], v[i]);
-        minMax[(i%3) * 2 + 1] = Math.max(minMax[(i%3) * 2 + 1], v[i]);
+        minMax[(i % 3) * 2] = Math.min(minMax[(i % 3) * 2], v[i]);
+        minMax[(i % 3) * 2 + 1] = Math.max(minMax[(i % 3) * 2 + 1], v[i]);
       }
     }
     // set minMax as new bounding volume
@@ -87,10 +87,10 @@ export class Scene {
       // Save position of len variable in array
       let len_pos = data.length;
       // Begin bounding volume array
-      data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+      data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, s0);
       id++;
       // Iterate over all sub elements and skip bounding (item[0])
-      for (let i = 0; i < item.length; i++){
+      for (let i = 0; i < item.length; i++) {
         // Push sub elements in queue
         fillData(item[i]);
       }
@@ -107,16 +107,10 @@ export class Scene {
       let uv = item.uvs;
       let len = item.length;
       // Test if bounding volume is set
-      if (item.bounding !== undefined){
-        // Bounding volume of object
-      } else if (item.length > 3) {
+      if (item.bounding === undefined && item.length > 3) {
         // Warn if length is greater than 3
         console.warn(item);
         // A single triangle needs no bounding voume, so nothing happens in this case
-      }
-      // Give item new id property to identify vertex in fragment shader
-      for (let i = 0; i < len * 3; i += 9) {
-        
       }
     }
   };
@@ -265,12 +259,12 @@ class Cuboid extends Object3D {
     [x2, y2, z2] = [x2 - bias, y2 - bias, z2 - bias];
     // Create surface elements for cuboid
     this.bounding = [x, x2, y, y2, z, z2];
-    this.top = new Plane([x,y2,z], [x2,y2,z], [x2,y2,z2], [x,y2,z2], scene);
-    this.right = new Plane([x2,y2,z], [x2,y,z], [x2,y,z2], [x2,y2,z2], scene);
-    this.front = new Plane([x2,y2,z2], [x2,y,z2], [x,y,z2], [x,y2,z2], scene);
-    this.bottom = new Plane([x,y,z2], [x2,y,z2], [x2,y,z], [x,y,z], scene);
-    this.left = new Plane([x,y2,z2], [x,y,z2], [x,y,z], [x,y2,z], scene);
-    this.back = new Plane([x,y2,z], [x,y,z], [x2,y,z], [x2,y2,z], scene);
+    this.top = new Plane([x, y2, z], [x2, y2, z], [x2, y2, z2], [x, y2, z2], scene);
+    this.right = new Plane([x2, y2, z], [x2, y, z], [x2, y, z2], [x2, y2, z2], scene);
+    this.front = new Plane([x2, y2, z2], [x2, y, z2], [x, y, z2], [x, y2, z2], scene);
+    this.bottom = new Plane([x, y, z2], [x2, y, z2], [x2, y, z], [x, y, z], scene);
+    this.left = new Plane([x, y2, z2], [x, y, z2], [x, y, z], [x, y2, z], scene);
+    this.back = new Plane([x, y2, z], [x, y, z], [x2, y, z], [x2, y2, z], scene);
 
     [this.top, this.right, this.front, this.bottom, this.left, this.back].forEach((item, i) => this[i] = item);
   }
@@ -280,9 +274,9 @@ class Plane extends Object3D {
   // default color to white
   colors = new Array(18).fill(1);
   // set UVs
-  uvs = [0,0,0,1,1,1,1,1,1,0,0,0];
+  uvs = [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0];
   // set used textures
-  textureNums = new Array(6).fill([-1,-1,-1]).flat();
+  textureNums = new Array(6).fill([- 1, - 1, - 1]).flat();
 
   normals;
 
@@ -291,7 +285,7 @@ class Plane extends Object3D {
     // set normals
     this.normals = new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat();
     // set vertices
-    this.vertices = [c0,c1,c2,c2,c3,c0].flat();
+    this.vertices = [c0, c1, c2, c2, c3, c0].flat();
   }
 }
 
@@ -299,9 +293,9 @@ class Triangle extends Object3D {
   // default color to white
   colors = new Array(9).fill(1);
   // UVs to map textures on triangle
-  uvs = [0,0,0,1,1,1];
+  uvs = [0, 0, 0, 1, 1, 1];
   // set used textures
-  textureNums = new Array(3).fill([-1,-1,-1]).flat();
+  textureNums = new Array(3).fill([- 1, - 1, - 1]).flat();
 
   normals;
 
@@ -313,6 +307,6 @@ class Triangle extends Object3D {
       Math.diff(a, b)
     )).flat();
     // vertecies for queue
-    this.vertices = [a,b,c].flat();
+    this.vertices = [a, b, c].flat();
   }
 }

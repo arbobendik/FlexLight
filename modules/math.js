@@ -117,5 +117,39 @@ Object.assign(Math, {
     if (Math.min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return Infinity;
     // Return point of intersection.
     return s;
-  }
+  },
+  // Sigmoid activation function commonly used in ANNs
+  /*
+
+                   1-|        ,____------
+                     |    /---
+                     |   /
+                     | /
+                 0.5-/
+                   / |
+                 /   |
+             ___/    |
+  ______----'________|____________________
+       -3            0            3
+
+  */
+  sigmoid: x => 1 / (1 + Math.E ** (-x)),
+  // Derivative of sigmoid function used for backpropagation in ANNs
+  /*
+
+              0.25-|-,_
+              ,'   |   ',
+              /     |     \
+            |      |      |
+            |       |       |
+          /        |        \
+          /         |         \
+      _-'           |           '-_
+  _--'______________|______________'--_
+        -3         0         3
+
+  */
+  sigmoidPrime: x => neunet.MathLib.sigmoid(x) * (1 - neunet.MathLib.sigmoid(x)),
+  // Modulo operator.
+  mod: (x, y) => x - y * Math.floor(x/y)
 });

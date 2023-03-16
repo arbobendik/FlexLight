@@ -10,7 +10,6 @@ export class UI {
     }
 
     #runSelector = () => {
-        let lastObject = null;
         setInterval(() => {
             let origin = [this.camera.x, this.camera.y, this.camera.z];
             let direction = [

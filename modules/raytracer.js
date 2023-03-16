@@ -48,7 +48,7 @@ export class RayTracer {
   flat out vec4 vertex_id;
   flat out vec3 player;
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);;
+    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
     vec2 translate_px = vec2(
       move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
       move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
@@ -1279,32 +1279,13 @@ export class RayTracer {
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
       // Compile shaders and link them into Program global
-      Program = GLLib.buildProgram(rt.#gl, [
-        { source: rt.#vertexGlsl, type: rt.#gl.VERTEX_SHADER },
-        { source: rt.#fragmentGlsl, type: rt.#gl.FRAGMENT_SHADER }
-      ]);
-
+      Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
       // Compile shaders and link them into PostProgram global
-      for (let i = 0; i < 2; i++){
-        PostProgram[i] = GLLib.buildProgram(rt.#gl, [
-          { source: GLLib.blankGlsl, type: rt.#gl.VERTEX_SHADER },
-          { source: rt.#firstFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
-        ]);
-      }
-
+      for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#firstFilterGlsl);
       // Compile shaders and link them into PostProgram global
-      for (let i = 2; i < 4; i++){
-        PostProgram[i] = GLLib.buildProgram(rt.#gl, [
-          { source: GLLib.blankGlsl, type: rt.#gl.VERTEX_SHADER },
-          { source: rt.#secondFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
-        ]);
-      }
-
+      for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#secondFilterGlsl);
       // Compile shaders and link them into PostProgram global
-      PostProgram[4] = GLLib.buildProgram(rt.#gl, [
-        { source: GLLib.blankGlsl, type: rt.#gl.VERTEX_SHADER },
-        { source: rt.#finalFilterGlsl, type: rt.#gl.FRAGMENT_SHADER }
-      ]);
+      PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#finalFilterGlsl);
       
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
