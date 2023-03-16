@@ -68,9 +68,13 @@ export class RayTracer {
   }
   `;
   #fragmentGlsl = `#version 300 es
-  #define SQRT3 1.7320508075688772
-  #define BIAS 0.0000152587890625
-  #define TrianglesPerRow 256
+  #define SQRT3 1.73205
+  #define BIAS 0.00001525879
+  #define INV_TRIANGLES_PER_ROW 0.00390625
+  #define TRIANGLES_PER_ROW 256.0
+  #define INV_256 0.00390625
+  #define INV_65536 0.00001525879
+  #define THIRD 0.333333
 
   precision highp float;
   precision highp sampler2D;
@@ -128,19 +132,22 @@ export class RayTracer {
   float original_rmex = 0.0;
   float original_tpox = 0.0;
   vec3 original_color = vec3(1.0);
+
+  float inv_texture_width = 1.0;
+
   // Lookup values for texture atlases
-  vec4 lookup(sampler2D atlas, vec3 coords){
-    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
-    float atlas_width_factor = 1.0 / float(texture_width);
+  vec4 lookup(sampler2D atlas, vec3 coords) {
+    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * inv_texture_width;
     vec2 atlas_coords = vec2(
-      (coords.x + mod(coords.z, float(texture_width))) * atlas_width_factor,
-      (coords.y + floor(coords.z / float(texture_width))) * atlas_height_factor
+      (coords.x + mod(coords.z, float(texture_width))) * inv_texture_width,
+      (coords.y + floor(coords.z * inv_texture_width)) * atlas_height_factor
     );
     // Return texel on requested location
     return texture(atlas, atlas_coords);
   }
+
   // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n){
+  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n) {
     // Can't intersect with triangle with the same normal as the origin
     if (n == ray.normal) return mat2x4(0);
     // Get distance to intersection point
@@ -158,26 +165,25 @@ export class RayTracer {
     float d11 = dot(v1, v1);
     float d20 = dot(v2, v0);
     float d21 = dot(v2, v1);
-    float denom = d00 * d11 - d01 * d01;
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u =  1.0 - v - w;
+    float denom = 1.0 / (d00 * d11 - d01 * d01);
+    float v = (d11 * d20 - d01 * d21) * denom;
+    float w = (d00 * d21 - d01 * d20) * denom;
+    float u = 1.0 - v - w;
     if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
+
   // Don't return intersection point, because we're looking for a specific triangle
   bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
     mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
-    // vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
-    // vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
-    // vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
     float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
     // Ray points in cuboid direction, but doesn't intersect
     return max(lowest, BIAS) <= highest;
   }
+
   // Test for closest ray triangle intersection
   // Return intersection position in world space (rayTracer.xyz)
   // Return index of target triangle in world_tex (rayTracer.w)
@@ -189,11 +195,11 @@ export class RayTracer {
     // Length to latest intersection
     float min_len = 1.0 / 0.0;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
+    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
+      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
       // Read triangle and normal from world tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       mat3 t = mat3(
@@ -228,16 +234,17 @@ export class RayTracer {
     // Return if pixel is in shadow or not
     return intersection;
   }
+
   // Simplified rayTracer test only if ray intersects anything
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / normalize(ray.direction);
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
+    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
+      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
       // Read normal and triangle from world_tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
@@ -266,27 +273,31 @@ export class RayTracer {
     // Tested all triangles, but there is no intersection
     return false;
   }
+
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
+    float lenP1 = 1.0 + length(ray.direction);
+    vec3 normalDir = normalize(ray.direction);
+
     // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / pow(1.0 + length(ray.direction), 2.0);
+    float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalize(ray.direction) + normalize(origin - ray.origin));
-    float light = abs(dot(normalize(ray.direction), ray.normal)) * (1.0 - metallicity);
-    float specular = pow(abs(dot(ray.normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
+    vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
+    float light = abs(dot(normalDir, ray.normal));
+    float specular = pow(abs(dot(ray.normal, halfVector)), 300.0 / intensity) * 8.0;
     // Determine final color and return it
-    if (dot(ray.normal, halfVector) > 0.0) return light * intensity + specular * intensity;
-    // Return just light if specular is negative
-    return light * intensity;
+    return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
+
   vec2 forEachLightSource (sampler2D light_tex, Ray ray, vec3 random_vec, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
     vec2 result = vec2(0);
     //  Calculate primary light sources for this pass if ray hits non translucent object
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+    for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
       // Read light position
       vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
-      float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
-      float variation = texelFetch(light_tex, ivec2(1, j), 0).y;
+      vec2 strVar = texelFetch(light_tex, ivec2(1, j), 0).xy;
+      float strength = strVar.x;
+      float variation = strVar.y;
       // Alter light source position according to variation.
       light = random_vec * variation + light;
       // Skip if strength is negative or zero
@@ -302,10 +313,12 @@ export class RayTracer {
     }
     return result;
   }
+
   float fresnel(vec3 normal, vec3 lightDir) {
     // Apply fresnel effect
     return dot(normal, lightDir);
   }
+
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, Ray first_ray, vec3 rme, vec3 tpo, int sample_n, int bounces){
     // Set bool to false when filter becomes necessary
     bool dont_filter = true;
@@ -324,14 +337,16 @@ export class RayTracer {
     vec3 last_rme = rme;
     // Pack all translucency related values in one vector
     vec3 last_tpo = tpo;
+    float cos_sample_n = cos(float(sample_n));
     // Iterate over each bounce and modify color accordingly
     for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
+      float fi = float(i);
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
       importancy_factor *= last_color;
       // Apply emissive texture and ambient light
       final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
-      vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(float(i)) + cos(float(sample_n))), 1.0);
+      vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n), 1.0);
       vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(ray.normal, random_vec, last_rme.x));
@@ -350,19 +365,18 @@ export class RayTracer {
         original_rmex += last_filter_roughness;
         // Update render id
         if (original_tpox > 0.0) {
-          render_id += pow(2.0, - float(i + 0)) * vec4(ray.normal.xy, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+          render_id += pow(2.0, - fi) * vec4(ray.normal.xy, (last_filter_roughness * 2.0 + last_rme.y) * THIRD, 0.0);
         } else {
-          render_id += pow(2.0, - float(i + 0)) * vec4(last_id/65535.0, last_id/255.0, (last_filter_roughness * 2.0 + last_rme.y) / 3.0, 0.0);
+          render_id += pow(2.0, - fi) * vec4(last_id * INV_65536, last_id * INV_256, (last_filter_roughness * 2.0 + last_rme.y) * THIRD, 0.0);
         }
         original_tpox += 1.0;
       }
       // Update dont_filter variable
-      dont_filter = (dont_filter && (
-        (last_rme.x < 0.01 && is_solid)
-        || !is_solid
-        ));
+      dont_filter = dont_filter && ((last_rme.x < 0.01 && is_solid) || !is_solid);
       // Intersection of ray with triangle
       mat2x4 intersection;
+      // Break out of the loop after color is calculated if i was the last iteration
+      if (i == bounces - 1) break;
       // Handle translucency and skip rest of light calculation
       if (is_solid) {
         if (dont_filter && last_tpo.x > 0.5) {
@@ -371,33 +385,23 @@ export class RayTracer {
         }
         // If ray fresnel reflects from inside an transparent object,
         // the surface faces in the opposite direction as usual
-        if (dot(ray.direction, ray.normal) > 0.0) ray.normal = - ray.normal;
-        //  Calculate primary light sources for this pass if ray hits non translucent object
+        ray.normal *= - sign(dot(ray.direction, ray.normal));
+        // Calculate primary light sources for this pass if ray hits non translucent object
         vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
         final_color += fels.x * importancy_factor;
         render_id.w += fels.y;
-        // Break out of the loop after color is calculated if i was the last iteration
-        if (i == bounces - 1) break;
         // Calculate reflecting ray
         ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
         if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
         // Calculate next intersection
         intersection = rayTracer(ray);
-        // Stop loop if there is no intersection and ray goes in the void
-        if (intersection[0] == vec4(0)) break;
       } else {
-        // Break out of the loop after color is calculated if i was the last iteration
-        if (i == bounces - 1) break;
         float ratio = last_tpo.z * 4.0;
-        if (dot(ray.direction, ray.normal) <= 0.0){
-          ray.direction = normalize(ray.direction + 1.0 * refract(ray.direction, ray.normal, 1.0 / ratio));
-        }else{
-          ray.direction = normalize(ray.direction + 1.0 * refract(ray.direction, - ray.normal, ratio));
-        }
+        float sign = sign(dot(ray.direction, ray.normal));
+        ray.direction = normalize(ray.direction + refract(ray.direction, - sign * ray.normal, pow(ratio, sign)));
         // Calculate next intersection
         intersection = rayTracer(ray);
         last_origin = 2.0 * ray.origin - last_origin;
-
         vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
         final_color += fels.x * importancy_factor * (1.0 - fresnel_reflect);
         render_id.w += fels.y;
@@ -407,7 +411,7 @@ export class RayTracer {
       // Update last used tpo.x value
       if (dont_filter) original_tpox = last_tpo.x;
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(intersection[1].w, float(TrianglesPerRow)) * 8.0, intersection[1].w / float(TrianglesPerRow));
+      ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 8.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
       vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
@@ -434,14 +438,18 @@ export class RayTracer {
       last_filter_roughness = last_rme.x;
       // Fresnel effect
       last_rme.x *= mix(1.0, fresnel(ray.normal, last_origin - ray.origin), last_rme.y);
-      if (i==0) first_ray_length = min(length(ray.origin - last_origin) / length(first_ray.origin - origin), 1.0);
+      if (i == 0) first_ray_length = min(length(ray.origin - last_origin) / length(first_ray.origin - origin), 1.0);
     }
     // Return final pixel color
     return final_color;
   }
+  
   void main(){
+    // Calculating constants for this pass
+    inv_texture_width = 1.0 / float(texture_width);
+
     float id = vertex_id.x * 65535.0 + vertex_id.y;
-    ivec2 index = ivec2(mod(id, float(TrianglesPerRow)) * 8.0, id / float(TrianglesPerRow));
+    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
     vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
     vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
@@ -480,13 +488,15 @@ export class RayTracer {
     }
     render_color = vec4(mod(final_color, 1.0), 1.0);
     // 16 bit HDR for improved filtering
-    render_color_ip = vec4(floor(final_color) / 255.0, glass_filter);
+    render_color_ip = vec4(floor(final_color) * INV_256, glass_filter);
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, 0.0);
     render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, original_tpox);
   }
   `;
   #firstFilterGlsl = `#version 300 es
+  #define INV_256 0.00390625
+
   precision highp float;
   in vec2 clip_space;
   uniform sampler2D pre_render_color;
@@ -509,73 +519,71 @@ export class RayTracer {
     vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
-    int diameter = int(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
+
+    const ivec2 coords1[5] = ivec2[5](
+      ivec2(-1, 0), 
+      ivec2(0, -1), ivec2(0, 0), ivec2(0, 1),
+      ivec2(1, 0)
+    );
+
+    const ivec2 coords3[37] = ivec2[37](
+      ivec2(-3, -1), ivec2(-3, 0), ivec2(-3, 1), 
+      ivec2(-2, -2), ivec2(-2, -1), ivec2(-2, 0), ivec2(-2, 1), ivec2(-2, 2),
+      ivec2(-1, -3), ivec2(-1, -2), ivec2(-1, -1), ivec2(-1, 0), ivec2(-1, 1), ivec2(-1, 2), ivec2(-1, 3),
+      ivec2(0, -3), ivec2(0, -2), ivec2(0, -1), ivec2(0, 0), ivec2(0, 1), ivec2(0, 2), ivec2(0, 3),
+      ivec2(1, -3), ivec2(1, -2), ivec2(1, -1), ivec2(1, 0), ivec2(1, 1), ivec2(1, 2), ivec2(1, 3),
+      ivec2(2, -2), ivec2(2, -1), ivec2(2, 0), ivec2(2, 1), ivec2(2, 2),
+      ivec2(3, -1), ivec2(3, 0), ivec2(3, 1)
+    );
     
     if (center_color_ip.w > 0.0) {
       mat4 ids = mat4(0);
-      for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-          ivec2 coords = texel + ivec2(vec2(i, j) - 1.0);
-          vec4 id = texelFetch(pre_render_id, coords, 0);
-          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (next_color_ip.w <= 0.0) {
-            for (int k = 0; k < 3; k++) {
-              if (ids[k] == vec4(0.0)) {
-                ids[k] = id;
-                ids[3][k]++;
-                break;
-              } else if (ids[k] == id) {
-                ids[3][k]++;
-                break;
-              }
+      for (int i = 0; i < 5; i++) {
+        ivec2 coord = texel + coords1[i];
+        vec4 id = texelFetch(pre_render_id, coord, 0);
+        vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
+        if (next_color_ip.w <= 0.0) {
+          for (int k = 0; k < 3; k++) {
+            if (ids[k] == vec4(0.0)) {
+              ids[k] = id;
+              ids[3][k]++;
+              break;
+            } else if (ids[k] == id) {
+              ids[3][k]++;
+              break;
             }
           }
         }
       }
+
       int id_number = 0;
-      for (int i = 0; i < 3; i++) {
-        if (ids[3][i] > ids[3][id_number]) id_number = i;
-      }
-      if (ids[3][id_number] >= 1.0) {
-        render_id = ids[id_number];
-        center_color_ip.w = 0.0;
-      } else {
-        render_id = ids[id_number];
-        center_color_ip.w = 1.0;
+      if (ids[3][1] > ids[3][0]) id_number = 1;
+      if (ids[3][2] > ids[3][id_number]) id_number = 2;
+
+      render_id = ids[id_number];
+      center_color_ip.w = 1.0 - sign(ids[3][id_number]);
+    }
+
+    for (int i = 0; i < 37; i++) {
+      ivec2 coord = texel + ivec2(vec2(coords3[i]) * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
+      vec4 id = texelFetch(pre_render_id, coord, 0);
+      vec4 next_color = texelFetch(pre_render_color, coord, 0);
+      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
+      if (id == center_id) {
+        color += next_color + next_color_ip * 256.0;
+        count ++;
       }
     }
     
-    // Force max radius
-    if (diameter > 5) diameter = 5;
-    if (diameter != 0) {
-      // Apply blur filter on image
-      for (int i = 0; i < diameter; i++) {
-        for (int j = 0; j < diameter; j++) {
-          ivec2 coords = texel + ivec2((vec2(i, j) - floor(0.5 * float(diameter))) * pow(1.0 + center_o_color.w, 2.0) * 3.5);
-          vec4 id = texelFetch(pre_render_id, coords, 0);
-          vec4 next_color = texelFetch(pre_render_color, coords, 0);
-          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          if (id == center_id) {
-            color += next_color + next_color_ip * 255.0;
-            count ++;
-          }
-        }
-      }
-    } else {
-      count = 1.0;
-      color = center_color + center_color_ip * 255.0;
-    }
-    if (center_color.w > 0.0) {
-      render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
-      // Set out color for render texture for the antialiasing filter
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, center_color_ip.w);
-    } else {
-      render_color = vec4(0);
-      render_color_ip = vec4(0);
-    }
+    float inv_count = 1.0 / count;
+    render_color = sign(center_color.w) * vec4(mod(color.xyz * inv_count, 1.0), center_color.w);
+    // Set out color for render texture for the antialiasing filter
+    render_color_ip = sign(center_color.w) * vec4(floor(color.xyz * inv_count) * INV_256, center_color_ip.w);
   }
   `;
   #secondFilterGlsl = `#version 300 es
+  #define INV_256 0.00390625
+  
   precision highp float;
   in vec2 clip_space;
   uniform sampler2D pre_render_color;
@@ -599,55 +607,49 @@ export class RayTracer {
     float ipw = 0.0;
     float count = 0.0;
     float o_count = 0.0;
-    // Force max radius
-    float radius = min(floor(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w)), 4.0);
-    int diameter = 2 * int(radius) + 1;
-    if (diameter != 1) {
-      // Apply blur filter on image
-      for (int i = 0; i < diameter; i++) {
-        for (int j = 0; j < diameter; j++) {
-          vec2 texel_offset = vec2(i, j) - floor(radius);
-          if (length(texel_offset) >= floor(radius)) continue;
-          ivec2 coords = ivec2(vec2(texel) + texel_offset * 2.5);
-          vec4 id = texelFetch(pre_render_id, coords, 0);
-          vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
-          vec4 next_color = texelFetch(pre_render_color, coords, 0);
-          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          vec4 next_o_color = texelFetch(pre_render_original_color, coords, 0);
 
-          if (min(center_o_id.w, next_o_id.w) > 0.0) {
-            if (id == center_id || (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz)) {
-              color += next_color + next_color_ip * 255.0;
-              count ++;
-              ipw += next_color_ip.w;
-              o_color += next_o_color;
-              o_count++;
-            }
-          }
+    const ivec2 coords3[69] = ivec2[69](
+      ivec2(-4, -2), ivec2(-4, -1), ivec2(-4, 0), ivec2(-4, 1), ivec2(-4, 2),
+      ivec2(-3, -3), ivec2(-3, -2), ivec2(-3, -1), ivec2(-3, 0), ivec2(-3, 1), ivec2(-3, 2), ivec2(-3, 3),
+      ivec2(-2, -4), ivec2(-2, -3), ivec2(-2, -2), ivec2(-2, -1), ivec2(-2, 0), ivec2(-2, 1), ivec2(-2, 2), ivec2(-2, 3), ivec2(-2, 4),
+      ivec2(-1, -4), ivec2(-1, -3), ivec2(-1, -2), ivec2(-1, -1), ivec2(-1, 0), ivec2(-1, 1), ivec2(-1, 2), ivec2(-1, 3), ivec2(-1, 4),
+      ivec2(0, -4), ivec2(0, -3), ivec2(0, -2), ivec2(0, -1), ivec2(0, 0), ivec2(0, 1), ivec2(0, 2), ivec2(0, 3), ivec2(0, 4),
+      ivec2(1, -4), ivec2(1, -3), ivec2(1, -2), ivec2(1, -1), ivec2(1, 0), ivec2(1, 1), ivec2(1, 2), ivec2(1, 3), ivec2(1, 4),
+      ivec2(2, -4), ivec2(2, -3), ivec2(2, -2), ivec2(2, -1), ivec2(2, 0), ivec2(2, 1), ivec2(2, 2), ivec2(2, 3), ivec2(2, 4),
+      ivec2(3, -3), ivec2(3, -2), ivec2(3, -1), ivec2(3, 0), ivec2(3, 1), ivec2(3, 2), ivec2(3, 3),
+      ivec2(4, -2), ivec2(4, -1), ivec2(4, 0), ivec2(4, 1), ivec2(4, 2)
+    );
 
-          if (id.xyz == center_id.xyz) {
-            color += next_color + next_color_ip * 255.0;
-            count ++;
-          }
+    // Apply blur filter on image
+    for (int i = 0; i < 69; i++) {
+      ivec2 coord = texel + ivec2(vec2(coords3[i]) * (1.0 + center_o_color.w) * 1.5);
+      vec4 id = texelFetch(pre_render_id, coord, 0);
+      vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
+      vec4 next_color = texelFetch(pre_render_color, coord, 0);
+      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
+      vec4 next_o_color = texelFetch(pre_render_original_color, coord, 0);
+
+      if (min(center_o_id.w, next_o_id.w) > 0.0) {
+        if (id == center_id || (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz)) {
+          color += next_color + next_color_ip * 256.0;
+          count ++;
+          ipw += next_color_ip.w;
+          o_color += next_o_color;
+          o_count++;
         }
       }
-    } else {
-      count = 1.0;
-      o_count = 1.0;
-      color = center_color + center_color_ip * 255.0;  
-      o_color = center_o_color;
-      ipw = center_color_ip.w;
+
+      if (id.xyz == center_id.xyz) {
+        color += next_color + next_color_ip * 256.0;
+        count ++;
+      }
     }
-    if (center_color.w > 0.0) {
-      render_color = vec4(mod(color.xyz / count, 1.0), 1.0);
-      // Set out color for render texture for the antialiasing filter
-      render_color_ip = vec4(floor(color.xyz / count) / 255.0, ipw);
-      render_original_color = (o_count == 0.0) ? center_o_color : o_color/ o_count;
-    } else {
-      render_color = vec4(0.0);
-      render_color_ip = vec4(0.0);
-      render_original_color = vec4(0.0);
-    }
+
+    float inv_count = 1.0 / count;
+    render_color = center_color.w * vec4(mod(color.xyz * inv_count, 1.0), 1.0);
+    // Set out color for render texture for the antialiasing filter
+    render_color_ip =  center_color.w * vec4(floor(color.xyz * inv_count) * INV_256, ipw);
+    render_original_color = center_color.w * ((o_count == 0.0) ? center_o_color : o_color / o_count);
   }
   `;
   #finalFilterGlsl = `#version 300 es
@@ -674,7 +676,7 @@ export class RayTracer {
     float o_count = 0.0;
     float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
     // Force max radius
-    if (radius > 3.0) radius = 3.0;
+    radius = min(radius, 3.0);
     int diameter = 2 * int(radius) + 1;
     if (diameter != 1) {
       // Apply blur filter on image
@@ -976,8 +978,8 @@ export class RayTracer {
       renderTextureBuilder();
       if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 400);
-      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 600);
+      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 800);
+      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 800);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1009,11 +1011,9 @@ export class RayTracer {
         GLLib.setTexParams(rt.#gl);
       });
       // Init other textures
-      [OriginalIdRenderTexture].forEach(function(item){
-        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-        rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-        GLLib.setTexParams(rt.#gl);
-      });
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OriginalIdRenderTexture);
+      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
+      GLLib.setTexParams(rt.#gl);
     }
 
     // Internal render engine Functions
