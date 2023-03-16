@@ -282,7 +282,7 @@ export class Rasterizer {
 
 
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type, fakeTextureWidth) {
+	#updateTextureType (type) {
 		// Test if there is even a texture
 		if (type.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
@@ -643,10 +643,7 @@ export class Rasterizer {
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
       // Compile shaders and link them into Program global
-      Program = GLLib.buildProgram(rt.#gl, [
-        { source: rt.#vertexGlsl, type: rt.#gl.VERTEX_SHADER },
-        { source: rt.#fragmentGlsl, type: rt.#gl.FRAGMENT_SHADER }
-      ]);
+      Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
