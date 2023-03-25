@@ -34,7 +34,7 @@ async function buildScene() {
 	let power = 2;
 	let sideLength = 2 ** power;
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [- 4 - sideLength, 3 + power, 4 + sideLength];
+	[camera.x, camera.y, camera.z] = [4 + sideLength, 3 + power, 4 + sideLength];
 	[camera.fx, camera.fy] = [0.75 * Math.PI, 0.6];
 	// Colors.
 	let colors = [];

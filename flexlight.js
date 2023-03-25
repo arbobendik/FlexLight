@@ -6,28 +6,35 @@ import { Scene } from './modules/scene.js';
 import { RayTracer } from './modules/raytracer.js';
 import { Rasterizer } from './modules/rasterizer.js';
 import { WebIo } from './modules/io.js';
+import { UI } from './modules/ui.js';
 
 export class FlexLight {
   #idRenderer;
   #idIo;
   #canvas;
 
-  camera;
+  #camera;
   #scene;
   #renderer;
+
+  #ui;
   #io;
 
   constructor (canvas) {
     this.#canvas = canvas;
-    this.camera = new Camera();
-    this.#scene = new Scene();
-    this.#renderer = new Rasterizer(canvas, this.camera, this.#scene);
-    this.#io = new WebIo(canvas, this.camera);
-    this.#io.renderer = this.#renderer;
+    this.#camera = new Camera ();
+    this.#scene = new Scene ();
+    this.#renderer = new Rasterizer (canvas, this.#camera, this.#scene);
+    this.#io = new WebIo (canvas, this.#camera, this.#renderer);
+    this.#ui = new UI (this.#scene, this.#camera);
   }
 
   get canvas () {
     return this.#canvas;
+  }
+
+  get camera () {
+    return this.#camera;
   }
 
   get scene () {
@@ -48,8 +55,16 @@ export class FlexLight {
     this.io(this.#idIo);
   }
 
+  set camera (camera) {
+    this.#camera = camera;
+    this.#renderer.camera = camera;
+    this.#scene.camera = camera;
+    this.#ui.camera = camera;
+  }
+
   set scene (scene) {
     this.#scene = scene;
+    this.#ui.scene = scene;
     this.#renderer.scene = scene;
   }
 
