@@ -19,7 +19,7 @@ async function buildScene() {
 	scene.pbrTextures.push(normalTex);
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [-4.5, 9, -7];
+	[camera.x, camera.y, camera.z] = [4.5, 9, -7];
 	[camera.fx, camera.fy] = [0, 0.8];
 
 	// Generate plane.

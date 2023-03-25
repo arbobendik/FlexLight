@@ -42,7 +42,7 @@ export class Rasterizer {
   flat out vec4 vertex_id;
   flat out vec3 player;
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz);
+    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
     vec2 translate_px = vec2(
       move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
       move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
@@ -58,7 +58,7 @@ export class Rasterizer {
     tex_coord = tex_pos;
     clip_space = vec3(translate_2d, translate_py.y);
     vertex_id = id;
-    player = camera_position * vec3(-1.0, 1.0, 1.0);
+    player = camera_position;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -219,13 +219,13 @@ export class Rasterizer {
     // Calculate primary light sources for this pass
     for (int j = 0; j < textureSize(light_tex, 0).y; j++){
       // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz * vec3(-1.0, 1.0, 1.0);
+      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
       float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
       // Recalculate position -> light vector
-      vec3 active_light_ray = light * vec3(-1.0, 1.0, 1.0) - position;
+      vec3 active_light_ray = light - position;
       // Update pixel color if coordinate is not in shadow
       if (!shadowTest(normalize(active_light_ray), light, position, normal)) final_color += forwardTrace(normal, active_light_ray, player, position, rme.y, strength);
     }
@@ -245,7 +245,7 @@ export class Rasterizer {
     
   }
   `;
-  // Create new rayTracer from canvas and setup movement
+  // Create new raysterizer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
     this.camera = camera;
@@ -282,7 +282,7 @@ export class Rasterizer {
 
 
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type, fakeTextureWidth) {
+	#updateTextureType (type) {
 		// Test if there is even a texture
 		if (type.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
@@ -626,7 +626,7 @@ export class Rasterizer {
 
       texturesToGPU();
       fillBuffers();
-      /// Apply antialiasing shader if enabled
+      // Apply antialiasing shader if enabled
       if (rt.#antialiasing !== null) this.#AAObject.renderFrame();
     }
 
@@ -635,10 +635,7 @@ export class Rasterizer {
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
       // Compile shaders and link them into Program global
-      Program = GLLib.buildProgram(rt.#gl, [
-        { source: rt.#vertexGlsl, type: rt.#gl.VERTEX_SHADER },
-        { source: rt.#fragmentGlsl, type: rt.#gl.FRAGMENT_SHADER }
-      ]);
+      Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
