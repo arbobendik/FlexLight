@@ -388,14 +388,6 @@ export class Rasterizer {
         // Alias object properties to simplify data texture assembly
         let v = item.vertices;
         let c = item.colors;
-        if (item.selected) {
-          let b = new Array(item.colors.length);
-          for (let i = 0; i < item.colors.length; i++) {
-            b[i] = (i % 3 === 0) ? 1  : item.colors[i] * 0.1;
-          }
-          c = b;
-        }
-
         let n = item.normals;
         let t = item.textureNums;
         let uv = item.uvs;
