@@ -608,21 +608,21 @@ export class RayTracer {
     float count = 0.0;
     float o_count = 0.0;
 
-    const ivec2 coords3[69] = ivec2[69](
-      ivec2(-4, -2), ivec2(-4, -1), ivec2(-4, 0), ivec2(-4, 1), ivec2(-4, 2),
-      ivec2(-3, -3), ivec2(-3, -2), ivec2(-3, -1), ivec2(-3, 0), ivec2(-3, 1), ivec2(-3, 2), ivec2(-3, 3),
-      ivec2(-2, -4), ivec2(-2, -3), ivec2(-2, -2), ivec2(-2, -1), ivec2(-2, 0), ivec2(-2, 1), ivec2(-2, 2), ivec2(-2, 3), ivec2(-2, 4),
-      ivec2(-1, -4), ivec2(-1, -3), ivec2(-1, -2), ivec2(-1, -1), ivec2(-1, 0), ivec2(-1, 1), ivec2(-1, 2), ivec2(-1, 3), ivec2(-1, 4),
-      ivec2(0, -4), ivec2(0, -3), ivec2(0, -2), ivec2(0, -1), ivec2(0, 0), ivec2(0, 1), ivec2(0, 2), ivec2(0, 3), ivec2(0, 4),
-      ivec2(1, -4), ivec2(1, -3), ivec2(1, -2), ivec2(1, -1), ivec2(1, 0), ivec2(1, 1), ivec2(1, 2), ivec2(1, 3), ivec2(1, 4),
-      ivec2(2, -4), ivec2(2, -3), ivec2(2, -2), ivec2(2, -1), ivec2(2, 0), ivec2(2, 1), ivec2(2, 2), ivec2(2, 3), ivec2(2, 4),
-      ivec2(3, -3), ivec2(3, -2), ivec2(3, -1), ivec2(3, 0), ivec2(3, 1), ivec2(3, 2), ivec2(3, 3),
-      ivec2(4, -2), ivec2(4, -1), ivec2(4, 0), ivec2(4, 1), ivec2(4, 2)
+    const vec2 coords3[69] = vec2[69](
+                                  vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2),
+                    vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3),
+      vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
+      vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4),
+      vec2(0, -4), vec2(0, -3), vec2(0, -2), vec2(0, -1), vec2(0, 0), vec2(0, 1), vec2(0, 2), vec2(0, 3), vec2(0, 4),
+      vec2(1, -4), vec2(1, -3), vec2(1, -2), vec2(1, -1), vec2(1, 0), vec2(1, 1), vec2(1, 2), vec2(1, 3), vec2(1, 4),
+      vec2(2, -4), vec2(2, -3), vec2(2, -2), vec2(2, -1), vec2(2, 0), vec2(2, 1), vec2(2, 2), vec2(2, 3), vec2(2, 4),
+                    vec2(3, -3), vec2(3, -2), vec2(3, -1), vec2(3, 0), vec2(3, 1), vec2(3, 2), vec2(3, 3),
+                                 vec2(4, -2), vec2(4, -1), vec2(4, 0), vec2(4, 1), vec2(4, 2)
     );
 
     // Apply blur filter on image
     for (int i = 0; i < 69; i++) {
-      ivec2 coord = texel + ivec2(vec2(coords3[i]) * (1.0 + center_o_color.w) * 1.5);
+      ivec2 coord = texel + ivec2(coords3[i] * (1.0 + center_o_color.w) * 1.5);
       vec4 id = texelFetch(pre_render_id, coord, 0);
       vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
       vec4 next_color = texelFetch(pre_render_color, coord, 0);
@@ -978,8 +978,8 @@ export class RayTracer {
       renderTextureBuilder();
       if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 800);
-      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 800);
+      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 400);
+      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 400);
     }
     // Init canvas parameters and textures with resize
     resize();
