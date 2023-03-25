@@ -37,7 +37,7 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position
-	[camera.x, camera.y, camera.z] = [-8, 7, -11];
+	[camera.x, camera.y, camera.z] = [8, 7, -11];
 	[camera.fx, camera.fy] = [0.440, 0.55];
 
 	scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
@@ -138,5 +138,5 @@ async function buildScene() {
 		engine.renderer.updateTextures();
 		engine.renderer.updatePbrTextures();
 		engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 1000);
 };

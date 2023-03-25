@@ -56,10 +56,7 @@ export class TAA {
     constructor (gl) {
         this.#gl = gl;
         // Compile shaders and link them into program
-        this.#program = GLLib.buildProgram(gl, [
-            { source: GLLib.blankGlsl, type: gl.VERTEX_SHADER },
-            { source: this.#shader, type: gl.FRAGMENT_SHADER }
-        ]);
+        this.#program = GLLib.compile (gl, GLLib.postVertex, this.#shader);
         // Create post program buffers and uniforms
         this.#vao = gl.createVertexArray();
         this.textureIn = gl.createTexture();
@@ -139,4 +136,4 @@ export class TAA {
 
         return vecs;
     }
-    }
+}
