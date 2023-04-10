@@ -69,7 +69,7 @@ export class RayTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.73205
-  #define POW32 4294967296
+  #define POW32 4294967296.0
   #define BIAS 0.00001525879
   #define INV_TRIANGLES_PER_ROW 0.00390625
   #define TRIANGLES_PER_ROW 256.0
