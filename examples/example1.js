@@ -81,9 +81,12 @@ async function buildScene() {
 
 	// Color all cuboid in center
 	for (let i = 0; i < 4; i++) {
-		cuboids[i].setColor(Math.random() * 255, Math.random() * 255, Math.random() * 255);
 		cuboids[i].setTextureNums(-1, 3, 0);
 	}
+	cuboids[0].setColor(200, 150, 0);
+	cuboids[1].setColor(0, 150, 150);
+	cuboids[2].setColor(150, 0, 100);
+	cuboids[3].setColor(0, 0, 200);
 
 	// Spawn cubes with grass block textures
 	let grassCube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);

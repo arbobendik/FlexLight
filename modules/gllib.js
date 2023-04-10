@@ -39,6 +39,7 @@ export class GLLib {
       } else {
         // Log debug info and delete shader if shader fails to compile.
         console.warn(gl.getShaderInfoLog(shader));
+        console.log(item.source);
         gl.deleteShader(shader);
       }
     });

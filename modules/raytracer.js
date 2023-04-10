@@ -69,6 +69,7 @@ export class RayTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define SQRT3 1.73205
+  #define POW32 4294967296
   #define BIAS 0.00001525879
   #define INV_TRIANGLES_PER_ROW 0.00390625
   #define TRIANGLES_PER_ROW 256.0
@@ -78,6 +79,8 @@ export class RayTracer {
 
   precision highp float;
   precision highp sampler2D;
+
+  float inv_texture_width = 1.0;
 
   struct Ray {
     vec3 direction;
@@ -132,8 +135,6 @@ export class RayTracer {
   float original_rmex = 0.0;
   float original_tpox = 0.0;
   vec3 original_color = vec3(1.0);
-
-  float inv_texture_width = 1.0;
 
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords) {
@@ -193,7 +194,7 @@ export class RayTracer {
     // Latest intersection which is now closest to origin
     mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
     // Length to latest intersection
-    float min_len = 1.0 / 0.0;
+    float min_len = 65536.0;
     // Get texture size as max iteration value
     int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
@@ -275,6 +276,25 @@ export class RayTracer {
   }
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
+    // Calculate the direction from the surface point to the light source
+    // vec3 lightDir = normalize(ray.direction);
+    
+    // Calculate the diffuse component of the lighting equation
+    // float diffuse = max(dot(ray.normal, lightDir), 0.0);
+    
+    // Calculate the specular component of the lighting equation
+    // vec3 viewDir = normalize(- ray.origin);
+    // vec3 reflectDir = reflect(- lightDir, ray.normal);
+    // float specular = pow(max(dot(viewDir, reflectDir), 0.0), metallicity);
+    
+    // Calculate the final brightness value based on the diffuse and specular components
+    // float brightness = diffuse + specular;
+    
+    // Apply the light color to the brightness value
+    // brightness *= length(lightColor);
+    
+    // return brightness / 4.0;
+
     float lenP1 = 1.0 + length(ray.direction);
     vec3 normalDir = normalize(ray.direction);
 
@@ -283,7 +303,7 @@ export class RayTracer {
     // Process specularity of ray in view from origin's perspective
     vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
     float light = abs(dot(normalDir, ray.normal));
-    float specular = pow(abs(dot(ray.normal, halfVector)), 300.0 / intensity) * 8.0;
+    float specular = pow(max(dot(normalize(- ray.origin), normalDir), 0.0), metallicity);
     // Determine final color and return it
     return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
@@ -375,8 +395,6 @@ export class RayTracer {
       dont_filter = dont_filter && ((last_rme.x < 0.01 && is_solid) || !is_solid);
       // Intersection of ray with triangle
       mat2x4 intersection;
-      // Break out of the loop after color is calculated if i was the last iteration
-      if (i == bounces - 1) break;
       // Handle translucency and skip rest of light calculation
       if (is_solid) {
         if (dont_filter && last_tpo.x > 0.5) {
@@ -445,7 +463,7 @@ export class RayTracer {
   }
   
   void main(){
-    // Calculating constants for this pass
+    // Calculate constant for this pass
     inv_texture_width = 1.0 / float(texture_width);
 
     float id = vertex_id.x * 65535.0 + vertex_id.y;
@@ -482,16 +500,12 @@ export class RayTracer {
     // Average ray colors over samples.
     final_color /= float(samples);
     // Render all relevant information to 4 textures for the post processing shader
-    if (use_filter == 0) {
-      render_color = vec4((final_color) * material.color, 1.0);
-      return;
-    }
-    render_color = vec4(mod(final_color, 1.0), 1.0);
+    render_color = vec4(mix(final_color * material.color, mod(final_color, 1.0), float(use_filter)), 1.0);
     // 16 bit HDR for improved filtering
     render_color_ip = vec4(floor(final_color) * INV_256, glass_filter);
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, 0.0);
-    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 6.0, original_tpox);
+		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
+    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
   }
   `;
   #firstFilterGlsl = `#version 300 es
@@ -520,26 +534,26 @@ export class RayTracer {
     vec4 color = vec4(0);
     float count = 0.0;
 
-    const ivec2 coords1[5] = ivec2[5](
-      ivec2(-1, 0), 
-      ivec2(0, -1), ivec2(0, 0), ivec2(0, 1),
-      ivec2(1, 0)
+    const ivec2 stencil1[5] = ivec2[5](
+                     ivec2(-1, 0), 
+      ivec2( 0, -1), ivec2( 0, 0), ivec2( 0, 1),
+                     ivec2( 1, 0)
     );
 
-    const ivec2 coords3[37] = ivec2[37](
-      ivec2(-3, -1), ivec2(-3, 0), ivec2(-3, 1), 
-      ivec2(-2, -2), ivec2(-2, -1), ivec2(-2, 0), ivec2(-2, 1), ivec2(-2, 2),
-      ivec2(-1, -3), ivec2(-1, -2), ivec2(-1, -1), ivec2(-1, 0), ivec2(-1, 1), ivec2(-1, 2), ivec2(-1, 3),
-      ivec2(0, -3), ivec2(0, -2), ivec2(0, -1), ivec2(0, 0), ivec2(0, 1), ivec2(0, 2), ivec2(0, 3),
-      ivec2(1, -3), ivec2(1, -2), ivec2(1, -1), ivec2(1, 0), ivec2(1, 1), ivec2(1, 2), ivec2(1, 3),
-      ivec2(2, -2), ivec2(2, -1), ivec2(2, 0), ivec2(2, 1), ivec2(2, 2),
-      ivec2(3, -1), ivec2(3, 0), ivec2(3, 1)
+    const vec2 stencil3[37] = vec2[37](
+                                  vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
+                    vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
+      vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
+      vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
+      vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
+                    vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
+                                  vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
     if (center_color_ip.w > 0.0) {
       mat4 ids = mat4(0);
       for (int i = 0; i < 5; i++) {
-        ivec2 coord = texel + coords1[i];
+        ivec2 coord = texel + stencil1[i];
         vec4 id = texelFetch(pre_render_id, coord, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
         if (next_color_ip.w <= 0.0) {
@@ -565,7 +579,7 @@ export class RayTracer {
     }
 
     for (int i = 0; i < 37; i++) {
-      ivec2 coord = texel + ivec2(vec2(coords3[i]) * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
+      ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
       vec4 id = texelFetch(pre_render_id, coord, 0);
       vec4 next_color = texelFetch(pre_render_color, coord, 0);
       vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
@@ -608,30 +622,32 @@ export class RayTracer {
     float count = 0.0;
     float o_count = 0.0;
 
-    const vec2 coords3[69] = vec2[69](
-                                  vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2),
-                    vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3),
-      vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
-      vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4),
-      vec2(0, -4), vec2(0, -3), vec2(0, -2), vec2(0, -1), vec2(0, 0), vec2(0, 1), vec2(0, 2), vec2(0, 3), vec2(0, 4),
-      vec2(1, -4), vec2(1, -3), vec2(1, -2), vec2(1, -1), vec2(1, 0), vec2(1, 1), vec2(1, 2), vec2(1, 3), vec2(1, 4),
-      vec2(2, -4), vec2(2, -3), vec2(2, -2), vec2(2, -1), vec2(2, 0), vec2(2, 1), vec2(2, 2), vec2(2, 3), vec2(2, 4),
-                    vec2(3, -3), vec2(3, -2), vec2(3, -1), vec2(3, 0), vec2(3, 1), vec2(3, 2), vec2(3, 3),
-                                 vec2(4, -2), vec2(4, -1), vec2(4, 0), vec2(4, 1), vec2(4, 2)
+    const vec2 stencil[89] = vec2[89](
+                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
+                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
+                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
+                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
+      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
+      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
+      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
+                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
+                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
+                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
+                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
     );
-
+    
     // Apply blur filter on image
-    for (int i = 0; i < 69; i++) {
-      ivec2 coord = texel + ivec2(coords3[i] * (1.0 + center_o_color.w) * 1.5);
+    for (int i = 0; i < 89; i++) {
+      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
       vec4 id = texelFetch(pre_render_id, coord, 0);
       vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
       vec4 next_color = texelFetch(pre_render_color, coord, 0);
       vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
       vec4 next_o_color = texelFetch(pre_render_original_color, coord, 0);
 
-      if (min(center_o_id.w, next_o_id.w) > 0.0) {
-        if (id == center_id || (max(next_color_ip.w, center_color_ip.w) > 0.5 && center_o_id.xyz == next_o_id.xyz)) {
-          color += next_color + next_color_ip * 256.0;
+      if (min(center_o_id.w, next_o_id.w) > 0.1) {
+        if (id == center_id || (max(next_color_ip.w, center_color_ip.w) != 0.0 && center_o_id.xyz == next_o_id.xyz)) {
+          color += next_color + vec4(next_color_ip.xyz, 0.0) * 256.0;
           count ++;
           ipw += next_color_ip.w;
           o_color += next_o_color;
@@ -640,13 +656,13 @@ export class RayTracer {
       }
 
       if (id.xyz == center_id.xyz) {
-        color += next_color + next_color_ip * 256.0;
+        color += next_color + vec4(next_color_ip.xyz, 0.0) * 256.0;
         count ++;
       }
     }
 
     float inv_count = 1.0 / count;
-    render_color = center_color.w * vec4(mod(color.xyz * inv_count, 1.0), 1.0);
+    render_color = center_color.w * vec4(mod(color.xyz * inv_count, 1.0), color.w * inv_count);
     // Set out color for render texture for the antialiasing filter
     render_color_ip =  center_color.w * vec4(floor(color.xyz * inv_count) * INV_256, ipw);
     render_original_color = center_color.w * ((o_count == 0.0) ? center_o_color : o_color / o_count);
@@ -674,40 +690,40 @@ export class RayTracer {
     vec4 o_color = vec4(0);
     float count = 0.0;
     float o_count = 0.0;
-    float radius = ceil(sqrt(float(textureSize(pre_render_color, 0).x * textureSize(pre_render_color, 0).y) * center_o_color.w));
-    // Force max radius
-    radius = min(radius, 3.0);
-    int diameter = 2 * int(radius) + 1;
-    if (diameter != 1) {
-      // Apply blur filter on image
-      for (int i = 0; i < diameter; i++) {
-        for (int j = 0; j < diameter; j++) {
-          vec2 texel_offset = vec2(i, j) - radius;
-          if (length(texel_offset) >= radius) continue;
 
-          ivec2 coords = ivec2(vec2(texel) + texel_offset);
-          vec4 id = texelFetch(pre_render_id, coords, 0);
-          vec4 next_o_id = texelFetch(pre_render_original_id, coords, 0);
-          vec4 next_color = texelFetch(pre_render_color, coords, 0);
-          vec4 next_color_ip = texelFetch(pre_render_color_ip, coords, 0);
-          vec4 next_o_color = texelFetch(pre_render_original_color, coords, 0);
-          if (max(next_color_ip.w, center_color_ip.w) > 0.0 && min(center_o_id.w, next_o_id.w) >= 0.5 && center_o_id.xyz == next_o_id.xyz) {
-            color += next_color + next_color_ip * 255.0;
-            count ++;
-            o_color += next_o_color;
-            o_count++;
-          } else if (id.xyz == center_id.xyz) {
-            color += next_color + next_color_ip * 255.0;
-            count ++;
-          }
-        }
+    const vec2 stencil[89] = vec2[89](
+                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
+                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
+                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
+                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
+      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
+      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
+      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
+                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
+                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
+                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
+                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
+    );
+
+    // Apply blur filter on image
+    for (int i = 0; i < 89; i++) {
+      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
+      vec4 id = texelFetch(pre_render_id, coord, 0);
+      vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
+      vec4 next_color = texelFetch(pre_render_color, coord, 0);
+      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
+      vec4 next_o_color = texelFetch(pre_render_original_color, coord, 0);
+      if (max(next_color_ip.w, center_color_ip.w) != 0.0 && min(center_o_id.w, next_o_id.w) >= 0.5 && center_o_id.xyz == next_o_id.xyz) {
+        color += next_color + next_color_ip * 255.0;
+        count ++;
+        o_color += next_o_color;
+        o_count++;
+      } else if (id.xyz == center_id.xyz) {
+        color += next_color + next_color_ip * 255.0;
+        count ++;
       }
-    } else {
-      count = 1.0;
-      o_count = 1.0;
-      color = center_color + center_color_ip * 255.0;  
-      o_color = center_o_color;
     }
+    
     if (center_color.w > 0.0) {
       // Set out target_color for render texture for the antialiasing filter
       vec3 final_color = color.xyz / count;
@@ -978,8 +994,8 @@ export class RayTracer {
       renderTextureBuilder();
       if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 400);
-      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 400);
+      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 800);
+      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 600);
     }
     // Init canvas parameters and textures with resize
     resize();
