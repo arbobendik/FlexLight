@@ -194,7 +194,7 @@ export class RayTracer {
     // Latest intersection which is now closest to origin
     mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
     // Length to latest intersection
-    float min_len = POW32;
+    float min_len = 1.0 / 0.0;
     // Get texture size as max iteration value
     int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
