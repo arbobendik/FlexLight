@@ -62,11 +62,37 @@ export class Rasterizer {
   }
   `;
   #fragmentGlsl = `#version 300 es
-  #define SQRT3 1.7320508075688772
-  #define BIAS 0.0000152587890625
-  #define TrianglesPerRow 256
+  #define SQRT3 1.73205
+  #define BIAS 0.00001525879
+  #define INV_TRIANGLES_PER_ROW 0.00390625
+  #define TRIANGLES_PER_ROW 256.0
+  #define INV_256 0.00390625
+  #define INV_65536 0.00001525879
+  #define THIRD 0.333333
+
   precision highp float;
   precision highp sampler2D;
+
+  float inv_texture_width = 1.0;
+
+  struct Ray {
+    vec3 direction;
+    vec3 origin;
+    vec3 normal;
+  };
+
+  struct Material {
+    vec3 color;
+    vec3 rme;
+    vec3 tpo;
+  };
+
+  struct Light {
+    vec3 origin;
+    float strength;
+    float variance;
+  };
+
   in vec3 position;
   in vec2 tex_coord;
   in vec3 clip_space;
@@ -91,27 +117,28 @@ export class Rasterizer {
   // Accumulate color of mirror reflections
   float original_rmex = 0.0;
   vec3 original_color = vec3(1.0);
+
   // Lookup values for texture atlases
-  vec4 lookup(sampler2D atlas, vec3 coords){
-    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
-    float atlas_width_factor = 1.0 / float(texture_width);
+  vec4 lookup(sampler2D atlas, vec3 coords) {
+    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * inv_texture_width;
     vec2 atlas_coords = vec2(
-      (coords.x + mod(coords.z, float(texture_width))) * atlas_width_factor,
-      (coords.y + floor(coords.z / float(texture_width))) * atlas_height_factor
+      (coords.x + mod(coords.z, float(texture_width))) * inv_texture_width,
+      (coords.y + floor(coords.z * inv_texture_width)) * atlas_height_factor
     );
     // Return texel on requested location
     return texture(atlas, atlas_coords);
   }
+
   // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
+  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n) {
     // Can't intersect with triangle with the same normal as the origin
-    if (n == on) return mat2x4(0);
+    if (n == ray.normal) return mat2x4(0);
     // Get distance to intersection point
-    float s = dot(n, t[0] - p) / dot(n, r);
+    float s = dot(n, t[0] - ray.origin) / dot(n, normalize(ray.direction));
     // Ensure that ray triangle intersection is between light source and texture
     if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
-    vec3 d = (s * r) + p;
+    vec3 d = (s * normalize(ray.direction)) + ray.origin;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     vec3 v0 = t[1] - t[0];
     vec3 v1 = t[2] - t[0];
@@ -121,37 +148,35 @@ export class Rasterizer {
     float d11 = dot(v1, v1);
     float d20 = dot(v2, v0);
     float d21 = dot(v2, v1);
-    float denom = d00 * d11 - d01 * d01;
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u =  1.0 - v - w;
+    float denom = 1.0 / (d00 * d11 - d01 * d01);
+    float v = (d11 * d20 - d01 * d21) * denom;
+    float w = (d00 * d21 - d01 * d20) * denom;
+    float u = 1.0 - v - w;
     if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
     return mat2x4(vec4(d, s), vec4(u, v, w, 0));
   }
+
   // Don't return intersection point, because we're looking for a specific triangle
   bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
     mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
-    // vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
-    // vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
-    // vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
     float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
     // Ray points in cuboid direction, but doesn't intersect
     return max(lowest, BIAS) <= highest;
   }
+
   // Simplified rayTracer test only if ray intersects anything
-  bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
-    // return false;
+  bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / ray;
+    vec3 inv_ray = 1.0 / normalize(ray.direction);
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
+    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
       // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
+      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
       // Read normal and triangle from world_tex
       vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
@@ -165,11 +190,11 @@ export class Rasterizer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, normalize(n), origin_normal)[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - ray.origin), ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])))[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
+      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
         // Test if Ray intersects bounding volume
         // t[0] = x x2 y
         // t[1] = y2 z z2
@@ -180,44 +205,73 @@ export class Rasterizer {
     // Tested all triangles, but there is no intersection
     return false;
   }
-  float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
+
+  float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
+    // Calculate the direction from the surface point to the light source
+    // vec3 lightDir = normalize(ray.direction);
+    
+    // Calculate the diffuse component of the lighting equation
+    // float diffuse = max(dot(ray.normal, lightDir), 0.0);
+    
+    // Calculate the specular component of the lighting equation
+    // vec3 viewDir = normalize(- ray.origin);
+    // vec3 reflectDir = reflect(- lightDir, ray.normal);
+    // float specular = pow(max(dot(viewDir, reflectDir), 0.0), metallicity);
+    
+    // Calculate the final brightness value based on the diffuse and specular components
+    // float brightness = diffuse + specular;
+    
+    // Apply the light color to the brightness value
+    // brightness *= length(lightColor);
+    
+    // return brightness;
+
+    float lenP1 = 1.0 + length(ray.direction);
+    vec3 normalDir = normalize(ray.direction);
+
     // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / pow(1.0 + length(light_ray),2.0);
+    float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
-    float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-    float specular = pow(abs(dot(normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
+    vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
+    float brightness = abs(dot(normalDir, ray.normal));
+    float specular = pow(max(dot(normalize(- ray.origin), normalDir), 0.0), metallicity);
     // Determine final color and return it
-    if (dot(normal, halfVector) > 0.0) return light * intensity + specular * intensity;
-    // Return just light if specular is negative
-    return light * intensity;
+    return mix(brightness, max(specular, 0.0), metallicity) * intensity;
   }
+
   float fresnel(vec3 normal, vec3 lightDir) {
     // Apply fresnel effect
     return dot(normal, lightDir);
   }
+
   void main(){
+    // Calculate constant for this pass
+    inv_texture_width = 1.0 / float(texture_width);
+
     float id = vertex_id.x * 65535.0 + vertex_id.y;
-    ivec2 index = ivec2(mod(id, float(TrianglesPerRow)) * 8.0, id / float(TrianglesPerRow));
+    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
-    vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
-    vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
     vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
+    // Default tex_color to color
+    vec3 color = mix(texelFetch(world_tex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
+    vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+    
     // Test if pixel is in frustum or not
     if (clip_space.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
-    // Default roughness, metallicity and emissiveness
-    // Set roughness to texture value if texture is defined
-    vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
-    // Default to non translucent object (translucency, particle density, optical density) => tpo
-    vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
-    // Preserve original roughness for filter pass.
-    // Start hybrid ray tracing on a per light source base
-    // Directly add emissive light of original surface to final_color
-    vec3 final_color = vec3(rme.z) + ambient;
-    // Calculate primary light sources for this pass
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+    // Default tex_color to color
+    Material material = Material (
+      mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0))
+    );
+    // Fresnel effect
+    material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
+
+    float brightness = 0.0;
+    // Calculate primary light sources for this pass if ray hits non translucent object
+    for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
       // Read light position
       vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
@@ -225,15 +279,14 @@ export class Rasterizer {
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
       // Recalculate position -> light vector
-      vec3 active_light_ray = light - position;
+      Ray light_ray = Ray (light - position, position, normal);
       // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(normalize(active_light_ray), light, position, normal)) final_color += forwardTrace(normal, active_light_ray, player, position, rme.y, strength);
+      if (!shadowTest(light_ray, light)) brightness += forwardTrace(light_ray, player, material.rme.y, strength);
     }
-    // Default tex_color to color
-    vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
-    // Set color
-    final_color *= tex_color;
-   
+    brightness = max(material.rme.z + 0.5 * material.tpo.x, brightness);
+
+    vec3 final_color = brightness * color;
+
     if (hdr == 1) {
       // Apply Reinhard tone mapping
       final_color = final_color / (final_color + vec3(1.0));
@@ -241,8 +294,7 @@ export class Rasterizer {
       float gamma = 0.8;
       final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
     }
-    render_color = vec4(final_color, 1.0 - tpo.x * 0.3);
-    
+    render_color = vec4(final_color, 1.0 - material.tpo.x * 0.3);
   }
   `;
   // Create new raysterizer from canvas and setup movement
