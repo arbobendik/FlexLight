@@ -303,7 +303,7 @@ export class Rasterizer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
-    this.#AAObject = new TAA(this.#gl);
+    this.#antialiasing = 'taa';
   }
 
   // Make canvas read only accessible
@@ -324,7 +324,7 @@ export class Rasterizer {
         break;
       case 'taa':
         this.#antialiasing = val;
-        this.#AAObject = new TAA(this.#gl);
+        this.#AAObject = new TAA(this.#gl, this);
         break;
       default:
         this.#antialiasing = null;
@@ -534,7 +534,7 @@ export class Rasterizer {
     	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
       // Rebuild textures with every resize
       renderTextureBuilder();
-      if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
+      if (this.#AAObject != null) this.#AAObject.buildTexture();
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -679,7 +679,7 @@ export class Rasterizer {
       texturesToGPU();
       fillBuffers();
       // Apply antialiasing shader if enabled
-      if (rt.#antialiasing !== null) this.#AAObject.renderFrame();
+      if (this.#AAObject != null) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
@@ -748,7 +748,7 @@ export class Rasterizer {
             this.#AAObject = new FXAA(rt.#gl);
             break;
           case "taa":
-            this.#AAObject = new TAA(rt.#gl);
+            this.#AAObject = new TAA(rt.#gl, rt);
             break;
           default:
             this.#AAObject = null;

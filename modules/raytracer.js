@@ -4,6 +4,8 @@ import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
 
+const TEMP_FRAMES = 5;
+
 export class RayTracer {
   type = 'raytracer';
   // Configurable runtime properties of the raytracer (public attributes)
@@ -14,6 +16,7 @@ export class RayTracer {
   minImportancy = 0.3;
   firstPasses = 0;
   secondPasses = 0;
+  temporal = true;
   filter = true;
   hdr = true;
   // Performance metric
@@ -29,6 +32,7 @@ export class RayTracer {
   #canvas;
   // Internal gl texture variables of texture atlases
   #worldTexture;
+  #randomTextures = new Array(TEMP_FRAMES);
   #pbrTexture;
   #translucencyTexture;
   #texture;
@@ -194,7 +198,7 @@ export class RayTracer {
     // Latest intersection which is now closest to origin
     mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
     // Length to latest intersection
-    float min_len = 1.0 / 0.0;
+    float min_len = POW32;
     // Get texture size as max iteration value
     int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
@@ -214,7 +218,7 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)){
         // Test if triangle intersects ray
-        mat2x4 current_intersection = rayTriangle(min_len, ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])));
+        mat2x4 current_intersection = rayTriangle(min_len, ray, t, n);
         // Test if ray even intersects
         if (current_intersection != mat2x4(0)){
           min_len = current_intersection[0].w;
@@ -229,7 +233,7 @@ export class RayTracer {
         // t[0] = x x2 y
         // t[1] = y2 z z2
         // If it doesn't intersect, skip shadow test for all elements in bounding volume
-        i += int(t[2].x);
+        i += int(t[2].x) + 1;
       }
     }
     // Return if pixel is in shadow or not
@@ -240,10 +244,12 @@ export class RayTracer {
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / normalize(ray.direction);
+    // Precomput max length
+    float max = length(light - ray.origin);
     // Get texture size as max iteration value
     int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
-    for (int i = 0; i < size; i++){
+    for (int i = 0; i < size; i++) {
       // Get position of current triangle/vertex in world_tex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
       // Read normal and triangle from world_tex
@@ -259,11 +265,11 @@ export class RayTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - ray.origin), ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])))[0].xyz != vec3(0)) return true;
+        if (rayTriangle(max, ray, t, n)[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
+      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
         // Test if Ray intersects bounding volume
         // t[0] = x x2 y
         // t[1] = y2 z z2
@@ -276,25 +282,6 @@ export class RayTracer {
   }
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
-    // Calculate the direction from the surface point to the light source
-    // vec3 lightDir = normalize(ray.direction);
-    
-    // Calculate the diffuse component of the lighting equation
-    // float diffuse = max(dot(ray.normal, lightDir), 0.0);
-    
-    // Calculate the specular component of the lighting equation
-    // vec3 viewDir = normalize(- ray.origin);
-    // vec3 reflectDir = reflect(- lightDir, ray.normal);
-    // float specular = pow(max(dot(viewDir, reflectDir), 0.0), metallicity);
-    
-    // Calculate the final brightness value based on the diffuse and specular components
-    // float brightness = diffuse + specular;
-    
-    // Apply the light color to the brightness value
-    // brightness *= length(lightColor);
-    
-    // return brightness / 4.0;
-
     float lenP1 = 1.0 + length(ray.direction);
     vec3 normalDir = normalize(ray.direction);
 
@@ -340,6 +327,7 @@ export class RayTracer {
   }
 
   vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, Ray first_ray, vec3 rme, vec3 tpo, int sample_n, int bounces){
+    bool first_rough = rme.x >= 0.25;
     // Set bool to false when filter becomes necessary
     bool dont_filter = true;
     float last_filter_roughness = 0.0;
@@ -371,16 +359,18 @@ export class RayTracer {
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(ray.normal, random_vec, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
-      if (dot(last_rough_normal, ray.normal) <= 0.0) last_rough_normal = - last_rough_normal;
+      last_rough_normal = sign(dot(last_rough_normal, ray.normal)) * last_rough_normal;
       // Handle fresnel reflection
       float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
       // object is solid or translucent by chance because of the fresnel effect
-      bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.x);
+      bool is_solid = last_tpo.x * fresnel_reflect <= abs(length(random_vec) / SQRT3);
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
         // Set color in filter
-        if (sample_n == 0) original_color *= last_color;
-        last_color = vec3(1.0);
+        if (sample_n == 0) {
+          original_color *= last_color;
+          last_color = vec3(1.0);
+        }
         // Add filtering intensity for respective surface
         original_rmex += last_filter_roughness;
         // Update render id
@@ -398,7 +388,7 @@ export class RayTracer {
       // Handle translucency and skip rest of light calculation
       if (is_solid) {
         if (dont_filter && last_tpo.x > 0.5) {
-          glass_filter = 1.0;
+          glass_filter += 1.0;
           dont_filter = false;
         }
         // If ray fresnel reflects from inside an transparent object,
@@ -495,10 +485,30 @@ export class RayTracer {
       // Set color of object itself
       // Calculate pixel for specific normal
       Ray ray = Ray (normalize(position - player), position, normalize(normal));
-      final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
+      if (true) {
+        final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
+      } else {
+        vec3 solid_color = lightTrace(world_tex, light_tex, player, ray, material.rme, vec3(0.0, material.tpo.yz), i, 2);
+        // Prevent blur over shadow border or over (close to) perfect reflections
+        first_ray_length = 1.0;
+        // Accumulate color of mirror reflections
+        glass_filter = 0.0;
+        original_rmex = 0.0;
+        render_id.w = 0.0;
+        // float original_tpox = 0.0;
+        vec3 original_color = vec3(1.0);
+        vec3 translucent_color = lightTrace(world_tex, light_tex, player, ray, material.rme, vec3(POW32, material.tpo.yz), i + 1, max_reflections - 1);
+        float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
+        // original_color = mix(original_color, t_original_color, material.tpo.x * fresnel_reflect * fresnel_reflect);
+        final_color += mix(solid_color, translucent_color, material.tpo.x * fresnel_reflect * fresnel_reflect);
+        // glass_filter = 0.0;
+      }
     }
     // Average ray colors over samples.
     final_color /= float(samples);
+    first_ray_length /= float(samples);
+    original_rmex /= float(samples);
+    // if (samples != 1) glass_filter = 0.0;
     // Render all relevant information to 4 textures for the post processing shader
     render_color = vec4(mix(final_color * material.color, mod(final_color, 1.0), float(use_filter)), 1.0);
     // 16 bit HDR for improved filtering
@@ -506,6 +516,92 @@ export class RayTracer {
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
     render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
+  }
+  `;
+  #tempGlsl = `#version 300 es
+  precision highp float;
+  in vec2 clip_space;
+
+  uniform int use_filter;
+  uniform int hdr;
+
+  uniform sampler2D cache_0;
+  uniform sampler2D cache_1;
+  uniform sampler2D cache_2;
+  uniform sampler2D cache_3;
+  uniform sampler2D cache_4;
+
+  uniform sampler2D cache_ip_0;
+  uniform sampler2D cache_ip_1;
+  uniform sampler2D cache_ip_2;
+  uniform sampler2D cache_ip_3;
+  uniform sampler2D cache_ip_4;
+
+  uniform sampler2D cache_id_0;
+  uniform sampler2D cache_id_1;
+  uniform sampler2D cache_id_2;
+  uniform sampler2D cache_id_3;
+  uniform sampler2D cache_id_4;
+  
+  layout(location = 0) out vec4 render_color;
+  layout(location = 1) out vec4 render_color_ip;
+  layout(location = 2) out vec4 render_id;
+
+  void main () {
+    ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
+
+    mat4 c0 = mat4(
+      texelFetch(cache_1, texel, 0), 
+      texelFetch(cache_2, texel, 0),
+      texelFetch(cache_3, texel, 0),
+      texelFetch(cache_4, texel, 0)
+    );
+
+    mat4 c0_ip = mat4(
+      texelFetch(cache_ip_1, texel, 0), 
+      texelFetch(cache_ip_2, texel, 0),
+      texelFetch(cache_ip_3, texel, 0),
+      texelFetch(cache_ip_4, texel, 0)
+    );
+
+    mat4 id0 = mat4(
+      texelFetch(cache_id_1, texel, 0), 
+      texelFetch(cache_id_2, texel, 0),
+      texelFetch(cache_id_3, texel, 0),
+      texelFetch(cache_id_4, texel, 0)
+    );
+
+    // Pass current id on to filter shader.
+    render_id = texelFetch(cache_id_0, texel, 0);
+    float counter = 1.0;
+    
+    float center_w = texelFetch(cache_0, texel, 0).w;
+    vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
+
+    for (int i = 0; i < 4; i++) if (id0[i] == render_id) {
+      color += c0[i].xyz + c0_ip[i].xyz * 256.0;
+      counter ++;
+    }
+
+    float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
+    for (int i = 0; i < 4; i++) glass_filter += c0_ip[i].w;
+
+    color /= counter;
+
+    if (use_filter == 1) {
+      render_color = vec4(mod(color, 1.0), center_w);
+      // 16 bit HDR for improved filtering
+      render_color_ip = vec4(floor(color) / 256.0, glass_filter);
+    } else if (hdr == 1) {
+      // Apply Reinhard tone mapping
+      color = color / (color + vec3(1));
+      // Gamma correction
+      float gamma = 0.8;
+      color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+      render_color = vec4(color, center_w);
+    } else {
+      render_color = vec4(color, center_w);
+    }
   }
   `;
   #firstFilterGlsl = `#version 300 es
@@ -534,9 +630,9 @@ export class RayTracer {
     vec4 color = vec4(0);
     float count = 0.0;
 
-    const ivec2 stencil1[5] = ivec2[5](
+    const ivec2 stencil1[4] = ivec2[4](
                      ivec2(-1, 0), 
-      ivec2( 0, -1), ivec2( 0, 0), ivec2( 0, 1),
+      ivec2( 0, -1),              ivec2( 0, 1),
                      ivec2( 1, 0)
     );
 
@@ -551,48 +647,58 @@ export class RayTracer {
     );
     
     if (center_color_ip.w > 0.0) {
+      vec4 id = texelFetch(pre_render_id, texel, 0);
       mat4 ids = mat4(0);
-      for (int i = 0; i < 5; i++) {
-        ivec2 coord = texel + stencil1[i];
-        vec4 id = texelFetch(pre_render_id, coord, 0);
-        vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-        if (next_color_ip.w <= 0.0) {
-          for (int k = 0; k < 3; k++) {
-            if (ids[k] == vec4(0.0)) {
-              ids[k] = id;
-              ids[3][k]++;
-              break;
-            } else if (ids[k] == id) {
-              ids[3][k]++;
-              break;
-            }
-          }
+      vec4 ipws = vec4(0);
+      for (int i = 0; i < 4; i++) {
+        ids[i] = texelFetch(pre_render_id, texel + stencil1[i], 0);
+        ipws[i] = texelFetch(pre_render_color_ip, texel + stencil1[i], 0).w;
+      }
+
+      ivec4 vote = ivec4(0);
+      for (int i = 0; i < 4; i++) {
+        if (ipws[i] == 0.0) {
+          vote[i] = 1;
+          if (ids[i] == id) vote[i]++;
+          for (int j = i + 1; j < 4; j++) if (ids[i] == ids[j]) vote[i]++;
         }
       }
 
+      int max_vote = 0;
       int id_number = 0;
-      if (ids[3][1] > ids[3][0]) id_number = 1;
-      if (ids[3][2] > ids[3][id_number]) id_number = 2;
 
+      for (int i = 0; i < 4; i++) {
+        if (vote[i] >= max_vote) {
+          max_vote = vote[i];
+          id_number = i;
+        }
+      }
+      
       render_id = ids[id_number];
-      center_color_ip.w = 1.0 - sign(ids[3][id_number]);
+      render_color_ip.w = 1.0 - sign(float(max_vote));
     }
 
-    for (int i = 0; i < 37; i++) {
-      ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
-      vec4 id = texelFetch(pre_render_id, coord, 0);
-      vec4 next_color = texelFetch(pre_render_color, coord, 0);
-      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-      if (id == center_id) {
-        color += next_color + next_color_ip * 256.0;
-        count ++;
+    if (center_o_color.w == 0.0) {
+      color = center_color;
+      count = 1.0;
+    } else {
+      for (int i = 0; i < 37; i++) {
+        ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
+        vec4 id = texelFetch(pre_render_id, coord, 0);
+        vec4 next_color = texelFetch(pre_render_color, coord, 0);
+        vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
+        if (id == center_id) {
+          color += next_color + next_color_ip * 256.0;
+          count ++;
+        }
       }
     }
+    
     
     float inv_count = 1.0 / count;
     render_color = sign(center_color.w) * vec4(mod(color.xyz * inv_count, 1.0), center_color.w);
     // Set out color for render texture for the antialiasing filter
-    render_color_ip = sign(center_color.w) * vec4(floor(color.xyz * inv_count) * INV_256, center_color_ip.w);
+    render_color_ip = sign(center_color.w) * vec4(floor(color.xyz * inv_count) * INV_256, render_color_ip.w);
   }
   `;
   #secondFilterGlsl = `#version 300 es
@@ -638,7 +744,7 @@ export class RayTracer {
     
     // Apply blur filter on image
     for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
+      ivec2 coord = texel + ivec2(stencil[i] * (1.0 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
       vec4 id = texelFetch(pre_render_id, coord, 0);
       vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
       vec4 next_color = texelFetch(pre_render_color, coord, 0);
@@ -738,7 +844,7 @@ export class RayTracer {
       }
       out_color = vec4(final_color, 1.0);
     } else {
-      out_color = vec4(0.0, 0.0, 0.0, 0.0);
+      out_color = vec4(0);
     }
   }
   `;
@@ -748,7 +854,7 @@ export class RayTracer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
-    this.#AAObject = new TAA(this.#gl);
+    this.#antialiasing = 'taa';
   }
   
   // Make canvas read only accessible
@@ -778,7 +884,7 @@ export class RayTracer {
   }
 
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type) {
+	async #updateTextureType (type) {
 		// Test if there is even a texture
 		if (type.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
@@ -801,7 +907,8 @@ export class RayTracer {
 		});
 		this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
 	}
-  updatePbrTextures () {
+
+  async updatePbrTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -810,7 +917,8 @@ export class RayTracer {
 
 		this.#updateTextureType(this.scene.pbrTextures);
   }
-  updateTranslucencyTextures () {
+
+  async updateTranslucencyTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -819,7 +927,8 @@ export class RayTracer {
 
 		this.#updateTextureType(this.scene.translucencyTextures);
   }
-  updateTextures () {
+
+  async updateTextures () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -830,8 +939,9 @@ export class RayTracer {
 
 		this.#updateTextureType(this.scene.textures);
   }
+
   // Functions to update vertex and light source data textures
-  updatePrimaryLightSources () {
+  async updatePrimaryLightSources () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -858,7 +968,8 @@ export class RayTracer {
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
-  updateScene () {
+
+  async updateScene () {
     let id = 0;
     // Set data variable for texels in world space texture
     var data = [];
@@ -871,7 +982,7 @@ export class RayTracer {
         // Save position of len variable in array
         let len_pos = data.length;
         // Begin bounding volume array
-        data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+        data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         id++;
         // Iterate over all sub elements
         for (let i = 0; i < item.length; i++) fillData(item[i]);
@@ -891,7 +1002,7 @@ export class RayTracer {
         if (item.bounding !== undefined){
           // Declare bounding volume of object
           let b = item.bounding;
-          data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+          data.push(b[0], b[1], b[2], b[3], b[4], b[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
           id++;
         } else if (item.length > 3) {
           // Warn if length is greater than 3
@@ -904,7 +1015,7 @@ export class RayTracer {
           let j = i / 3 * 2;
           // 1 vertex = 1 line in world texture
           // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/3],c[i/3+1],c[i/3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
+          data.push(v[i], v[i+1], v[i+2], v[i+3], v[i+4], v[i+5], v[i+6], v[i+7], v[i+8], c[i/3], c[i/3+1], c[i/3+2], n[i], n[i+1], n[i+2], t[j], t[j+1], t[j+2], uv[j], uv[j+1], uv[j+2], uv[j+3], uv[j+4], uv[j+5]);
           item.ids.push(Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535);
           id++;
         }
@@ -917,7 +1028,7 @@ export class RayTracer {
     data = data.flat();
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
-    // Manipulate actual webgl texture
+    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
@@ -937,14 +1048,15 @@ export class RayTracer {
     let TimeElapsed = performance.now();
     // Total frames calculated since last meassured
     let Frames = 0;
+    let LastMeasuredFrames = 0;
     // Internal GL objects
-    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, AmbientLocation, TextureWidth, WorldTex, RandomTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, HdrLocation, AmbientLocation, TextureWidth;
+    let TempProgram, TempFilterLocation, TempHdrLocation;
+    let WorldTex, RandomTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let PositionBuffer, IdBuffer, TexBuffer;
-    // Init Texture elements
-    let RandomTexture, Random;
     // Framebuffer, Post Program buffers and textures
-    let Framebuffer, OriginalIdRenderTexture;
+    let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
     // Set post program array
     let PostProgram = [];
     // Create textures for Framebuffers in PostPrograms
@@ -954,12 +1066,25 @@ export class RayTracer {
     let OriginalRenderTexture = new Array(2);
     let IdRenderTexture = new Array(2);
 
+    let TempTexture = new Array(TEMP_FRAMES);
+    let TempIpTexture = new Array(TEMP_FRAMES);
+    let TempIdTexture = new Array(TEMP_FRAMES);
+    
+    let TempTex = new Array(TEMP_FRAMES);
+    let TempIpTex = new Array(TEMP_FRAMES);
+    let TempIdTex = new Array(TEMP_FRAMES);
+
+    for (let i = 0; i < TEMP_FRAMES; i++) {
+      TempTexture[i] = this.#gl.createTexture();
+      TempIpTexture[i] = this.#gl.createTexture();
+      TempIdTexture[i] = this.#gl.createTexture();
+    }
+
     let RenderTex = new Array(5);
     let IpRenderTex = new Array(5);
     let OriginalRenderTex = new Array(5);
     let IdRenderTex = new Array(5);
     let OriginalIdRenderTex = new Array(5);
-    let HdrLocation;
     // Create caching textures for denoising
 		for (let i = 0; i < 5; i ++) {
 				RenderTexture[i] = this.#gl.createTexture();
@@ -973,6 +1098,8 @@ export class RayTracer {
     let PostFramebuffer = new Array(5);
     // Create different Vaos for different rendering/filtering steps in pipeline
     let Vao = this.#gl.createVertexArray();
+
+    let TempVao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
     let PostVao = new Array(5).map(() => this.#gl.createVertexArray());
     // Check if recompile is needed
@@ -987,33 +1114,23 @@ export class RayTracer {
     	canvas.width = canvas.clientWidth * rt.renderQuality;
     	canvas.height = canvas.clientHeight * rt.renderQuality;
     	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
-      // Generate Random variable after each resize
-    	Random = new Uint8Array(3 * canvas.width * canvas.height).map(() => 256 * Math.random());
       // Rebuild textures with every resize
-      randomTextureBuilder();
       renderTextureBuilder();
-      if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
+      if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 800);
-      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 600);
+      rt.firstPasses = 1 + Math.round(Math.min(canvas.width, canvas.height) / 1000);
+      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 1000);
     }
     // Init canvas parameters and textures with resize
     resize();
 
-    function randomTextureBuilder(){
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, RandomTexture);
-      // Fill texture with pseudo random pixels
-      // Tell webgl to use 1 byte per value for the 8 bit ints
-      rt.#gl.pixelStorei(rt.#gl.UNPACK_ALIGNMENT, 1);
-      // Set data texture details and tell webgl, that no mip maps are required
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MIN_FILTER, rt.#gl.LINEAR);
-      rt.#gl.texParameteri(rt.#gl.TEXTURE_2D, rt.#gl.TEXTURE_MAG_FILTER, rt.#gl.LINEAR);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGB8, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGB, rt.#gl.UNSIGNED_BYTE, Random);
-      rt.#gl.generateMipmap(rt.#gl.TEXTURE_2D);
-    }
     function renderTextureBuilder(){
+      for (let i = 0; i < TEMP_FRAMES; i++) {
+        rt.#randomTextures[i] = rt.#gl.createTexture();
+        GLLib.randomTextureBuilder(rt.#gl.canvas.width, rt.#gl.canvas.height, rt.#gl, rt.#randomTextures[i]);
+      }
       // Init textures for denoiser
-      [RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
+      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
         parent.forEach(function(item){
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
@@ -1036,6 +1153,10 @@ export class RayTracer {
     function frameCycle (Millis) {
       // generate bounding volumes
       rt.scene.updateBoundings();
+      // set world-texture
+      rt.updateScene();
+      // build bounding boxes for scene first
+      rt.updatePrimaryLightSources();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -1047,33 +1168,32 @@ export class RayTracer {
       // Request the browser to render frame with hardware acceleration
       if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
-      if (rt.filter) {
-        renderFrameRt();
-      } else {
-        renderFrameRtRaw();
-      }
+      renderFrame();
       // Update frame counter
       Frames ++;
       // Calculate Fps
 			const timeDifference = Millis - TimeElapsed;
       if (timeDifference > 500) {
-        rt.fps = (1000 * Frames / timeDifference).toFixed(0);
-        [TimeElapsed, Frames] = [Millis, 0];
+        rt.fps = (1000 * (Frames - LastMeasuredFrames) / timeDifference).toFixed(0);
+        [TimeElapsed, LastMeasuredFrames] = [Millis, Frames];
       }
     }
 
     function texturesToGPU() {
+      // Randomize camera position if Taa is enabled
+      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
+        let jitter = rt.#AAObject.jitter(rt.#canvas);
+        rt.camera.fx += jitter.x;
+        rt.camera.fy += jitter.y;
+      }
+
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
-      // set world-texture
-      rt.updateScene();
-      // build bounding boxes for scene first
-      rt.updatePrimaryLightSources();
 
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, RandomTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#randomTextures[rt.temporal ? Frames % TEMP_FRAMES : 0]);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
@@ -1086,13 +1206,7 @@ export class RayTracer {
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      // Randomize camera position if Taa is enabled
-      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let jitter = rt.#AAObject.jitter(rt.#canvas);
-        rt.#gl.uniform2f(Perspective, rt.camera.fx + jitter.x, rt.camera.fy + jitter.y);
-      } else  {
-        rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
-      }
+      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
       rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
       // Set amount of samples per ray
@@ -1160,134 +1274,191 @@ export class RayTracer {
       rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
     }
 
-    let renderFrameRt = () => {
+    let renderFrame = () => {
       // Configure where the final image should go
-      rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
-      rt.#gl.drawBuffers([
-        rt.#gl.COLOR_ATTACHMENT0,
-        rt.#gl.COLOR_ATTACHMENT1,
-        rt.#gl.COLOR_ATTACHMENT2,
-        rt.#gl.COLOR_ATTACHMENT3,
-        rt.#gl.COLOR_ATTACHMENT4
-      ]);
-      // Configure framebuffer for color and depth
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
-      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
-      // Clear depth and color buffers from last frame
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
-      texturesToGPU();
-      fillBuffers();
-      // Apply post processing
-      // Save last used program slot
-      let n = 0;
-      let nId = 0;
-      let nOriginal = 0;
-      for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
-        // Look for next free compatible program slot
-        let np = (i%2)^1;
-        let npOriginal = ((i - rt.firstPasses)%2)^1;
-        if (rt.firstPasses <= i) np += 2;
-        // Configure where the final image should go
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
-        // Set attachments to use for framebuffer
+      if (rt.temporal || rt.filter || rt.#antialiasing) {
+        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
         rt.#gl.drawBuffers([
           rt.#gl.COLOR_ATTACHMENT0,
           rt.#gl.COLOR_ATTACHMENT1,
-          rt.#gl.COLOR_ATTACHMENT2
+          rt.#gl.COLOR_ATTACHMENT2,
+          rt.#gl.COLOR_ATTACHMENT3,
+          rt.#gl.COLOR_ATTACHMENT4
         ]);
+  
         // Configure framebuffer for color and depth
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
-        if (rt.firstPasses <= i - 2) {
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
-        } else {
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
-        }
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-        // Push pre rendered textures to next shader (post processing)
-        [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
-          rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-        });
-        // Switch program and Vao
-        rt.#gl.useProgram(PostProgram[n]);
-        rt.#gl.bindVertexArray(PostVao[n]);
-        // Pass pre rendered texture to shad
-        rt.#gl.uniform1i(RenderTex[n], 0);
-        rt.#gl.uniform1i(IpRenderTex[n], 1);
-        // Pass original color texture to GPU
-        rt.#gl.uniform1i(OriginalRenderTex[n], 2);
-        // Pass vertex_id texture to GPU
-        rt.#gl.uniform1i(IdRenderTex[n], 3);
-        // Pass vertex_id of original vertex as a texture to GPU
-        rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
-        // Post processing drawcall
-        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
-        // Save current program slot in n for next pass
-        n = np;
+        if (rt.temporal) {
+          // Rotate textures for temporal filter
+          TempTexture.unshift(TempTexture.pop());
+          TempIpTexture.unshift(TempIpTexture.pop());
+          TempIdTexture.unshift(TempIdTexture.pop());
 
-        if (rt.firstPasses <= i) {
-          nOriginal = npOriginal;
-        } else {
-          nId = np;
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, TempTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, TempIpTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, TempIdTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+        } else if (rt.filter) {
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+        } else if (rt.#antialiasing) {
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
         }
-      }
-      // Last denoise pass
-      rt.#gl.drawBuffers([rt.#gl.COLOR_ATTACHMENT0, rt.#gl.COLOR_ATTACHMENT1]);
-      // Configure framebuffer for color and depth
-      if (rt.#antialiasing) {
-        // Configure where the final image should go
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
+        
       } else {
-        // Render to canvas now
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
       }
-      // Clear depth and color buffers from last frame
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
 
-      let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
-      let indexId = rt.firstPasses % 2;
-      let indexOriginal = rt.secondPasses % 2;
-      // Push pre rendered textures to next shader (post processing)
-      [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
-        rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-      });
-      // Switch program and VAO
-      rt.#gl.useProgram(PostProgram[4]);
-      rt.#gl.bindVertexArray(PostVao[4]);
-      // Pass pre rendered texture to shader
-      rt.#gl.uniform1i(RenderTex[4], 0);
-      rt.#gl.uniform1i(IpRenderTex[4], 1);
-      // Pass original color texture to GPU
-      rt.#gl.uniform1i(OriginalRenderTex[4], 2);
-      // Pass vertex_id texture to GPU
-      rt.#gl.uniform1i(IdRenderTex[4], 3);
-      // Pass vertex_id of original vertex as a texture to GPU
-      rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
-      // Pass hdr variable to last post processing shader
-      rt.#gl.uniform1i(HdrLocation, rt.hdr);
-      // Post processing drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
-      // Apply antialiasing shader if enabled
-      if (rt.#antialiasing) this.#AAObject.renderFrame();
-    }
-
-    let renderFrameRtRaw = () => {
-      // If Filter variable is not set render to canvas directly
-      rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       texturesToGPU();
       fillBuffers();
+
+      if (rt.temporal) {
+        if (rt.filter || rt.#antialiasing) {
+            // Temporal sample averaging
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, TempFramebuffer);
+          // Set attachments to use for framebuffer
+          rt.#gl.drawBuffers([
+            rt.#gl.COLOR_ATTACHMENT0,
+            rt.#gl.COLOR_ATTACHMENT1,
+            rt.#gl.COLOR_ATTACHMENT2
+          ]);
+
+          // Configure framebuffer for color and depth
+          if (rt.filter) {
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+          } else if (rt.#antialiasing) {
+            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+          }
+        } else {
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+        }
+        
+        // Clear depth and color buffers from last frame
+        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+        [TempTexture, TempIpTexture, TempIdTexture].flat().forEach(function(item, i){
+          rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+        });
+
+        rt.#gl.bindVertexArray(TempVao);
+        rt.#gl.useProgram(TempProgram);
+
+        rt.#gl.uniform1i(TempFilterLocation, rt.filter);
+        rt.#gl.uniform1i(TempHdrLocation, rt.hdr);
+
+        for (let i = 0; i < TEMP_FRAMES; i++) {
+          rt.#gl.uniform1i(TempTex[i], i);
+          rt.#gl.uniform1i(TempIpTex[i], TEMP_FRAMES + i);
+          rt.#gl.uniform1i(TempIdTex[i], 2 * TEMP_FRAMES + i);
+        }
+        
+        // PostTemporal averaging processing drawcall
+        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+      }
+
+      if (rt.filter) {
+        // Apply post processing filter
+        let n = 0;
+        let nId = 0;
+        let nOriginal = 0;
+        for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
+          // Look for next free compatible program slot
+          let np = (i % 2) ^ 1;
+          let npOriginal = ((i - rt.firstPasses) % 2) ^ 1;
+          if (rt.firstPasses <= i) np += 2;
+          // Configure where the final image should go
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
+          // Set attachments to use for framebuffer
+          rt.#gl.drawBuffers([
+            rt.#gl.COLOR_ATTACHMENT0,
+            rt.#gl.COLOR_ATTACHMENT1,
+            rt.#gl.COLOR_ATTACHMENT2
+          ]);
+          // Configure framebuffer for color and depth
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
+          if (rt.firstPasses <= i - 2) rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
+          else rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
+          // Clear depth and color buffers from last frame
+          rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+          // Push pre rendered textures to next shader (post processing)
+          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
+            rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+            rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+          });
+          // Switch program and Vao
+          rt.#gl.useProgram(PostProgram[n]);
+          rt.#gl.bindVertexArray(PostVao[n]);
+          // Pass pre rendered texture to shader
+          rt.#gl.uniform1i(RenderTex[n], 0);
+          rt.#gl.uniform1i(IpRenderTex[n], 1);
+          // Pass original color texture to GPU
+          rt.#gl.uniform1i(OriginalRenderTex[n], 2);
+          // Pass vertex_id texture to GPU
+          rt.#gl.uniform1i(IdRenderTex[n], 3);
+          // Pass vertex_id of original vertex as a texture to GPU
+          rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
+          // Post processing drawcall
+          rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+          // Save current program slot in n for next pass
+          n = np;
+
+          if (rt.firstPasses <= i) nOriginal = npOriginal;
+          else nId = np;
+        }
+
+        // Last denoise pass
+        rt.#gl.drawBuffers([rt.#gl.COLOR_ATTACHMENT0, rt.#gl.COLOR_ATTACHMENT1]);
+        // Configure framebuffer for color and depth
+        if (rt.#antialiasing) {
+          // Configure where the final image should go
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        } else {
+          // Render to canvas now
+          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+        }
+        // Clear depth and color buffers from last frame
+        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+        let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
+        let indexId = rt.firstPasses % 2;
+        let indexOriginal = rt.secondPasses % 2;
+        // Push pre rendered textures to next shader (post processing)
+        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
+          rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+        });
+        // Switch program and VAO
+        rt.#gl.useProgram(PostProgram[4]);
+        rt.#gl.bindVertexArray(PostVao[4]);
+        // Pass pre rendered texture to shader
+        rt.#gl.uniform1i(RenderTex[4], 0);
+        rt.#gl.uniform1i(IpRenderTex[4], 1);
+        // Pass original color texture to GPU
+        rt.#gl.uniform1i(OriginalRenderTex[4], 2);
+        // Pass vertex_id texture to GPU
+        rt.#gl.uniform1i(IdRenderTex[4], 3);
+        // Pass vertex_id of original vertex as a texture to GPU
+        rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
+        // Pass hdr variable to last post processing shader
+        rt.#gl.uniform1i(HdrLocation, rt.hdr);
+        // Post processing drawcall
+        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+      }
+
+      // Apply antialiasing shader if enabled
+      if (rt.#antialiasing) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
@@ -1296,6 +1467,8 @@ export class RayTracer {
       rt.updateTranslucencyTextures();
       // Compile shaders and link them into Program global
       Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
+
+      TempProgram = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#tempGlsl);
       // Compile shaders and link them into PostProgram global
       for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#firstFilterGlsl);
       // Compile shaders and link them into PostProgram global
@@ -1332,8 +1505,6 @@ export class RayTracer {
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
       rt.#gl.useProgram(Program);
-      // Create Textures for primary render
-      RandomTexture = rt.#gl.createTexture();
       rt.#pbrTexture = rt.#gl.createTexture();
       rt.#translucencyTexture = rt.#gl.createTexture();
       rt.#texture = rt.#gl.createTexture();
@@ -1341,8 +1512,6 @@ export class RayTracer {
       rt.#lightTexture = rt.#gl.createTexture();
       // Init a world texture containing all information about world space
       rt.#worldTexture = rt.#gl.createTexture();
-      // Create random texture
-      randomTextureBuilder();
       // Create buffers
       [PositionBuffer, IdBuffer, TexBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
@@ -1361,6 +1530,26 @@ export class RayTracer {
       [Framebuffer, OriginalIdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
 
       renderTextureBuilder();
+
+      rt.#gl.bindVertexArray(TempVao);
+      rt.#gl.useProgram(TempProgram);
+      TempFilterLocation = rt.#gl.getUniformLocation(TempProgram, 'use_filter');
+      TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
+
+      for (let i = 0; i < TEMP_FRAMES; i++) {
+        TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_' + i);
+        TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_ip_' + i);
+        TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_id_' + i);
+      }
+      
+      let TempVertexBuffer = rt.#gl.createBuffer();
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, TempVertexBuffer);
+      rt.#gl.enableVertexAttribArray(0);
+      rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
+      // Fill buffer with data for two verices
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, TempVertexBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
+      TempFramebuffer = rt.#gl.createFramebuffer();
 
       for (let i = 0; i < 5; i++){
         // Create post program buffers and uniforms
