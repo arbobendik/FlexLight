@@ -3,7 +3,7 @@
 
 import { GLLib } from './gllib.js';
 
-const FRAMES = 5;
+const FRAMES = 9;
 
 export class TAA {
     textureIn;
@@ -16,20 +16,32 @@ export class TAA {
     uniform sampler2D cache_2;
     uniform sampler2D cache_3;
     uniform sampler2D cache_4;
+    uniform sampler2D cache_5;
+    uniform sampler2D cache_6;
+    uniform sampler2D cache_7;
+    uniform sampler2D cache_8;
     out vec4 out_color;
 
     void main () {
         ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
 
-        mat4 c = mat4(
+        mat4 c0 = mat4(
             texelFetch(cache_1, texel, 0), 
             texelFetch(cache_2, texel, 0),
             texelFetch(cache_3, texel, 0),
             texelFetch(cache_4, texel, 0)
         );
 
+        mat4 c1 = mat4(
+            texelFetch(cache_5, texel, 0), 
+            texelFetch(cache_6, texel, 0),
+            texelFetch(cache_7, texel, 0),
+            texelFetch(cache_8, texel, 0)
+        );
+
         vec4 minRGB = vec4(1.0);
         vec4 maxRGB = vec4(0.0);
+        
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
                 vec4 p = texelFetch(cache_0, texel + ivec2(i - 1, j - 1), 0);
@@ -39,8 +51,9 @@ export class TAA {
         }
         
         out_color = texelFetch(cache_0, texel, 0);
-        for (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB);
-        out_color /= 5.0;
+        for (int i = 0; i < 4; i++) out_color += min(max(c0[i], minRGB), maxRGB);
+        for (int i = 0; i < 4; i++) out_color += min(max(c1[i], minRGB), maxRGB);
+        out_color /= 9.0;
     }
     `;
     #program;
@@ -50,7 +63,7 @@ export class TAA {
     #vertexBuffer;
     #gl;
 
-    #currentVec = 0;
+    #currentNum = 0;
     #randomVecs;
 
     constructor (gl) {
@@ -65,6 +78,7 @@ export class TAA {
 
         for (let i = 0; i < FRAMES; i++) this.#textures[i] = gl.createTexture();
         for (let i = 0; i < FRAMES; i++) this.#tex[i] = gl.getUniformLocation(this.#program, 'cache_' + i);
+
         this.#vertexBuffer = gl.createBuffer();
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
@@ -76,7 +90,7 @@ export class TAA {
         this.buildTexture();
 
         // Generate pseudo random vectors to prevent shaking.
-        this.#randomVecs = this.genPseudoRandomVecsWith0Sum(FRAMES, 2);
+        this.#randomVecs = this.genPseudoRandomVecsWith0Sum(FRAMES);
     }
 
     buildTexture = () => {
@@ -90,7 +104,7 @@ export class TAA {
             GLLib.setTexParams(this.#gl);
         }
     };  
-
+    
     renderFrame = () => {
         // Rotate textures, delete last, add new
         this.#textures.unshift(this.textureIn);
@@ -113,16 +127,18 @@ export class TAA {
 
     jitter = (canvas) => {
         // Cycle through random vecs
-        this.#currentVec = (this.#currentVec + 1) % FRAMES;
+        this.#currentNum = (this.#currentNum + 1) % FRAMES;
         // Scaling factor
         let scale = 0.6 / Math.min(canvas.width, canvas.height);
         // Return as easy to handle 2-dimensional vector
-        return { x: this.#randomVecs[this.#currentVec][0] * scale, y: this.#randomVecs[this.#currentVec][1] * scale };
+        return { x: this.#randomVecs[this.#currentNum][0] * scale, y: this.#randomVecs[this.#currentNum][1] * scale};
     }
 
     // Generate n d-dimensional pseudo random vectors that all add up to 0.
-    genPseudoRandomVecsWith0Sum = (n, d) => {
-        let vecs = [[0, 1], [1, 0], [0, 0], [0, 0], [0, 0]];
+    genPseudoRandomVecsWith0Sum = (n) => {
+        let vecs = new Array(n).fill(0).map(() => new Array(2));
+        vecs[0] = [0, 1];
+        vecs[1] = [1, 0];
         let combined = [1, 1];
         
         for (let i = 2; i < n; i++) {
