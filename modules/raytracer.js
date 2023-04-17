@@ -107,8 +107,10 @@ export class RayTracer {
   in vec3 position;
   in vec2 tex_coord;
   in vec3 clip_space;
+
   flat in vec4 vertex_id;
   flat in vec3 player;
+
   // Quality configurators
   uniform int samples;
   uniform int max_reflections;
@@ -118,6 +120,7 @@ export class RayTracer {
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
   uniform int texture_width;
+
   // Texture with information about all triangles in scene
   uniform sampler2D world_tex;
   // Random texture to multiply with normal map to simulate rough surfaces
@@ -127,11 +130,14 @@ export class RayTracer {
   uniform sampler2D tex;
   // Texture with all primary light sources of scene
   uniform sampler2D light_tex;
+
   layout(location = 0) out vec4 render_color;
   layout(location = 1) out vec4 render_color_ip;
   layout(location = 2) out vec4 render_original_color;
   layout(location = 3) out vec4 render_id;
   layout(location = 4) out vec4 render_original_id;
+  layout(location = 5) out vec4 render_location_id;
+
   // Prevent blur over shadow border or over (close to) perfect reflections
   float first_ray_length = 1.0;
   // Accumulate color of mirror reflections
@@ -485,24 +491,7 @@ export class RayTracer {
       // Set color of object itself
       // Calculate pixel for specific normal
       Ray ray = Ray (normalize(position - player), position, normalize(normal));
-      if (true) {
-        final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
-      } else {
-        vec3 solid_color = lightTrace(world_tex, light_tex, player, ray, material.rme, vec3(0.0, material.tpo.yz), i, 2);
-        // Prevent blur over shadow border or over (close to) perfect reflections
-        first_ray_length = 1.0;
-        // Accumulate color of mirror reflections
-        glass_filter = 0.0;
-        original_rmex = 0.0;
-        render_id.w = 0.0;
-        // float original_tpox = 0.0;
-        vec3 original_color = vec3(1.0);
-        vec3 translucent_color = lightTrace(world_tex, light_tex, player, ray, material.rme, vec3(POW32, material.tpo.yz), i + 1, max_reflections - 1);
-        float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
-        // original_color = mix(original_color, t_original_color, material.tpo.x * fresnel_reflect * fresnel_reflect);
-        final_color += mix(solid_color, translucent_color, material.tpo.x * fresnel_reflect * fresnel_reflect);
-        // glass_filter = 0.0;
-      }
+      final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
     }
     // Average ray colors over samples.
     final_color /= float(samples);
@@ -516,6 +505,8 @@ export class RayTracer {
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
     render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
+    float div = 16.0;
+    render_location_id = vec4(mod(position, div) / div, material.rme.z);
   }
   `;
   #tempGlsl = `#version 300 es
@@ -1283,7 +1274,8 @@ export class RayTracer {
           rt.#gl.COLOR_ATTACHMENT1,
           rt.#gl.COLOR_ATTACHMENT2,
           rt.#gl.COLOR_ATTACHMENT3,
-          rt.#gl.COLOR_ATTACHMENT4
+          rt.#gl.COLOR_ATTACHMENT4,
+          rt.#gl.COLOR_ATTACHMENT5
         ]);
   
         // Configure framebuffer for color and depth
@@ -1297,7 +1289,8 @@ export class RayTracer {
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, TempIpTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, TempIdTexture[0], 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT5, rt.#gl.TEXTURE_2D, TempIdTexture[0], 0);
         } else if (rt.filter) {
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
@@ -1325,15 +1318,13 @@ export class RayTracer {
           // Set attachments to use for framebuffer
           rt.#gl.drawBuffers([
             rt.#gl.COLOR_ATTACHMENT0,
-            rt.#gl.COLOR_ATTACHMENT1,
-            rt.#gl.COLOR_ATTACHMENT2
+            rt.#gl.COLOR_ATTACHMENT1
           ]);
 
           // Configure framebuffer for color and depth
           if (rt.filter) {
             rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
             rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
           } else if (rt.#antialiasing) {
             rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
           }
