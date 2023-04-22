@@ -57,7 +57,7 @@ export class GLLib {
 
   static randomTextureBuilder = (width, height, gl, texture) => {
     // Generate random pixel array
-    let nums = new Uint8Array(3 * width * height).map(() => 255 * Math.random());
+    let nums = new Uint8Array(4 * width * height).map(() => 255 * Math.random());
     gl.bindTexture(gl.TEXTURE_2D, texture);
     // Fill texture with pseudo random pixels
     // Tell webgl to use 1 byte per value for the 8 bit ints
@@ -65,7 +65,7 @@ export class GLLib {
     // Set data texture details and tell webgl, that no mip maps are required
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, width, height, 0, gl.RGB, gl.UNSIGNED_BYTE, nums);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, nums);
     gl.generateMipmap(gl.TEXTURE_2D);
   }
 

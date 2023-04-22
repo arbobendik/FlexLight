@@ -79,42 +79,7 @@ export class Scene {
     // return current bounding box
     return minMax;
   }
-
-  // Raytracer
-  rayTracer = (item) => {
-    if (Array.isArray(item) || item.indexable) {
-      let b = item.bounding;
-      // Save position of len variable in array
-      let len_pos = data.length;
-      // Begin bounding volume array
-      data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, s0);
-      id++;
-      // Iterate over all sub elements and skip bounding (item[0])
-      for (let i = 0; i < item.length; i++) {
-        // Push sub elements in queue
-        fillData(item[i]);
-      }
-      let len = Math.floor((data.length - len_pos) / 24);
-      // Set now calculated vertices length of bounding box
-      // to skip if ray doesn't intersect with it
-      data[len_pos + 6] = len;
-    } else {
-      // Alias object properties to simplify data texture assembly
-      let v = item.vertices;
-      let c = item.colors;
-      let n = item.normals;
-      let t = item.textureNums;
-      let uv = item.uvs;
-      let len = item.length;
-      // Test if bounding volume is set
-      if (item.bounding === undefined && item.length > 3) {
-        // Warn if length is greater than 3
-        console.warn(item);
-        // A single triangle needs no bounding voume, so nothing happens in this case
-      }
-    }
-  };
-    
+  
   // object constructors
   // axis aligned cuboid element prototype
   Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2, this);

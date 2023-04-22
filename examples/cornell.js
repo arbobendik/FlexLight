@@ -28,13 +28,16 @@ async function buildScene() {
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	scene.pbrTextures.push(roughTex, caroTex);
+	let lightTex = await scene.textureFromRME([1, 0, 1], 1, 1);
+	scene.pbrTextures.push(roughTex, caroTex, lightTex);
   	// Move camera out of center.
   	camera.z = -20;
 	// Set primary light source.
-	scene.primaryLightSources = [[0, 4, 0]];
+	scene.primaryLightSources = [];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 20;
+	// scene.primaryLightSources[0].intensity = 20;
+	let light = scene.Plane([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2]);
+	light.setTextureNums(-1, 2, -1);
 	// Generate side planes of box.
 	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
   	let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
@@ -70,7 +73,7 @@ async function buildScene() {
   	// Make second cuboid smooth and semi-translucent.
 	for (let i = 0; i < 6; i++) cube[1][i].setTextureNums(-1, 0, -1);
 
-	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
+	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane, light];
 	// Push both objects to render queue.
 	scene.queue.push(cube, box);
 	// Start render engine.
