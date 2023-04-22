@@ -297,45 +297,52 @@ export class RayTracer {
   }
 
   float reservoirSample (sampler2D light_tex, vec3 random_vec, vec3 origin, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
-    float reservoir_length = 0.0;
-    float total_weight = 0.0;
-
-    float reservoir_weight;
-    Ray reservoir_light_ray;
-    vec3 reservoir_light;
+    
 
     vec2 last_random = texture(random, random_vec.xy).yz;
-    float b = 0.0;
 
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
-      // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
-      // Read light strength from texture
-      vec2 strength_variation = texelFetch(light_tex, ivec2(1, j), 0).xy;
-      float strength = strength_variation.x;
-      float variation = strength_variation.y;
-      // Skip if strength is negative or zero
-      if (strength <= 0.0) continue;
-      reservoir_length ++;
-      // Alter light source position according to variation.
-      light = random_vec * variation + light;
-      Ray light_ray = Ray (light - origin, origin, normalize(last_rough_normal));
-      float weight = forwardTrace(light_ray, last_origin, last_rme.y, strength);
-      total_weight += weight;
-      if (last_random.y * total_weight <= weight) {
-        reservoir_weight = weight;
-        reservoir_light_ray = light_ray;
-        reservoir_light = light;
+    float sample_sum = 0.0;
+
+    for (int k = 0; k < 10; k++) {
+      float reservoir_length = 0.0;
+      float total_weight = 0.0;
+
+      float reservoir_weight;
+      Ray reservoir_light_ray;
+      vec3 reservoir_light;
+      for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
+        // Read light position
+        vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
+        // Read light strength from texture
+        vec2 strength_variation = texelFetch(light_tex, ivec2(1, j), 0).xy;
+        float strength = strength_variation.x;
+        float variation = strength_variation.y;
+        // Skip if strength is negative or zero
+        if (strength <= 0.0) continue;
+        reservoir_length ++;
+        // Alter light source position according to variation.
+        light = random_vec * variation + light;
+        Ray light_ray = Ray (light - origin, origin, normalize(last_rough_normal));
+        float weight = max(forwardTrace(light_ray, last_origin, last_rme.y, strength), 0.0);
+        total_weight += weight;
+        // if (last_random.y * reservoir_length < 1.0) {
+        if (last_random.y * total_weight < weight) {
+          reservoir_weight = weight;
+          reservoir_light_ray = light_ray;
+          reservoir_light = light;
+        }
+        // Update pseudo random variable.
+        last_random = texture(random, last_random).zw;
       }
-      // Update pseudo random variable.
-      last_random = texture(random, last_random).zw;
+  
+      if (reservoir_length == 0.0) return 0.0;
+      // Test if in shadow
+      // if (!shadowTest(reservoir_light_ray, reservoir_light)) sample_sum += reservoir_weight * reservoir_length;
+      if (!shadowTest(reservoir_light_ray, reservoir_light)) sample_sum += total_weight;
+      else if (dont_filter || i == 0) render_id.w += pow(2.0, - float(i + 2));
     }
 
-    if (reservoir_length == 0.0) return 0.0;
-    // Test if in shadow
-    if (!shadowTest(reservoir_light_ray, reservoir_light)) return total_weight;
-    else if (dont_filter || i == 0) render_id.w += pow(2.0, - float(i + 2));
-    return 0.0;
+    return sample_sum / 10.0;
   }
 
   float fresnel(vec3 normal, vec3 lightDir) {
