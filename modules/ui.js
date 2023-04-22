@@ -31,7 +31,6 @@ export class UI {
         }, 1);
     }
 
-    // 
     getObjectInCenter = (part, o, dir) => {
         if (Array.isArray(part) || part.indexable) {
             if (part.length === 0) return;

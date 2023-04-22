@@ -42,9 +42,17 @@ async function buildScene() {
 	  r,
 	  cube
 	];
-	scene.primaryLightSources = new Array(2);
+	scene.primaryLightSources = new Array(64);
 	scene.primaryLightSources[0] = [0, 10, 0];
 	scene.primaryLightSources[0].intensity = 50;
+	scene.primaryLightSources[2] = [10, 30, 10];
+	scene.primaryLightSources[3] = [-10, 30, 10];
+	scene.primaryLightSources[4] = [10, 30, -10];
+	scene.primaryLightSources[5] = [-10, 30, -10];
+	scene.primaryLightSources[6] = [30, 30, 30];
+	scene.primaryLightSources[7] = [-30, 30, -30];
+	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
+	for (let i = 8; i < 64; i++) scene.primaryLightSources[i] = [-300, 309, -300];
 	// Push both objects to render queue.
 	scene.queue.push(this_plane, objects);
 	// Start render engine.

@@ -18,7 +18,7 @@ function load(search) {
     // Get form elements
 		const scriptForm = document.getElementById('scriptForm');
     const parameterForm = document.getElementById('parameterForm');
-    const tickBoxes = ['filter', 'hdr'];
+    const tickBoxes = ['filter', 'temporal', 'hdr'];
     const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy', 'antialiasing'];
 
     document.getElementById('raytracing').checked = (localStorage.getItem('raytracing') ?? 'true') === 'true';
