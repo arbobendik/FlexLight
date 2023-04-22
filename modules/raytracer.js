@@ -4,8 +4,6 @@ import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
 
-const TEMP_FRAMES = 5;
-
 export class RayTracer {
   type = 'raytracer';
   // Configurable runtime properties of the raytracer (public attributes)
@@ -17,6 +15,7 @@ export class RayTracer {
   firstPasses = 0;
   secondPasses = 0;
   temporal = true;
+  temporalSamples = 5;
   filter = true;
   hdr = true;
   // Performance metric
@@ -32,11 +31,13 @@ export class RayTracer {
   #canvas;
   // Internal gl texture variables of texture atlases
   #worldTexture;
-  #randomTextures = new Array(TEMP_FRAMES);
+  #randomTextures = new Array(this.temporalSamples);
   #pbrTexture;
   #translucencyTexture;
   #texture;
   #lightTexture;
+  // Shader source will be generated later
+  #tempGlsl;
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
   precision highp float;
@@ -235,11 +236,8 @@ export class RayTracer {
         // Break if all values are zero and texture already ended
         break;
       } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
-        // Test if Ray intersects bounding volume
-        // t[0] = x x2 y
-        // t[1] = y2 z z2
-        // If it doesn't intersect, skip shadow test for all elements in bounding volume
-        i += int(t[2].x) + 1;
+        // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
+        i += int(t[2].x);
       }
     }
     // Return if pixel is in shadow or not
@@ -276,10 +274,7 @@ export class RayTracer {
         // Break if all values are zero and texture already ended
         break;
       } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
-        // Test if Ray intersects bounding volume
-        // t[0] = x x2 y
-        // t[1] = y2 z z2
-        // If it doesn't intersect, skip shadow test for all elements in bounding volume
+        // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
         i += int(t[2].x);
       }
     }
@@ -301,30 +296,46 @@ export class RayTracer {
     return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
 
-  vec2 forEachLightSource (sampler2D light_tex, Ray ray, vec3 random_vec, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
-    vec2 result = vec2(0);
-    //  Calculate primary light sources for this pass if ray hits non translucent object
+  float reservoirSample (sampler2D light_tex, vec3 random_vec, vec3 origin, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
+    float reservoir_length = 0.0;
+    float total_weight = 0.0;
+
+    float reservoir_weight;
+    Ray reservoir_light_ray;
+    vec3 reservoir_light;
+
+    vec2 last_random = texture(random, random_vec.xy).yz;
+    float b = 0.0;
+
     for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
       // Read light position
       vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
-      vec2 strVar = texelFetch(light_tex, ivec2(1, j), 0).xy;
-      float strength = strVar.x;
-      float variation = strVar.y;
-      // Alter light source position according to variation.
-      light = random_vec * variation + light;
+      vec2 strength_variation = texelFetch(light_tex, ivec2(1, j), 0).xy;
+      float strength = strength_variation.x;
+      float variation = strength_variation.y;
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
-      // Recalculate position -> light vector
-      Ray light_ray = Ray (light - ray.origin, ray.origin, normalize(last_rough_normal));
-      // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(light_ray, light)) {
-        result.x += forwardTrace(light_ray, last_origin, last_rme.y, strength);
-      } else if (dont_filter || i == 0) {
-        result.y += pow(2.0, - float(i + 2));
+      reservoir_length ++;
+      // Alter light source position according to variation.
+      light = random_vec * variation + light;
+      Ray light_ray = Ray (light - origin, origin, normalize(last_rough_normal));
+      float weight = forwardTrace(light_ray, last_origin, last_rme.y, strength);
+      total_weight += weight;
+      if (last_random.y * total_weight <= weight) {
+        reservoir_weight = weight;
+        reservoir_light_ray = light_ray;
+        reservoir_light = light;
       }
+      // Update pseudo random variable.
+      last_random = texture(random, last_random).zw;
     }
-    return result;
+
+    if (reservoir_length == 0.0) return 0.0;
+    // Test if in shadow
+    if (!shadowTest(reservoir_light_ray, reservoir_light)) return total_weight;
+    else if (dont_filter || i == 0) render_id.w += pow(2.0, - float(i + 2));
+    return 0.0;
   }
 
   float fresnel(vec3 normal, vec3 lightDir) {
@@ -360,7 +371,7 @@ export class RayTracer {
       // Apply emissive texture and ambient light
       final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
-      vec2 random_coord = mod((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n), 1.0);
+      vec2 random_coord = mod(((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n)) * 4.0, 1.0);
       vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
       // Alter normal according to roughness value
       vec3 last_rough_normal = normalize(mix(ray.normal, random_vec, last_rme.x));
@@ -373,10 +384,8 @@ export class RayTracer {
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
         // Set color in filter
-        if (sample_n == 0) {
-          original_color *= last_color;
-          last_color = vec3(1.0);
-        }
+        original_color *= last_color;
+        last_color = vec3(1);
         // Add filtering intensity for respective surface
         original_rmex += last_filter_roughness;
         // Update render id
@@ -385,12 +394,14 @@ export class RayTracer {
         } else {
           render_id += pow(2.0, - fi) * vec4(last_id * INV_65536, last_id * INV_256, (last_filter_roughness * 2.0 + last_rme.y) * THIRD, 0.0);
         }
-        original_tpox += 1.0;
+        original_tpox ++;
       }
       // Update dont_filter variable
       dont_filter = dont_filter && ((last_rme.x < 0.01 && is_solid) || !is_solid);
       // Intersection of ray with triangle
       mat2x4 intersection;
+      // Calculate brightness for current hit
+      float brightness_sample = reservoirSample (light_tex, random_vec, ray.origin, last_rough_normal, last_origin, last_rme, dont_filter, i);
       // Handle translucency and skip rest of light calculation
       if (is_solid) {
         if (dont_filter && last_tpo.x > 0.5) {
@@ -401,9 +412,7 @@ export class RayTracer {
         // the surface faces in the opposite direction as usual
         ray.normal *= - sign(dot(ray.direction, ray.normal));
         // Calculate primary light sources for this pass if ray hits non translucent object
-        vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
-        final_color += fels.x * importancy_factor;
-        render_id.w += fels.y;
+        final_color += brightness_sample * importancy_factor;
         // Calculate reflecting ray
         ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
         if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
@@ -416,9 +425,7 @@ export class RayTracer {
         // Calculate next intersection
         intersection = rayTracer(ray);
         last_origin = 2.0 * ray.origin - last_origin;
-        vec2 fels = forEachLightSource (light_tex, ray, random_vec, last_rough_normal, last_origin, last_rme, dont_filter, i);
-        final_color += fels.x * importancy_factor * (1.0 - fresnel_reflect);
-        render_id.w += fels.y;
+        final_color += brightness_sample * importancy_factor * (1.0 - fresnel_reflect);
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
@@ -505,94 +512,8 @@ export class RayTracer {
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
     render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
-    float div = 16.0;
+    float div = 32.0;
     render_location_id = vec4(mod(position, div) / div, material.rme.z);
-  }
-  `;
-  #tempGlsl = `#version 300 es
-  precision highp float;
-  in vec2 clip_space;
-
-  uniform int use_filter;
-  uniform int hdr;
-
-  uniform sampler2D cache_0;
-  uniform sampler2D cache_1;
-  uniform sampler2D cache_2;
-  uniform sampler2D cache_3;
-  uniform sampler2D cache_4;
-
-  uniform sampler2D cache_ip_0;
-  uniform sampler2D cache_ip_1;
-  uniform sampler2D cache_ip_2;
-  uniform sampler2D cache_ip_3;
-  uniform sampler2D cache_ip_4;
-
-  uniform sampler2D cache_id_0;
-  uniform sampler2D cache_id_1;
-  uniform sampler2D cache_id_2;
-  uniform sampler2D cache_id_3;
-  uniform sampler2D cache_id_4;
-  
-  layout(location = 0) out vec4 render_color;
-  layout(location = 1) out vec4 render_color_ip;
-  layout(location = 2) out vec4 render_id;
-
-  void main () {
-    ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
-
-    mat4 c0 = mat4(
-      texelFetch(cache_1, texel, 0), 
-      texelFetch(cache_2, texel, 0),
-      texelFetch(cache_3, texel, 0),
-      texelFetch(cache_4, texel, 0)
-    );
-
-    mat4 c0_ip = mat4(
-      texelFetch(cache_ip_1, texel, 0), 
-      texelFetch(cache_ip_2, texel, 0),
-      texelFetch(cache_ip_3, texel, 0),
-      texelFetch(cache_ip_4, texel, 0)
-    );
-
-    mat4 id0 = mat4(
-      texelFetch(cache_id_1, texel, 0), 
-      texelFetch(cache_id_2, texel, 0),
-      texelFetch(cache_id_3, texel, 0),
-      texelFetch(cache_id_4, texel, 0)
-    );
-
-    // Pass current id on to filter shader.
-    render_id = texelFetch(cache_id_0, texel, 0);
-    float counter = 1.0;
-    
-    float center_w = texelFetch(cache_0, texel, 0).w;
-    vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
-
-    for (int i = 0; i < 4; i++) if (id0[i] == render_id) {
-      color += c0[i].xyz + c0_ip[i].xyz * 256.0;
-      counter ++;
-    }
-
-    float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
-    for (int i = 0; i < 4; i++) glass_filter += c0_ip[i].w;
-
-    color /= counter;
-
-    if (use_filter == 1) {
-      render_color = vec4(mod(color, 1.0), center_w);
-      // 16 bit HDR for improved filtering
-      render_color_ip = vec4(floor(color) / 256.0, glass_filter);
-    } else if (hdr == 1) {
-      // Apply Reinhard tone mapping
-      color = color / (color + vec3(1));
-      // Gamma correction
-      float gamma = 0.8;
-      color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
-      render_color = vec4(color, center_w);
-    } else {
-      render_color = vec4(color, center_w);
-    }
   }
   `;
   #firstFilterGlsl = `#version 300 es
@@ -1057,15 +978,15 @@ export class RayTracer {
     let OriginalRenderTexture = new Array(2);
     let IdRenderTexture = new Array(2);
 
-    let TempTexture = new Array(TEMP_FRAMES);
-    let TempIpTexture = new Array(TEMP_FRAMES);
-    let TempIdTexture = new Array(TEMP_FRAMES);
+    let TempTexture = new Array(this.temporalSamples);
+    let TempIpTexture = new Array(this.temporalSamples);
+    let TempIdTexture = new Array(this.temporalSamples);
     
-    let TempTex = new Array(TEMP_FRAMES);
-    let TempIpTex = new Array(TEMP_FRAMES);
-    let TempIdTex = new Array(TEMP_FRAMES);
+    let TempTex = new Array(this.temporalSamples);
+    let TempIpTex = new Array(this.temporalSamples);
+    let TempIdTex = new Array(this.temporalSamples);
 
-    for (let i = 0; i < TEMP_FRAMES; i++) {
+    for (let i = 0; i < this.temporalSamples; i++) {
       TempTexture[i] = this.#gl.createTexture();
       TempIpTexture[i] = this.#gl.createTexture();
       TempIdTexture[i] = this.#gl.createTexture();
@@ -1109,16 +1030,16 @@ export class RayTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1;
-      rt.secondPasses = 2 + Math.round(Math.min(canvas.width, canvas.height) / 800);
+      rt.firstPasses = 4;
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
     }
     // Init canvas parameters and textures with resize
     resize();
 
     function renderTextureBuilder(){
-      for (let i = 0; i < TEMP_FRAMES; i++) {
+      for (let i = 0; i < rt.temporalSamples; i++) {
         rt.#randomTextures[i] = rt.#gl.createTexture();
-        GLLib.randomTextureBuilder(rt.#gl.canvas.width, rt.#gl.canvas.height, rt.#gl, rt.#randomTextures[i]);
+        GLLib.randomTextureBuilder(rt.#gl.canvas.width / 4, rt.#gl.canvas.height / 4, rt.#gl, rt.#randomTextures[i]);
       }
       // Init textures for denoiser
       [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
@@ -1184,7 +1105,7 @@ export class RayTracer {
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#randomTextures[rt.temporal ? Frames % TEMP_FRAMES : 0]);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#randomTextures[rt.temporal ? Frames % rt.temporalSamples : 0]);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
@@ -1346,10 +1267,10 @@ export class RayTracer {
         rt.#gl.uniform1i(TempFilterLocation, rt.filter);
         rt.#gl.uniform1i(TempHdrLocation, rt.hdr);
 
-        for (let i = 0; i < TEMP_FRAMES; i++) {
+        for (let i = 0; i < rt.temporalSamples; i++) {
           rt.#gl.uniform1i(TempTex[i], i);
-          rt.#gl.uniform1i(TempIpTex[i], TEMP_FRAMES + i);
-          rt.#gl.uniform1i(TempIdTex[i], 2 * TEMP_FRAMES + i);
+          rt.#gl.uniform1i(TempIpTex[i], rt.temporalSamples + i);
+          rt.#gl.uniform1i(TempIdTex[i], 2 * rt.temporalSamples + i);
         }
         
         // PostTemporal averaging processing drawcall
@@ -1453,6 +1374,82 @@ export class RayTracer {
     }
 
     let prepareEngine = () => {
+      let newLine = `
+      `;
+      // Build tempShader
+      this.#tempGlsl = `#version 300 es
+      precision highp float;
+      in vec2 clip_space;
+    
+      uniform int use_filter;
+      uniform int hdr;
+      `;
+
+      for (let i = 0; i < rt.temporalSamples; i++) {
+        this.#tempGlsl += 'uniform sampler2D cache_' + i + `;
+        `;
+        this.#tempGlsl += 'uniform sampler2D cache_ip_' + i + `;
+        `;
+        this.#tempGlsl += 'uniform sampler2D cache_id_' + i + `;
+        `;
+      }
+
+      this.#tempGlsl += `
+      layout(location = 0) out vec4 render_color;
+      layout(location = 1) out vec4 render_color_ip;
+      layout(location = 2) out vec4 render_id;
+    
+      void main () {
+        ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
+        vec4 id = texelFetch(cache_id_0, texel, 0);
+        float counter = 1.0;
+        
+        float center_w = texelFetch(cache_0, texel, 0).w;
+        vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
+        
+        float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
+      `;
+
+      for (let i = 1; i < rt.temporalSamples; i+=4) {
+        this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;;
+        this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_ip_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_ip_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;;
+        this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_id_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_id_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        this.#tempGlsl +=  `
+        for (int i = 0; i < 4; i++) if (id` + i + `[i] == id) {
+          color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
+          counter ++;
+        }
+        for (int i = 0; i < 4; i++) glass_filter += ip` + i + `[i].w;
+        `;
+      }
+
+      this.#tempGlsl += `
+        color /= counter;
+    
+        if (use_filter == 1) {
+          render_color = vec4(mod(color, 1.0), center_w);
+          // 16 bit HDR for improved filtering
+          render_color_ip = vec4(floor(color) / 256.0, glass_filter);
+        } else if (hdr == 1) {
+          // Apply Reinhard tone mapping
+          color = color / (color + vec3(1));
+          // Gamma correction
+          float gamma = 0.8;
+          color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+          render_color = vec4(color, center_w);
+        } else {
+          render_color = vec4(color, center_w);
+        }
+      }
+      `;
+    
+
       rt.updateTextures();
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
@@ -1527,7 +1524,7 @@ export class RayTracer {
       TempFilterLocation = rt.#gl.getUniformLocation(TempProgram, 'use_filter');
       TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
 
-      for (let i = 0; i < TEMP_FRAMES; i++) {
+      for (let i = 0; i < rt.temporalSamples; i++) {
         TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_' + i);
         TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_ip_' + i);
         TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_id_' + i);
