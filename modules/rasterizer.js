@@ -167,7 +167,7 @@ export class Rasterizer {
     return max(lowest, BIAS) <= highest;
   }
 
-  // Simplified rayTracer test only if ray intersects anything
+  // Test if ray intersects anything
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / normalize(ray.direction);
