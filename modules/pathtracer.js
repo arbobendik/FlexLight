@@ -4,9 +4,9 @@ import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
 
-export class RayTracer {
-  type = 'raytracer';
-  // Configurable runtime properties of the raytracer (public attributes)
+export class PathTracer {
+  type = 'pathtracer';
+  // Configurable runtime properties of the pathtracer (public attributes)
   // Quality settings
   samplesPerRay = 1;
   renderQuality = 1;
@@ -15,7 +15,7 @@ export class RayTracer {
   firstPasses = 0;
   secondPasses = 0;
   temporal = true;
-  temporalSamples = 10;
+  temporalSamples = 5;
   filter = true;
   hdr = true;
   // Performance metric
@@ -197,8 +197,7 @@ export class RayTracer {
   }
 
   // Test for closest ray triangle intersection
-  // Return intersection position in world space (rayTracer.xyz)
-  // Return index of target triangle in world_tex (rayTracer.w)
+  // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in world_tex (rayTracer[1].w)
   mat2x4 rayTracer(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / normalize(ray.direction);
@@ -244,7 +243,7 @@ export class RayTracer {
     return intersection;
   }
 
-  // Simplified rayTracer test only if ray intersects anything
+  // Simplified rayTracer to only test if ray intersects anything
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 inv_ray = 1.0 / normalize(ray.direction);
@@ -759,7 +758,7 @@ export class RayTracer {
     }
   }
   `;
-  // Create new rayTracer from canvas and setup movement
+  // Create new PathTracer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
     this.camera = camera;
@@ -1263,7 +1262,6 @@ export class RayTracer {
         rt.#gl.bindVertexArray(TempVao);
         rt.#gl.useProgram(TempProgram);
 
-        rt.#gl.uniform1i(TempFilterLocation, rt.filter);
         rt.#gl.uniform1i(TempHdrLocation, rt.hdr);
 
         for (let i = 0; i < rt.temporalSamples; i++) {
@@ -1379,18 +1377,13 @@ export class RayTracer {
       this.#tempGlsl = `#version 300 es
       precision highp float;
       in vec2 clip_space;
-    
-      uniform int use_filter;
       uniform int hdr;
       `;
 
       for (let i = 0; i < rt.temporalSamples; i++) {
-        this.#tempGlsl += 'uniform sampler2D cache_' + i + `;
-        `;
-        this.#tempGlsl += 'uniform sampler2D cache_ip_' + i + `;
-        `;
-        this.#tempGlsl += 'uniform sampler2D cache_id_' + i + `;
-        `;
+        this.#tempGlsl += 'uniform sampler2D cache_' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cache_ip_' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cache_id_' + i + ';' + newLine;
       }
 
       this.#tempGlsl += `
@@ -1404,38 +1397,51 @@ export class RayTracer {
         float counter = 1.0;
         
         float center_w = texelFetch(cache_0, texel, 0).w;
-        vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
-        
-        float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
       `;
 
-      for (let i = 1; i < rt.temporalSamples; i+=4) {
+      this.#tempGlsl += rt.filter ? `
+        vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
+        float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
+      ` : `
+        vec3 color = texelFetch(cache_0, texel, 0).xyz;` + newLine;
+
+      for (let i = 1; i < rt.temporalSamples; i += 4) {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;;
-        this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_ip_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_ip_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        
+        if (rt.filter) {
+          this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
+          for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_ip_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+          this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_ip_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        }
+
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_id_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_id_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-        this.#tempGlsl +=  `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
+
+        this.#tempGlsl += rt.filter ? `
+        for (int i = 0; i < 4; i++) if (id` + i + `[i] == id) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
         for (int i = 0; i < 4; i++) glass_filter += ip` + i + `[i].w;
+        ` : `
+        for (int i = 0; i < 4; i++) if (id` + i + `[i] == id) {
+          color += c` + i + `[i].xyz;
+          counter ++;
+        }
         `;
       }
 
-      this.#tempGlsl += `
-        color /= counter;
-    
-        if (use_filter == 1) {
-          render_color = vec4(mod(color, 1.0), center_w);
-          // 16 bit HDR for improved filtering
-          render_color_ip = vec4(floor(color) / 256.0, glass_filter);
-        } else if (hdr == 1) {
+      this.#tempGlsl += 'color /= counter;' + newLine;
+
+      this.#tempGlsl += rt.filter ? `
+        render_color = vec4(mod(color, 1.0), center_w);
+        // 16 bit HDR for improved filtering
+        render_color_ip = vec4(floor(color) / 256.0, glass_filter);
+      }` : `
+        if (hdr == 1) {
           // Apply Reinhard tone mapping
           color = color / (color + vec3(1));
           // Gamma correction
@@ -1445,10 +1451,9 @@ export class RayTracer {
         } else {
           render_color = vec4(color, center_w);
         }
-      }
-      `;
-    
-
+        render_color = vec4(color, center_w);
+      }`;
+      
       rt.updateTextures();
       rt.updatePbrTextures();
       rt.updateTranslucencyTextures();
@@ -1520,7 +1525,6 @@ export class RayTracer {
 
       rt.#gl.bindVertexArray(TempVao);
       rt.#gl.useProgram(TempProgram);
-      TempFilterLocation = rt.#gl.getUniformLocation(TempProgram, 'use_filter');
       TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
 
       for (let i = 0; i < rt.temporalSamples; i++) {
