@@ -48,14 +48,39 @@ export class Scene {
   // Generate translucency texture (translucency, particle density, optical density)
   // Pbr images are generated the same way
   textureFromTPO = async (array, width, height) => await Scene.textureFromRME (array, width, height);
-  // update all bounding volumes in scene
+
+  // Autogenerate oct-tree for imported structures or structures without BVH-tree
+  generateOctTree (objects = this.queue) {
+    let topTree = new Bounding(objects);
+    // Determine bounding for each object
+    this.updateBoundings(objects);
+
+    let fitsInBound = (bound, obj) => {
+      return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
+      && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
+    }
+
+    let divideTree = (tree) => {
+      if (tree.length <= 2) return tree;
+      else {
+        let diffs = [tree.bounding[1] - tree.bounding[0], tree.bounding[3] - tree.bounding[2], tree.bounding[5] - tree.bounding[4]];
+        let boundings = new Array(8).fill(0).map(e => []);
+        let betweenBoundings = [];
+        for (let i = 0; i < tree.length; i++) {
+          if ()
+        }
+      }
+    }
+  }
+  // Update all bounding volumes in scene
   updateBoundings (obj = this.queue) {
     // subtract bias of 2^(-16)
     const bias = 0.00152587890625;
     let minMax = new Array(6);
     if (Array.isArray(obj) || obj.indexable) {
-      if (obj.length === 0) {
+      if (obj.length === 0 && !obj.blockError) {
         console.error('problematic object structure', 'isArray:', Array.isArray(obj), 'indexable:', obj.indexable, 'object:', obj);
+        obj.blockError = true;
       } else {
         minMax = this.updateBoundings (obj[0]);
         for (let i = 1; i < obj.length; i++) {
@@ -176,6 +201,7 @@ class Object3D {
       this.colors = new Array(this.length).fill([r / 255, g / 255, b / 255]).flat();
     }
   }
+
   setTextureNums (tex, pbr, trans) {
     if (this.indexable) {
       for (let i = 0; i < this.length; i++) this[i].setTextureNums(tex, pbr, trans);
@@ -200,6 +226,7 @@ class Object3D {
       });
     }
   }
+  
   constructor (length, indexable, scene) {
     this.length = length;
     this.indexable = indexable;
@@ -267,10 +294,7 @@ class Triangle extends Object3D {
   constructor (a, b, c, scene) {
     super(3, false, scene);
     // generate surface normal
-    this.normals = new Array(3).fill(Math.cross(
-      Math.diff(a, c),
-      Math.diff(a, b)
-    )).flat();
+    this.normals = new Array(3).fill(Math.cross(Math.diff(a, c), Math.diff(a, b))).flat();
     // vertecies for queue
     this.vertices = [a, b, c].flat();
   }
