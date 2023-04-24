@@ -207,6 +207,25 @@ export class Rasterizer {
   }
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
+    // Calculate the direction from the surface point to the light source
+    // vec3 lightDir = normalize(ray.direction);
+    
+    // Calculate the diffuse component of the lighting equation
+    // float diffuse = max(dot(ray.normal, lightDir), 0.0);
+    
+    // Calculate the specular component of the lighting equation
+    // vec3 viewDir = normalize(- ray.origin);
+    // vec3 reflectDir = reflect(- lightDir, ray.normal);
+    // float specular = pow(max(dot(viewDir, reflectDir), 0.0), metallicity);
+    
+    // Calculate the final brightness value based on the diffuse and specular components
+    // float brightness = diffuse + specular;
+    
+    // Apply the light color to the brightness value
+    // brightness *= length(lightColor);
+    
+    // return brightness;
+
     float lenP1 = 1.0 + length(ray.direction);
     vec3 normalDir = normalize(ray.direction);
 
