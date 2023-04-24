@@ -67,7 +67,7 @@ export class Scene {
         let boundings = new Array(8).fill(0).map(e => []);
         let betweenBoundings = [];
         for (let i = 0; i < tree.length; i++) {
-          if ()
+          
         }
       }
     }
