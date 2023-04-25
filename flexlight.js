@@ -24,7 +24,7 @@ export class FlexLight {
     this.#canvas = canvas;
     this.#camera = new Camera ();
     this.#scene = new Scene ();
-    this.#renderer = new PathTracer (canvas, this.#camera, this.#scene);
+    this.#renderer = new Rasterizer (canvas, this.#camera, this.#scene);
     this.#io = new WebIo (canvas, this.#camera, this.#renderer);
     this.#ui = new UI (this.#scene, this.#camera);
   }
@@ -70,6 +70,7 @@ export class FlexLight {
 
   set renderer (renderer) {
     this.#idRenderer = renderer ?? 'rasterizer';
+    if (this.#idRenderer == this.#renderer.type) return;
     this.#renderer.halt();
     switch (this.#idRenderer) {
       case 'pathtracer':
