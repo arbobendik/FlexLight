@@ -15,12 +15,11 @@ export class Rasterizer {
 
   #antialiasing = 'taa';
   #AAObject;
-
-  halt = () => this.#halt = true;
-  #halt = false;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
+
+  #halt = false;
   // Internal gl texture variables of texture atlases
   #worldTexture = null;
   #pbrTexture = null;
@@ -303,6 +302,14 @@ export class Rasterizer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
+    this.halt = () => {
+      try {
+        this.#gl.loseContext();
+      } catch (e) {
+        console.warn("Unable to lose previous context, reload page in case of performance issue");
+      }
+      this.#halt = true;
+    }
     this.#antialiasing = 'taa';
   }
 
