@@ -23,12 +23,11 @@ export class PathTracer {
 
   #antialiasing = 'taa';
   #AAObject;
-  
-  halt = () => this.#halt = true;
-  #halt = false;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
+
+  #halt = false;
   // Internal gl texture variables of texture atlases
   #worldTexture;
   #randomTextures = new Array(this.temporalSamples);
@@ -764,6 +763,14 @@ export class PathTracer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
+    this.halt = () => {
+      try {
+        this.#gl.loseContext();
+      } catch (e) {
+        console.warn("Unable to lose previous context, reload page in case of performance issue");
+      }
+      this.#halt = true;
+    }
     this.#antialiasing = 'taa';
   }
   
