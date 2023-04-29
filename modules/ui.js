@@ -10,6 +10,7 @@ export class UI {
     }
 
     #runSelector = () => {
+        /*
         setInterval(() => {
             let origin = [this.camera.x, this.camera.y, this.camera.z];
             let direction = [
@@ -29,6 +30,7 @@ export class UI {
                 this.selected = null;
             }
         }, 1);
+        */
     }
 
     getObjectInCenter = (part, o, dir) => {

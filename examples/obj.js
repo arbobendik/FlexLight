@@ -23,27 +23,31 @@ async function buildScene() {
 	scene.translucencyTextures.push(waterTex);
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [-5, 2, -5];
-	[camera.fx, camera.fy] = [0.870, 0.235];
+	[camera.x, camera.y, camera.z] = [0, 3, 0];
+	[camera.fx, camera.fy] = [-2.370, 0.215];
 
 	// Generate plane.
 	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
 	let plane = scene.Plane([-50,-1,-50],[50,-1,-50],[50,-1,50],[-50,-1,50],[0,1,0]);
+	console.log(waterCuboid);
 	waterCuboid.setTextureNums(-1, 1, 0);
 	waterCuboid.setColor(150, 210, 255);
-
-	let monke = await scene.fetchObjFile('objects/monke.obj');
-	monke.move(0, 0, 0);
-
-	// let cube = await scene.Cuboid(-2, 2, -10, 2, -2, 2);
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 5000;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
-	scene.queue.push(plane, monke);
+	scene.queue.push(plane);
+
 	// Start render engine.
 	engine.renderer.render();
+
+	for (let i = 0; i < 1; i++) {
+		let obj = await scene.fetchObjFile('objects/monke.obj');
+		obj.move(15, 0, -15);
+		scene.queue.push(obj);
+	}
+
 
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
@@ -53,7 +57,8 @@ async function buildScene() {
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
 		// Update texture atlases.
-		engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
-	}, 1000);
+		// engine.renderer.updateBuffers();
+		// engine.renderer.updatePbrTextures();
+		// engine.renderer.updateTranslucencyTextures();
+	}, 100);
 }

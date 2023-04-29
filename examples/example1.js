@@ -69,7 +69,7 @@ async function buildScene() {
 	let groundPlane = scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
 
 	// Set normal texture for each plane
-  	groundPlane.setTextureNums(-1, 1, -1);
+  	groundPlane.textureNums = [-1, 1, -1];
 
 	// Generate a few cuboids on surface
 	let cuboids = [
@@ -101,19 +101,16 @@ async function buildScene() {
 	redCube.setTextureNums(3, 0, -1);
 	lantern.setTextureNums(4, 4, -1);
 	// Change diffusion properties of wall on specific sides
-	wall.top.setTextureNums(-1, 2, -1);
-	wall.left.setTextureNums(-1, 2, -1);
+	wall.top.textureNums = [-1, 2, -1];
+	wall.left.textureNums = [-1, 2, -1];
 	// Set different textures for different sides of the array
 	// And make cube full diffuse
 	[grassCube, grassCube2].forEach((item) => {
 		item.setTextureNums(1, 2, -1);
 		// Set different textures for top and bottom.
-		item.top.setTextureNums(0, 2, -1);
-		item.bottom.setTextureNums(2, 2, -1);
+		item.top.textureNums = [0, 2, -1];
+		item.bottom.textureNums = [2, 2, -1];
 	});
-
-	//let obj = await scene.fetchObjFile('objects/cube.obj');
-	//obj.move(6, 0, -3);
 
 	// pack cuboids in tree structure to increase raytracing effiecency
 	let cuboidTree = [cuboids[0], [cuboids[1], [cuboids[2], cuboids[3]]]];
