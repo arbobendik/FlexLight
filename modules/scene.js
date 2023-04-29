@@ -51,27 +51,72 @@ export class Scene {
 
   // Autogenerate oct-tree for imported structures or structures without BVH-tree
   generateOctTree (objects = this.queue) {
+    // get scene for reference inside object
+    let scene = this;
+
     let topTree = new Bounding(objects);
     // Determine bounding for each object
-    this.updateBoundings(objects);
+    this.updateBoundings(topTree);
 
     let fitsInBound = (bound, obj) => {
       return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
       && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
     }
 
-    let divideTree = (tree) => {
-      if (tree.length <= 2) return tree;
+    let divideTree = (tree, bounding) => {
+      // If there are only 2 or less objects in tree, there is no need to subdivide
+      if (tree.length <= 2) return new Bounding(tree, scene);
       else {
-        let diffs = [tree.bounding[1] - tree.bounding[0], tree.bounding[3] - tree.bounding[2], tree.bounding[5] - tree.bounding[4]];
-        let boundings = new Array(8).fill(0).map(e => []);
-        let betweenBoundings = [];
+        // Calculate general offsets
+        let off = Math.mul([bounding[1] - bounding[0], bounding[1] - bounding[0],
+                            bounding[3] - bounding[2], bounding[3] - bounding[2],
+                            bounding[5] - bounding[4], bounding[5] - bounding[4]], 0.5);
+        // Offsetmultiplier for different parts of Oct-tree
+        let multip = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1], 
+                      [0, 0, 1, 1, 1, 0], [0, 0, 1, 1, 1, 1],
+                      [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 1, 1],
+                      [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 1]];
+        // Calculate offset per subtree
+        let offsets = multip.map(mult => Math.mul(off, mult));
+        // Get bounds of base cube
+        let baseBounds = [bounding[0], (bounding[0] + bounding[1]) * 0.5,
+                          bounding[2], (bounding[2] + bounding[3]) * 0.5,
+                          bounding[4], (bounding[4] + bounding[5]) * 0.5];
+        // Caluclate bounds for all subtrees
+        let bounds = offsets.map(offset => Math.add(baseBounds, offset));
+        // Have 8 buickets for sub trees
+        let arrayBuckets = new Array(8).fill(0).map(e => []);
+        // Bucket for all objects that fit into neither of the subtrees
+        let noBucket = [];
+        // Iterate over objects
         for (let i = 0; i < tree.length; i++) {
-          
+          let foundBucket = false;
+          for (let j = 0; j < 8; j++) {
+            if (fitsInBound(bounds[j], tree[i])) {
+              arrayBuckets[j].push(tree[i]);
+              console.log("loaded Triangle");
+              foundBucket = true;
+              break;
+            }
+          }
+          if (!foundBucket) noBucket.push(tree[i]);
         }
+        // Iterate over all filled buckets and return 
+        let finalObjArray = [];
+
+        for (let i = 0; i < 8; i++) if (arrayBuckets[i].length !== 0) finalObjArray.push(divideTree(arrayBuckets[i], bounds[i]));
+        noBucket.forEach(e => finalObjArray.push(e));
+        // finalObjArray.push(...noBucket);
+        // Return sorted object array aas bounding volume.
+        return new Bounding(finalObjArray, scene);
       }
     }
+    
+    topTree = divideTree(topTree, topTree.bounding);
+    console.log("done building Oct-Tree");
+    return topTree;
   }
+  
   // Update all bounding volumes in scene
   updateBoundings (obj = this.queue) {
     // subtract bias of 2^(-16)
@@ -185,45 +230,120 @@ export class Scene {
     let text = await (await fetch(path)).text();
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
-    obj = new Bounding(obj, scene);
-    scene.updateBoundings(obj);
+    obj = await scene.generateOctTree(obj);
+    console.log(obj);
+    // obj = new Bounding(obj, scene);
+    await scene.updateBoundings(obj);
+
     // return built object
     return obj;
+  }
+}
+
+class Primitive {
+  #vertices;
+  #colors;
+  #uvs;
+  #textureNums;
+  #normals;
+
+  textureArray;
+
+  #buildTextureArray = () => {
+    this.textureArray = [];
+    for (let i = 0; i < this.length; i+= 3) {
+      let i2 = i * 2;
+      let i3 = i * 3;
+      this.textureArray.push(
+        this.#vertices[i3 + 0], this.#vertices[i3 + 1], this.#vertices[i3 + 2],
+        this.#vertices[i3 + 3], this.#vertices[i3 + 4], this.#vertices[i3 + 5],
+        this.#vertices[i3 + 6], this.#vertices[i3 + 7], this.#vertices[i3 + 8],
+        this.#colors[0], this.#colors[1], this.#colors[2],
+        this.#normals[0], this.#normals[1], this.#normals[2],
+        this.#textureNums[0], this.#textureNums[1], this.#textureNums[2],
+        this.#uvs[i2 + 0],this.#uvs[i2 + 1], this.#uvs[i2 + 2],
+        this.#uvs[i2 + 3], this.#uvs[i2 + 4], this.#uvs[i2 + 5]
+      );
+    }
+  }
+    
+  get vertices () { return this.#vertices };
+  get colors () { return this.#colors };
+  get uvs () { return this.#uvs };
+  get textureNums () { return this.#textureNums };
+  get normals () {return this.#normals };
+
+  set vertices (v) {
+    this.#vertices = v;
+    this.#buildTextureArray();
+  }
+  set colors (c) {
+    this.#colors = new Array(this.length).fill(c.map(val => val / 255)).flat();;
+    this.#buildTextureArray();
+  }
+  set uvs (uv) {
+    this.#uvs = uv;
+    this.#buildTextureArray();
+  }
+  set textureNums (tn) {
+    this.#textureNums = new Array(this.length).fill(tn).flat();
+    this.#buildTextureArray();
+  }
+  set normals (n) {
+    this.#normals = n;
+    this.#buildTextureArray();
+  }
+
+  constructor (length, vertices, normals, uvs) {
+    this.indexable = false;
+    this.length = length;
+    this.#vertices = vertices;
+    this.#normals = normals;
+    this.#colors = new Array(length).fill([1, 1, 1]).flat();
+    this.#uvs = uvs;
+    this.#textureNums = new Array(length).fill([-1, -1, -1]).flat();
+    this.#buildTextureArray();
   }
 }
 
 class Object3D {
   setColor (r, g, b) {
     if (Array.isArray(r)) [r, g, b] = r;
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].setColor(r, g, b);
-    } else {
-      this.colors = new Array(this.length).fill([r / 255, g / 255, b / 255]).flat();
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].setColor(r, g, b);
+      } else {
+        this[i].colors = [r, g, b];
+      }
     }
   }
 
   setTextureNums (tex, pbr, trans) {
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].setTextureNums(tex, pbr, trans);
-    } else {
-      this.textureNums = new Array(this.length).fill([tex, pbr, trans]).flat();
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].setTextureNums(tex, pbr, trans);
+      } else {
+        this[i].textureNums = new Array(this.length).fill([tex, pbr, trans]).flat();
+      }
     }
   }
   // move object by given vector
   move (x, y, z) {
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].move(x, y, z, true);
-    } else {
-      this.vertices = this.vertices.map((coord, i) => {
-        switch (i % 3){
-          case 0:
-            return coord + x;
-          case 1:
-            return coord + y;
-          case 2:
-            return coord + z;
-        }
-      });
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].move(x, y, z, true);
+      } else {
+        this[i].vertices = this[i].vertices.map((coord, i) => {
+          switch (i % 3){
+            case 0:
+              return coord + x;
+            case 1:
+              return coord + y;
+            case 2:
+              return coord + z;
+          }
+        });
+      }
     }
   }
   
@@ -262,40 +382,14 @@ class Cuboid extends Object3D {
   }
 }
 
-class Plane extends Object3D {
-  // default color to white
-  colors = new Array(18).fill(1);
-  // set UVs
-  uvs = [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0];
-  // set used textures
-  textureNums = new Array(6).fill([- 1, - 1, - 1]).flat();
-
-  normals;
-
-  constructor (c0, c1, c2, c3, scene) {
-    super(6, false, scene);
-    // set normals
-    this.normals = new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat();
-    // set vertices
-    this.vertices = [c0, c1, c2, c2, c3, c0].flat();
+class Plane extends Primitive {
+  constructor (c0, c1, c2, c3) {
+    super(6, [c0, c1, c2, c2, c3, c0].flat(), new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat(), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
   }
 }
 
-class Triangle extends Object3D {
-  // default color to white
-  colors = new Array(9).fill(1);
-  // UVs to map textures on triangle
-  uvs = [0, 0, 0, 1, 1, 1];
-  // set used textures
-  textureNums = new Array(3).fill([- 1, - 1, - 1]).flat();
-
-  normals;
-
-  constructor (a, b, c, scene) {
-    super(3, false, scene);
-    // generate surface normal
-    this.normals = new Array(3).fill(Math.cross(Math.diff(a, c), Math.diff(a, b))).flat();
-    // vertecies for queue
-    this.vertices = [a, b, c].flat();
+class Triangle extends Primitive {
+  constructor (a, b, c) {
+    super(3, [a, b, c].flat(), new Array(3).fill(Math.cross(Math.diff(a, c), Math.diff(a, b))).flat(), [0, 0, 0, 1, 1, 1]);
   }
 }

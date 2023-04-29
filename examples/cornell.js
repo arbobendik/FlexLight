@@ -28,16 +28,16 @@ async function buildScene() {
 			].flat()).flat()
 		].flat(),
 	128, 128);
-	let lightTex = await scene.textureFromRME([1, 0, 1], 1, 1);
-	scene.pbrTextures.push(roughTex, caroTex, lightTex);
+
+	scene.pbrTextures.push(roughTex, caroTex);
   	// Move camera out of center.
   	camera.z = -20;
 	// Set primary light source.
-	scene.primaryLightSources = [];
+	scene.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	// scene.primaryLightSources[0].intensity = 20;
-	let light = scene.Plane([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2]);
-	light.setTextureNums(-1, 2, -1);
+	scene.primaryLightSources[0].intensity = 20;
+	// let light = scene.Plane([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2]);
+	// light.textureNums = [- 1, 2, - 1];
 	// Generate side planes of box.
 	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
   	let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
@@ -48,12 +48,12 @@ async function buildScene() {
 
   	// Make planes diffuse.
   	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
-		item.setTextureNums(-1, 0, -1);
-		left_plane.setColor(230, 230, 230);
+		item.textureNums = [- 1, 0, - 1];
+		item.colors = [230, 230, 230];
 	});
   	// Color left and right plane.
-  	left_plane.setColor(220, 0, 0);
-  	right_plane.setColor(0, 150, 0);
+  	left_plane.colors = [220, 0, 0];
+  	right_plane.colors = [0, 150, 0];
 	// Generate a few cuboids in the box with respective bounding box.
 	let cube = [[], []];
 	cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
@@ -71,9 +71,9 @@ async function buildScene() {
 	cube[1][5] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 	// Set textures for cuboids.
   	// Make second cuboid smooth and semi-translucent.
-	for (let i = 0; i < 6; i++) cube[1][i].setTextureNums(-1, 0, -1);
+	for (let i = 0; i < 6; i++) cube[1][i].textureNums = [- 1, 0, - 1];
 
-	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane, light];
+	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.
 	scene.queue.push(cube, box);
 	// Start render engine.

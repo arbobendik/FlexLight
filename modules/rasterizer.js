@@ -206,25 +206,6 @@ export class Rasterizer {
   }
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
-    // Calculate the direction from the surface point to the light source
-    // vec3 lightDir = normalize(ray.direction);
-    
-    // Calculate the diffuse component of the lighting equation
-    // float diffuse = max(dot(ray.normal, lightDir), 0.0);
-    
-    // Calculate the specular component of the lighting equation
-    // vec3 viewDir = normalize(- ray.origin);
-    // vec3 reflectDir = reflect(- lightDir, ray.normal);
-    // float specular = pow(max(dot(viewDir, reflectDir), 0.0), metallicity);
-    
-    // Calculate the final brightness value based on the diffuse and specular components
-    // float brightness = diffuse + specular;
-    
-    // Apply the light color to the brightness value
-    // brightness *= length(lightColor);
-    
-    // return brightness;
-
     float lenP1 = 1.0 + length(ray.direction);
     vec3 normalDir = normalize(ray.direction);
 
@@ -232,8 +213,8 @@ export class Rasterizer {
     float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
     vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
-    float brightness = abs(dot(normalDir, ray.normal));
-    float specular = pow(max(dot(normalize(- ray.origin), normalDir), 0.0), metallicity);
+    float brightness = max(dot(normalDir, ray.normal), 0.0);
+    float specular = pow(max(dot(halfVector, normalDir), 0.0), metallicity);
     // Determine final color and return it
     return mix(brightness, max(specular, 0.0), metallicity) * intensity;
   }
@@ -421,6 +402,7 @@ export class Rasterizer {
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
+  
   updateScene () {
     let id = 0;
     // Set data variable for texels in world space texture
@@ -428,48 +410,27 @@ export class Rasterizer {
     // Build simple AABB tree (Axis aligned bounding box)
     var fillData = async (item) => {
       if (Array.isArray(item) || item.indexable) {
+        if (item.length === 0) return;
+
         let b = item.bounding;
         // Save position of len variable in array
         let len_pos = data.length;
         // Begin bounding volume array
-        data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+        data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         id++;
-        // Iterate over all sub elements and skip bounding (item[0])
-        for (let i = 0; i < item.length; i++) {
-          // Push sub elements in queue
-          fillData(item[i]);
-        }
+        // Iterate over all sub elements
+        for (let i = 0; i < item.length; i++) fillData(item[i]);
         let len = Math.floor((data.length - len_pos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
         data[len_pos + 6] = len;
       } else {
-        // Alias object properties to simplify data texture assembly
-        let v = item.vertices;
-        let c = item.colors;
-        let n = item.normals;
-        let t = item.textureNums;
-        let uv = item.uvs;
         let len = item.length;
-
-        //console.log(n[1]);
-        // transform normal vectors to unit vectors
-        let unitN = [];
-        for (let i = 0; i < n.length; i+=3) {
-          let v = [n[i], n[i+1], n[i+2]];
-          // get length
-          let length = Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2);
-          // devide by length
-          unitN.push(v[0] / length, v[1] / length, v[2] / length);
-        }
-        // replace n with n as unit vectors
-        n = unitN.flat();
-        
         // Test if bounding volume is set
-        if (item.bounding !== undefined) {
+        if (item.bounding !== undefined){
           // Declare bounding volume of object
           let b = item.bounding;
-          data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+          data.push(b[0], b[1], b[2], b[3], b[4], b[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
           id++;
         } else if (item.length > 3) {
           // Warn if length is greater than 3
@@ -478,24 +439,28 @@ export class Rasterizer {
         }
         // Give item new id property to identify vertex in fragment shader
         item.ids = [];
+        // console.log(id, item.textureArray);
+        data.push(...item.textureArray);
+
         for (let i = 0; i < len * 3; i += 9){
-          let j = i/3*2;
+          // let j = i / 3 * 2;
+          let idHigh = Math.floor(id / 65535);
+          let idLow = id % 65535
           // 1 vertex = 1 line in world texture
           // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/3],c[i/3+1],c[i/3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
-          item.ids.push(Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535);
-          id++;
+          item.ids.push(idHigh, idLow, idHigh, idLow, idHigh, idLow);
+          id ++;
         }
       }
     }
     // Fill texture with data pixels
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
-    data.push(new Array(6144 - data.length % 6144).fill(0));
-    data = data.flat();
+    data.push(... new Array(6144 - data.length % 6144).fill(0));
+    // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
-    // Manipulate actual webgl texture
+    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
@@ -632,7 +597,7 @@ export class Rasterizer {
       let ids = [];
       let uvs = [];
       let id = 0;
-      let length = 0;
+      let bufferLength = 0;
       // Iterate through render queue and build arrays for GPU
       var flattenQUEUE = (item) => {
         if (Array.isArray(item) || item.indexable){
@@ -642,13 +607,11 @@ export class Rasterizer {
             flattenQUEUE(item[i]);
           }
         } else {
-					id ++;
-          for(let i = 0; i < item.ids.length; i+=2) {
-            ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
-          }
-					vertices.push(item.vertices);
-          uvs.push(item.uvs);
-          length += item.length;
+          id ++;
+          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
+          vertices.push(...item.vertices);
+          uvs.push(...item.uvs);
+          bufferLength += item.length;
         }
       };
       // Start recursion
@@ -660,10 +623,10 @@ export class Rasterizer {
         [TexBuffer, uvs]
       ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1].flat()), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1]), rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, bufferLength);
     }
 
     let renderFrame = () => {

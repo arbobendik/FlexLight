@@ -24,7 +24,7 @@ async function buildScene() {
 
 	// Generate plane.
 	let this_plane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-  	this_plane.setTextureNums(-1, 0, -1);
+  	this_plane.textureNums = [-1, 0, -1];
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [
 		scene.Cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),

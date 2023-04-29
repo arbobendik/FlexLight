@@ -267,7 +267,7 @@ export class PathTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)) {
         // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(max, ray, t, n)[0].xyz != vec3(0)) return true;
+        if (rayTriangle(length(light - ray.origin), ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])))[0].xyz != vec3(0)) return true;
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
@@ -288,8 +288,8 @@ export class PathTracer {
     float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
     vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
-    float light = abs(dot(normalDir, ray.normal));
-    float specular = pow(max(dot(normalize(- ray.origin), normalDir), 0.0), metallicity);
+    float light = max(dot(normalDir, ray.normal), 0.0);
+    float specular = pow(max(dot(halfVector, normalDir), 0.0), metallicity);
     // Determine final color and return it
     return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
@@ -330,7 +330,7 @@ export class PathTracer {
 
     if (reservoir_length == 0.0) return 0.0;
     // Test if in shadow
-    if (!shadowTest(reservoir_light_ray, reservoir_light)) return total_weight;
+    if (reservoir_weight == 0.0 || !shadowTest(reservoir_light_ray, reservoir_light)) return total_weight;
     else if (dont_filter || i == 0) render_id.w += pow(2.0, - float(i + 2));
     return 0.0;
   }
@@ -908,12 +908,6 @@ export class PathTracer {
         // to skip if ray doesn't intersect with it
         data[len_pos + 6] = len;
       } else {
-        // Alias object properties to simplify data texture assembly
-        let v = item.vertices;
-        let c = item.colors;
-        let n = item.normals;
-        let t = item.textureNums;
-        let uv = item.uvs;
         let len = item.length;
         // Test if bounding volume is set
         if (item.bounding !== undefined){
@@ -928,21 +922,25 @@ export class PathTracer {
         }
         // Give item new id property to identify vertex in fragment shader
         item.ids = [];
+        // console.log(id, item.textureArray);
+        data.push(...item.textureArray);
+
         for (let i = 0; i < len * 3; i += 9){
-          let j = i / 3 * 2;
+          // let j = i / 3 * 2;
+          let idHigh = Math.floor(id / 65535);
+          let idLow = id % 65535
           // 1 vertex = 1 line in world texture
           // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          data.push(v[i], v[i+1], v[i+2], v[i+3], v[i+4], v[i+5], v[i+6], v[i+7], v[i+8], c[i/3], c[i/3+1], c[i/3+2], n[i], n[i+1], n[i+2], t[j], t[j+1], t[j+2], uv[j], uv[j+1], uv[j+2], uv[j+3], uv[j+4], uv[j+5]);
-          item.ids.push(Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535);
-          id++;
+          item.ids.push(idHigh, idLow, idHigh, idLow, idHigh, idLow);
+          id ++;
         }
       }
     }
     // Fill texture with data pixels
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
-    data.push(new Array(6144 - data.length % 6144).fill(0));
-    data = data.flat();
+    data.push(... new Array(6144 - data.length % 6144).fill(0));
+    // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
     // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
@@ -1090,7 +1088,7 @@ export class PathTracer {
       Frames ++;
       // Calculate Fps
 			const timeDifference = Millis - TimeElapsed;
-      if (timeDifference > 500) {
+      if (timeDifference > 50) {
         rt.fps = (1000 * (Frames - LastMeasuredFrames) / timeDifference).toFixed(0);
         [TimeElapsed, LastMeasuredFrames] = [Millis, Frames];
       }
@@ -1152,12 +1150,12 @@ export class PathTracer {
       rt.#gl.uniform1i(LightTex, 5);
     }
 
-    function fillBuffers() {
+    async function fillBuffers() {
       let vertices = [];
       let ids = [];
       let uvs = [];
       let id = 0;
-      let length = 0;
+      let bufferLength = 0;
       // Iterate through render queue and build arrays for GPU
       var flattenQUEUE = (item) => {
         if (Array.isArray(item) || item.indexable){
@@ -1167,13 +1165,11 @@ export class PathTracer {
             flattenQUEUE(item[i]);
           }
         } else {
-					id ++;
-          for(let i = 0; i < item.ids.length; i+=2) {
-            ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
-          }
-					vertices.push(item.vertices);
-          uvs.push(item.uvs);
-          length += item.length;
+          id ++;
+          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
+          vertices.push(...item.vertices);
+          uvs.push(...item.uvs);
+          bufferLength += item.length;
         }
       };
       // Start recursion
@@ -1185,10 +1181,10 @@ export class PathTracer {
         [TexBuffer, uvs]
       ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1].flat()), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1]), rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, bufferLength);
     }
 
     let renderFrame = () => {
