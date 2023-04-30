@@ -460,7 +460,6 @@ export class Rasterizer {
     // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
-    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
