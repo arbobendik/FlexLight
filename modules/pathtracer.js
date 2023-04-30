@@ -15,7 +15,7 @@ export class PathTracer {
   firstPasses = 0;
   secondPasses = 0;
   temporal = true;
-  temporalSamples = 10;
+  temporalSamples = 5;
   filter = true;
   hdr = true;
   // Performance metric
@@ -958,7 +958,7 @@ export class PathTracer {
         for (let i = 0; i < len * 3; i += 9){
           // let j = i / 3 * 2;
           let idHigh = Math.floor(id / 65535);
-          let idLow = id % 65535
+          let idLow = id % 65535;
           // 1 vertex = 1 line in world texture
           // a, b, c, color, normal, texture_nums, UVs1, UVs2
           item.ids.push(idHigh, idLow, idHigh, idLow, idHigh, idLow);
@@ -1196,7 +1196,7 @@ export class PathTracer {
           }
         } else {
           id ++;
-          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
+          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], (id % 65535) / 65535, (id % 255) / 255);
           vertices.push(...item.vertices);
           uvs.push(...item.uvs);
           bufferLength += item.length;

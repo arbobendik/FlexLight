@@ -30,11 +30,12 @@ async function buildScene() {
 	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
 	let plane = scene.Plane([-50,-1,-50],[50,-1,-50],[50,-1,50],[-50,-1,50],[0,1,0]);
 	console.log(waterCuboid);
-	waterCuboid.setTextureNums(-1, 1, 0);
-	waterCuboid.setColor(150, 210, 255);
+	waterCuboid.textureNums = [-1, 1, 0];
+	waterCuboid.color = [150, 210, 255];
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 5000;
+
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
 	scene.queue.push(plane);

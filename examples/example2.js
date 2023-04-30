@@ -20,11 +20,11 @@ async function buildScene() {
 
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [-12, 5, -18];
-	[camera.fx, camera.fy] = [0.440, 0.235];
+	[camera.fx, camera.fy] = [-0.440, 0.235];
 
 	// Generate plane.
-	let this_plane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-  	this_plane.textureNums = [-1, 0, -1];
+	let thisPlane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
+  	thisPlane.textureNums = [-1, 0, -1];
 	// Generate a few cuboids on the planes with bounding box.
 	let r = [
 		scene.Cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
@@ -33,15 +33,13 @@ async function buildScene() {
 		scene.Cuboid(-1.5, -0.5, -1, 2, -1, 0)
 	];
 	// Color all cuboids in center.
-	for (let i = 0; i < 4; i++) r[i].setColor(Math.random() * 255, Math.random() * 255, Math.random() * 255);
+	for (let i = 0; i < 4; i++) r[i].color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
 
 	// Spawn cube.
 	let cube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
 	// Package cube and cuboids together in a shared bounding volume.
-	let objects = [
-	  r,
-	  cube
-	];
+	let objects = [r, cube];
+
 	scene.primaryLightSources = new Array(64);
 	scene.primaryLightSources[0] = [0, 10, 0];
 	scene.primaryLightSources[0].intensity = 50;
@@ -51,10 +49,12 @@ async function buildScene() {
 	scene.primaryLightSources[5] = [-10, 30, -10];
 	scene.primaryLightSources[6] = [30, 30, 30];
 	scene.primaryLightSources[7] = [-30, 30, -30];
+	// Set intensities
 	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
-	for (let i = 8; i < 64; i++) scene.primaryLightSources[i] = [-300, 309, -300];
+	// Test many lightsources
+	for (let i = 8; i < 64; i++) scene.primaryLightSources[i] = [-300 + 10 * i, 300, -300];
 	// Push both objects to render queue.
-	scene.queue.push(this_plane, objects);
+	scene.queue.push(thisPlane, objects);
 	// Start render engine.
 	engine.renderer.render();
 
@@ -74,7 +74,7 @@ async function buildScene() {
 	// init iterator variable for simple animations
 	let iterator = 0;
 
-	setInterval(async function(){
+	setInterval(() => {
 		// increase iterator
 		iterator += 0.01;
 		// precalculate sin and cos

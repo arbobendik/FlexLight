@@ -80,13 +80,12 @@ async function buildScene() {
 	];
 
 	// Color all cuboid in center
-	for (let i = 0; i < 4; i++) {
-		cuboids[i].setTextureNums(-1, 3, 0);
-	}
-	cuboids[0].setColor(200, 150, 0);
-	cuboids[1].setColor(0, 150, 150);
-	cuboids[2].setColor(150, 0, 100);
-	cuboids[3].setColor(0, 0, 200);
+	for (let i = 0; i < 4; i++) cuboids[i].textureNums = [-1, 3, 0];
+	
+	cuboids[0].color = [200, 150, 0];
+	cuboids[1].color = [0, 150, 150];
+	cuboids[2].color = [150, 0, 100];
+	cuboids[3].color = [0, 0, 200];
 
 	// Spawn cubes with grass block textures
 	let grassCube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);
@@ -98,15 +97,15 @@ async function buildScene() {
 	let wall = scene.Cuboid(2.5, 7.5, -1, 1.5, 5, 7);
 
 	// Make red cube red and emissive and lantern emissive
-	redCube.setTextureNums(3, 0, -1);
-	lantern.setTextureNums(4, 4, -1);
+	redCube.textureNums = [3, 0, -1];
+	lantern.textureNums = [4, 4, -1];
 	// Change diffusion properties of wall on specific sides
 	wall.top.textureNums = [-1, 2, -1];
 	wall.left.textureNums = [-1, 2, -1];
 	// Set different textures for different sides of the array
 	// And make cube full diffuse
 	[grassCube, grassCube2].forEach((item) => {
-		item.setTextureNums(1, 2, -1);
+		item.textureNums = [1, 2, -1];
 		// Set different textures for top and bottom.
 		item.top.textureNums = [0, 2, -1];
 		item.bottom.textureNums = [2, 2, -1];
