@@ -15,7 +15,7 @@ export class PathTracer {
   firstPasses = 0;
   secondPasses = 0;
   temporal = true;
-  temporalSamples = 5;
+  temporalSamples = 10;
   filter = true;
   hdr = true;
   // Performance metric
@@ -51,22 +51,34 @@ export class PathTracer {
   out vec3 clip_space;
   flat out vec4 vertex_id;
   flat out vec3 player;
+
+
+  vec3 clipPosition (vec3 pos, vec2 dir) {
+    vec2 translate_px = vec2(
+      pos.x * cos(dir.x) + pos.z * sin(dir.x),
+      pos.z * cos(dir.x) - pos.x * sin(dir.x)
+    );
+
+    vec2 translate_py = vec2(
+      pos.y * cos(dir.y) + translate_px.y * sin(dir.y),
+      translate_px.y * cos(dir.y) - pos.y * sin(dir.y)
+    );
+
+    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
+
+    return vec3(translate_2d, translate_py.y);
+  }
+
   void main(){
     vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
-    vec2 translate_px = vec2(
-      move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
-      move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
-    );
-    vec2 translate_py = vec2(
-      move_3d.y * cos(perspective.y) + translate_px.y * sin(perspective.y),
-      translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
-    );
-    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
-    // Set final clip space position
-    gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
+
+    clip_space = clipPosition (move_3d, perspective);
+    
+    // Set triangle position in clip space
+    gl_Position = vec4(clip_space.xy, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), clip_space.z);
+
     position = position_3d;
     tex_coord = tex_pos;
-    clip_space = vec3(translate_2d, translate_py.y);
     vertex_id = id;
     player = camera_position;
   }
@@ -298,6 +310,8 @@ export class PathTracer {
     float reservoir_length = 0.0;
     float total_weight = 0.0;
 
+    int reservoir_num = 0;
+
     float reservoir_weight;
     Ray reservoir_light_ray;
     vec3 reservoir_light;
@@ -323,6 +337,7 @@ export class PathTracer {
         reservoir_weight = weight;
         reservoir_light_ray = light_ray;
         reservoir_light = light;
+        reservoir_num = j;
       }
       // Update pseudo random variable.
       last_random = texture(random, last_random).zw;
@@ -330,8 +345,10 @@ export class PathTracer {
 
     if (reservoir_length == 0.0) return 0.0;
     // Test if in shadow
-    if (reservoir_weight == 0.0 || !shadowTest(reservoir_light_ray, reservoir_light)) return total_weight;
-    else if (dont_filter || i == 0) render_id.w += pow(2.0, - float(i + 2));
+    if (reservoir_weight == 0.0 || !shadowTest(reservoir_light_ray, reservoir_light)) {
+      if (dont_filter || i == 0) render_id.w = float((reservoir_num % 128) * 2) / 255.0;
+      return total_weight;
+    } else if (dont_filter || i == 0) render_id.w = float((reservoir_num % 128) * 2 + 1) / 255.0;
     return 0.0;
   }
 
@@ -380,9 +397,11 @@ export class PathTracer {
       bool is_solid = last_tpo.x * fresnel_reflect <= abs(length(random_vec) / SQRT3);
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
-        // Set color in filter
-        original_color *= last_color;
-        last_color = vec3(1);
+        if(sample_n == 0) {
+          // Set color in filter
+          original_color *= last_color;
+          last_color = vec3(1);
+        }
         // Add filtering intensity for respective surface
         original_rmex += last_filter_roughness;
         // Update render id
@@ -534,7 +553,13 @@ export class PathTracer {
     vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
     vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
     vec4 center_id = texelFetch(pre_render_id, texel, 0);
+
+    int center_id_w = int(center_id.w * 255.0);
+    int center_light_num = center_id_w / 2;
+    int center_shadow = center_id_w % 2;
+
     render_id = center_id;
+
     vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
@@ -568,8 +593,8 @@ export class PathTracer {
       for (int i = 0; i < 4; i++) {
         if (ipws[i] == 0.0) {
           vote[i] = 1;
-          if (ids[i] == id) vote[i]++;
-          for (int j = i + 1; j < 4; j++) if (ids[i] == ids[j]) vote[i]++;
+          if (ids[i].xyz == id.xyz) vote[i] ++;
+          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz) vote[i] ++;
         }
       }
 
@@ -594,9 +619,14 @@ export class PathTracer {
       for (int i = 0; i < 37; i++) {
         ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
         vec4 id = texelFetch(pre_render_id, coord, 0);
+
+        int id_w = int(id.w * 255.0);
+        int light_num = id_w / 2;
+        int shadow = id_w % 2;    
+
         vec4 next_color = texelFetch(pre_render_color, coord, 0);
         vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-        if (id == center_id) {
+        if (id.xyz == center_id.xyz && (center_light_num != light_num || center_shadow == shadow)) {
           color += next_color + next_color_ip * 256.0;
           count ++;
         }
@@ -1033,7 +1063,7 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 4;
+      rt.firstPasses = 1;
       rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
     }
     // Init canvas parameters and textures with resize
@@ -1095,9 +1125,9 @@ export class PathTracer {
     }
 
     function texturesToGPU() {
-      // Randomize camera position if Taa is enabled
       if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
         let jitter = rt.#AAObject.jitter(rt.#canvas);
+
         rt.camera.fx += jitter.x;
         rt.camera.fy += jitter.y;
       }
@@ -1123,7 +1153,7 @@ export class PathTracer {
       // Set x and y rotation of camera
       rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 0, 0);
       // Set amount of samples per ray
       rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
       // Set max reflections per ray
