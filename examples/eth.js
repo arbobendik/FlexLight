@@ -24,7 +24,7 @@ async function buildScene() {
 
 	// Generate plane.
 	let plane = scene.Plane([-50,0,-50],[50,0,-50],[50,0,50],[-50,0,50]);
-    plane.setColor(50, 50, 150);
+    plane.color = [50, 50, 150];
 
 	let e = scene.Bounding([
 		scene.Bounding([
@@ -98,7 +98,7 @@ async function buildScene() {
 	]);
 
 	let eth = scene.Bounding([e, t, h]);
-	eth.setTextureNums(-1, 0, -1);
+	eth.textureNums = [-1, 0, -1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 5000;

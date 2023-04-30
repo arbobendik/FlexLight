@@ -49,15 +49,15 @@ async function buildScene() {
   	// Make planes diffuse.
   	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
 		item.textureNums = [- 1, 0, - 1];
-		item.colors = [230, 230, 230];
+		item.color = [230, 230, 230];
 	});
   	// Color left and right plane.
-  	left_plane.colors = [220, 0, 0];
-  	right_plane.colors = [0, 150, 0];
+  	left_plane.color = [220, 0, 0];
+  	right_plane.color = [0, 150, 0];
 	// Generate a few cuboids in the box with respective bounding box.
 	let cube = [[], []];
 	cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
-	cube[0].setTextureNums(-1, 1, -1);
+	cube[0].textureNums = [-1, 1, -1];
 	// Generate rotated cube object from planes.
 	var [x, x2, y, y2, z, z2] = [0, 3, -5, -1, -1, 2];
 	cube[1] = scene.Cuboid(0, 3, -5, -1, -1, 2);

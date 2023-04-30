@@ -49,11 +49,11 @@ async function buildScene() {
 	let left_plane = scene.Plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15]);
 	let right_plane = scene.Plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
 	// Make planes diffuse.
-	[bottom_plane, top_plane, back_plane, front_plane].forEach((item) => item.setTextureNums(-1, 0, -1));
-	[left_plane, right_plane].forEach((item) => item.setTextureNums(-1, 2, -1));
+	[bottom_plane, top_plane, back_plane, front_plane].forEach((item) => item.textureNums = [-1, 0, -1]);
+	[left_plane, right_plane].forEach((item) => item.textureNums = [-1, 2, -1]);
 	// Color left and right plane.
-	left_plane.setColor(255, 0, 0);
-	right_plane.setColor(0, 255, 0);
+	left_plane.color = [255, 0, 0];
+	right_plane.color = [0, 255, 0];
 	// Generate a few cuboids in the box with respective bounding box.
 	let cube = [[], []];
 	cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
@@ -69,9 +69,9 @@ async function buildScene() {
 	cube[1][4] = scene.Plane(t3,b3,b0,t0,[-1,0,0]);
 	cube[1][5] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 
-	cube[0].setTextureNums(-1, 1, -1);
+	cube[0].textureNums = [-1, 1, -1];
 	// Make second cuboid translucent.
-	cube[1].setTextureNums(-1, 3, 0);
+	cube[1].textureNums = [-1, 3, 0];
 
 	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.

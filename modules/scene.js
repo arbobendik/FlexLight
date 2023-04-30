@@ -231,10 +231,8 @@ export class Scene {
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
     obj = await scene.generateOctTree(obj);
-    console.log(obj);
     // obj = new Bounding(obj, scene);
     await scene.updateBoundings(obj);
-
     // return built object
     return obj;
   }
@@ -242,7 +240,7 @@ export class Scene {
 
 class Primitive {
   #vertices;
-  #colors;
+  #color;
   #uvs;
   #textureNums;
   #normals;
@@ -258,7 +256,7 @@ class Primitive {
         this.#vertices[i3 + 0], this.#vertices[i3 + 1], this.#vertices[i3 + 2],
         this.#vertices[i3 + 3], this.#vertices[i3 + 4], this.#vertices[i3 + 5],
         this.#vertices[i3 + 6], this.#vertices[i3 + 7], this.#vertices[i3 + 8],
-        this.#colors[0], this.#colors[1], this.#colors[2],
+        this.#color[0], this.#color[1], this.#color[2],
         this.#normals[0], this.#normals[1], this.#normals[2],
         this.#textureNums[0], this.#textureNums[1], this.#textureNums[2],
         this.#uvs[i2 + 0],this.#uvs[i2 + 1], this.#uvs[i2 + 2],
@@ -268,7 +266,7 @@ class Primitive {
   }
     
   get vertices () { return this.#vertices };
-  get colors () { return this.#colors };
+  get color () { return this.#color };
   get uvs () { return this.#uvs };
   get textureNums () { return this.#textureNums };
   get normals () {return this.#normals };
@@ -277,8 +275,8 @@ class Primitive {
     this.#vertices = v;
     this.#buildTextureArray();
   }
-  set colors (c) {
-    this.#colors = new Array(this.length).fill(c.map(val => val / 255)).flat();;
+  set color (c) {
+    this.#color = new Array(this.length).fill(c.map(val => val / 255)).flat();;
     this.#buildTextureArray();
   }
   set uvs (uv) {
@@ -299,7 +297,7 @@ class Primitive {
     this.length = length;
     this.#vertices = vertices;
     this.#normals = normals;
-    this.#colors = new Array(length).fill([1, 1, 1]).flat();
+    this.#color = new Array(length).fill([1, 1, 1]).flat();
     this.#uvs = uvs;
     this.#textureNums = new Array(length).fill([-1, -1, -1]).flat();
     this.#buildTextureArray();
@@ -307,23 +305,18 @@ class Primitive {
 }
 
 class Object3D {
-  setColor (r, g, b) {
-    if (Array.isArray(r)) [r, g, b] = r;
+  set color (color) {
     for (let i = 0; i < this.length; i++) {
-      if (this[i].indexable) {
-        this[i].setColor(r, g, b);
-      } else {
-        this[i].colors = [r, g, b];
-      }
+      this[i].color = color;
     }
   }
 
-  setTextureNums (tex, pbr, trans) {
+  set textureNums (nums) {
     for (let i = 0; i < this.length; i++) {
       if (this[i].indexable) {
-        this[i].setTextureNums(tex, pbr, trans);
+        this[i].textureNums = nums;
       } else {
-        this[i].textureNums = new Array(this.length).fill([tex, pbr, trans]).flat();
+        this[i].textureNums = new Array(this.length).fill(nums).flat();
       }
     }
   }

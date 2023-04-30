@@ -27,7 +27,7 @@ async function buildScene() {
 	scene.primaryLightSources[0].intensity = 200;
 	// Generate plane.
 	let this_plane = scene.Plane([-100,-1,-100], [100,-1,-100], [100,-1,100], [-100,-1,100]);
-  	this_plane.setTextureNums(-1, 0, -1);
+  	this_plane.textureNums = [-1, 0, -1];
 	// Push both objects to render queue.
 	scene.queue.push(this_plane);
 	// Set power of 2 square length.
@@ -51,8 +51,8 @@ async function buildScene() {
 		if (pot === 0) {
 			let cuboid = scene.Cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
-      		cuboid.setTextureNums(-1, 1, 0);
-      		cuboid.setColor(colors[x][y]);
+      		cuboid.textureNums = [-1, 1, 0];
+      		cuboid.color = colors[x][y];
 			return cuboid;
 		}
 		// Decide to split vertically or horizontally.
