@@ -52,7 +52,10 @@ async function buildScene() {
 	// Set intensities
 	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
 	// Test many lightsources
-	for (let i = 8; i < 64; i++) scene.primaryLightSources[i] = [-300 + 10 * i, 300, -300];
+	for (let i = 8; i < 64; i++) {
+		scene.primaryLightSources[i] = [-300 + i * 10, 300, -300];
+		scene.primaryLightSources[i].intensity = 2;
+	}
 	// Push both objects to render queue.
 	scene.queue.push(thisPlane, objects);
 	// Start render engine.
@@ -65,11 +68,7 @@ async function buildScene() {
   // Update Counter periodically.
 	setInterval(function(){
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update textures every second.
-		engine.renderer.updateTextures();
-		engine.renderer.updatePbrTextures();
-    	engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 100);
 
 	// init iterator variable for simple animations
 	let iterator = 0;
