@@ -20,12 +20,18 @@ export class Rasterizer {
   #canvas;
 
   #halt = false;
+  #worldTexture;
+  
   // Internal gl texture variables of texture atlases
-  #worldTexture = null;
-  #pbrTexture = null;
-  #translucencyTexture = null;
-  #texture = null;
-  #lightTexture = null;
+  #textureAtlas;
+  #pbrAtlas;
+  #translucencyAtlas;
+
+  #textureList = [];
+  #pbrList = [];
+  #translucencyList = [];
+
+  #lightTexture;
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
   precision highp float;
@@ -263,7 +269,7 @@ export class Rasterizer {
       // Update pixel color if coordinate is not in shadow
       if (!shadowTest(light_ray, light)) brightness += forwardTrace(light_ray, player, material.rme.y, strength);
     }
-    brightness = max(material.rme.z + 0.5 * material.tpo.x, brightness);
+    brightness = max(material.rme.z + 0.2 * material.tpo.x, brightness);
 
     vec3 final_color = brightness * color;
 
@@ -320,60 +326,66 @@ export class Rasterizer {
     }
   }
 
-
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type) {
+	async #updateAtlas (list) {
 		// Test if there is even a texture
-		if (type.length === 0) {
+		if (list.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
 			return;
 		}
 
 		const [width, height] = this.scene.standardTextureSizes;
 		const textureWidth = Math.floor(2048 / width);
-
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
 		canvas.width = width * textureWidth;
-		canvas.height = height * type.length;
+		canvas.height = height * list.length;
 		ctx.imageSmoothingEnabled = false;
-
-		type.forEach(async (texture, i) => {
+		list.forEach(async (texture, i) => {
 			// textureWidth for third argument was 3 for regular textures
 			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
 		});
-		this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
 	}
-  updatePbrTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrTexture);
+
+  async #updateTextureAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
+    this.#textureList = this.scene.textures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textureAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.pbrTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.textures);
   }
-  updateTranslucencyTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
+
+  async #updatePbrAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
+    this.#pbrList = this.scene.pbrTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.translucencyTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.pbrTextures);
   }
-  updateTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
+
+  async #updateTranslucencyAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
+    this.#translucencyList = this.scene.translucencyTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
-		this.#updateTextureType(this.scene.textures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.translucencyTextures);
   }
+
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
@@ -492,11 +504,6 @@ export class Rasterizer {
     // Check if recompile is needed
     let State = this.renderQuality;
 
-    // Detect mouse movements
-    // Handle canvas resize
-    window.addEventListener('resize', function(){
-    	resize();
-    });
     // Function to handle canvas resize
     let resize = () => {
 			const canvas = rt.canvas;
@@ -509,6 +516,8 @@ export class Rasterizer {
     }
     // Init canvas parameters and textures with resize
     resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
 
     function renderTextureBuilder() {
       // Init single channel depth texture
@@ -521,6 +530,10 @@ export class Rasterizer {
     function frameCycle (Millis) {
       // generate bounding volumes
       rt.scene.updateBoundings();
+      // Update Textures
+      rt.#updateTextureAtlas();
+      rt.#updatePbrAtlas();
+      rt.#updateTranslucencyAtlas();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -553,11 +566,11 @@ export class Rasterizer {
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#texture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE4);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
@@ -641,10 +654,8 @@ export class Rasterizer {
       } else {
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
       }
-
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
       texturesToGPU();
       fillBuffers();
       // Apply antialiasing shader if enabled
@@ -652,9 +663,10 @@ export class Rasterizer {
     }
 
     let prepareEngine = () => {
-      rt.updateTextures();
-      rt.updatePbrTextures();
-      rt.updateTranslucencyTextures();
+      // Force update textures by resetting texture Lists
+      rt.#textureList = [];
+      rt.#pbrList = [];
+      rt.#translucencyList = [];
       // Compile shaders and link them into Program global
       Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
       // Create global vertex array object (Vao)
@@ -678,16 +690,14 @@ export class Rasterizer {
       rt.#gl.blendEquation(rt.#gl.FUNC_ADD);
       rt.#gl.blendFuncSeparate(rt.#gl.ONE, rt.#gl.ONE_MINUS_SRC_ALPHA, rt.#gl.ONE, rt.#gl.ONE);
       rt.#gl.depthMask(true);
-      // Cull (exclude from rendering) hidden vertices at the other side of objects
-      // rt.#gl.enable(rt.#gl.CULL_FACE);
       // Set clear color for framebuffer
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
       rt.#gl.useProgram(Program);
       // Create Textures for primary render
-      rt.#pbrTexture = rt.#gl.createTexture();
-      rt.#translucencyTexture = rt.#gl.createTexture();
-      rt.#texture = rt.#gl.createTexture();
+      rt.#pbrAtlas = rt.#gl.createTexture();
+      rt.#translucencyAtlas = rt.#gl.createTexture();
+      rt.#textureAtlas = rt.#gl.createTexture();
       // Create texture for all primary light sources in scene
       rt.#lightTexture = rt.#gl.createTexture();
       // Init a world texture containing all information about world space

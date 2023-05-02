@@ -10,7 +10,7 @@ export class Scene {
   textures = [];
   pbrTextures = [];
   translucencyTextures = [];
-  standardTextureSizes = [64, 64];
+  standardTextureSizes = [1024, 1024];
   // The queue object contains all data of all vertices in the scene
   queue = [];
   // texture constructors
