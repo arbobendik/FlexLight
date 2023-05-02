@@ -347,7 +347,7 @@ export class PathTracer {
         reservoir_num = j;
       }
       // Update pseudo random variable.
-      // last_random = texture(random, last_random).zw;
+      last_random = texture(random, last_random).zw;
     }
 
     if (reservoir_length == 0.0) return 0.0;
