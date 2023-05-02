@@ -508,6 +508,7 @@ export class PathTracer {
       mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0)),
       mix(vec3(0.0, 0.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0))
     );
+
     original_tpox = material.tpo.x;
     // Preserve original roughness for filter pass
     float filter_roughness = material.rme.x;
@@ -516,6 +517,7 @@ export class PathTracer {
     // Start hybrid ray tracing on a per light source base
     // Directly add emissive light of original surface to final_color
     vec3 final_color = vec3(0);
+
     // Generate multiple samples
     for (int i = 0; i < samples; i++){
       // Set color of object itself
@@ -523,6 +525,7 @@ export class PathTracer {
       Ray ray = Ray (normalize(position - player), position, normalize(normal));
       final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
     }
+    
     // Average ray colors over samples.
     final_color /= float(samples);
     first_ray_length /= float(samples);
@@ -1070,7 +1073,7 @@ export class PathTracer {
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
       rt.firstPasses = 1;
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 600), 2);
     }
     // Init canvas parameters and textures with resize
     resize();
