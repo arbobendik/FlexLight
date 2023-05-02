@@ -42,9 +42,9 @@ export class TAA {
         vec4 minRGB = vec4(1.0);
         vec4 maxRGB = vec4(0.0);
         
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                vec4 p = texelFetch(cache_0, texel + ivec2(i - 1, j - 1), 0);
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 5; j++) {
+                vec4 p = texelFetch(cache_0, texel + ivec2(i - 2, j - 2), 0);
                 minRGB = min(minRGB, p);
                 maxRGB = max(maxRGB, p);
             }
@@ -129,7 +129,7 @@ export class TAA {
         // Cycle through random vecs
         this.#currentNum = (this.#currentNum + 1) % FRAMES;
         // Scaling factor
-        let scale = 0.6 / Math.min(canvas.width, canvas.height);
+        let scale = 0.3 / Math.min(canvas.width, canvas.height);
         // Return as easy to handle 2-dimensional vector
         return { x: this.#randomVecs[this.#currentNum][0] * scale, y: this.#randomVecs[this.#currentNum][1] * scale};
     }

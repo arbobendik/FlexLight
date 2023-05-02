@@ -28,12 +28,18 @@ export class PathTracer {
   #canvas;
 
   #halt = false;
-  // Internal gl texture variables of texture atlases
+
   #worldTexture;
   #randomTextures = new Array(this.temporalSamples);
-  #pbrTexture;
-  #translucencyTexture;
-  #texture;
+  // Internal gl texture variables of texture atlases
+  #textureAtlas;
+  #pbrAtlas;
+  #translucencyAtlas;
+
+  #textureList = [];
+  #pbrList = [];
+  #translucencyList = [];
+
   #lightTexture;
   // Shader source will be generated later
   #tempGlsl;
@@ -72,7 +78,7 @@ export class PathTracer {
   void main(){
     vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
 
-    clip_space = clipPosition (move_3d, perspective);
+    clip_space = clipPosition (move_3d, perspective + conf.zw);
     
     // Set triangle position in clip space
     gl_Position = vec4(clip_space.xy, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), clip_space.z);
@@ -306,7 +312,7 @@ export class PathTracer {
     return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
 
-  float reservoirSample (sampler2D light_tex, vec3 random_vec, vec3 origin, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
+  float reservoirSample (sampler2D light_tex, vec4 random_vec, vec3 origin, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
     float reservoir_length = 0.0;
     float total_weight = 0.0;
 
@@ -316,7 +322,8 @@ export class PathTracer {
     Ray reservoir_light_ray;
     vec3 reservoir_light;
 
-    vec2 last_random = texture(random, random_vec.xy).yz;
+
+    vec2 last_random = abs(random_vec.zw);
 
     for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
       // Read light position
@@ -329,7 +336,7 @@ export class PathTracer {
       if (strength <= 0.0) continue;
       reservoir_length ++;
       // Alter light source position according to variation.
-      light = random_vec * variation + light;
+      light = random_vec.xyz * variation + light;
       Ray light_ray = Ray (light - origin, origin, normalize(last_rough_normal));
       float weight = forwardTrace(light_ray, last_origin, last_rme.y, strength);
       total_weight += weight;
@@ -340,7 +347,7 @@ export class PathTracer {
         reservoir_num = j;
       }
       // Update pseudo random variable.
-      last_random = texture(random, last_random).zw;
+      // last_random = texture(random, last_random).zw;
     }
 
     if (reservoir_length == 0.0) return 0.0;
@@ -385,16 +392,16 @@ export class PathTracer {
       // Apply emissive texture and ambient light
       final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
       // Generate pseudo random vector
-      vec2 random_coord = mod(((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n)) * 4.0, 1.0);
-      vec3 random_vec = texture(random, random_coord).xyz * 2.0 - 1.0;
+      ivec2 random_coord = ivec2(mod(((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n)) * 2.0, 1.0) * vec2(textureSize(random, 0).xy));
+      vec4 random_vec = texelFetch(random, random_coord, 0) * 2.0 - 1.0;
       // Alter normal according to roughness value
-      vec3 last_rough_normal = normalize(mix(ray.normal, random_vec, last_rme.x));
+      vec3 last_rough_normal = normalize(mix(ray.normal, random_vec.xyz, last_rme.x));
       // Fix for Windows devices, invert last_rough_normal if it points under the surface.
       last_rough_normal = sign(dot(last_rough_normal, ray.normal)) * last_rough_normal;
       // Handle fresnel reflection
       float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
       // object is solid or translucent by chance because of the fresnel effect
-      bool is_solid = last_tpo.x * fresnel_reflect <= abs(length(random_vec) / SQRT3);
+      bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.w);
       // Test if filter is already necessary
       if (dont_filter && i != 0) {
         if(sample_n == 0) {
@@ -430,7 +437,7 @@ export class PathTracer {
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += brightness_sample * importancy_factor;
         // Calculate reflecting ray
-        ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec), last_rme.x));
+        ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec.xyz), last_rme.x));
         if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
         // Calculate next intersection
         intersection = rayTracer(ray);
@@ -528,7 +535,7 @@ export class PathTracer {
     render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
 		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
     render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
-    float div = 32.0;
+    float div = 4.0 * length(position - player);
     render_location_id = vec4(mod(position, div) / div, material.rme.z);
   }
   `;
@@ -580,12 +587,16 @@ export class PathTracer {
                                   vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
-    if (center_color_ip.w > 0.0) {
-      vec4 id = texelFetch(pre_render_id, texel, 0);
+    if (center_o_id.w > 0.0 && center_color_ip.w > 0.0) {
+      vec4 id = center_id;
+
       mat4 ids = mat4(0);
+      mat4 o_ids = mat4(0);
+
       vec4 ipws = vec4(0);
       for (int i = 0; i < 4; i++) {
         ids[i] = texelFetch(pre_render_id, texel + stencil1[i], 0);
+        o_ids[i] = texelFetch(pre_render_original_id, texel + stencil1[i], 0);
         ipws[i] = texelFetch(pre_render_color_ip, texel + stencil1[i], 0).w;
       }
 
@@ -593,8 +604,8 @@ export class PathTracer {
       for (int i = 0; i < 4; i++) {
         if (ipws[i] == 0.0) {
           vote[i] = 1;
-          if (ids[i].xyz == id.xyz) vote[i] ++;
-          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz) vote[i] ++;
+          if (ids[i].xyz == id.xyz && o_ids[i] == center_o_id) vote[i] ++;
+          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz && o_ids[i] == o_ids[j]) vote[i] ++;
         }
       }
 
@@ -618,7 +629,9 @@ export class PathTracer {
     } else {
       for (int i = 0; i < 37; i++) {
         ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
+        
         vec4 id = texelFetch(pre_render_id, coord, 0);
+        vec4 original_id = texelFetch(pre_render_original_id, coord, 0);
 
         int id_w = int(id.w * 255.0);
         int light_num = id_w / 2;
@@ -831,60 +844,63 @@ export class PathTracer {
   }
 
   // Functions to update texture atlases to add more textures during runtime
-	async #updateTextureType (type) {
+	async #updateAtlas (list) {
 		// Test if there is even a texture
-		if (type.length === 0) {
+		if (list.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
 			return;
 		}
 
 		const [width, height] = this.scene.standardTextureSizes;
 		const textureWidth = Math.floor(2048 / width);
-
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
 		canvas.width = width * textureWidth;
-		canvas.height = height * type.length;
+		canvas.height = height * list.length;
 		ctx.imageSmoothingEnabled = false;
-
-		type.forEach(async (texture, i) => {
+		list.forEach(async (texture, i) => {
 			// textureWidth for third argument was 3 for regular textures
 			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
 		});
-		this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
 	}
 
-  async updatePbrTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrTexture);
+  async #updateTextureAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
+    this.#textureList = this.scene.textures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textureAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.pbrTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.textures);
   }
 
-  async updateTranslucencyTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
+  async #updatePbrAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
+    this.#pbrList = this.scene.pbrTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.translucencyTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.pbrTextures);
   }
 
-  async updateTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
+  async #updateTranslucencyAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
+    this.#translucencyList = this.scene.translucencyTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
-		this.#updateTextureType(this.scene.textures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.translucencyTextures);
   }
 
   // Functions to update vertex and light source data textures
@@ -892,11 +908,7 @@ export class PathTracer {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
+    GLLib.setTexParams(this.#gl);
 		// Don't update light sources if there is none
 		if (this.scene.primaryLightSources.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
@@ -955,8 +967,7 @@ export class PathTracer {
         // console.log(id, item.textureArray);
         data.push(...item.textureArray);
 
-        for (let i = 0; i < len * 3; i += 9){
-          // let j = i / 3 * 2;
+        for (let i = 0; i < len * 3; i += 9) {
           let idHigh = Math.floor(id / 65535);
           let idLow = id % 65535;
           // 1 vertex = 1 line in world texture
@@ -978,9 +989,8 @@ export class PathTracer {
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
+    GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
 
   async render() {
@@ -996,7 +1006,7 @@ export class PathTracer {
     let LastMeasuredFrames = 0;
     // Internal GL objects
     let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, HdrLocation, AmbientLocation, TextureWidth;
-    let TempProgram, TempFilterLocation, TempHdrLocation;
+    let TempProgram, TempHdrLocation;
     let WorldTex, RandomTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let PositionBuffer, IdBuffer, TexBuffer;
@@ -1049,10 +1059,6 @@ export class PathTracer {
     let PostVao = new Array(5).map(() => this.#gl.createVertexArray());
     // Check if recompile is needed
     let State = [this.filter, this.renderQuality];
-    // Handle canvas resize
-    window.addEventListener('resize', function(){
-    	resize();
-    });
     // Function to handle canvas resize
     let resize = () => {
 			const canvas = rt.canvas;
@@ -1068,6 +1074,8 @@ export class PathTracer {
     }
     // Init canvas parameters and textures with resize
     resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
 
     function renderTextureBuilder(){
       for (let i = 0; i < rt.temporalSamples; i++) {
@@ -1098,6 +1106,10 @@ export class PathTracer {
     function frameCycle (Millis) {
       // generate bounding volumes
       rt.scene.updateBoundings();
+      // Update Textures
+      rt.#updateTextureAtlas();
+      rt.#updatePbrAtlas();
+      rt.#updateTranslucencyAtlas();
       // set world-texture
       rt.updateScene();
       // build bounding boxes for scene first
@@ -1124,12 +1136,13 @@ export class PathTracer {
       }
     }
 
-    function texturesToGPU() {
-      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let jitter = rt.#AAObject.jitter(rt.#canvas);
+    let A = new TAA(this.#gl, this);;
 
-        rt.camera.fx += jitter.x;
-        rt.camera.fy += jitter.y;
+    function texturesToGPU() {
+      let [jitterX, jitterY] = [0, 0];
+      if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) {
+        let jitter = rt.#AAObject.jitter(rt.#canvas);
+        [jitterX, jitterY] = [jitter.x, jitter.y];
       }
 
       rt.#gl.bindVertexArray(Vao);
@@ -1140,11 +1153,11 @@ export class PathTracer {
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#randomTextures[rt.temporal ? Frames % rt.temporalSamples : 0]);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE4);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#texture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE5);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
@@ -1153,7 +1166,7 @@ export class PathTracer {
       // Set x and y rotation of camera
       rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 0, 0);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, jitterX, jitterY);
       // Set amount of samples per ray
       rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
       // Set max reflections per ray
@@ -1422,7 +1435,6 @@ export class PathTracer {
       this.#tempGlsl += `
       layout(location = 0) out vec4 render_color;
       layout(location = 1) out vec4 render_color_ip;
-      layout(location = 2) out vec4 render_id;
     
       void main () {
         ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
@@ -1442,25 +1454,22 @@ export class PathTracer {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-        
         if (rt.filter) {
           this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
           for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_ip_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
           this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_ip_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         }
-
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_id_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_id_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-
         this.#tempGlsl += rt.filter ? `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i] == id) {
+        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
         for (int i = 0; i < 4; i++) glass_filter += ip` + i + `[i].w;
         ` : `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i] == id) {
+        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
           color += c` + i + `[i].xyz;
           counter ++;
         }
@@ -1486,13 +1495,12 @@ export class PathTracer {
         }
         render_color = vec4(color, center_w);
       }`;
-      
-      rt.updateTextures();
-      rt.updatePbrTextures();
-      rt.updateTranslucencyTextures();
+      // Force update textures by resetting texture Lists
+      rt.#textureList = [];
+      rt.#pbrList = [];
+      rt.#translucencyList = [];
       // Compile shaders and link them into Program global
       Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
-
       TempProgram = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#tempGlsl);
       // Compile shaders and link them into PostProgram global
       for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#firstFilterGlsl);
@@ -1500,7 +1508,6 @@ export class PathTracer {
       for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#secondFilterGlsl);
       // Compile shaders and link them into PostProgram global
       PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#finalFilterGlsl);
-      
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
@@ -1530,9 +1537,9 @@ export class PathTracer {
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
       rt.#gl.useProgram(Program);
-      rt.#pbrTexture = rt.#gl.createTexture();
-      rt.#translucencyTexture = rt.#gl.createTexture();
-      rt.#texture = rt.#gl.createTexture();
+      rt.#pbrAtlas = rt.#gl.createTexture();
+      rt.#translucencyAtlas = rt.#gl.createTexture();
+      rt.#textureAtlas = rt.#gl.createTexture();
       // Create texture for all primary light sources in scene
       rt.#lightTexture = rt.#gl.createTexture();
       // Init a world texture containing all information about world space
