@@ -44,6 +44,7 @@ export class TAA {
         
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
+                if (length(vec2(i - 2, j - 2)) > 2.0) continue;
                 vec4 p = texelFetch(cache_0, texel + ivec2(i - 2, j - 2), 0);
                 minRGB = min(minRGB, p);
                 maxRGB = max(maxRGB, p);
