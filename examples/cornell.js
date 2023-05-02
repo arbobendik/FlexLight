@@ -39,12 +39,12 @@ async function buildScene() {
 	// let light = scene.Plane([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2]);
 	// light.textureNums = [- 1, 2, - 1];
 	// Generate side planes of box.
-	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
-  	let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
+	let bottom_plane = scene.Plane([-5,-5,-21],[5,-5,-21],[5,-5,5],[-5,-5,5]);
+  	let top_plane = scene.Plane([-5,5,-21],[-5,5,5],[5,5,5],[5,5,-21]);
   	let back_plane = scene.Plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5]);
-	let front_plane = scene.Plane([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15]);
-  	let left_plane = scene.Plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15]);
-  	let right_plane = scene.Plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
+	let front_plane = scene.Plane([-5,-5,-21],[-5,5,-21],[5,5,-21],[5,-5,-21]);
+  	let left_plane = scene.Plane([-5,-5,-21],[-5,-5,5],[-5,5,5],[-5,5,-21]);
+  	let right_plane = scene.Plane([5,-5,-21],[5,5,-21],[5,5,5],[5,-5,5]);
 
   	// Make planes diffuse.
   	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
@@ -84,11 +84,7 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
-  	setInterval(function(){
+  	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update textures every second
-		engine.renderer.updateTextures();
-    	engine.renderer.updatePbrTextures();
-    	engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 100);
 }

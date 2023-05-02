@@ -59,7 +59,5 @@ async function buildScene() {
 		fpsCounter.textContent = engine.renderer.fps;
 		// Update texture atlases.
 		// engine.renderer.updateBuffers();
-		// engine.renderer.updatePbrTextures();
-		// engine.renderer.updateTranslucencyTextures();
 	}, 100);
 }

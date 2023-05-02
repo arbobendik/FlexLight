@@ -83,9 +83,5 @@ async function buildScene() {
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update texture atlases.
-		engine.renderer.updateTextures();
-    engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 100);
 }
