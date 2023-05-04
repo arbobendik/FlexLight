@@ -35,35 +35,47 @@ export class Rasterizer {
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
   precision highp float;
-  in vec3 position_3d;
+  in vec3 position3d;
   in vec4 id;
-  in vec2 tex_pos;
-  uniform vec3 camera_position;
+  in vec2 texPos;
+
+  uniform vec3 cameraPosition;
   uniform vec2 perspective;
   uniform vec4 conf;
+
   out vec3 position;
-  out vec2 tex_coord;
-  out vec3 clip_space;
-  flat out vec4 vertex_id;
+  out vec2 texCoord;
+  out vec3 clipSpace;
+  flat out vec4 vertexId;
   flat out vec3 player;
+
+  vec3 clipPosition (vec3 pos, vec2 dir) {
+    vec2 translatePX = vec2(
+      pos.x * cos(dir.x) + pos.z * sin(dir.x),
+      pos.z * cos(dir.x) - pos.x * sin(dir.x)
+    );
+
+    vec2 translatePY = vec2(
+      pos.y * cos(dir.y) + translatePX.y * sin(dir.y),
+      translatePX.y * cos(dir.y) - pos.y * sin(dir.y)
+    );
+
+    vec2 translate2d = vec2(translatePX.x / conf.y, translatePY.x) / conf.x;
+    return vec3(translate2d, translatePY.y);
+  }
+
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
-    vec2 translate_px = vec2(
-      move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
-      move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
-    );
-    vec2 translate_py = vec2(
-      move_3d.y * cos(perspective.y) + translate_px.y * sin(perspective.y),
-      translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
-    );
-    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
-    // Set final clip space position
-    gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
-    position = position_3d;
-    tex_coord = tex_pos;
-    clip_space = vec3(translate_2d, translate_py.y);
-    vertex_id = id;
-    player = camera_position;
+    vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
+
+    clipSpace = clipPosition (move3d, perspective + conf.zw);
+    
+    // Set triangle position in clip space
+    gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d / 1048576.0))), clipSpace.z);
+
+    position = position3d;
+    texCoord = texPos;
+    vertexId = id;
+    player = cameraPosition;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -82,6 +94,7 @@ export class Rasterizer {
 
   struct Ray {
     vec3 direction;
+    vec3 unitDirection;
     vec3 origin;
     vec3 normal;
   };
@@ -99,51 +112,47 @@ export class Rasterizer {
   };
 
   in vec3 position;
-  in vec2 tex_coord;
-  in vec3 clip_space;
-  flat in vec4 vertex_id;
+  in vec2 texCoord;
+  in vec3 clipSpace;
+  flat in vec4 vertexId;
   flat in vec3 player;
   // Get global illumination color, intensity
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
-  uniform int texture_width;
+  uniform int textureWidth;
   uniform int hdr;
   // Texture with information about all triangles in scene
-  uniform sampler2D world_tex;
+  uniform sampler2D worldTex;
   // Random texture to multiply with normal map to simulate rough surfaces
-  uniform sampler2D translucency_tex;
-  uniform sampler2D pbr_tex;
+  uniform sampler2D translucencyTex;
+  uniform sampler2D pbrTex;
   uniform sampler2D tex;
   // Texture with all primary light sources of scene
-  uniform sampler2D light_tex;
-  layout(location = 0) out vec4 render_color;
-  // Prevent blur over shadow border or over (close to) perfect reflections
-  float first_ray_length = 1.0;
-  // Accumulate color of mirror reflections
-  float original_rmex = 0.0;
-  vec3 original_color = vec3(1.0);
+  uniform sampler2D lightTex;
+  
+  layout(location = 0) out vec4 renderColor;
+
+  float invTextureWidth = 1.0;
 
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords) {
-    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * inv_texture_width;
-    vec2 atlas_coords = vec2(
-      (coords.x + mod(coords.z, float(texture_width))) * inv_texture_width,
-      (coords.y + floor(coords.z * inv_texture_width)) * atlas_height_factor
+    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
+    vec2 atlasCoords = vec2(
+      (coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth,
+      (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor
     );
     // Return texel on requested location
-    return texture(atlas, atlas_coords);
+    return texture(atlas, atlasCoords);
   }
 
   // Test if ray intersects triangle and return intersection
   mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n) {
-    // Can't intersect with triangle with the same normal as the origin
-    if (n == ray.normal) return mat2x4(0);
     // Get distance to intersection point
-    float s = dot(n, t[0] - ray.origin) / dot(n, normalize(ray.direction));
+    float s = dot(n, t[0] - ray.origin) / dot(n, ray.unitDirection);
     // Ensure that ray triangle intersection is between light source and texture
     if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
-    vec3 d = (s * normalize(ray.direction)) + ray.origin;
+    vec3 d = (s * ray.unitDirection) + ray.origin;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     vec3 v0 = t[1] - t[0];
     vec3 v1 = t[2] - t[0];
@@ -163,8 +172,8 @@ export class Rasterizer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
-    mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
+  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+    mat2x3 v = matrixCompMult(mat2x3(minCorner, maxCorner) - mat2x3(p, p), mat2x3(invRay, invRay));
     float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
@@ -172,23 +181,25 @@ export class Rasterizer {
     return max(lowest, BIAS) <= highest;
   }
 
-  // Test if ray intersects anything
+  // Simplified rayTracer to only test if ray intersects anything
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / normalize(ray.direction);
+    vec3 invRay = 1.0 / ray.unitDirection;
+    // Precomput max length
+    float max = length(light - ray.origin);
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
+    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
-    for (int i = 0; i < size; i++){
-      // Get position of current triangle/vertex in world_tex
+    for (int i = 0; i < size; i++) {
+      // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
-      // Read normal and triangle from world_tex
-      vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
+      // Read normal and triangle from worldTex
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
       mat3 t = mat3(
-        texelFetch(world_tex, index, 0).xyz,
-        texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
-        texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+        texelFetch(worldTex, index, 0).xyz,
+        texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
+        texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
       //  Three cases:
       //   - normal is not 0 0 0 --> normal vertex
@@ -199,11 +210,8 @@ export class Rasterizer {
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
-        // Test if Ray intersects bounding volume
-        // t[0] = x x2 y
-        // t[1] = y2 z z2
-        // If it doesn't intersect, skip shadow test for all elements in bounding volume
+      } else if (!rayCuboid(invRay, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
+        // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
         i += int(t[2].x);
       }
     }
@@ -213,16 +221,15 @@ export class Rasterizer {
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
     float lenP1 = 1.0 + length(ray.direction);
-    vec3 normalDir = normalize(ray.direction);
 
     // Calculate intensity of light reflection, which decreases squared over distance
     float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
-    float brightness = max(dot(normalDir, ray.normal), 0.0);
-    float specular = pow(max(dot(halfVector, normalDir), 0.0), metallicity);
+    vec3 halfVector = normalize(ray.unitDirection + normalize(origin - ray.origin));
+    float light = max(dot(ray.unitDirection, ray.normal), 0.0);
+    float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
     // Determine final color and return it
-    return mix(brightness, max(specular, 0.0), metallicity) * intensity;
+    return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
 
   float fresnel(vec3 normal, vec3 lightDir) {
@@ -232,55 +239,58 @@ export class Rasterizer {
 
   void main(){
     // Calculate constant for this pass
-    inv_texture_width = 1.0 / float(texture_width);
+    invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertex_id.x * 65535.0 + vertex_id.y;
+    float id = vertexId.x * 65535.0 + vertexId.y;
     ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
-    vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
-    // Default tex_color to color
-    vec3 color = mix(texelFetch(world_tex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
-    vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+    vec3 textureNums = texelFetch(worldTex, index + ivec2(5, 0), 0).xyz;
+    // Default texColor to color
+    vec3 color = mix(texelFetch(worldTex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0));
+    vec3 normal = normalize(texelFetch(worldTex, index + ivec2(4, 0), 0).xyz);
     
     // Test if pixel is in frustum or not
-    if (clip_space.z < 0.0) return;
+    if (clipSpace.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
-    // Default tex_color to color
+    // Default texColor to color
     Material material = Material (
-      mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0)),
-      mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0)),
-      mix(vec3(0.0, 0.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0))
+      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(textureNums.y + 1.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
     );
     // Fresnel effect
     material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
 
     float brightness = 0.0;
     // Calculate primary light sources for this pass if ray hits non translucent object
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
+    for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
       // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
+      vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
-      float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+      float strength = texelFetch(lightTex, ivec2(1, j), 0).x;
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
-      // Recalculate position -> light vector
-      Ray light_ray = Ray (light - position, position, normal);
-      // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(light_ray, light)) brightness += forwardTrace(light_ray, player, material.rme.y, strength);
-    }
-    brightness = max(material.rme.z + 0.2 * material.tpo.x, brightness);
 
-    vec3 final_color = brightness * color;
+      // Form light vector
+      vec3 dir = light - position;
+      Ray lightRay = Ray (dir, normalize(dir), position, normal);
+
+      // Update pixel color if coordinate is not in shadow
+      if (!shadowTest(lightRay, light)) brightness += forwardTrace(lightRay, player, material.rme.y, strength);
+    }
+
+    brightness = max(material.rme.z + 0.2 * material.tpo.x, brightness);
+    vec3 finalColor = brightness * color;
 
     if (hdr == 1) {
       // Apply Reinhard tone mapping
-      final_color = final_color / (final_color + vec3(1.0));
+      finalColor = finalColor / (finalColor + vec3(1.0));
       // Gamma correction
       float gamma = 0.8;
-      final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+      finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
     }
-    render_color = vec4(final_color, 1.0 - material.tpo.x * 0.3);
+    renderColor = vec4(finalColor, 1.0 - material.tpo.x * 0.3);
   }
   `;
   // Create new raysterizer from canvas and setup movement
@@ -557,6 +567,12 @@ export class Rasterizer {
     }
 
     function texturesToGPU() {
+      let [jitterX, jitterY] = [0, 0];
+      if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) {
+        let jitter = rt.#AAObject.jitter(rt.#canvas);
+        [jitterX, jitterY] = [jitter.x, jitter.y];
+      }
+
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
       // Set world-texture
@@ -577,15 +593,9 @@ export class Rasterizer {
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      // Randomize camera position if Taa is enabled
-      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let jitter = rt.#AAObject.jitter(rt.#canvas);
-        rt.#gl.uniform2f(Perspective, rt.camera.fx + jitter.x, rt.camera.fy + jitter.y);
-      } else  {
-        rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
-      }
+      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, jitterX, jitterY);
       // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
       // Set width of height and normal texture
@@ -672,17 +682,17 @@ export class Rasterizer {
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'camera_position');
+      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
       Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
       RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
+      WorldTex = rt.#gl.getUniformLocation(Program, 'worldTex');
+      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
       HdrLocation = rt.#gl.getUniformLocation(Program, 'hdr');
 
-      LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
+      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
+      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
+      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
       Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.enable(rt.#gl.BLEND);

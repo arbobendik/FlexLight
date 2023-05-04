@@ -44,7 +44,7 @@ async function buildScene() {
 	engine.renderer.render();
 
 	for (let i = 0; i < 1; i++) {
-		let obj = await scene.fetchObjFile('objects/monke.obj');
+		let obj = await scene.fetchObjFile('objects/erde.obj');
 		obj.move(15, 0, -15);
 		scene.queue.push(obj);
 	}

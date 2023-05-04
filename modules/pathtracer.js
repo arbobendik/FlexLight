@@ -46,47 +46,47 @@ export class PathTracer {
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
   precision highp float;
-  in vec3 position_3d;
+  in vec3 position3d;
   in vec4 id;
-  in vec2 tex_pos;
-  uniform vec3 camera_position;
+  in vec2 texPos;
+
+  uniform vec3 cameraPosition;
   uniform vec2 perspective;
   uniform vec4 conf;
+
   out vec3 position;
-  out vec2 tex_coord;
-  out vec3 clip_space;
-  flat out vec4 vertex_id;
+  out vec2 texCoord;
+  out vec3 clipSpace;
+  flat out vec4 vertexId;
   flat out vec3 player;
 
-
   vec3 clipPosition (vec3 pos, vec2 dir) {
-    vec2 translate_px = vec2(
+    vec2 translatePX = vec2(
       pos.x * cos(dir.x) + pos.z * sin(dir.x),
       pos.z * cos(dir.x) - pos.x * sin(dir.x)
     );
 
-    vec2 translate_py = vec2(
-      pos.y * cos(dir.y) + translate_px.y * sin(dir.y),
-      translate_px.y * cos(dir.y) - pos.y * sin(dir.y)
+    vec2 translatePY = vec2(
+      pos.y * cos(dir.y) + translatePX.y * sin(dir.y),
+      translatePX.y * cos(dir.y) - pos.y * sin(dir.y)
     );
 
-    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
-
-    return vec3(translate_2d, translate_py.y);
+    vec2 translate2d = vec2(translatePX.x / conf.y, translatePY.x) / conf.x;
+    return vec3(translate2d, translatePY.y);
   }
 
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
+    vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
 
-    clip_space = clipPosition (move_3d, perspective + conf.zw);
+    clipSpace = clipPosition (move3d, perspective + conf.zw);
     
     // Set triangle position in clip space
-    gl_Position = vec4(clip_space.xy, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), clip_space.z);
+    gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d / 1048576.0))), clipSpace.z);
 
-    position = position_3d;
-    tex_coord = tex_pos;
-    vertex_id = id;
-    player = camera_position;
+    position = position3d;
+    texCoord = texPos;
+    vertexId = id;
+    player = cameraPosition;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -102,10 +102,9 @@ export class PathTracer {
   precision highp float;
   precision highp sampler2D;
 
-  float inv_texture_width = 1.0;
-
   struct Ray {
     vec3 direction;
+    vec3 unitDirection;
     vec3 origin;
     vec3 normal;
   };
@@ -123,56 +122,59 @@ export class PathTracer {
   };
 
   in vec3 position;
-  in vec2 tex_coord;
-  in vec3 clip_space;
+  in vec2 texCoord;
+  in vec3 clipSpace;
 
-  flat in vec4 vertex_id;
+  flat in vec4 vertexId;
   flat in vec3 player;
 
   // Quality configurators
   uniform int samples;
-  uniform int max_reflections;
-  uniform float min_importancy;
-  uniform int use_filter;
+  uniform int maxReflections;
+  uniform float minImportancy;
+  uniform int useFilter;
   // Get global illumination color, intensity
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
-  uniform int texture_width;
+  uniform int textureWidth;
 
   // Texture with information about all triangles in scene
-  uniform sampler2D world_tex;
+  uniform sampler2D worldTex;
   // Random texture to multiply with normal map to simulate rough surfaces
   uniform sampler2D random;
-  uniform sampler2D translucency_tex;
-  uniform sampler2D pbr_tex;
+  uniform sampler2D translucencyTex;
+  uniform sampler2D pbrTex;
   uniform sampler2D tex;
+
   // Texture with all primary light sources of scene
-  uniform sampler2D light_tex;
+  uniform sampler2D lightTex;
 
-  layout(location = 0) out vec4 render_color;
-  layout(location = 1) out vec4 render_color_ip;
-  layout(location = 2) out vec4 render_original_color;
-  layout(location = 3) out vec4 render_id;
-  layout(location = 4) out vec4 render_original_id;
-  layout(location = 5) out vec4 render_location_id;
+  layout(location = 0) out vec4 renderColor;
+  layout(location = 1) out vec4 renderColorIp;
+  layout(location = 2) out vec4 renderOriginalColor;
+  layout(location = 3) out vec4 renderId;
+  layout(location = 4) out vec4 renderOriginalId;
+  layout(location = 5) out vec4 renderLocationId;
 
+
+  float invTextureWidth = 1.0;
   // Prevent blur over shadow border or over (close to) perfect reflections
-  float first_ray_length = 1.0;
+  float firstRayLength = 1.0;
   // Accumulate color of mirror reflections
-  float glass_filter = 0.0;
-  float original_rmex = 0.0;
-  float original_tpox = 0.0;
-  vec3 original_color = vec3(1.0);
+  float glassFilter = 0.0;
+  float originalRMEx = 0.0;
+  float originalTPOx = 0.0;
+  vec3 originalColor = vec3(1.0);
 
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords) {
-    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * inv_texture_width;
-    vec2 atlas_coords = vec2(
-      (coords.x + mod(coords.z, float(texture_width))) * inv_texture_width,
-      (coords.y + floor(coords.z * inv_texture_width)) * atlas_height_factor
+    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
+    vec2 atlasCoords = vec2(
+      (coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth,
+      (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor
     );
     // Return texel on requested location
-    return texture(atlas, atlas_coords);
+    return texture(atlas, atlasCoords);
   }
 
   // Test if ray intersects triangle and return intersection
@@ -180,11 +182,11 @@ export class PathTracer {
     // Can't intersect with triangle with the same normal as the origin
     if (n == ray.normal) return mat2x4(0);
     // Get distance to intersection point
-    float s = dot(n, t[0] - ray.origin) / dot(n, normalize(ray.direction));
+    float s = dot(n, t[0] - ray.origin) / dot(n, ray.unitDirection);
     // Ensure that ray triangle intersection is between light source and texture
     if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
-    vec3 d = (s * normalize(ray.direction)) + ray.origin;
+    vec3 d = (s * ray.unitDirection) + ray.origin;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     vec3 v0 = t[1] - t[0];
     vec3 v1 = t[2] - t[0];
@@ -204,8 +206,8 @@ export class PathTracer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
-    mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
+  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+    mat2x3 v = matrixCompMult(mat2x3(minCorner, maxCorner) - mat2x3(p, p), mat2x3(invRay, invRay));
     float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
     float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
     // Cuboid is behind ray
@@ -214,26 +216,26 @@ export class PathTracer {
   }
 
   // Test for closest ray triangle intersection
-  // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in world_tex (rayTracer[1].w)
+  // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in worldTex (rayTracer[1].w)
   mat2x4 rayTracer(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / normalize(ray.direction);
+    vec3 invRay = 1.0 / ray.unitDirection;
     // Latest intersection which is now closest to origin
     mat2x4 intersection = mat2x4(vec4(0), vec4(vec3(0), -1));
     // Length to latest intersection
-    float min_len = POW32;
+    float minLen = POW32;
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
+    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++){
-      // Get position of current triangle/vertex in world_tex
+      // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
       // Read triangle and normal from world tex
-      vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       mat3 t = mat3(
-        texelFetch(world_tex, index, 0).xyz,
-        texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
-        texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+        texelFetch(worldTex, index, 0).xyz,
+        texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
+        texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
       // Fetch triangle coordinates from world texture
       //  Two cases:
@@ -241,17 +243,17 @@ export class PathTracer {
       //   - normal is 0 0 0 --> beginning of new bounding volume
       if (n != vec3(0)){
         // Test if triangle intersects ray
-        mat2x4 current_intersection = rayTriangle(min_len, ray, t, n);
+        mat2x4 currentIntersection = rayTriangle(minLen, ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])));
         // Test if ray even intersects
-        if (current_intersection != mat2x4(0)){
-          min_len = current_intersection[0].w;
-          intersection = current_intersection;
+        if (currentIntersection != mat2x4(0)){
+          minLen = currentIntersection[0].w;
+          intersection = currentIntersection;
           intersection[1].w = float(i);
         }
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
+      } else if (!rayCuboid(invRay, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
         // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
         i += int(t[2].x);
       }
@@ -263,22 +265,22 @@ export class PathTracer {
   // Simplified rayTracer to only test if ray intersects anything
   bool shadowTest(Ray ray, vec3 light){
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / normalize(ray.direction);
+    vec3 invRay = 1.0 / ray.unitDirection;
     // Precomput max length
     float max = length(light - ray.origin);
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * int(TRIANGLES_PER_ROW);
+    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
-      // Get position of current triangle/vertex in world_tex
+      // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
-      // Read normal and triangle from world_tex
-      vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
+      // Read normal and triangle from worldTex
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       // Fetch triangle coordinates from world texture
       mat3 t = mat3(
-        texelFetch(world_tex, index, 0).xyz,
-        texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
-        texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+        texelFetch(worldTex, index, 0).xyz,
+        texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
+        texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
       //  Three cases:
       //   - normal is not 0 0 0 --> normal vertex
@@ -289,7 +291,7 @@ export class PathTracer {
       } else if (t == mat3(0)) {
         // Break if all values are zero and texture already ended
         break;
-      } else if (!rayCuboid(inv_ray, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
+      } else if (!rayCuboid(invRay, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
         // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
         i += int(t[2].x);
       }
@@ -300,62 +302,62 @@ export class PathTracer {
 
   float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
     float lenP1 = 1.0 + length(ray.direction);
-    vec3 normalDir = normalize(ray.direction);
 
     // Calculate intensity of light reflection, which decreases squared over distance
     float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalDir + normalize(origin - ray.origin));
-    float light = max(dot(normalDir, ray.normal), 0.0);
-    float specular = pow(max(dot(halfVector, normalDir), 0.0), metallicity);
+    vec3 halfVector = normalize(ray.unitDirection + normalize(origin - ray.origin));
+    float light = max(dot(ray.unitDirection, ray.normal), 0.0);
+    float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
     // Determine final color and return it
     return mix(light, max(specular, 0.0), metallicity) * intensity;
   }
 
-  float reservoirSample (sampler2D light_tex, vec4 random_vec, vec3 origin, vec3 last_rough_normal, vec3 last_origin, vec3 last_rme, bool dont_filter, int i) {
-    float reservoir_length = 0.0;
-    float total_weight = 0.0;
+  float reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 origin, vec3 lastRoughNormal, vec3 lastOrigin, vec3 lastRME, bool dontFilter, int i) {
+    float reservoirLength = 0.0;
+    float totalWeight = 0.0;
+    int reservoirNum = 0;
 
-    int reservoir_num = 0;
+    float reservoirWeight;
+    Ray reservoirLightRay;
+    vec3 reservoirLight;
 
-    float reservoir_weight;
-    Ray reservoir_light_ray;
-    vec3 reservoir_light;
+    vec2 lastRandom = abs(randomVec.zw);
 
-
-    vec2 last_random = abs(random_vec.zw);
-
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++) {
+    for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
       // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
+      vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
-      vec2 strength_variation = texelFetch(light_tex, ivec2(1, j), 0).xy;
-      float strength = strength_variation.x;
-      float variation = strength_variation.y;
+      vec2 strengthVariation = texelFetch(lightTex, ivec2(1, j), 0).xy;
+
       // Skip if strength is negative or zero
-      if (strength <= 0.0) continue;
-      reservoir_length ++;
+      if (strengthVariation.x <= 0.0) continue;
+      reservoirLength ++;
       // Alter light source position according to variation.
-      light = random_vec.xyz * variation + light;
-      Ray light_ray = Ray (light - origin, origin, normalize(last_rough_normal));
-      float weight = forwardTrace(light_ray, last_origin, last_rme.y, strength);
-      total_weight += weight;
-      if (last_random.y * total_weight <= weight) {
-        reservoir_weight = weight;
-        reservoir_light_ray = light_ray;
-        reservoir_light = light;
-        reservoir_num = j;
+      light = randomVec.xyz * strengthVariation.y + light;
+
+      vec3 dir = light - origin;
+      Ray lightRay = Ray (dir, normalize(dir), origin, lastRoughNormal);
+      float weight = forwardTrace(lightRay, lastOrigin, lastRME.y, strengthVariation.x);
+      totalWeight += weight;
+
+      if (lastRandom.y * totalWeight <= weight) {
+        reservoirWeight = weight;
+        reservoirLightRay = lightRay;
+        reservoirLight = light;
+        reservoirNum = j;
       }
+
       // Update pseudo random variable.
-      last_random = texture(random, last_random).zw;
+      lastRandom = texture(random, lastRandom).zw;
     }
 
-    if (reservoir_length == 0.0) return 0.0;
+    if (reservoirLength == 0.0) return 0.0;
     // Test if in shadow
-    if (reservoir_weight == 0.0 || !shadowTest(reservoir_light_ray, reservoir_light)) {
-      if (dont_filter || i == 0) render_id.w = float((reservoir_num % 128) * 2) / 255.0;
-      return total_weight;
-    } else if (dont_filter || i == 0) render_id.w = float((reservoir_num % 128) * 2 + 1) / 255.0;
+    if (reservoirWeight == 0.0 || !shadowTest(reservoirLightRay, reservoirLight)) {
+      if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) * 2) / 255.0;
+      return totalWeight;
+    } else if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) * 2 + 1) / 255.0;
     return 0.0;
   }
 
@@ -364,213 +366,212 @@ export class PathTracer {
     return dot(normal, lightDir);
   }
 
-  vec3 lightTrace(sampler2D world_tex, sampler2D light_tex, vec3 origin, Ray first_ray, vec3 rme, vec3 tpo, int sample_n, int bounces){
-    bool first_rough = rme.x >= 0.25;
+  vec3 lightTrace(vec3 origin, Ray firstRay, vec3 rme, vec3 tpo, int sampleN, int bounces){
+    bool firstRough = rme.x >= 0.25;
     // Set bool to false when filter becomes necessary
-    bool dont_filter = true;
-    float last_filter_roughness = 0.0;
-    float last_id = 0.0;
+    bool dontFilter = true;
+    float lastFilterRoughness = 0.0;
+    float lastId = 0.0;
     // Use additive color mixing technique, so start with black
-    vec3 final_color = vec3(0);
-    vec3 importancy_factor = vec3(1);
-    vec3 last_origin = origin;
+    vec3 finalColor = vec3(0);
+    vec3 importancyFactor = vec3(1);
+    vec3 lastOrigin = origin;
     // Ray currently traced
-    Ray ray = Ray(first_ray.direction, first_ray.origin, first_ray.normal);
+    Ray ray = Ray(firstRay.direction, firstRay.unitDirection, firstRay.origin, firstRay.normal);
     // Remember color of triangle ray intersected lastly
     // Start with white instead of original triangle color to seperate raytracing from texture, combine both results in filter
-    vec3 last_color = vec3(1);
+    vec3 lastColor = vec3(1);
     // Pack roughness, metallicity and emissiveness in one vector for simplicity
-    vec3 last_rme = rme;
+    vec3 lastRME = rme;
     // Pack all translucency related values in one vector
-    vec3 last_tpo = tpo;
-    float cos_sample_n = cos(float(sample_n));
+    vec3 lastTPO = tpo;
+    float cosSampleN = cos(float(sampleN));
     // Iterate over each bounce and modify color accordingly
-    for (int i = 0; i < bounces && length(importancy_factor) >= min_importancy * SQRT3; i++){
+    for (int i = 0; i < bounces && length(importancyFactor) >= minImportancy * SQRT3; i++){
       float fi = float(i);
       // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
-      importancy_factor *= last_color;
+      importancyFactor *= lastColor;
       // Apply emissive texture and ambient light
-      final_color = (ambient * 0.25 + last_rme.z) * importancy_factor + final_color;
+      finalColor = (ambient * 0.25 + lastRME.z) * importancyFactor + finalColor;
       // Generate pseudo random vector
-      ivec2 random_coord = ivec2(mod(((clip_space.xy / clip_space.z) + (sin(fi) + cos_sample_n)) * 2.0, 1.0) * vec2(textureSize(random, 0).xy));
-      vec4 random_vec = texelFetch(random, random_coord, 0) * 2.0 - 1.0;
+      ivec2 randomCoord = ivec2(mod(((clipSpace.xy / clipSpace.z) + (sin(fi) + cosSampleN)) * 2.0, 1.0) * vec2(textureSize(random, 0).xy));
+      vec4 randomVec = texelFetch(random, randomCoord, 0) * 2.0 - 1.0;
       // Alter normal according to roughness value
-      vec3 last_rough_normal = normalize(mix(ray.normal, random_vec.xyz, last_rme.x));
-      // Fix for Windows devices, invert last_rough_normal if it points under the surface.
-      last_rough_normal = sign(dot(last_rough_normal, ray.normal)) * last_rough_normal;
+      vec3 lastRoughNormal = normalize(mix(ray.normal, randomVec.xyz, lastRME.x));
+      // Fix for Windows devices, invert lastRoughNormal if it points under the surface.
+      lastRoughNormal = sign(dot(lastRoughNormal, ray.normal)) * lastRoughNormal;
       // Handle fresnel reflection
-      float fresnel_reflect = abs(fresnel(ray.normal, ray.direction));
+      float fresnelReflect = abs(fresnel(ray.normal, ray.unitDirection));
       // object is solid or translucent by chance because of the fresnel effect
-      bool is_solid = last_tpo.x * fresnel_reflect <= abs(random_vec.w);
+      bool isSolid = lastTPO.x * fresnelReflect <= abs(randomVec.w);
       // Test if filter is already necessary
-      if (dont_filter && i != 0) {
-        if(sample_n == 0) {
+      if (dontFilter && i != 0) {
+        if(sampleN == 0) {
           // Set color in filter
-          original_color *= last_color;
-          last_color = vec3(1);
+          originalColor *= lastColor;
+          lastColor = vec3(1);
         }
         // Add filtering intensity for respective surface
-        original_rmex += last_filter_roughness;
+        originalRMEx += lastFilterRoughness;
         // Update render id
-        if (original_tpox > 0.0) {
-          render_id += pow(2.0, - fi) * vec4(ray.normal.xy, (last_filter_roughness * 2.0 + last_rme.y) * THIRD, 0.0);
+        if (originalTPOx > 0.0) {
+          renderId += pow(2.0, - fi) * vec4(ray.normal.xy, (lastFilterRoughness * 2.0 + lastRME.y) * THIRD, 0.0);
         } else {
-          render_id += pow(2.0, - fi) * vec4(last_id * INV_65536, last_id * INV_256, (last_filter_roughness * 2.0 + last_rme.y) * THIRD, 0.0);
+          renderId += pow(2.0, - fi) * vec4(lastId * INV_65536, lastId * INV_256, (lastFilterRoughness * 2.0 + lastRME.y) * THIRD, 0.0);
         }
-        original_tpox ++;
+        originalTPOx ++;
       }
-      // Update dont_filter variable
-      dont_filter = dont_filter && ((last_rme.x < 0.01 && is_solid) || !is_solid);
+      // Update dontFilter variable
+      dontFilter = dontFilter && ((lastRME.x < 0.01 && isSolid) || !isSolid);
       // Intersection of ray with triangle
       mat2x4 intersection;
       // Calculate brightness for current hit
-      float brightness_sample = reservoirSample (light_tex, random_vec, ray.origin, last_rough_normal, last_origin, last_rme, dont_filter, i);
+      float brightnessSample = reservoirSample (lightTex, randomVec, ray.origin, lastRoughNormal, lastOrigin, lastRME, dontFilter, i);
       // Handle translucency and skip rest of light calculation
-      if (is_solid) {
-        if (dont_filter && last_tpo.x > 0.5) {
-          glass_filter += 1.0;
-          dont_filter = false;
+      if (isSolid) {
+        if (dontFilter && lastTPO.x > 0.5) {
+          glassFilter += 1.0;
+          dontFilter = false;
         }
         // If ray fresnel reflects from inside an transparent object,
         // the surface faces in the opposite direction as usual
-        ray.normal *= - sign(dot(ray.direction, ray.normal));
+        ray.normal *= - sign(dot(ray.unitDirection, ray.normal));
         // Calculate primary light sources for this pass if ray hits non translucent object
-        final_color += brightness_sample * importancy_factor;
+        finalColor += brightnessSample * importancyFactor;
         // Calculate reflecting ray
-        ray.direction = normalize(mix(reflect(ray.direction, ray.normal), normalize(random_vec.xyz), last_rme.x));
+        ray.direction = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), lastRME.x));
         if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
+        ray.unitDirection = ray.direction;
         // Calculate next intersection
         intersection = rayTracer(ray);
       } else {
-        float ratio = last_tpo.z * 4.0;
-        float sign = sign(dot(ray.direction, ray.normal));
-        ray.direction = normalize(ray.direction + refract(ray.direction, - sign * ray.normal, pow(ratio, sign)));
+        float ratio = lastTPO.z * 4.0;
+        float sign = sign(dot(ray.unitDirection, ray.normal));
+        ray.direction = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * ray.normal, pow(ratio, sign)));
+        ray.unitDirection = ray.direction;
         // Calculate next intersection
         intersection = rayTracer(ray);
-        last_origin = 2.0 * ray.origin - last_origin;
-        final_color += brightness_sample * importancy_factor * (1.0 - fresnel_reflect);
+        lastOrigin = 2.0 * ray.origin - lastOrigin;
+        finalColor += brightnessSample * importancyFactor * (1.0 - fresnelReflect);
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
       // Update last used tpo.x value
-      if (dont_filter) original_tpox = last_tpo.x;
-      // Get position of current triangle/vertex in world_tex
+      if (dontFilter) originalTPOx = lastTPO.x;
+      // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 8.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
-      vec3 v_uvs_1 = texelFetch(world_tex, index + ivec2(6, 0), 0).xyz;
-      vec3 v_uvs_2 = texelFetch(world_tex, index + ivec2(7, 0), 0).xyz;
-      mat3x2 vertex_uvs = mat3x2(vec2(v_uvs_1.xy), vec2(v_uvs_1.z, v_uvs_2.x), vec2(v_uvs_2.yz));
+      vec3 vUVs1 = texelFetch(worldTex, index + ivec2(6, 0), 0).xyz;
+      vec3 vUVs2 = texelFetch(worldTex, index + ivec2(7, 0), 0).xyz;
+      mat3x2 vertexUVs = mat3x2(vec2(vUVs1.xy), vec2(vUVs1.z, vUVs2.x), vec2(vUVs2.yz));
       // Interpolate final barycentric coordinates
-      vec2 barycentric = vertex_uvs * intersection[1].xyz;
+      vec2 barycentric = vertexUVs * intersection[1].xyz;
       // Read triangle normal
-      vec3 tex_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
-      // Default last_color to color of target triangle
+      vec3 texNums = texelFetch(worldTex, index + ivec2(5, 0), 0).xyz;
+      // Default lastColor to color of target triangle
       // Multiply with texture value if available
-      last_color = mix(texelFetch(world_tex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(barycentric, tex_nums.x)).xyz, sign(tex_nums.x + 1.0));
+      lastColor = mix(texelFetch(worldTex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(barycentric, texNums.x)).xyz, sign(texNums.x + 1.0));
       // Default roughness, metallicity and emissiveness
       // Set roughness to texture value if texture is defined
-      last_rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(barycentric, tex_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(tex_nums.y + 1.0));
+      lastRME = mix(vec3(0.5, 0.5, 0.0), lookup(pbrTex, vec3(barycentric, texNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texNums.y + 1.0));
       // Update tpo for next pass
-      last_tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(barycentric, tex_nums.z)).xyz, sign(tex_nums.z + 1.0));
+      lastTPO = mix(vec3(0.0, 1.0, 0.25), lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, sign(texNums.z + 1.0));
       // Update other parameters
-      last_id = intersection[1].w;
-      last_origin = ray.origin;
+      lastId = intersection[1].w;
+      lastOrigin = ray.origin;
       ray.origin = intersection[0].xyz;
-      ray.normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
+      ray.normal = normalize(texelFetch(worldTex, index + ivec2(4, 0), 0).xyz);
       // Preserve original roughness for filter pass
-      last_filter_roughness = last_rme.x;
+      lastFilterRoughness = lastRME.x;
       // Fresnel effect
-      last_rme.x *= mix(1.0, fresnel(ray.normal, last_origin - ray.origin), last_rme.y);
-      if (i == 0) first_ray_length = min(length(ray.origin - last_origin) / length(first_ray.origin - origin), 1.0);
+      lastRME.x *= mix(1.0, fresnel(ray.normal, lastOrigin - ray.origin), lastRME.y);
+      if (i == 0) firstRayLength = min(length(ray.origin - lastOrigin) / length(firstRay.origin - origin), 1.0);
     }
     // Return final pixel color
-    return final_color;
+    return finalColor;
   }
   
   void main(){
     // Calculate constant for this pass
-    inv_texture_width = 1.0 / float(texture_width);
+    invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertex_id.x * 65535.0 + vertex_id.y;
+    float id = vertexId.x * 65535.0 + vertexId.y;
     ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
-    vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
-    vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
-    vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
+    vec3 color = texelFetch(worldTex, index + ivec2(3, 0), 0).xyz;
+    vec3 normal = normalize(texelFetch(worldTex, index + ivec2(4, 0), 0).xyz);
+    vec3 textureNums = texelFetch(worldTex, index + ivec2(5, 0), 0).xyz;
     // Test if pixel is in frustum or not
-    if (clip_space.z < 0.0) return;
+    if (clipSpace.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
-    // Default tex_color to color
+    // Default texColor to color
     Material material = Material (
-      mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0)),
-      mix(vec3(0.5, 0.0, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0)),
-      mix(vec3(0.0, 0.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0))
+      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(textureNums.y + 1.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
     );
 
-    original_tpox = material.tpo.x;
+    originalTPOx = material.tpo.x;
     // Preserve original roughness for filter pass
-    float filter_roughness = material.rme.x;
+    float filterRoughness = material.rme.x;
     // Fresnel effect
     material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
     // Start hybrid ray tracing on a per light source base
-    // Directly add emissive light of original surface to final_color
-    vec3 final_color = vec3(0);
-
+    // Directly add emissive light of original surface to finalColor
+    vec3 finalColor = vec3(0);
+    // Generate camera ray
+    vec3 dir = position - player;
+    Ray ray = Ray (dir, normalize(dir), position, normalize(normal));
     // Generate multiple samples
-    for (int i = 0; i < samples; i++){
-      // Set color of object itself
-      // Calculate pixel for specific normal
-      Ray ray = Ray (normalize(position - player), position, normalize(normal));
-      final_color += lightTrace(world_tex, light_tex, player, ray, material.rme, material.tpo, i, max_reflections);
-    }
+    for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material.rme, material.tpo, i, maxReflections);
     
     // Average ray colors over samples.
-    final_color /= float(samples);
-    first_ray_length /= float(samples);
-    original_rmex /= float(samples);
-    // if (samples != 1) glass_filter = 0.0;
+    finalColor /= float(samples);
+    firstRayLength /= float(samples);
+    originalRMEx /= float(samples);
+    // if (samples != 1) glassFilter = 0.0;
     // Render all relevant information to 4 textures for the post processing shader
-    render_color = vec4(mix(final_color * material.color, mod(final_color, 1.0), float(use_filter)), 1.0);
+    renderColor = vec4(mix(finalColor * material.color, mod(finalColor, 1.0), float(useFilter)), 1.0);
     // 16 bit HDR for improved filtering
-    render_color_ip = vec4(floor(final_color) * INV_256, glass_filter);
-    render_original_color = vec4(material.color * original_color, (material.rme.x + original_rmex + 0.0625 * material.tpo.x) * (first_ray_length + 0.06125));
-		render_id += vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, 0.0);
-    render_original_id = vec4(vertex_id.zw, (filter_roughness * 2.0 + material.rme.y) / 3.0, original_tpox);
+    renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
+    renderOriginalColor = vec4(material.color * originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
+		renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
+    renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
     float div = 4.0 * length(position - player);
-    render_location_id = vec4(mod(position, div) / div, material.rme.z);
+    renderLocationId = vec4(mod(position, div) / div, material.rme.z);
   }
   `;
   #firstFilterGlsl = `#version 300 es
   #define INV_256 0.00390625
 
   precision highp float;
-  in vec2 clip_space;
-  uniform sampler2D pre_render_color;
-  uniform sampler2D pre_render_color_ip;
-  uniform sampler2D pre_render_normal;
-  uniform sampler2D pre_render_original_color;
-  uniform sampler2D pre_render_id;
-  uniform sampler2D pre_render_original_id;
-  layout(location = 0) out vec4 render_color;
-  layout(location = 1) out vec4 render_color_ip;
-  layout(location = 2) out vec4 render_id;
+  in vec2 clipSpace;
+  uniform sampler2D preRenderColor;
+  uniform sampler2D preRenderColorIp;
+  uniform sampler2D preRenderNormal;
+  uniform sampler2D preRenderOriginalColor;
+  uniform sampler2D preRenderId;
+  uniform sampler2D preRenderOriginalId;
+  layout(location = 0) out vec4 renderColor;
+  layout(location = 1) out vec4 renderColorIp;
+  layout(location = 2) out vec4 renderId;
   void main() {
     // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
-    vec4 center_color = texelFetch(pre_render_color, texel, 0);
-    vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
-    vec4 center_id = texelFetch(pre_render_id, texel, 0);
+    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
+    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
+    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
+    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
+    vec4 centerId = texelFetch(preRenderId, texel, 0);
 
-    int center_id_w = int(center_id.w * 255.0);
-    int center_light_num = center_id_w / 2;
-    int center_shadow = center_id_w % 2;
+    int centerIdw = int(centerId.w * 255.0);
+    int centerLightNum = centerIdw / 2;
+    int centerShadow = centerIdw % 2;
 
-    render_id = center_id;
+    renderId = centerId;
 
-    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
+    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
     vec4 color = vec4(0);
     float count = 0.0;
 
@@ -590,98 +591,98 @@ export class PathTracer {
                                   vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
-    if (center_o_id.w > 0.0 && center_color_ip.w > 0.0) {
-      vec4 id = center_id;
+    if (centerOId.w > 0.0 && centerColorIp.w > 0.0) {
+      vec4 id = centerId;
 
       mat4 ids = mat4(0);
-      mat4 o_ids = mat4(0);
+      mat4 oIds = mat4(0);
 
       vec4 ipws = vec4(0);
       for (int i = 0; i < 4; i++) {
-        ids[i] = texelFetch(pre_render_id, texel + stencil1[i], 0);
-        o_ids[i] = texelFetch(pre_render_original_id, texel + stencil1[i], 0);
-        ipws[i] = texelFetch(pre_render_color_ip, texel + stencil1[i], 0).w;
+        ids[i] = texelFetch(preRenderId, texel + stencil1[i], 0);
+        oIds[i] = texelFetch(preRenderOriginalId, texel + stencil1[i], 0);
+        ipws[i] = texelFetch(preRenderColorIp, texel + stencil1[i], 0).w;
       }
 
       ivec4 vote = ivec4(0);
       for (int i = 0; i < 4; i++) {
         if (ipws[i] == 0.0) {
           vote[i] = 1;
-          if (ids[i].xyz == id.xyz && o_ids[i] == center_o_id) vote[i] ++;
-          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz && o_ids[i] == o_ids[j]) vote[i] ++;
+          if (ids[i].xyz == id.xyz && oIds[i] == centerOId) vote[i] ++;
+          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz && oIds[i] == oIds[j]) vote[i] ++;
         }
       }
 
-      int max_vote = 0;
-      int id_number = 0;
+      int maxVote = 0;
+      int idNumber = 0;
 
       for (int i = 0; i < 4; i++) {
-        if (vote[i] >= max_vote) {
-          max_vote = vote[i];
-          id_number = i;
+        if (vote[i] >= maxVote) {
+          maxVote = vote[i];
+          idNumber = i;
         }
       }
       
-      render_id = ids[id_number];
-      render_color_ip.w = 1.0 - sign(float(max_vote));
+      renderId = ids[idNumber];
+      renderColorIp.w = 1.0 - sign(float(maxVote));
     }
 
-    if (center_o_color.w == 0.0) {
-      color = center_color;
+    if (centerOColor.w == 0.0) {
+      color = centerColor;
       count = 1.0;
     } else {
       for (int i = 0; i < 37; i++) {
-        ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + center_o_color.w) * (1.0 + center_o_color.w) * 3.5);
+        ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + centerOColor.w) * (1.0 + centerOColor.w) * 3.5);
         
-        vec4 id = texelFetch(pre_render_id, coord, 0);
-        vec4 original_id = texelFetch(pre_render_original_id, coord, 0);
+        vec4 id = texelFetch(preRenderId, coord, 0);
+        vec4 originalId = texelFetch(preRenderOriginalId, coord, 0);
 
-        int id_w = int(id.w * 255.0);
-        int light_num = id_w / 2;
-        int shadow = id_w % 2;    
+        int idW = int(id.w * 255.0);
+        int lightNum = idW / 2;
+        int shadow = idW % 2;    
 
-        vec4 next_color = texelFetch(pre_render_color, coord, 0);
-        vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-        if (id.xyz == center_id.xyz && (center_light_num != light_num || center_shadow == shadow)) {
-          color += next_color + next_color_ip * 256.0;
+        vec4 nextColor = texelFetch(preRenderColor, coord, 0);
+        vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
+        if (id.xyz == centerId.xyz && (centerLightNum != lightNum || centerShadow == shadow)) {
+          color += nextColor + nextColorIp * 256.0;
           count ++;
         }
       }
     }
     
     
-    float inv_count = 1.0 / count;
-    render_color = sign(center_color.w) * vec4(mod(color.xyz * inv_count, 1.0), center_color.w);
+    float invCount = 1.0 / count;
+    renderColor = sign(centerColor.w) * vec4(mod(color.xyz * invCount, 1.0), centerColor.w);
     // Set out color for render texture for the antialiasing filter
-    render_color_ip = sign(center_color.w) * vec4(floor(color.xyz * inv_count) * INV_256, render_color_ip.w);
+    renderColorIp = sign(centerColor.w) * vec4(floor(color.xyz * invCount) * INV_256, renderColorIp.w);
   }
   `;
   #secondFilterGlsl = `#version 300 es
   #define INV_256 0.00390625
   
   precision highp float;
-  in vec2 clip_space;
-  uniform sampler2D pre_render_color;
-  uniform sampler2D pre_render_color_ip;
-  uniform sampler2D pre_render_original_color;
-  uniform sampler2D pre_render_id;
-  uniform sampler2D pre_render_original_id;
-  layout(location = 0) out vec4 render_color;
-  layout(location = 1) out vec4 render_color_ip;
-  layout(location = 2) out vec4 render_original_color;
+  in vec2 clipSpace;
+  uniform sampler2D preRenderColor;
+  uniform sampler2D preRenderColorIp;
+  uniform sampler2D preRenderOriginalColor;
+  uniform sampler2D preRenderId;
+  uniform sampler2D preRenderOriginalId;
+  layout(location = 0) out vec4 renderColor;
+  layout(location = 1) out vec4 renderColorIp;
+  layout(location = 2) out vec4 renderOriginalColor;
   void main(){
     // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
-    vec4 center_color = texelFetch(pre_render_color, texel, 0);
-    vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
-    vec4 center_id = texelFetch(pre_render_id, texel, 0);
-    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
+    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
+    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
+    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
+    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
+    vec4 centerId = texelFetch(preRenderId, texel, 0);
+    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
     vec4 color = vec4(0);
-    vec4 o_color = vec4(0);
+    vec4 oColor = vec4(0);
     float ipw = 0.0;
     float count = 0.0;
-    float o_count = 0.0;
+    float oCount = 0.0;
 
     const vec2 stencil[89] = vec2[89](
                                                               vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
@@ -699,58 +700,58 @@ export class PathTracer {
     
     // Apply blur filter on image
     for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (1.0 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
-      vec4 id = texelFetch(pre_render_id, coord, 0);
-      vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
-      vec4 next_color = texelFetch(pre_render_color, coord, 0);
-      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-      vec4 next_o_color = texelFetch(pre_render_original_color, coord, 0);
+      ivec2 coord = texel + ivec2(stencil[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+      vec4 id = texelFetch(preRenderId, coord, 0);
+      vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
+      vec4 nextColor = texelFetch(preRenderColor, coord, 0);
+      vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
+      vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
 
-      if (min(center_o_id.w, next_o_id.w) > 0.1) {
-        if (id == center_id || (max(next_color_ip.w, center_color_ip.w) != 0.0 && center_o_id.xyz == next_o_id.xyz)) {
-          color += next_color + vec4(next_color_ip.xyz, 0.0) * 256.0;
+      if (min(centerOId.w, nextOId.w) > 0.1) {
+        if (id == centerId || (max(nextColorIp.w, centerColorIp.w) != 0.0 && centerOId.xyz == nextOId.xyz)) {
+          color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
           count ++;
-          ipw += next_color_ip.w;
-          o_color += next_o_color;
-          o_count++;
+          ipw += nextColorIp.w;
+          oColor += nextOColor;
+          oCount ++;
         }
       }
 
-      if (id.xyz == center_id.xyz) {
-        color += next_color + vec4(next_color_ip.xyz, 0.0) * 256.0;
+      if (id.xyz == centerId.xyz) {
+        color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
         count ++;
       }
     }
 
-    float inv_count = 1.0 / count;
-    render_color = center_color.w * vec4(mod(color.xyz * inv_count, 1.0), color.w * inv_count);
+    float invCount = 1.0 / count;
+    renderColor = centerColor.w * vec4(mod(color.xyz * invCount, 1.0), color.w * invCount);
     // Set out color for render texture for the antialiasing filter
-    render_color_ip =  center_color.w * vec4(floor(color.xyz * inv_count) * INV_256, ipw);
-    render_original_color = center_color.w * ((o_count == 0.0) ? center_o_color : o_color / o_count);
+    renderColorIp =  centerColor.w * vec4(floor(color.xyz * invCount) * INV_256, ipw);
+    renderOriginalColor = centerColor.w * (oCount == 0.0 ? centerOColor : oColor / oCount);
   }
   `;
   #finalFilterGlsl = `#version 300 es
   precision highp float;
-  in vec2 clip_space;
-  uniform sampler2D pre_render_color;
-  uniform sampler2D pre_render_color_ip;
-  uniform sampler2D pre_render_original_color;
-  uniform sampler2D pre_render_id;
-  uniform sampler2D pre_render_original_id;
+  in vec2 clipSpace;
+  uniform sampler2D preRenderColor;
+  uniform sampler2D preRenderColorIp;
+  uniform sampler2D preRenderOriginalColor;
+  uniform sampler2D preRenderId;
+  uniform sampler2D preRenderOriginalId;
   uniform int hdr;
-  out vec4 out_color;
+  out vec4 outColor;
   void main(){
     // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(pre_render_color, 0)) * clip_space);
-    vec4 center_color = texelFetch(pre_render_color, texel, 0);
-    vec4 center_color_ip = texelFetch(pre_render_color_ip, texel, 0);
-    vec4 center_o_color = texelFetch(pre_render_original_color, texel, 0);
-    vec4 center_id = texelFetch(pre_render_id, texel, 0);
-    vec4 center_o_id = texelFetch(pre_render_original_id, texel, 0);
+    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
+    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
+    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
+    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
+    vec4 centerId = texelFetch(preRenderId, texel, 0);
+    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
     vec4 color = vec4(0);
-    vec4 o_color = vec4(0);
+    vec4 oColor = vec4(0);
     float count = 0.0;
-    float o_count = 0.0;
+    float oCount = 0.0;
 
     const vec2 stencil[89] = vec2[89](
                                                               vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
@@ -768,38 +769,38 @@ export class PathTracer {
 
     // Apply blur filter on image
     for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(center_o_color.w + center_o_id.w * 4.0)));
-      vec4 id = texelFetch(pre_render_id, coord, 0);
-      vec4 next_o_id = texelFetch(pre_render_original_id, coord, 0);
-      vec4 next_color = texelFetch(pre_render_color, coord, 0);
-      vec4 next_color_ip = texelFetch(pre_render_color_ip, coord, 0);
-      vec4 next_o_color = texelFetch(pre_render_original_color, coord, 0);
-      if (max(next_color_ip.w, center_color_ip.w) != 0.0 && min(center_o_id.w, next_o_id.w) >= 0.5 && center_o_id.xyz == next_o_id.xyz) {
-        color += next_color + next_color_ip * 255.0;
+      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+      vec4 id = texelFetch(preRenderId, coord, 0);
+      vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
+      vec4 nextColor = texelFetch(preRenderColor, coord, 0);
+      vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
+      vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
+      if (max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) >= 0.5 && centerOId.xyz == nextOId.xyz) {
+        color += nextColor + nextColorIp * 255.0;
         count ++;
-        o_color += next_o_color;
-        o_count++;
-      } else if (id.xyz == center_id.xyz) {
-        color += next_color + next_color_ip * 255.0;
+        oColor += nextOColor;
+        oCount ++;
+      } else if (id.xyz == centerId.xyz) {
+        color += nextColor + nextColorIp * 255.0;
         count ++;
       }
     }
     
-    if (center_color.w > 0.0) {
-      // Set out target_color for render texture for the antialiasing filter
-      vec3 final_color = color.xyz / count;
-      final_color *= (o_count == 0.0) ? center_o_color.xyz : o_color.xyz / o_count;
+    if (centerColor.w > 0.0) {
+      // Set out targetColor for render texture for the antialiasing filter
+      vec3 finalColor = color.xyz / count;
+      finalColor *= (oCount == 0.0) ? centerOColor.xyz : oColor.xyz / oCount;
 
       if (hdr == 1) {
         // Apply Reinhard tone mapping
-        final_color = final_color / (final_color + vec3(1.0));
+        finalColor = finalColor / (finalColor + vec3(1.0));
         // Gamma correction
         float gamma = 0.8;
-        final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+        finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
       }
-      out_color = vec4(final_color, 1.0);
+      outColor = vec4(finalColor, 1.0);
     } else {
-      out_color = vec4(0);
+      outColor = vec4(0);
     }
   }
   `;
@@ -1425,52 +1426,52 @@ export class PathTracer {
       // Build tempShader
       this.#tempGlsl = `#version 300 es
       precision highp float;
-      in vec2 clip_space;
+      in vec2 clipSpace;
       uniform int hdr;
       `;
 
       for (let i = 0; i < rt.temporalSamples; i++) {
-        this.#tempGlsl += 'uniform sampler2D cache_' + i + ';' + newLine;
-        this.#tempGlsl += 'uniform sampler2D cache_ip_' + i + ';' + newLine;
-        this.#tempGlsl += 'uniform sampler2D cache_id_' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cache' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cacheIp' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cacheId' + i + ';' + newLine;
       }
 
       this.#tempGlsl += `
-      layout(location = 0) out vec4 render_color;
-      layout(location = 1) out vec4 render_color_ip;
+      layout(location = 0) out vec4 renderColor;
+      layout(location = 1) out vec4 renderColorIp;
     
       void main () {
-        ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
-        vec4 id = texelFetch(cache_id_0, texel, 0);
+        ivec2 texel = ivec2(vec2(textureSize(cache0, 0)) * clipSpace);
+        vec4 id = texelFetch(cacheId0, texel, 0);
         float counter = 1.0;
         
-        float center_w = texelFetch(cache_0, texel, 0).w;
+        float centerW = texelFetch(cache0, texel, 0).w;
       `;
 
       this.#tempGlsl += rt.filter ? `
-        vec3 color = texelFetch(cache_0, texel, 0).xyz + texelFetch(cache_ip_0, texel, 0).xyz * 256.0;
-        float glass_filter = texelFetch(cache_ip_0, texel, 0).w;
+        vec3 color = texelFetch(cache0, texel, 0).xyz + texelFetch(cacheIp0, texel, 0).xyz * 256.0;
+        float glassFilter = texelFetch(cacheIp0, texel, 0).w;
       ` : `
-        vec3 color = texelFetch(cache_0, texel, 0).xyz;` + newLine;
+        vec3 color = texelFetch(cache0, texel, 0).xyz;` + newLine;
 
       for (let i = 1; i < rt.temporalSamples; i += 4) {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         if (rt.filter) {
           this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
-          for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_ip_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-          this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_ip_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+          for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+          this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         }
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache_id_' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache_id_' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         this.#tempGlsl += rt.filter ? `
         for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
-        for (int i = 0; i < 4; i++) glass_filter += ip` + i + `[i].w;
+        for (int i = 0; i < 4; i++) glassFilter += ip` + i + `[i].w;
         ` : `
         for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
           color += c` + i + `[i].xyz;
@@ -1482,9 +1483,9 @@ export class PathTracer {
       this.#tempGlsl += 'color /= counter;' + newLine;
 
       this.#tempGlsl += rt.filter ? `
-        render_color = vec4(mod(color, 1.0), center_w);
+        renderColor = vec4(mod(color, 1.0), centerW);
         // 16 bit HDR for improved filtering
-        render_color_ip = vec4(floor(color) / 256.0, glass_filter);
+        renderColorIp = vec4(floor(color) / 256.0, glassFilter);
       }` : `
         if (hdr == 1) {
           // Apply Reinhard tone mapping
@@ -1492,11 +1493,12 @@ export class PathTracer {
           // Gamma correction
           float gamma = 0.8;
           color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
-          render_color = vec4(color, center_w);
+          renderColor = vec4(color, centerW);
         } else {
-          render_color = vec4(color, center_w);
+          // Set color of object itself
+          renderColor = vec4(color, centerW);
         }
-        render_color = vec4(color, center_w);
+        renderColor = vec4(color, centerW);
       }`;
       // Force update textures by resetting texture Lists
       rt.#textureList = [];
@@ -1514,21 +1516,21 @@ export class PathTracer {
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'camera_position');
+      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
       Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
       RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
       SamplesLocation = rt.#gl.getUniformLocation(Program, 'samples');
-      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'max_reflections');
-      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'min_importancy');
-      FilterLocation = rt.#gl.getUniformLocation(Program, 'use_filter');
+      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'maxReflections');
+      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'minImportancy');
+      FilterLocation = rt.#gl.getUniformLocation(Program, 'useFilter');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
+      WorldTex = rt.#gl.getUniformLocation(Program, 'worldTex');
       RandomTex = rt.#gl.getUniformLocation(Program, 'random');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
+      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
 
-      LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
+      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
+      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
+      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
       Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.disable(rt.#gl.BLEND);
@@ -1571,9 +1573,9 @@ export class PathTracer {
       TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
 
       for (let i = 0; i < rt.temporalSamples; i++) {
-        TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_' + i);
-        TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_ip_' + i);
-        TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache_id_' + i);
+        TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache' + i);
+        TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
+        TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
       }
       
       let TempVertexBuffer = rt.#gl.createBuffer();
@@ -1590,11 +1592,11 @@ export class PathTracer {
         rt.#gl.bindVertexArray(PostVao[i]);
         rt.#gl.useProgram(PostProgram[i]);
         // Bind uniforms
-        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color');
-        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_color_ip');
-        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_color');
-        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_id');
-        OriginalIdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'pre_render_original_id');
+        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderColor');
+        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderColorIp');
+        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalColor');
+        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderId');
+        OriginalIdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalId');
         if (i === 4) HdrLocation = rt.#gl.getUniformLocation(PostProgram[i], 'hdr');
         PostVertexBuffer[i] = rt.#gl.createBuffer();
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
