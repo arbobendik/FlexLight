@@ -10,33 +10,33 @@ export class TAA {
 
     #shader = `#version 300 es
     precision highp float;
-    in vec2 clip_space;
-    uniform sampler2D cache_0;
-    uniform sampler2D cache_1;
-    uniform sampler2D cache_2;
-    uniform sampler2D cache_3;
-    uniform sampler2D cache_4;
-    uniform sampler2D cache_5;
-    uniform sampler2D cache_6;
-    uniform sampler2D cache_7;
-    uniform sampler2D cache_8;
-    out vec4 out_color;
+    in vec2 clipSpace;
+    uniform sampler2D cache0;
+    uniform sampler2D cache1;
+    uniform sampler2D cache2;
+    uniform sampler2D cache3;
+    uniform sampler2D cache4;
+    uniform sampler2D cache5;
+    uniform sampler2D cache6;
+    uniform sampler2D cache7;
+    uniform sampler2D cache8;
+    out vec4 outColor;
 
     void main () {
-        ivec2 texel = ivec2(vec2(textureSize(cache_0, 0)) * clip_space);
+        ivec2 texel = ivec2(vec2(textureSize(cache0, 0)) * clipSpace);
 
         mat4 c0 = mat4(
-            texelFetch(cache_1, texel, 0), 
-            texelFetch(cache_2, texel, 0),
-            texelFetch(cache_3, texel, 0),
-            texelFetch(cache_4, texel, 0)
+            texelFetch(cache1, texel, 0), 
+            texelFetch(cache2, texel, 0),
+            texelFetch(cache3, texel, 0),
+            texelFetch(cache4, texel, 0)
         );
 
         mat4 c1 = mat4(
-            texelFetch(cache_5, texel, 0), 
-            texelFetch(cache_6, texel, 0),
-            texelFetch(cache_7, texel, 0),
-            texelFetch(cache_8, texel, 0)
+            texelFetch(cache5, texel, 0), 
+            texelFetch(cache6, texel, 0),
+            texelFetch(cache7, texel, 0),
+            texelFetch(cache8, texel, 0)
         );
 
         vec4 minRGB = vec4(1.0);
@@ -45,16 +45,16 @@ export class TAA {
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
                 if (length(vec2(i - 2, j - 2)) > 2.0) continue;
-                vec4 p = texelFetch(cache_0, texel + ivec2(i - 2, j - 2), 0);
+                vec4 p = texelFetch(cache0, texel + ivec2(i - 2, j - 2), 0);
                 minRGB = min(minRGB, p);
                 maxRGB = max(maxRGB, p);
             }
         }
         
-        out_color = texelFetch(cache_0, texel, 0);
-        for (int i = 0; i < 4; i++) out_color += min(max(c0[i], minRGB), maxRGB);
-        for (int i = 0; i < 4; i++) out_color += min(max(c1[i], minRGB), maxRGB);
-        out_color /= 9.0;
+        outColor = texelFetch(cache0, texel, 0);
+        for (int i = 0; i < 4; i++) outColor += min(max(c0[i], minRGB), maxRGB);
+        for (int i = 0; i < 4; i++) outColor += min(max(c1[i], minRGB), maxRGB);
+        outColor /= 9.0;
     }
     `;
     #program;
@@ -78,7 +78,7 @@ export class TAA {
         gl.useProgram(this.#program);
 
         for (let i = 0; i < FRAMES; i++) this.#textures[i] = gl.createTexture();
-        for (let i = 0; i < FRAMES; i++) this.#tex[i] = gl.getUniformLocation(this.#program, 'cache_' + i);
+        for (let i = 0; i < FRAMES; i++) this.#tex[i] = gl.getUniformLocation(this.#program, 'cache' + i);
 
         this.#vertexBuffer = gl.createBuffer();
 
