@@ -24,7 +24,7 @@ async function buildScene() {
 
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [0, 3, 0];
-	[camera.fx, camera.fy] = [-2.370, 0.215];
+	[camera.fx, camera.fy] = [-2.370, 0.0];
 
 	// Generate plane.
 	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
@@ -44,7 +44,7 @@ async function buildScene() {
 	engine.renderer.render();
 
 	for (let i = 0; i < 1; i++) {
-		let obj = await scene.fetchObjFile('objects/erde.obj');
+		let obj = await scene.fetchObjFile('objects/monke.obj');
 		obj.move(15, 0, -15);
 		scene.queue.push(obj);
 	}

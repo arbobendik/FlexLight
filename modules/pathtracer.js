@@ -188,21 +188,24 @@ export class PathTracer {
     // Calculate intersection point
     vec3 d = (s * ray.unitDirection) + ray.origin;
     // Test if point on plane is in Triangle by looking for each edge if point is in or outside
+
     vec3 v0 = t[1] - t[0];
     vec3 v1 = t[2] - t[0];
-    vec3 v2 = d - t[0];
     float d00 = dot(v0, v0);
     float d01 = dot(v0, v1);
     float d11 = dot(v1, v1);
+    float denom = 1.0 / (d00 * d11 - d01 * d01);
+    
+    vec3 v2 = (d - t[0]) * denom;
     float d20 = dot(v2, v0);
     float d21 = dot(v2, v1);
-    float denom = 1.0 / (d00 * d11 - d01 * d01);
-    float v = (d11 * d20 - d01 * d21) * denom;
-    float w = (d00 * d21 - d01 * d20) * denom;
-    float u = 1.0 - v - w;
-    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
+
+    vec2 vw = mat2(d11, - d01, - d01, d00) * vec2(d20, d21);
+    float vwSum = vw.x + vw.y;
+    float u = 1.0 - vwSum;
+    if (min(vw.x, vw.y) <= BIAS || vwSum >= 1.0 - BIAS) return mat2x4(0);
     // Return uvw and intersection point on triangle.
-    return mat2x4(vec4(d, s), vec4(u, v, w, 0));
+    return mat2x4(vec4(d, s), vec4(u, vw.x, vw.y, 0));
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
@@ -306,7 +309,7 @@ export class PathTracer {
     // Calculate intensity of light reflection, which decreases squared over distance
     float intensity = strength / (lenP1 * lenP1);
     // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(ray.unitDirection + normalize(origin - ray.origin));
+    vec3 halfVector = normalize(ray.direction + normalize(origin - ray.origin));
     float light = max(dot(ray.unitDirection, ray.normal), 0.0);
     float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
     // Determine final color and return it
@@ -439,16 +442,14 @@ export class PathTracer {
         // Calculate primary light sources for this pass if ray hits non translucent object
         finalColor += brightnessSample * importancyFactor;
         // Calculate reflecting ray
-        ray.direction = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), lastRME.x));
-        if (dot(ray.direction, ray.normal) <= 0.0) ray.direction = normalize(ray.direction + ray.normal);
-        ray.unitDirection = ray.direction;
+        ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), lastRME.x));
+        if (dot(ray.unitDirection, ray.normal) <= 0.0) ray.unitDirection = normalize(ray.unitDirection + ray.normal);
         // Calculate next intersection
         intersection = rayTracer(ray);
       } else {
         float ratio = lastTPO.z * 4.0;
         float sign = sign(dot(ray.unitDirection, ray.normal));
-        ray.direction = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * ray.normal, pow(ratio, sign)));
-        ray.unitDirection = ray.direction;
+        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * ray.normal, pow(ratio, sign)));
         // Calculate next intersection
         intersection = rayTracer(ray);
         lastOrigin = 2.0 * ray.origin - lastOrigin;
@@ -522,8 +523,8 @@ export class PathTracer {
     // Directly add emissive light of original surface to finalColor
     vec3 finalColor = vec3(0);
     // Generate camera ray
-    vec3 dir = position - player;
-    Ray ray = Ray (dir, normalize(dir), position, normalize(normal));
+    vec3 dir = normalize(position - player);
+    Ray ray = Ray (dir, dir, position, normalize(normal));
     // Generate multiple samples
     for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material.rme, material.tpo, i, maxReflections);
     
@@ -1081,31 +1082,6 @@ export class PathTracer {
     // Handle canvas resize
     window.addEventListener('resize', resize);
 
-    function renderTextureBuilder(){
-      for (let i = 0; i < rt.temporalSamples; i++) {
-        rt.#randomTextures[i] = rt.#gl.createTexture();
-        GLLib.randomTextureBuilder(rt.#gl.canvas.width / 4, rt.#gl.canvas.height / 4, rt.#gl, rt.#randomTextures[i]);
-      }
-      // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
-        parent.forEach(function(item){
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-          rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-          GLLib.setTexParams(rt.#gl);
-        });
-      });
-      // Init single channel depth textures
-      DepthTexture.forEach((item) => {
-        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-        rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
-        GLLib.setTexParams(rt.#gl);
-      });
-      // Init other textures
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OriginalIdRenderTexture);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-      GLLib.setTexParams(rt.#gl);
-    }
-
     // Internal render engine Functions
     function frameCycle (Millis) {
       // generate bounding volumes
@@ -1118,18 +1094,16 @@ export class PathTracer {
       rt.updateScene();
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
-			// Clear screen
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
       if (State[0] !== rt.filter || State[1] !== rt.renderQuality) {
         resize();
         prepareEngine();
         State = [rt.filter, rt.renderQuality];
       }
-      // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
       renderFrame();
+      // Request the browser to render frame with hardware acceleration
+      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Update frame counter
       Frames ++;
       // Calculate Fps
@@ -1139,8 +1113,6 @@ export class PathTracer {
         [TimeElapsed, LastMeasuredFrames] = [Millis, Frames];
       }
     }
-
-    let A = new TAA(this.#gl, this);;
 
     function texturesToGPU() {
       let [jitterX, jitterY] = [0, 0];
@@ -1197,7 +1169,7 @@ export class PathTracer {
       rt.#gl.uniform1i(LightTex, 5);
     }
 
-    async function fillBuffers() {
+    function fillBuffers() {
       let vertices = [];
       let ids = [];
       let uvs = [];
@@ -1270,9 +1242,6 @@ export class PathTracer {
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
         }
         rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
-        
-      } else {
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
       }
 
       // Clear depth and color buffers from last frame
@@ -1297,12 +1266,7 @@ export class PathTracer {
           } else if (rt.#antialiasing) {
             rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
           }
-        } else {
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
         }
-        
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
 
         [TempTexture, TempIpTexture, TempIdTexture].flat().forEach(function(item, i){
           rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
@@ -1383,12 +1347,7 @@ export class PathTracer {
           // Configure where the final image should go
           rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
-        } else {
-          // Render to canvas now
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
         }
-        // Clear depth and color buffers from last frame
-        rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
 
         let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
         let indexId = rt.firstPasses % 2;
@@ -1418,6 +1377,32 @@ export class PathTracer {
 
       // Apply antialiasing shader if enabled
       if (rt.#antialiasing) this.#AAObject.renderFrame();
+    }
+
+
+    function renderTextureBuilder(){
+      for (let i = 0; i < rt.temporalSamples; i++) {
+        rt.#randomTextures[i] = rt.#gl.createTexture();
+        GLLib.randomTextureBuilder(rt.#gl.canvas.width / 4, rt.#gl.canvas.height / 4, rt.#gl, rt.#randomTextures[i]);
+      }
+      // Init textures for denoiser
+      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
+        parent.forEach(function(item){
+          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+          rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
+          GLLib.setTexParams(rt.#gl);
+        });
+      });
+      // Init single channel depth textures
+      DepthTexture.forEach((item) => {
+        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+        rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
+        GLLib.setTexParams(rt.#gl);
+      });
+      // Init other textures
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OriginalIdRenderTexture);
+      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
+      GLLib.setTexParams(rt.#gl);
     }
 
     let prepareEngine = () => {

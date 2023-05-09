@@ -31,7 +31,7 @@ async function buildScene() {
 	// Push both objects to render queue.
 	scene.queue.push(this_plane);
 	// Set power of 2 square length.
-	let power = 3;
+	let power = 2;
 	let sideLength = 2 ** power;
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [4 + sideLength, 3 + power, 4 + sideLength];
