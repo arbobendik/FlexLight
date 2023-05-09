@@ -24,7 +24,7 @@ export class FlexLight {
     this.#canvas = canvas;
     this.#camera = new Camera ();
     this.#scene = new Scene ();
-    this.#renderer = new Rasterizer(canvas, this.#camera, this.#scene);
+    this.#renderer = new Rasterizer (canvas, this.#camera, this.#scene);
     this.#io = new WebIo (canvas, this.#camera, this.#renderer);
     this.#ui = new UI (this.#scene, this.#camera);
   }

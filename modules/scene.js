@@ -49,8 +49,15 @@ export class Scene {
   // Pbr images are generated the same way
   textureFromTPO = async (array, width, height) => await Scene.textureFromRME (array, width, height);
 
+
+  fitsInBound (bound, obj) {
+    return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
+    && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
+  }
+
   // Autogenerate oct-tree for imported structures or structures without BVH-tree
-  generateOctTree (objects = this.queue) {
+  generateBVH (objects = this.queue) {
+    const minBoundingWidth = 1 / 128;
     // get scene for reference inside object
     let scene = this;
 
@@ -58,62 +65,83 @@ export class Scene {
     // Determine bounding for each object
     this.updateBoundings(topTree);
 
-    let fitsInBound = (bound, obj) => {
-      return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
-      && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
+    let polyCount = 0;
+
+    // Test how many triangles can be sorted into neiter bounding.
+    let testOnEdge = (objs, bounding0, bounding1) => {
+      let onEdge = 0;
+      for (let i = 0; i < objs.length; i++) if ((! scene.fitsInBound(bounding0, objs[i])) && (! scene.fitsInBound(bounding1, objs[i]))) onEdge++;
+      return onEdge;
     }
 
-    let divideTree = (tree, bounding) => {
+    let divideTree = (objs, depth = 0) => {
       // If there are only 2 or less objects in tree, there is no need to subdivide
-      if (tree.length <= 2) return new Bounding(tree, scene);
-      else {
-        // Calculate general offsets
-        let off = Math.mul([bounding[1] - bounding[0], bounding[1] - bounding[0],
-                            bounding[3] - bounding[2], bounding[3] - bounding[2],
-                            bounding[5] - bounding[4], bounding[5] - bounding[4]], 0.5);
-        // Offsetmultiplier for different parts of Oct-tree
-        let multip = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1], 
-                      [0, 0, 1, 1, 1, 0], [0, 0, 1, 1, 1, 1],
-                      [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 1, 1],
-                      [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 1]];
-        // Calculate offset per subtree
-        let offsets = multip.map(mult => Math.mul(off, mult));
-        // Get bounds of base cube
-        let baseBounds = [bounding[0], (bounding[0] + bounding[1]) * 0.5,
-                          bounding[2], (bounding[2] + bounding[3]) * 0.5,
-                          bounding[4], (bounding[4] + bounding[5]) * 0.5];
-        // Caluclate bounds for all subtrees
-        let bounds = offsets.map(offset => Math.add(baseBounds, offset));
-        // Have 8 buickets for sub trees
-        let arrayBuckets = new Array(8).fill(0).map(e => []);
-        // Bucket for all objects that fit into neither of the subtrees
-        let noBucket = [];
-        // Iterate over objects
-        for (let i = 0; i < tree.length; i++) {
-          let foundBucket = false;
-          for (let j = 0; j < 8; j++) {
-            if (fitsInBound(bounds[j], tree[i])) {
-              arrayBuckets[j].push(tree[i]);
-              console.log("loaded Triangle");
-              foundBucket = true;
-              break;
-            }
+      if (objs.length <= 2) {
+        polyCount += objs.length;
+        console.log("loaded", polyCount, "polygons so far.");
+        return objs;
+      } else {
+        // Find center
+        let center = [
+          (objs.bounding[0] + objs.bounding[1]) / 2,
+          (objs.bounding[2] + objs.bounding[3]) / 2,
+          (objs.bounding[4] + objs.bounding[5]) / 2
+        ];
+
+        let idealSplit = 0;
+        let leastOnEdge = Infinity;
+
+        for (let i = 0; i < 3; i++) {
+          let bounding0 = [... objs.bounding];
+          let bounding1 = [... objs.bounding];
+
+          bounding0[i * 2] = center[i];
+          bounding1[i * 2 + 1] = center[i];
+
+          let minDiff = Math.min(bounding0[i * 2 + 1] - center[i], center[i] - bounding1[i * 2]);
+          let onEdge = testOnEdge(objs, bounding0, bounding1);
+
+          if (leastOnEdge >= onEdge && minDiff > minBoundingWidth) {
+            idealSplit = i;
+            leastOnEdge = onEdge;
           }
-          if (!foundBucket) noBucket.push(tree[i]);
+        }
+
+        if (leastOnEdge === Infinity) {
+          console.error("OPTIMIZATION failed for subtree!");
+          return objs;
+        }
+        // Sort into ideal buckets
+        // The third bucket is for the objects in the cut
+        let buckets = [[], [], []];
+        let bounds = [[... objs.bounding], [... objs.bounding], objs.bounding];
+        bounds[0][idealSplit * 2] = center[idealSplit];
+        bounds[1][idealSplit * 2 + 1] = center[idealSplit];
+
+        for (let i = 0; i < objs.length; i++) {
+          if (scene.fitsInBound(bounds[0], objs[i])) buckets[0].push(objs[i]);
+          else if (scene.fitsInBound(bounds[1], objs[i])) buckets[1].push(objs[i]);
+          else buckets[2].push(objs[i]);
         }
         // Iterate over all filled buckets and return 
         let finalObjArray = [];
 
-        for (let i = 0; i < 8; i++) if (arrayBuckets[i].length !== 0) finalObjArray.push(divideTree(arrayBuckets[i], bounds[i]));
-        noBucket.forEach(e => finalObjArray.push(e));
-        // finalObjArray.push(...noBucket);
-        // Return sorted object array aas bounding volume.
-        return new Bounding(finalObjArray, scene);
+        for (let i = 0; i < 2; i++) if (buckets[i].length !== 0) {
+          // Tighten bounding
+          let b = new Bounding(buckets[i], scene);
+          scene.updateBoundings(b);
+          finalObjArray.push(divideTree(b, depth + 1));
+        }
+        finalObjArray.push(...buckets[2]);
+        // Return sorted object array as bounding volume.
+        let commonBounding = new Bounding(finalObjArray, scene);
+        commonBounding.bounding = objs.bounding;
+        return commonBounding;
       }
     }
     
-    topTree = divideTree(topTree, topTree.bounding);
-    console.log("done building Oct-Tree");
+    topTree = divideTree(topTree);
+    console.log("done building BVH-Tree");
     return topTree;
   }
   
@@ -230,8 +258,7 @@ export class Scene {
     let text = await (await fetch(path)).text();
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
-    obj = await scene.generateOctTree(obj);
-    // obj = new Bounding(obj, scene);
+    obj = await scene.generateBVH(obj);
     await scene.updateBoundings(obj);
     // return built object
     return obj;
