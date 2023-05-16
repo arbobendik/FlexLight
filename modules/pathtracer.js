@@ -30,6 +30,12 @@ export class PathTracer {
   #halt = false;
 
   #worldTexture;
+  // Buffer arrays
+  #positionBufferArray;
+  #idBufferArray;
+  #uvBufferArray;
+  #bufferLength;
+
   #randomTextures = new Array(this.temporalSamples);
   // Internal gl texture variables of texture atlases
   #textureAtlas;
@@ -90,6 +96,7 @@ export class PathTracer {
   }
   `;
   #fragmentGlsl = `#version 300 es
+  #define PI 3.141592653589793
   #define SQRT3 1.73205
   #define POW32 4294967296.0
   #define BIAS 0.00001525879
@@ -303,18 +310,56 @@ export class PathTracer {
     return false;
   }
 
-  float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
-    float lenP1 = 1.0 + length(ray.direction);
-
-    // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / (lenP1 * lenP1);
-    // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(ray.direction + normalize(origin - ray.origin));
-    float light = max(dot(ray.unitDirection, ray.normal), 0.0);
-    float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
-    // Determine final color and return it
-    return mix(light, max(specular, 0.0), metallicity) * intensity;
+  float trowbridgeReitz (vec3 normal, vec3 halfVector, float a) {
+    float normalHalf = dot(normal, halfVector);
+    float denom = (normalHalf * normalHalf) * (a * a - 1.0) + 1.0;
+    return (a * a) / (PI * denom * denom);
   }
+
+  float schlickBeckmann (vec3 normal, vec3 lightDir, float a) {
+    float normLight = dot(normal, lightDir);
+    float k = a / 2.0;
+    return normLight / (normLight * (1.0 - k) + k);
+  }
+
+  float fresnel(vec3 viewRay, vec3 halfVector, float reflectivity) {
+    // Use Schlick approximation
+    return reflectivity + (1.0 - reflectivity) * pow(1.0 - dot(viewRay, halfVector), 5.0);
+  }
+
+  float cookTorrance (Ray lightRay, vec3 viewRay, vec3 halfVector, vec3 rme) {
+    float a = rme.x * rme.x;
+    float denom = 4.0 * dot(viewRay, lightRay.normal) * dot(halfVector, lightRay.normal);
+    return trowbridgeReitz(lightRay.normal, halfVector, a) * schlickBeckmann(lightRay.normal, lightRay.direction, a) * fresnel(viewRay, halfVector, rme.y) / denom;
+  }
+
+  float forwardTrace (Ray lightRay, vec3 origin, vec3 rme, float strength) {
+    float lenP1 = 1.0 + length(lightRay.direction);
+    vec3 viewRay = normalize(origin - lightRay.origin);
+    vec3 halfVector = normalize(lightRay.unitDirection + viewRay);
+
+    // Incoming light eith inverse square law
+    float L = strength / (lenP1 * lenP1);
+
+    // Lambertian model for diffuse
+    float diffuse = 1.0 / PI;
+
+    float specular = cookTorrance (lightRay, viewRay, halfVector, rme);
+
+    return (diffuse + specular) * L;
+
+
+
+    // Process specularity of ray in view from origin's perspective
+    // float light = max(dot(ray.unitDirection, ray.normal), 0.0);
+    // float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
+    // Determine final color and return it
+    // return mix(light, max(specular, 0.0), metallicity) * intensity;
+  }
+
+
+
+
 
   float reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 origin, vec3 lastRoughNormal, vec3 lastOrigin, vec3 lastRME, bool dontFilter, int i) {
     float reservoirLength = 0.0;
@@ -338,10 +383,9 @@ export class PathTracer {
       reservoirLength ++;
       // Alter light source position according to variation.
       light = randomVec.xyz * strengthVariation.y + light;
-
       vec3 dir = light - origin;
       Ray lightRay = Ray (dir, normalize(dir), origin, lastRoughNormal);
-      float weight = forwardTrace(lightRay, lastOrigin, lastRME.y, strengthVariation.x);
+      float weight = forwardTrace(lightRay, lastOrigin, lastRME, strengthVariation.x);
       totalWeight += weight;
 
       if (lastRandom.y * totalWeight <= weight) {
@@ -364,10 +408,6 @@ export class PathTracer {
     return 0.0;
   }
 
-  float fresnel(vec3 normal, vec3 lightDir) {
-    // Apply fresnel effect
-    return dot(normal, lightDir);
-  }
 
   vec3 lightTrace(vec3 origin, Ray firstRay, vec3 rme, vec3 tpo, int sampleN, int bounces){
     bool firstRough = rme.x >= 0.25;
@@ -404,7 +444,7 @@ export class PathTracer {
       // Fix for Windows devices, invert lastRoughNormal if it points under the surface.
       lastRoughNormal = sign(dot(lastRoughNormal, ray.normal)) * lastRoughNormal;
       // Handle fresnel reflection
-      float fresnelReflect = abs(fresnel(ray.normal, ray.unitDirection));
+      float fresnelReflect = abs(dot(ray.normal, ray.unitDirection));
       // object is solid or translucent by chance because of the fresnel effect
       bool isSolid = lastTPO.x * fresnelReflect <= abs(randomVec.w);
       // Test if filter is already necessary
@@ -486,7 +526,7 @@ export class PathTracer {
       // Preserve original roughness for filter pass
       lastFilterRoughness = lastRME.x;
       // Fresnel effect
-      lastRME.x *= mix(1.0, fresnel(ray.normal, lastOrigin - ray.origin), lastRME.y);
+      lastRME.x *= mix(1.0, dot(ray.normal, lastOrigin - ray.origin), lastRME.y);
       if (i == 0) firstRayLength = min(length(ray.origin - lastOrigin) / length(firstRay.origin - origin), 1.0);
     }
     // Return final pixel color
@@ -517,14 +557,12 @@ export class PathTracer {
     originalTPOx = material.tpo.x;
     // Preserve original roughness for filter pass
     float filterRoughness = material.rme.x;
-    // Fresnel effect
-    material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
-    // Start hybrid ray tracing on a per light source base
-    // Directly add emissive light of original surface to finalColor
     vec3 finalColor = vec3(0);
     // Generate camera ray
     vec3 dir = normalize(position - player);
     Ray ray = Ray (dir, dir, position, normalize(normal));
+    // Fresnel effect
+    material.rme.x *= mix(1.0, dot(normal, player - position), material.rme.y);
     // Generate multiple samples
     for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material.rme, material.tpo, i, maxReflections);
     
@@ -934,58 +972,91 @@ export class PathTracer {
   }
 
   async updateScene () {
+    // Bias of 2^(-16)
+    const BIAS = 0.00152587890625;
+    // Object ids to keep track of
     let id = 0;
+    let bufferId = 0;
+    // build buffer Arrays
+    let [positions, ids, uvs] = [[], [], []];
+    let bufferLength = 0;
     // Set data variable for texels in world space texture
     var data = [];
+    
     // Build simple AABB tree (Axis aligned bounding box)
-    var fillData = async (item) => {
+    let fillData = (item) => {
+      let minMax = [];
       if (Array.isArray(item) || item.indexable) {
-        if (item.length === 0) return;
-
-        let b = item.bounding;
-        // Save position of len variable in array
-        let len_pos = data.length;
+        if (item.length === 0) return [];
+        let dataPos = data.length;
         // Begin bounding volume array
-        data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        id++;
+        data.push.apply(data, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        id ++;
         // Iterate over all sub elements
-        for (let i = 0; i < item.length; i++) fillData(item[i]);
-        let len = Math.floor((data.length - len_pos) / 24);
+        minMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // get updated bounding of lower element
+          let b = fillData (item[i]);
+          // update maximums and minimums
+          minMax = minMax.map((e, i) => (i % 2 === 0) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
+        }
+
+        let len = Math.floor((data.length - dataPos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        data[len_pos + 6] = len;
+        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
+        data[dataPos + 6] = len;
       } else {
         let len = item.length;
+        // Declare bounding volume of object
+        let v = item.vertices;
+        minMax = [v[0], v[0], v[1], v[1], v[2], v[2]];
         // Test if bounding volume is set
         if (item.bounding !== undefined){
           // Declare bounding volume of object
-          let b = item.bounding;
-          data.push(b[0], b[1], b[2], b[3], b[4], b[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+          let v = item.vertices;
+          minMax = [v[0], v[0], v[1], v[1], v[2], v[2]];
+          // get min and max values of veritces of object
+          for (let i = 3; i < item.vertices.length; i++) {
+            minMax[(i % 3) * 2] = Math.min(minMax[(i % 3) * 2], v[i]);
+            minMax[(i % 3) * 2 + 1] = Math.max(minMax[(i % 3) * 2 + 1], v[i]);
+          }
+          data.push.apply(data, [minMax[0], minMax[1], minMax[2], minMax[3], minMax[4], minMax[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
           id++;
         } else if (item.length > 3) {
           // Warn if length is greater than 3
           console.warn(item);
           // A single triangle needs no bounding voume, so nothing happens in this case
         }
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        data.push.apply(data, item.textureArray);
+        // Increase object id
+        bufferId ++;
         // Give item new id property to identify vertex in fragment shader
-        item.ids = [];
-        // console.log(id, item.textureArray);
-        data.push(...item.textureArray);
-
         for (let i = 0; i < len * 3; i += 9) {
           let idHigh = Math.floor(id / 65535);
           let idLow = id % 65535;
           // 1 vertex = 1 line in world texture
-          // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          item.ids.push(idHigh, idLow, idHigh, idLow, idHigh, idLow);
+          // Fill id buffer
+          ids.push.apply(ids, [idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255, idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255, idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255]);
           id ++;
         }
+        // Fill buffers
+        positions.push.apply(positions, item.vertices);
+        uvs.push.apply(uvs, item.uvs);
+        bufferLength += item.length;
       }
+      return minMax;
     }
-    // Fill texture with data pixels
+    // Fill scene describing texture with data pixels
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    // Set buffer attributes
+    this.#positionBufferArray = new Float32Array(positions);
+    this.#idBufferArray =  new Float32Array(ids);
+    this.#uvBufferArray =  new Float32Array(uvs);
+    this.#bufferLength = bufferLength;
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
-    data.push(... new Array(6144 - data.length % 6144).fill(0));
+    data.push.apply(data, new Array(6144 - data.length % 6144).fill(0));
     // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
@@ -1014,7 +1085,7 @@ export class PathTracer {
     let TempProgram, TempHdrLocation;
     let WorldTex, RandomTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    let PositionBuffer, IdBuffer, TexBuffer;
+    let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, Post Program buffers and textures
     let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
     // Set post program array
@@ -1084,8 +1155,6 @@ export class PathTracer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
-      // generate bounding volumes
-      rt.scene.updateBoundings();
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
@@ -1170,40 +1239,17 @@ export class PathTracer {
     }
 
     function fillBuffers() {
-      let vertices = [];
-      let ids = [];
-      let uvs = [];
-      let id = 0;
-      let bufferLength = 0;
-      // Iterate through render queue and build arrays for GPU
-      var flattenQUEUE = (item) => {
-        if (Array.isArray(item) || item.indexable){
-          // Iterate over all sub elements
-          for (let i = 0; i < item.length; i++){
-            // flatten sub element of queue
-            flattenQUEUE(item[i]);
-          }
-        } else {
-          id ++;
-          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], (id % 65535) / 65535, (id % 255) / 255);
-          vertices.push(...item.vertices);
-          uvs.push(...item.uvs);
-          bufferLength += item.length;
-        }
-      };
-      // Start recursion
-      rt.scene.queue.forEach(item => flattenQUEUE(item));
       // Set buffers
       [
-        [PositionBuffer, vertices],
-        [IdBuffer, ids],
-        [TexBuffer, uvs]
+        [PositionBuffer, rt.#positionBufferArray],
+        [IdBuffer, rt.#idBufferArray],
+        [UvBuffer, rt.#uvBufferArray]
       ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1]), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, item[1], rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, bufferLength);
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
     }
 
     let renderFrame = () => {
@@ -1535,14 +1581,14 @@ export class PathTracer {
       // Init a world texture containing all information about world space
       rt.#worldTexture = rt.#gl.createTexture();
       // Create buffers
-      [PositionBuffer, IdBuffer, TexBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
         // Bind world space position buffer
         [PositionBuffer, 3, false],
         // Surface id buffer
         [IdBuffer, 4, false],
         // Set barycentric texture coordinates
-        [TexBuffer, 2, true]
+        [UvBuffer, 2, true]
       ].forEach((item, i) => {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
         rt.#gl.enableVertexAttribArray(i);

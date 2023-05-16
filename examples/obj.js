@@ -5,6 +5,8 @@ var engine;
 buildScene();
 // Build example scene
 async function buildScene() {
+
+
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
   	// Append it to body.
@@ -14,24 +16,30 @@ async function buildScene() {
 
 	let camera = engine.camera;
 	let scene = engine.scene;
+
+	[
+		"textures/grass.jpg",     // 0
+	].forEach((item, i) => {
+		let img = new Image();
+	  	img.src = item;
+	  	scene.textures.push(img);
+	});
+
 	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([0.3, 0, 0], 1, 1);
-	let clearTex = await scene.textureFromRME([0, 0, 0], 1, 1);
+	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
+	let clearTex = await scene.textureFromRME([0, 1, 0], 1, 1);
 	scene.pbrTextures.push(normalTex, clearTex);
 
-	let waterTex = await scene.textureFromTPO([1, 0.5, 1.3 / 4], 1, 1);
-	scene.translucencyTextures.push(waterTex);
+	let translucencyTex = await scene.textureFromTPO([1, 0, 2.42 / 4], 1, 1);
+	scene.translucencyTextures.push(translucencyTex); // 0
 
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [0, 3, 0];
-	[camera.fx, camera.fy] = [-2.370, 0.0];
+	[camera.fx, camera.fy] = [- 2.38, 0.2];
 
 	// Generate plane.
-	let waterCuboid = scene.Cuboid(-20, 20, -10, -1, -20, 20);
-	let plane = scene.Plane([-50,-1,-50],[50,-1,-50],[50,-1,50],[-50,-1,50],[0,1,0]);
-	console.log(waterCuboid);
-	waterCuboid.textureNums = [-1, 1, 0];
-	waterCuboid.color = [150, 210, 255];
+	let plane = scene.Plane([- 50, - 1, - 50], [50, - 1, - 50], [50, - 1, 50], [- 50, - 1, 50], [0, 1, 0]);
+	plane.textureNums = [- 1, 0, - 1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 5000;
@@ -43,11 +51,37 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	for (let i = 0; i < 1; i++) {
+	
+	
+	/*
+	let obj = await scene.fetchObjFile('objects/monke.obj');
+	// obj.scale(5);
+	obj.move(10, 0, - 10);
+	scene.queue.push(obj);
+	*/
+
+	/*
+	let grass = await scene.fetchObjFile('objects/erde.obj');
+	grass.move(8, -2, 8)
+	grass.scale(2);
+	grass.textureNums = [0, - 1, - 1];
+	scene.queue.push(grass);
+	*/
+	
+	
+	let monkeyBound = [];
+	for (let i = 0; i < 3; i++) {
 		let obj = await scene.fetchObjFile('objects/monke.obj');
-		obj.move(15, 0, -15);
-		scene.queue.push(obj);
+		obj.scale(i * 0.2 + 1);
+		obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
+		obj.textureNums = [-1, 1, 0]
+		let color = [180, 180, 180];
+		color[i] += 70;
+		obj.color = color;
+		monkeyBound.push(obj);
 	}
+	scene.queue.push(scene.Bounding(monkeyBound));
+	
 
 
 	// Add FPS counter to top-right corner
