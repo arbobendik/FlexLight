@@ -349,9 +349,10 @@ class Object3D {
   }
   // move object by given vector
   move (x, y, z) {
+    this.relativePosition = [x, y, z];
     for (let i = 0; i < this.length; i++) {
       if (this[i].indexable) {
-        this[i].move(x, y, z, true);
+        this[i].move(x, y, z);
       } else {
         this[i].vertices = this[i].vertices.map((coord, i) => {
           switch (i % 3){
@@ -366,8 +367,19 @@ class Object3D {
       }
     }
   }
+
+  scale (s) {
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].scale(s);
+      } else {
+        this[i].vertices = this[i].vertices.map((coord, i) => (coord - this.relativePosition[i % 3]) * s + this.relativePosition[i % 3]);
+      }
+    }
+  }
   
   constructor (length, indexable, scene) {
+    this.relativePosition = [0, 0, 0];
     this.length = length;
     this.indexable = indexable;
     this.scene = scene;
