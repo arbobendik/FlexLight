@@ -79,6 +79,7 @@ export class Rasterizer {
   }
   `;
   #fragmentGlsl = `#version 300 es
+  #define PI 3.141592653589793
   #define SQRT3 1.73205
   #define BIAS 0.00001525879
   #define INV_TRIANGLES_PER_ROW 0.00390625
@@ -219,22 +220,59 @@ export class Rasterizer {
     return false;
   }
 
-  float forwardTrace (Ray ray, vec3 origin, float metallicity, float strength) {
-    float lenP1 = 1.0 + length(ray.direction);
+  float trowbridgeReitz (float alpha, vec3 N, vec3 H) {
+    float numerator = alpha * alpha;
 
-    // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / (lenP1 * lenP1);
-    // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(ray.unitDirection + normalize(origin - ray.origin));
-    float light = max(dot(ray.unitDirection, ray.normal), 0.0);
-    float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
-    // Determine final color and return it
-    return mix(light, max(specular, 0.0), metallicity) * intensity;
+    float NdotH = max(dot(N, H), 0.0);
+    float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
+    return numerator / max(PI * denom * denom, BIAS);
   }
 
-  float fresnel(vec3 normal, vec3 lightDir) {
-    // Apply fresnel effect
-    return dot(normal, lightDir);
+  float schlickBeckmann (float alpha, vec3 N, vec3 X) {
+    float numerator = max(dot(N, X), 0.0);
+
+    float k = alpha / 2.0;
+    float denominator = max(dot(N, X), 0.0) * (1.0 - k) + k;
+    denominator = max(denominator, BIAS);
+
+    return numerator / denominator;
+  }
+
+  float smith (float alpha, vec3 N, vec3 V, vec3 L) {
+    return schlickBeckmann(alpha, N, V) * schlickBeckmann(alpha, N, L);
+  }
+
+  vec3 fresnel(vec3 F0, vec3 V, vec3 H) {
+    // Use Schlick approximation
+    return F0 + (1.0 - F0) * pow(1.0 - max(dot(V, H), 0.0), 5.0);
+  }
+
+  vec3 forwardTrace (Ray lightRay, vec3 origin, vec3 rme, vec3 color, float strength) {
+    float lenP1 = 1.0 + length(lightRay.direction);
+    float brightness = strength / lenP1;
+
+    float alpha = rme.x * rme.x;
+
+    vec3 F0 = color * rme.y;
+    vec3 N = lightRay.normal;
+    vec3 V = normalize(origin - lightRay.origin);
+    vec3 L = lightRay.unitDirection;
+    vec3 H = normalize(V + L);
+
+    vec3 Ks = fresnel(F0, V, H);
+    vec3 Kd = (1.0 - Ks) * (1.0 - 0.0);
+
+    vec3 lambert = color / PI;
+
+    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, N, H) * smith(alpha, N, V, L) * fresnel(F0, V, H);
+    float cookTorranceDenominator = 4.0 * max(dot(V, N), 0.0) * max(dot(L, N), 0.0);
+    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
+
+    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+    vec3 BRDF = Kd * lambert + cookTorrance;
+
+    // Incoming light by inverse square law
+    return BRDF * max(dot(L, N), 0.0) * brightness;
   }
 
   void main(){
@@ -260,9 +298,9 @@ export class Rasterizer {
       mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
     );
     // Fresnel effect
-    material.rme.x = material.rme.x * mix(1.0, fresnel(normal, player - position), material.rme.y);
+    // material.rme.x = material.rme.x * mix(1.0, dot(normal, player - position), material.rme.y);
 
-    float brightness = 0.0;
+    vec3 finalColor = vec3(material.rme.z);
     // Calculate primary light sources for this pass if ray hits non translucent object
     for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
       // Read light position
@@ -277,11 +315,10 @@ export class Rasterizer {
       Ray lightRay = Ray (dir, normalize(dir), position, normal);
 
       // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(lightRay, light)) brightness += forwardTrace(lightRay, player, material.rme.y, strength);
+      if (!shadowTest(lightRay, light)) finalColor += forwardTrace(lightRay, player, material.rme, color, strength);
     }
 
-    brightness = max(material.rme.z + 0.2 * material.tpo.x, brightness);
-    vec3 finalColor = brightness * color;
+    finalColor *= color;
 
     if (hdr == 1) {
       // Apply Reinhard tone mapping
