@@ -15,7 +15,7 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([0.05, 0, 0], 1, 1);
+	let normalTex = await scene.textureFromRME([1, 1, 0], 1, 1);
 	scene.pbrTextures.push(normalTex);
 
 	// Set camera perspective and position.
@@ -101,7 +101,7 @@ async function buildScene() {
 	eth.textureNums = [-1, 0, -1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 5000;
+	scene.primaryLightSources[0].intensity = 500;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
 	scene.queue.push(plane, eth);
