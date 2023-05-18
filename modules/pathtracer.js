@@ -310,60 +310,64 @@ export class PathTracer {
     return false;
   }
 
-  float trowbridgeReitz (vec3 normal, vec3 halfVector, float a) {
-    float normalHalf = dot(normal, halfVector);
-    float denom = (normalHalf * normalHalf) * (a * a - 1.0) + 1.0;
-    return (a * a) / (PI * denom * denom);
+  float trowbridgeReitz (float alpha, vec3 N, vec3 H) {
+    float numerator = alpha * alpha;
+
+    float NdotH = max(dot(N, H), 0.0);
+    float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
+    return numerator / max(PI * denom * denom, BIAS);
   }
 
-  float schlickBeckmann (vec3 normal, vec3 lightDir, float a) {
-    float normLight = dot(normal, lightDir);
-    float k = a / 2.0;
-    return normLight / (normLight * (1.0 - k) + k);
+  float schlickBeckmann (float alpha, vec3 N, vec3 X) {
+    float numerator = max(dot(N, X), 0.0);
+
+    float k = alpha / 2.0;
+    float denominator = max(dot(N, X), 0.0) * (1.0 - k) + k;
+    denominator = max(denominator, BIAS);
+
+    return numerator / denominator;
   }
 
-  float fresnel(vec3 viewRay, vec3 halfVector, float reflectivity) {
+  float smith (float alpha, vec3 N, vec3 V, vec3 L) {
+    return schlickBeckmann(alpha, N, V) * schlickBeckmann(alpha, N, L);
+  }
+
+  vec3 fresnel(vec3 F0, vec3 V, vec3 H) {
     // Use Schlick approximation
-    return reflectivity + (1.0 - reflectivity) * pow(1.0 - dot(viewRay, halfVector), 5.0);
+    return F0 + (1.0 - F0) * pow(1.0 - max(dot(V, H), 0.0), 5.0);
   }
 
-  float cookTorrance (Ray lightRay, vec3 viewRay, vec3 halfVector, vec3 rme) {
-    float a = rme.x * rme.x;
-    float denom = 4.0 * dot(viewRay, lightRay.normal) * dot(halfVector, lightRay.normal);
-    return trowbridgeReitz(lightRay.normal, halfVector, a) * schlickBeckmann(lightRay.normal, lightRay.direction, a) * fresnel(viewRay, halfVector, rme.y) / denom;
-  }
-
-  float forwardTrace (Ray lightRay, vec3 origin, vec3 rme, float strength) {
+  vec3 forwardTrace (Ray lightRay, vec3 V, vec3 rme, vec3 color, float strength) {
     float lenP1 = 1.0 + length(lightRay.direction);
-    vec3 viewRay = normalize(origin - lightRay.origin);
-    vec3 halfVector = normalize(lightRay.unitDirection + viewRay);
+    float brightness = strength / lenP1;
 
-    // Incoming light eith inverse square law
-    float L = strength / (lenP1 * lenP1);
+    float alpha = rme.x * rme.x;
 
-    // Lambertian model for diffuse
-    float diffuse = 1.0 / PI;
+    vec3 F0 = color * rme.y;
+    vec3 N = lightRay.normal;
+    vec3 L = lightRay.unitDirection;
+    vec3 H = normalize(V + L);
 
-    float specular = cookTorrance (lightRay, viewRay, halfVector, rme);
+    vec3 Ks = fresnel(F0, V, H);
+    vec3 Kd = (1.0 - Ks) * (1.0 - rme.y);
 
-    return (diffuse + specular) * L;
+    vec3 lambert = color / PI;
 
+    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, N, H) * smith(alpha, N, V, L) * fresnel(F0, V, H);
+    float cookTorranceDenominator = 4.0 * max(dot(V, N), 0.0) * max(dot(L, N), 0.0);
+    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
 
+    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+    vec3 BRDF = Kd * lambert * color + cookTorrance;
 
-    // Process specularity of ray in view from origin's perspective
-    // float light = max(dot(ray.unitDirection, ray.normal), 0.0);
-    // float specular = pow(max(dot(halfVector, ray.unitDirection), 0.0), metallicity);
-    // Determine final color and return it
-    // return mix(light, max(specular, 0.0), metallicity) * intensity;
+    // Incoming light by inverse square law
+    return BRDF * max(dot(L, N), 0.0) * brightness;
   }
 
-
-
-
-
-  float reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 origin, vec3 lastRoughNormal, vec3 lastOrigin, vec3 lastRME, bool dontFilter, int i) {
+  vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 lastRoughNormal, vec3 origin, vec3 view, vec3 lastRME, vec3 color, bool dontFilter, int i) {
     float reservoirLength = 0.0;
     float totalWeight = 0.0;
+    vec3 totalColor = vec3(0);
     int reservoirNum = 0;
 
     float reservoirWeight;
@@ -385,7 +389,9 @@ export class PathTracer {
       light = randomVec.xyz * strengthVariation.y + light;
       vec3 dir = light - origin;
       Ray lightRay = Ray (dir, normalize(dir), origin, lastRoughNormal);
-      float weight = forwardTrace(lightRay, lastOrigin, lastRME, strengthVariation.x);
+      vec3 localColor = forwardTrace(lightRay, view, lastRME, color, strengthVariation.x);
+      totalColor += localColor;
+      float weight = length(localColor);
       totalWeight += weight;
 
       if (lastRandom.y * totalWeight <= weight) {
@@ -399,13 +405,13 @@ export class PathTracer {
       lastRandom = texture(random, lastRandom).zw;
     }
 
-    if (reservoirLength == 0.0) return 0.0;
+    if (reservoirLength == 0.0) return vec3(0);
     // Test if in shadow
     if (reservoirWeight == 0.0 || !shadowTest(reservoirLightRay, reservoirLight)) {
       if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) * 2) / 255.0;
-      return totalWeight;
+      return totalColor;
     } else if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) * 2 + 1) / 255.0;
-    return 0.0;
+    return vec3(0);
   }
 
 
@@ -432,21 +438,28 @@ export class PathTracer {
     // Iterate over each bounce and modify color accordingly
     for (int i = 0; i < bounces && length(importancyFactor) >= minImportancy * SQRT3; i++){
       float fi = float(i);
-      // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
-      importancyFactor *= lastColor;
-      // Apply emissive texture and ambient light
-      finalColor = (ambient * 0.25 + lastRME.z) * importancyFactor + finalColor;
       // Generate pseudo random vector
       ivec2 randomCoord = ivec2(mod(((clipSpace.xy / clipSpace.z) + (sin(fi) + cosSampleN)) * 2.0, 1.0) * vec2(textureSize(random, 0).xy));
       vec4 randomVec = texelFetch(random, randomCoord, 0) * 2.0 - 1.0;
+      
+      // Obtain viewing direction
+      vec3 view = normalize(lastOrigin - ray.origin);
       // Alter normal according to roughness value
-      vec3 lastRoughNormal = normalize(mix(ray.normal, randomVec.xyz, lastRME.x));
+      float roughnessBRDF = mix(lastRME.x, lastRME.x * dot(ray.normal, view), lastRME.y);
+      vec3 lastRoughNormal = normalize(mix(ray.normal, randomVec.xyz, roughnessBRDF));
       // Fix for Windows devices, invert lastRoughNormal if it points under the surface.
       lastRoughNormal = sign(dot(lastRoughNormal, ray.normal)) * lastRoughNormal;
+      
+      // (a multiplicator vec3, that indicates how much the calculated values influence the final_color)
+      importancyFactor *= lastColor;
+      
       // Handle fresnel reflection
-      float fresnelReflect = abs(dot(ray.normal, ray.unitDirection));
+      vec3 V = normalize(lastOrigin - ray.origin);
+      vec3 H = normalize(V + ray.normal);
+      float fresnelReflect = length(fresnel(lastColor, V, H)) / SQRT3;
       // object is solid or translucent by chance because of the fresnel effect
       bool isSolid = lastTPO.x * fresnelReflect <= abs(randomVec.w);
+      
       // Test if filter is already necessary
       if (dontFilter && i != 0) {
         if(sampleN == 0) {
@@ -466,10 +479,10 @@ export class PathTracer {
       }
       // Update dontFilter variable
       dontFilter = dontFilter && ((lastRME.x < 0.01 && isSolid) || !isSolid);
+      // Apply emissive texture and ambient light
+      finalColor += (ambient * 0.25 + lastRME.z) * importancyFactor;
       // Intersection of ray with triangle
       mat2x4 intersection;
-      // Calculate brightness for current hit
-      float brightnessSample = reservoirSample (lightTex, randomVec, ray.origin, lastRoughNormal, lastOrigin, lastRME, dontFilter, i);
       // Handle translucency and skip rest of light calculation
       if (isSolid) {
         if (dontFilter && lastTPO.x > 0.5) {
@@ -480,20 +493,19 @@ export class PathTracer {
         // the surface faces in the opposite direction as usual
         ray.normal *= - sign(dot(ray.unitDirection, ray.normal));
         // Calculate primary light sources for this pass if ray hits non translucent object
-        finalColor += brightnessSample * importancyFactor;
+        finalColor += reservoirSample (lightTex, randomVec, lastRoughNormal, ray.origin, view, lastRME, lastColor, dontFilter, i) * importancyFactor;
         // Calculate reflecting ray
-        ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), lastRME.x));
+        ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), roughnessBRDF));
         if (dot(ray.unitDirection, ray.normal) <= 0.0) ray.unitDirection = normalize(ray.unitDirection + ray.normal);
         // Calculate next intersection
         intersection = rayTracer(ray);
       } else {
         float ratio = lastTPO.z * 4.0;
-        float sign = sign(dot(ray.unitDirection, ray.normal));
-        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * ray.normal, pow(ratio, sign)));
+        float sign = sign(dot(ray.unitDirection, lastRoughNormal));
+        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * lastRoughNormal, pow(ratio, sign)));
         // Calculate next intersection
         intersection = rayTracer(ray);
         lastOrigin = 2.0 * ray.origin - lastOrigin;
-        finalColor += brightnessSample * importancyFactor * (1.0 - fresnelReflect);
       }
       // Stop loop if there is no intersection and ray goes in the void
       if (intersection[0] == vec4(0)) break;
@@ -526,7 +538,7 @@ export class PathTracer {
       // Preserve original roughness for filter pass
       lastFilterRoughness = lastRME.x;
       // Fresnel effect
-      lastRME.x *= mix(1.0, dot(ray.normal, lastOrigin - ray.origin), lastRME.y);
+      // lastRME.x *= 
       if (i == 0) firstRayLength = min(length(ray.origin - lastOrigin) / length(firstRay.origin - origin), 1.0);
     }
     // Return final pixel color
@@ -562,7 +574,7 @@ export class PathTracer {
     vec3 dir = normalize(position - player);
     Ray ray = Ray (dir, dir, position, normalize(normal));
     // Fresnel effect
-    material.rme.x *= mix(1.0, dot(normal, player - position), material.rme.y);
+    // material.rme.x *= mix(1.0, dot(normal, player - position), material.rme.y);
     // Generate multiple samples
     for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material.rme, material.tpo, i, maxReflections);
     
@@ -578,7 +590,7 @@ export class PathTracer {
     renderOriginalColor = vec4(material.color * originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
 		renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
     renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
-    float div = 4.0 * length(position - player);
+    float div = length(position - player);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
   }
   `;

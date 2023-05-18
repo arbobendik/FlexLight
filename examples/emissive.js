@@ -16,9 +16,7 @@ async function buildScene() {
 	let scene = engine.scene;
 	// Create pbr textures.
 	let roughTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let roughLight = await scene.textureFromRME([1, 0, 0.1], 1, 1);
- 	let smoothTex = await scene.textureFromRME([0, 0, 0], 1, 1);
-  	let caroTex = await scene.textureFromRME(
+	let caroTex = await scene.textureFromRME(
 		[
 			Array(64).fill([
 				Array(64).fill([1, 0, 0.5]).flat(),
@@ -29,7 +27,9 @@ async function buildScene() {
 				Array(64).fill([1, 0, 0.5]).flat()
 			].flat()).flat()
 		].flat(),
-	128, 128);
+		128, 128);
+	let roughLight = await scene.textureFromRME([1, 0, 0.1], 1, 1);
+	let smoothTex = await scene.textureFromRME([0, 0, 0], 1, 1);
 	scene.pbrTextures.push(roughTex, caroTex, roughLight, smoothTex);
 
 	// Generate translucency texture for cube.

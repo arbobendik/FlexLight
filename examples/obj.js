@@ -27,7 +27,7 @@ async function buildScene() {
 
 	// Create pbr textures.
 	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let clearTex = await scene.textureFromRME([0, 1, 0], 1, 1);
+	let clearTex = await scene.textureFromRME([0, 0.5, 0], 1, 1);
 	scene.pbrTextures.push(normalTex, clearTex);
 
 	let translucencyTex = await scene.textureFromTPO([1, 0, 2.42 / 4], 1, 1);
@@ -42,7 +42,7 @@ async function buildScene() {
 	plane.textureNums = [- 1, 0, - 1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 5000;
+	scene.primaryLightSources[0].intensity = 500;
 
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
