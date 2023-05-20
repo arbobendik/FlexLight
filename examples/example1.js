@@ -42,9 +42,9 @@ async function buildScene() {
 
 	scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 	// Make light dimmer (default = 200)
-	scene.primaryLightSources[0].intensity = 150;
+	scene.primaryLightSources[0].intensity = 400;
 	scene.primaryLightSources[0].variation = 0.2;
-	scene.primaryLightSources[1].intensity = 23;
+	scene.primaryLightSources[1].intensity = 300;
 	// Set ambient illumination
 	scene.ambientLight = [0.05, 0.05, 0.05];
 
@@ -53,8 +53,8 @@ async function buildScene() {
 	normalTex.src = "./textures/normal.png";
 	// Generate new more diffuse texture for the grass block
 	let diffuseTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let smoothMetallicTex = await scene.textureFromRME([0, 0, 0], 1, 1);
 	let diffuseGlowTex = await scene.textureFromRME([1, 0.5, 0.5], 1, 1);
+	let smoothMetallicTex = await scene.textureFromRME([0, 0, 0], 1, 1);
 	// Add those textures to render queue
 	scene.pbrTextures.push(normalTex, diffuseTex, smoothMetallicTex, diffuseGlowTex); // 1 2 3 4
 
@@ -82,9 +82,9 @@ async function buildScene() {
 	// Color all cuboid in center
 	for (let i = 0; i < 4; i++) cuboids[i].textureNums = [-1, 3, 0];
 	
-	cuboids[0].color = [230, 200, 0];
-	cuboids[1].color = [0, 180, 180];
-	cuboids[2].color = [150, 0, 150];
+	cuboids[0].color = [230, 170, 0];
+	cuboids[1].color = [0, 150, 150];
+	cuboids[2].color = [150, 0, 100];
 	cuboids[3].color = [0, 0, 200];
 
 	// Spawn cubes with grass block textures

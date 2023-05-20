@@ -249,7 +249,8 @@ export class Rasterizer {
 
   vec3 forwardTrace (Ray lightRay, vec3 origin, vec3 rme, vec3 color, float strength) {
     float lenP1 = 1.0 + length(lightRay.direction);
-    float brightness = strength / lenP1;
+    // Apply inverse square law
+    float brightness = strength / (lenP1 * lenP1);
 
     float alpha = rme.x * rme.x;
 
