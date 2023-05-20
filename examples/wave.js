@@ -15,8 +15,8 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normal_tex = await scene.textureFromRME([1, 1, 0], 1, 1);
-	let cuboid_tex = await scene.textureFromRME([0.3, 1, 0.02], 1, 1);
+	let normal_tex = await scene.textureFromRME([0.7, 1, 0], 1, 1);
+	let cuboid_tex = await scene.textureFromRME([0.1, 0, 0.02], 1, 1);
 	scene.pbrTextures.push(normal_tex, cuboid_tex);
 	// Generate translucency texture for cube.
 	let translucencyTex = await scene.textureFromTPO([0, 0, 1.3 / 4], 1, 1);
@@ -24,7 +24,7 @@ async function buildScene() {
 	// Set light source.
 	scene.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 100;
+	scene.primaryLightSources[0].intensity = 1000;
 	// Generate plane.
 	let this_plane = scene.Plane([-100,-1,-100], [100,-1,-100], [100,-1,100], [-100,-1,100]);
   	this_plane.textureNums = [-1, 0, -1];

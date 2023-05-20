@@ -19,7 +19,7 @@ async function buildScene() {
 
 	[
 		"textures/grass.jpg",     // 0
-	].forEach((item, i) => {
+	].forEach(item => {
 		let img = new Image();
 	  	img.src = item;
 	  	scene.textures.push(img);
@@ -27,7 +27,7 @@ async function buildScene() {
 
 	// Create pbr textures.
 	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let clearTex = await scene.textureFromRME([0, 0.5, 0], 1, 1);
+	let clearTex = await scene.textureFromRME([0, 1, 0], 1, 1);
 	scene.pbrTextures.push(normalTex, clearTex);
 
 	let translucencyTex = await scene.textureFromTPO([1, 0, 2.42 / 4], 1, 1);
@@ -42,7 +42,7 @@ async function buildScene() {
 	plane.textureNums = [- 1, 0, - 1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 500;
+	scene.primaryLightSources[0].intensity = 20000;
 
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
@@ -51,38 +51,44 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
+	let model = "bike";
 	
-	
-	/*
-	let obj = await scene.fetchObjFile('objects/monke.obj');
-	// obj.scale(5);
-	obj.move(10, 0, - 10);
-	scene.queue.push(obj);
-	*/
-
-	/*
-	let grass = await scene.fetchObjFile('objects/erde.obj');
-	grass.move(8, -2, 8)
-	grass.scale(2);
-	grass.textureNums = [0, - 1, - 1];
-	scene.queue.push(grass);
-	*/
-	
-	
-	let monkeyBound = [];
-	for (let i = 0; i < 3; i++) {
-		let obj = await scene.fetchObjFile('objects/monke.obj');
-		obj.scale(i * 0.2 + 1);
-		obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
-		obj.textureNums = [-1, 1, 0]
-		let color = [180, 180, 180];
-		color[i] += 70;
-		obj.color = color;
-		monkeyBound.push(obj);
+	switch (model) {
+		case "bike":
+			var obj = await scene.fetchObjFile('objects/bike.obj');
+			// obj.scale(5);
+			obj.move(20, 0, - 20);
+			scene.queue.push(obj);
+			break;
+		case "grass":
+			let grass = await scene.fetchObjFile('objects/erde.obj');
+			grass.move(8, -2, - 8)
+			grass.scale(2);
+			grass.textureNums = [0, - 1, - 1];
+			scene.queue.push(grass);
+			break;
+		case "monkey":
+			var obj = await scene.fetchObjFile('objects/monke.obj');
+			obj.move(10, 0, - 10);
+			scene.queue.push(obj);
+			break;
+		case "monkeys":
+			let monkeyBound = [];
+			for (let i = 0; i < 3; i++) {
+				let obj = await scene.fetchObjFile('objects/monke.obj');
+				obj.scale(i * 0.2 + 1);
+				obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
+				obj.textureNums = [- 1, 1, 0]
+				let color = [180, 180, 180];
+				color[i] += 70;
+				obj.color = color;
+				monkeyBound.push(obj);
+			}
+			scene.queue.push(scene.Bounding(monkeyBound));
+			break;
+		default:
+			console.log("model does not exist");
 	}
-	scene.queue.push(scene.Bounding(monkeyBound));
-	
-
 
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
@@ -91,7 +97,5 @@ async function buildScene() {
   	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update texture atlases.
-		// engine.renderer.updateBuffers();
 	}, 100);
 }

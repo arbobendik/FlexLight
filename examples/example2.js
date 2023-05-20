@@ -44,7 +44,7 @@ async function buildScene() {
 
 	scene.primaryLightSources = new Array(64);
 	scene.primaryLightSources[0] = [0, 10, 0];
-	scene.primaryLightSources[0].intensity = 10;
+	scene.primaryLightSources[0].intensity = 50;
 	scene.primaryLightSources[2] = [10, 30, 10];
 	scene.primaryLightSources[3] = [-10, 30, 10];
 	scene.primaryLightSources[4] = [10, 30, -10];
@@ -52,11 +52,11 @@ async function buildScene() {
 	scene.primaryLightSources[6] = [30, 30, 30];
 	scene.primaryLightSources[7] = [-30, 30, -30];
 	// Set intensities
-	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 10;
+	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
 	// Test many lightsources
 	for (let i = 8; i < 64; i++) {
 		scene.primaryLightSources[i] = [-300 + i * 10, 300, -300];
-		scene.primaryLightSources[i].intensity = 2;
+		scene.primaryLightSources[i].intensity = 50;
 	}
 	// Push both objects to render queue.
 	scene.queue.push(thisPlane, objects);
