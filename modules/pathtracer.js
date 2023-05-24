@@ -178,43 +178,51 @@ export class PathTracer {
     return texture(atlas, atlasCoords);
   }
 
-  // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n) {
-    // Can't intersect with triangle with the same normal as the origin
-    if (n == ray.normal) return mat2x4(0);
-    // Get distance to intersection point
-    float s = dot(n, t[0] - ray.origin) / dot(n, ray.unitDirection);
-    // Ensure that ray triangle intersection is between light source and texture
+  mat2x4 moellerTrumbore (float l, Ray ray, mat3 t) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
+    vec3 pvec = cross(ray.unitDirection, edge2);
+    float det = dot(edge1, pvec);
+    if (abs(det) < BIAS) return mat2x4(0);
+    float inv_det = 1.0 / det;
+    vec3 tvec = ray.origin - t[0];
+    float u = dot(tvec, pvec) * inv_det;
+    if (u < 0.0 || u > 1.0) return mat2x4(0);
+    vec3 qvec = cross(tvec, edge1);
+    float v = dot(ray.unitDirection, qvec) * inv_det;
+    float uvSum = u + v;
+    if (v < 0.0 || uvSum > 1.0) return mat2x4(0);
+    float s = dot(edge2, qvec) * inv_det;
     if (s > l || s <= BIAS) return mat2x4(0);
     // Calculate intersection point
     vec3 d = (s * ray.unitDirection) + ray.origin;
-    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
+    return mat2x4(d, s, 1.0 - uvSum, u, v, 0);
+  }
 
-    vec3 v0 = t[1] - t[0];
-    vec3 v1 = t[2] - t[0];
-    float d00 = dot(v0, v0);
-    float d01 = dot(v0, v1);
-    float d11 = dot(v1, v1);
-    
-    vec3 v2 = (d - t[0]) / (d00 * d11 - d01 * d01);
-    float d20 = dot(v2, v0);
-    float d21 = dot(v2, v1);
-
-    vec2 vw = mat2(d11, - d01, - d01, d00) * vec2(d20, d21);
-    float vwSum = vw.x + vw.y;
-    float u = 1.0 - vwSum;
-    if (min(vw.x, vw.y) <= BIAS || vwSum >= 1.0 - BIAS) return mat2x4(0);
-    // Return uvw and intersection point on triangle.
-    return mat2x4(d, s, u, vw, 0);
+  // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
+  bool moellerTrumboreCull (float l, Ray ray, mat3 t) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
+    vec3 pvec = cross(ray.unitDirection, edge2);
+    float det = dot(edge1, pvec);
+    float invDet = 1.0 / det;
+    if (det < BIAS) return false;
+    vec3 tvec = ray.origin - t[0];
+    float u = dot(tvec, pvec) * invDet;
+    if (u < BIAS || u > 1.0) return false;
+    vec3 qvec = cross(tvec, edge1);
+    float v = dot(ray.unitDirection, qvec) * invDet;
+    if (v < 0.0 || u + v > 1.0) return false;
+    float s = dot(edge2, qvec) * invDet;
+    return (s <= l && s > BIAS);
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
   bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
-    mat2x3 v = matrixCompMult(mat2x3(minCorner, maxCorner) - mat2x3(p, p), mat2x3(invRay, invRay));
-    float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
-    float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
-    // Cuboid is behind ray
-    // Ray points in cuboid direction, but doesn't intersect
+    vec3 v0 = (minCorner - p) * invRay;
+    vec3 v1 = (maxCorner - p) * invRay;
+    float lowest = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
+    float highest = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return max(lowest, BIAS) <= highest;
   }
 
@@ -233,31 +241,29 @@ export class PathTracer {
     for (int i = 0; i < size; i++) {
       // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
-      // Read triangle and normal from world tex
-      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       mat3 t = mat3(
         texelFetch(worldTex, index, 0).xyz,
         texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
         texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
-      );
-      // Fetch triangle coordinates from world texture
-      //  Two cases:
-      //   - normal is not 0 0 0 --> normal vertex
-      //   - normal is 0 0 0 --> beginning of new bounding volume
-      if (n != vec3(0)){
+        );
+      // Read normal from scene graph
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
+      // Three cases:
+      // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
+      // all vertices are 0 0 0 => end of list: return false
+      // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
+      if (n == vec3(0)) {
+        if (t[2] == vec3(0)) break;
+        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+      } else {
         // Test if triangle intersects ray
-        mat2x4 currentIntersection = rayTriangle(minLen, ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])));
+        mat2x4 currentIntersection = moellerTrumbore(minLen, ray, t);
         // Test if ray even intersects
-        if (currentIntersection != mat2x4(0)){
+        if (currentIntersection[0].w != 0.0){
           minLen = currentIntersection[0].w;
           intersection = currentIntersection;
           intersection[1].w = float(i);
         }
-      } else {
-        // Break if all values are zero and texture already ended
-        if (t == mat3(0)) break;
-        // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
-        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
       }
     }
     // Return if pixel is in shadow or not
@@ -276,24 +282,23 @@ export class PathTracer {
     for (int i = 0; i < size; i++) {
       // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
-      // Read normal and triangle from worldTex
-      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
-      // Fetch triangle coordinates from world texture
+      // Fetch triangle coordinates from scene graph
       mat3 t = mat3(
         texelFetch(worldTex, index, 0).xyz,
         texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
         texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
+      // Read normal from scene graph
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       // Three cases:
       // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
       // all vertices are 0 0 0 => end of list: return false
       // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
-      if (n != vec3(0)) {
-        vec3 normal = cross(t[0] - t[2], t[0] - t[1]);
-        if (rayTriangle(max, ray, t, normal)[0].xyz != vec3(0)) return true;
-      } else {
-        if (t == mat3(0)) break;
+      if (n == vec3(0)) {
+        if (t[2] == vec3(0)) break;
         if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+      } else {
+        if (moellerTrumboreCull(max, ray, t)) return true;
       }
     }
     // Tested all triangles, but there is no intersection
@@ -308,7 +313,6 @@ export class PathTracer {
 
   float schlickBeckmann (float alpha, float NdotX) {
     float k = alpha / 2.0;
-
     float denominator = NdotX * (1.0 - k) + k;
     denominator = max(denominator, BIAS);
     return NdotX / denominator;
@@ -325,14 +329,11 @@ export class PathTracer {
 
   vec3 forwardTrace (vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
     float lenP1 = 1.0 + length(lightDir);
-
     // Apply inverse square law
     float brightness = strength / (lenP1 * lenP1);
 
     float alpha = material.rme.x * material.rme.x;
-
     vec3 F0 = material.albedo * material.rme.y;
-
     vec3 L = normalize(lightDir);
     vec3 H = normalize(V + L);
     
@@ -342,10 +343,8 @@ export class PathTracer {
     float NdotV = max(dot(N, V), 0.0);
 
     vec3 fresnelFactor = fresnel(F0, VdotH);
-
     vec3 Ks = fresnelFactor;
     vec3 Kd = (1.0 - Ks) * (1.0 - material.rme.y);
-
     vec3 lambert = material.albedo / PI;
 
     vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
@@ -361,14 +360,11 @@ export class PathTracer {
 
   vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 normal, vec3 lastRoughNormal, vec3 origin, vec3 view, Material material, bool dontFilter, int i) {
     vec3 localColor = vec3(0);
-
     float reservoirLength = 0.0;
     float totalWeight = 0.0;
     int reservoirNum = 0;
-
     float reservoirWeight;
     vec3 reservoirLightDir;
-
     vec2 lastRandom = abs(randomVec.zw);
 
     for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
@@ -376,15 +372,12 @@ export class PathTracer {
       vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
       vec2 strengthVariation = texelFetch(lightTex, ivec2(1, j), 0).xy;
-
       // Skip if strength is negative or zero
       if (strengthVariation.x <= 0.0) continue;
       reservoirLength ++;
       // Alter light source position according to variation.
       light = randomVec.xyz * strengthVariation.y + light;
-      
       vec3 dir = light - origin;
-
       vec3 colorForLight = forwardTrace(dir, lastRoughNormal, view, material, strengthVariation.x);
       localColor += colorForLight;
       float weight = length(colorForLight);
@@ -402,7 +395,6 @@ export class PathTracer {
 
     // Compute quick exit criterion to potentially skip expensive shadow test
     bool quickExitCriterion = reservoirLength == 0.0 || reservoirWeight == 0.0 || dot(reservoirLightDir, lastRoughNormal) <= BIAS;
-
     Ray lightRay = Ray(reservoirLightDir, normalize(reservoirLightDir), origin, normal);
 
     // Test if in shadow
@@ -444,15 +436,17 @@ export class PathTracer {
       // Obtain normalized viewing direction
       vec3 V = normalize(viewPoint - ray.origin);
 
+      float BRDF = mix(1.0, abs(dot(ray.normal, V)), material.rme.y);
+      
       // Alter normal according to roughness value
-      float roughnessBRDF = material.rme.x * mix(1.0, dot(ray.normal, V), material.rme.y);
+      float roughnessBRDF = material.rme.x * BRDF;
       vec3 roughNormal = normalize(mix(ray.normal, randomVec.xyz, roughnessBRDF));
       // Invert roughNormal if it points under the surface.
       roughNormal = sign(dot(roughNormal, ray.normal)) * roughNormal;
 
       vec3 H = normalize(V + ray.normal);
       float VdotH = max(dot(V, H), 0.0);
-      vec3 f = fresnel(material.albedo, VdotH);
+      vec3 f = fresnel(material.albedo, VdotH) * BRDF;
       float fresnelReflect = max(f.x, max(f.y, f.z));
       // object is solid or translucent by chance because of the fresnel effect
       bool isSolid = material.tpo.x * fresnelReflect <= abs(randomVec.w);
@@ -493,7 +487,7 @@ export class PathTracer {
       } else {
         float sign = sign(dot(ray.unitDirection, roughNormal));
         // Refract ray depending on IOR (material.tpo.z)
-        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * roughNormal, pow(material.tpo.z * 4.0, sign)));
+        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * roughNormal, mix(0.25 / material.tpo.z * 0.25, material.tpo.z * 4.0, max(sign, 0.0))));
       }
 
       // Apply emissive texture and ambient light
@@ -538,7 +532,7 @@ export class PathTracer {
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertexId.x * 65535.0 + vertexId.y;
+    float id = vertexId.x * 65536.0 + vertexId.y;
     ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
     vec3 color = texelFetch(worldTex, index + ivec2(3, 0), 0).xyz;
@@ -1002,43 +996,36 @@ export class PathTracer {
         let len = Math.floor((data.length - dataPos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 3; i++) data[dataPos + i] = minMax[i * 2];
-        for (let i = 3; i < 6; i++) data[dataPos + i] = minMax[(i % 3) * 2 + 1];
-
-        data[dataPos + 6] = len;
+        for (let i = 0; i < 3; i++) data[dataPos + i] = minMax[i];
+        data[dataPos + 6] = len - 1;
       } else {
         let len = item.length;
         // Declare bounding volume of object
         let v = item.vertices;
-        minMax = [v[0], v[0], v[1], v[1], v[2], v[2]];
-        // Test if bounding volume is set
-        if (item.bounding !== undefined){
-          // Declare bounding volume of object
-          let v = item.vertices;
-          minMax = [v[0], v[0], v[1], v[1], v[2], v[2]];
-          // get min and max values of veritces of object
-          for (let i = 3; i < item.vertices.length; i++) {
-            minMax[(i % 3) * 2] = Math.min(minMax[(i % 3) * 2], v[i]);
-            minMax[(i % 3) * 2 + 1] = Math.max(minMax[(i % 3) * 2 + 1], v[i]);
-          }
-          data.push.apply(data, [minMax[0], minMax[2], minMax[4], minMax[1], minMax[3], minMax[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-          id++;
-        } else if (item.length > 3) {
-          // Warn if length is greater than 3
-          console.warn(item);
-          // A single triangle needs no bounding voume, so nothing happens in this case
+        minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          minMax[0] = Math.min(minMax[0], v[i]);
+          minMax[1] = Math.min(minMax[1], v[i + 1]);
+          minMax[2] = Math.min(minMax[2], v[i + 2]);
+          minMax[3] = Math.max(minMax[3], v[i]);
+          minMax[4] = Math.max(minMax[4], v[i + 1]);
+          minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
         data.push.apply(data, item.textureArray);
         // Increase object id
         bufferId ++;
+
+        let bufferIdHigh = (bufferId % 65536) / 65535;
+        let bufferIdLow = (bufferId % 256) / 255;
         // Give item new id property to identify vertex in fragment shader
         for (let i = 0; i < len * 3; i += 9) {
-          let idHigh = Math.floor(id / 65535);
-          let idLow = id % 65535;
+          let idHigh = Math.floor(id >> 16);
+          let idLow = id % 65536;
           // 1 vertex = 1 line in world texture
           // Fill id buffer
-          ids.push.apply(ids, [idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255, idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255, idHigh, idLow, (bufferId % 65535) / 65535, (bufferId % 255) / 255]);
+          ids.push.apply(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
           id ++;
         }
         // Fill buffers
@@ -1161,7 +1148,7 @@ export class PathTracer {
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
       rt.#updateTranslucencyAtlas();
-      // set world-texture
+      // Set scene graph
       rt.updateScene();
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();

@@ -21,6 +21,11 @@ export class Rasterizer {
 
   #halt = false;
   #worldTexture;
+  // Buffer arrays
+  #positionBufferArray;
+  #idBufferArray;
+  #uvBufferArray;
+  #bufferLength;
   
   // Internal gl texture variables of texture atlases
   #textureAtlas;
@@ -47,7 +52,7 @@ export class Rasterizer {
   out vec2 texCoord;
   out vec3 clipSpace;
   flat out vec4 vertexId;
-  flat out vec3 player;
+  flat out vec3 camera;
 
   vec3 clipPosition (vec3 pos, vec2 dir) {
     vec2 translatePX = vec2(
@@ -75,7 +80,7 @@ export class Rasterizer {
     position = position3d;
     texCoord = texPos;
     vertexId = id;
-    player = cameraPosition;
+    camera = cameraPosition;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -101,7 +106,7 @@ export class Rasterizer {
   };
 
   struct Material {
-    vec3 color;
+    vec3 albedo;
     vec3 rme;
     vec3 tpo;
   };
@@ -116,7 +121,8 @@ export class Rasterizer {
   in vec2 texCoord;
   in vec3 clipSpace;
   flat in vec4 vertexId;
-  flat in vec3 player;
+  flat in vec3 camera;
+
   // Get global illumination color, intensity
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
@@ -146,30 +152,22 @@ export class Rasterizer {
     return texture(atlas, atlasCoords);
   }
 
-  // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, Ray ray, mat3 t, vec3 n) {
-    // Get distance to intersection point
-    float s = dot(n, t[0] - ray.origin) / dot(n, ray.unitDirection);
-    // Ensure that ray triangle intersection is between light source and texture
-    if (s > l || s <= BIAS) return mat2x4(0);
-    // Calculate intersection point
-    vec3 d = (s * ray.unitDirection) + ray.origin;
-    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
-    vec3 v0 = t[1] - t[0];
-    vec3 v1 = t[2] - t[0];
-    vec3 v2 = d - t[0];
-    float d00 = dot(v0, v0);
-    float d01 = dot(v0, v1);
-    float d11 = dot(v1, v1);
-    float d20 = dot(v2, v0);
-    float d21 = dot(v2, v1);
-    float denom = 1.0 / (d00 * d11 - d01 * d01);
-    float v = (d11 * d20 - d01 * d21) * denom;
-    float w = (d00 * d21 - d01 * d20) * denom;
-    float u = 1.0 - v - w;
-    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
-    // Return uvw and intersection point on triangle.
-    return mat2x4(vec4(d, s), vec4(u, v, w, 0));
+  // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
+  bool moellerTrumboreCull (float l, Ray ray, mat3 t) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
+    vec3 pvec = cross(ray.unitDirection, edge2);
+    float det = dot(edge1, pvec);
+    float invDet = 1.0 / det;
+    if (det < BIAS) return false;
+    vec3 tvec = ray.origin - t[0];
+    float u = dot(tvec, pvec) * invDet;
+    if (u < BIAS || u > 1.0) return false;
+    vec3 qvec = cross(tvec, edge1);
+    float v = dot(ray.unitDirection, qvec) * invDet;
+    if (v < 0.0 || u + v > 1.0) return false;
+    float s = dot(edge2, qvec) * invDet;
+    return (s <= l && s > BIAS);
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
@@ -183,104 +181,98 @@ export class Rasterizer {
   }
 
   // Simplified rayTracer to only test if ray intersects anything
-  bool shadowTest(Ray ray, vec3 light){
+  bool shadowTest(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 invRay = 1.0 / ray.unitDirection;
     // Precomput max length
-    float max = length(light - ray.origin);
+    float max = length(ray.direction);
     // Get texture size as max iteration value
     int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
       // Get position of current triangle/vertex in worldTex
       ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
-      // Read normal and triangle from worldTex
-      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
-      // Fetch triangle coordinates from world texture
+      // Fetch triangle coordinates from scene graph
       mat3 t = mat3(
         texelFetch(worldTex, index, 0).xyz,
         texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
         texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
-      //  Three cases:
-      //   - normal is not 0 0 0 --> normal vertex
-      //   - normal is 0 0 0 --> beginning of new bounding volume
-      if (n != vec3(0)) {
-        // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - ray.origin), ray, t, normalize(cross(t[0] - t[2], t[0] - t[1])))[0].xyz != vec3(0)) return true;
-      } else if (t == mat3(0)) {
-        // Break if all values are zero and texture already ended
-        break;
-      } else if (!rayCuboid(invRay, ray.origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))) {
-        // If ray doesn't intersect bounding volume, skip shadow test for all elements in bounding volume
-        i += int(t[2].x);
+      // Read normal from scene graph
+      // vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
+      // Three cases:
+      // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
+      // all vertices are 0 0 0 => end of list: return false
+      // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
+      if (t[2].yz == vec2(0)) {
+        if (t[2] == vec3(0)) break;
+        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+      } else {
+        if (moellerTrumboreCull(max, ray, t)) return true;
       }
     }
     // Tested all triangles, but there is no intersection
     return false;
   }
 
-  float trowbridgeReitz (float alpha, vec3 N, vec3 H) {
+  float trowbridgeReitz (float alpha, float NdotH) {
     float numerator = alpha * alpha;
-
-    float NdotH = max(dot(N, H), 0.0);
     float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
     return numerator / max(PI * denom * denom, BIAS);
   }
 
-  float schlickBeckmann (float alpha, vec3 N, vec3 X) {
-    float numerator = max(dot(N, X), 0.0);
-
+  float schlickBeckmann (float alpha, float NdotX) {
     float k = alpha / 2.0;
-    float denominator = max(dot(N, X), 0.0) * (1.0 - k) + k;
+    float denominator = NdotX * (1.0 - k) + k;
     denominator = max(denominator, BIAS);
-
-    return numerator / denominator;
+    return NdotX / denominator;
   }
 
-  float smith (float alpha, vec3 N, vec3 V, vec3 L) {
-    return schlickBeckmann(alpha, N, V) * schlickBeckmann(alpha, N, L);
+  float smith (float alpha, float NdotV, float NdotL) {
+    return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
   }
 
-  vec3 fresnel(vec3 F0, vec3 V, vec3 H) {
+  vec3 fresnel(vec3 F0, float VdotH) {
     // Use Schlick approximation
-    return F0 + (1.0 - F0) * pow(1.0 - max(dot(V, H), 0.0), 5.0);
+    return F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
   }
 
-  vec3 forwardTrace (Ray lightRay, vec3 origin, vec3 rme, vec3 color, float strength) {
-    float lenP1 = 1.0 + length(lightRay.direction);
+  vec3 forwardTrace (vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
+    float lenP1 = 1.0 + length(lightDir);
     // Apply inverse square law
     float brightness = strength / (lenP1 * lenP1);
 
-    float alpha = rme.x * rme.x;
-
-    vec3 F0 = color * rme.y;
-    vec3 N = lightRay.normal;
-    vec3 V = normalize(origin - lightRay.origin);
-    vec3 L = lightRay.unitDirection;
+    float alpha = material.rme.x * material.rme.x;
+    vec3 F0 = material.albedo * material.rme.y;
+    vec3 L = normalize(lightDir);
     vec3 H = normalize(V + L);
+    
+    float VdotH = max(dot(V, H), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
 
-    vec3 Ks = fresnel(F0, V, H);
-    vec3 Kd = (1.0 - Ks) * (1.0 - 0.0);
+    vec3 fresnelFactor = fresnel(F0, VdotH);
+    vec3 Ks = fresnelFactor;
+    vec3 Kd = (1.0 - Ks) * (1.0 - material.rme.y);
+    vec3 lambert = material.albedo / PI;
 
-    vec3 lambert = color / PI;
-
-    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, N, H) * smith(alpha, N, V, L) * fresnel(F0, V, H);
-    float cookTorranceDenominator = 4.0 * max(dot(V, N), 0.0) * max(dot(L, N), 0.0);
+    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
+    float cookTorranceDenominator = 4.0 * NdotV * NdotL;
     cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
 
     vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
     vec3 BRDF = Kd * lambert + cookTorrance;
 
-    // Incoming light by inverse square law
-    return BRDF * max(dot(L, N), 0.0) * brightness;
+    // Outgoing light to camera
+    return BRDF * NdotL * brightness;
   }
 
   void main(){
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertexId.x * 65535.0 + vertexId.y;
+    float id = vertexId.x * 65536.0 + vertexId.y;
     ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
     vec3 textureNums = texelFetch(worldTex, index + ivec2(5, 0), 0).xyz;
@@ -298,8 +290,6 @@ export class Rasterizer {
       mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(textureNums.y + 1.0)),
       mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
     );
-    // Fresnel effect
-    // material.rme.x = material.rme.x * mix(1.0, dot(normal, player - position), material.rme.y);
 
     vec3 finalColor = vec3(material.rme.z);
     // Calculate primary light sources for this pass if ray hits non translucent object
@@ -316,7 +306,7 @@ export class Rasterizer {
       Ray lightRay = Ray (dir, normalize(dir), position, normal);
 
       // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(lightRay, light)) finalColor += forwardTrace(lightRay, player, material.rme, color, strength);
+      if (!shadowTest(lightRay)) finalColor += forwardTrace(dir, normal, normalize(camera - position), material, strength);
     }
 
     finalColor *= color;
@@ -463,70 +453,99 @@ export class Rasterizer {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
   
-  updateScene () {
+  async updateScene () {
+    // Bias of 2^(-16)
+    const BIAS = 0.00152587890625;
+    // Object ids to keep track of
     let id = 0;
+    let bufferId = 0;
+    // build buffer Arrays
+    let [positions, ids, uvs] = [[], [], []];
+    let bufferLength = 0;
     // Set data variable for texels in world space texture
     var data = [];
+    
     // Build simple AABB tree (Axis aligned bounding box)
-    var fillData = async (item) => {
+    let fillData = (item) => {
+      let minMax = [];
       if (Array.isArray(item) || item.indexable) {
-        if (item.length === 0) return;
-
-        let b = item.bounding;
-        // Save position of len variable in array
-        let len_pos = data.length;
+        if (item.length === 0) return [];
+        let dataPos = data.length;
         // Begin bounding volume array
-        data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        id++;
+        data.push.apply(data, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        id ++;
         // Iterate over all sub elements
-        for (let i = 0; i < item.length; i++) fillData(item[i]);
-        let len = Math.floor((data.length - len_pos) / 24);
+        minMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // get updated bounding of lower element
+          let b = fillData (item[i]);
+          // update maximums and minimums
+          minMax = minMax.map((e, i) => (i < 3) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
+        }
+
+        let len = Math.floor((data.length - dataPos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        data[len_pos + 6] = len;
+        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
+        // for (let i = 3; i < 6; i++) data[dataPos + i] = minMax[(i % 3) * 2 + 1];
+        data[dataPos + 6] = len - 1;
+
       } else {
         let len = item.length;
-        // Test if bounding volume is set
-        if (item.bounding !== undefined){
-          // Declare bounding volume of object
-          let b = item.bounding;
-          data.push(b[0], b[1], b[2], b[3], b[4], b[5], len / 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-          id++;
-        } else if (item.length > 3) {
-          // Warn if length is greater than 3
-          console.warn(item);
-          // A single triangle needs no bounding voume, so nothing happens in this case
+        // Declare bounding volume of object
+        let v = item.vertices;
+        minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          minMax[0] = Math.min(minMax[0], v[i]);
+          minMax[1] = Math.min(minMax[1], v[i + 1]);
+          minMax[2] = Math.min(minMax[2], v[i + 2]);
+          minMax[3] = Math.max(minMax[3], v[i]);
+          minMax[4] = Math.max(minMax[4], v[i + 1]);
+          minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        // Give item new id property to identify vertex in fragment shader
-        item.ids = [];
-        // console.log(id, item.textureArray);
-        data.push(...item.textureArray);
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        data.push.apply(data, item.textureArray);
+        // Increase object id
+        bufferId ++;
 
-        for (let i = 0; i < len * 3; i += 9){
-          // let j = i / 3 * 2;
-          let idHigh = Math.floor(id / 65535);
-          let idLow = id % 65535
+        let bufferIdHigh = (bufferId % 65536) >> 16;
+        let bufferIdLow = (bufferId % 256) >> 8;
+        // Give item new id property to identify vertex in fragment shader
+        for (let i = 0; i < len * 3; i += 9) {
+          let idHigh = Math.floor(id >> 16);
+          let idLow = id % 65536;
           // 1 vertex = 1 line in world texture
-          // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          item.ids.push(idHigh, idLow, idHigh, idLow, idHigh, idLow);
+          // Fill id buffer
+          ids.push.apply(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
           id ++;
         }
+        // Fill buffers
+        positions.push.apply(positions, item.vertices);
+        uvs.push.apply(uvs, item.uvs);
+        bufferLength += item.length;
       }
+      return minMax;
     }
-    // Fill texture with data pixels
+    // Fill scene describing texture with data pixels
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    // Set buffer attributes
+    this.#positionBufferArray = new Float32Array(positions);
+    this.#idBufferArray =  new Float32Array(ids);
+    this.#uvBufferArray =  new Float32Array(uvs);
+    this.#bufferLength = bufferLength;
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
-    data.push(... new Array(6144 - data.length % 6144).fill(0));
+    data.push.apply(data, new Array(6144 - data.length % 6144).fill(0));
     // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
+    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
+    GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
   }
 
   async render() {
@@ -542,7 +561,7 @@ export class Rasterizer {
     // Internal GL objects
     let Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, HdrLocation, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    let PositionBuffer, IdBuffer, TexBuffer;
+    let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, other buffers and textures
     let Framebuffer;
     let DepthTexture = this.#gl.createTexture();
@@ -576,12 +595,16 @@ export class Rasterizer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
-      // generate bounding volumes
-      rt.scene.updateBoundings();
+      // Request the browser to render frame with hardware acceleration
+      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
       rt.#updateTranslucencyAtlas();
+      // Set scene graph
+      rt.updateScene();
+      // build bounding boxes for scene first
+      rt.updatePrimaryLightSources();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -590,8 +613,6 @@ export class Rasterizer {
         prepareEngine();
         State = rt.renderQuality;
       }
-      // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
       renderFrame();
       // Update frame counter
@@ -613,9 +634,6 @@ export class Rasterizer {
 
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
-      // Set world-texture
-      rt.updateScene();
-      rt.updatePrimaryLightSources();
 
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
@@ -653,40 +671,17 @@ export class Rasterizer {
     }
 
     function fillBuffers() {
-      let vertices = [];
-      let ids = [];
-      let uvs = [];
-      let id = 0;
-      let bufferLength = 0;
-      // Iterate through render queue and build arrays for GPU
-      var flattenQUEUE = (item) => {
-        if (Array.isArray(item) || item.indexable){
-          // Iterate over all sub elements
-          for (let i = 0; i < item.length; i++){
-            // flatten sub element of queue
-            flattenQUEUE(item[i]);
-          }
-        } else {
-          id ++;
-          for(let i = 0; i < item.ids.length; i += 2) ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
-          vertices.push(...item.vertices);
-          uvs.push(...item.uvs);
-          bufferLength += item.length;
-        }
-      };
-      // Start recursion
-      rt.scene.queue.forEach(item => flattenQUEUE(item));
       // Set buffers
       [
-        [PositionBuffer, vertices],
-        [IdBuffer, ids],
-        [TexBuffer, uvs]
+        [PositionBuffer, rt.#positionBufferArray],
+        [IdBuffer, rt.#idBufferArray],
+        [UvBuffer, rt.#uvBufferArray]
       ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1]), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, item[1], rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, bufferLength);
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
     }
 
     let renderFrame = () => {
@@ -751,14 +746,14 @@ export class Rasterizer {
       // Init a world texture containing all information about world space
       rt.#worldTexture = rt.#gl.createTexture();
       // Create buffers
-      [PositionBuffer, IdBuffer, TexBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
         // Bind world space position buffer
         [PositionBuffer, 3, false],
         // Surface id buffer
         [IdBuffer, 4, false],
         // Set barycentric texture coordinates
-        [TexBuffer, 2, true]
+        [UvBuffer, 2, true]
       ].forEach((item, i) => {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
         rt.#gl.enableVertexAttribArray(i);

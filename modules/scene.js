@@ -75,8 +75,8 @@ export class Scene {
     }
 
     let divideTree = (objs, depth = 0) => {
-      // If there are only 2 or less objects in tree, there is no need to subdivide
-      if (objs.length <= 2) {
+      // If there are only 4 or less objects in tree, there is no need to subdivide
+      if (objs.length <= 4) {
         polyCount += objs.length;
         console.log("loaded", polyCount, "polygons so far.");
         return objs;

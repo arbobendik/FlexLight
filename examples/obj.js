@@ -51,7 +51,7 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	let model = "bike";
+	let model = "grass";
 	
 	switch (model) {
 		case "bike":
@@ -69,18 +69,24 @@ async function buildScene() {
 			break;
 		case "monkey":
 			var obj = await scene.fetchObjFile('objects/monke.obj');
-			obj.move(10, 0, - 10);
+			obj.move(3, 2.1, - 3);
+			scene.queue.push(obj);
+			break;
+		case "cube":
+			var obj = await scene.fetchObjFile('objects/cube.obj');
+			obj.move(3, 2.1, - 3);
 			scene.queue.push(obj);
 			break;
 		case "monkeys":
+			scene.primaryLightSources[0].intensity = 100000;
 			let monkeyBound = [];
 			for (let i = 0; i < 3; i++) {
 				let obj = await scene.fetchObjFile('objects/monke.obj');
 				obj.scale(i * 0.2 + 1);
 				obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
 				obj.textureNums = [- 1, 1, 0]
-				let color = [180, 180, 180];
-				color[i] += 70;
+				let color = [150, 150, 150];
+				color[i] += 100;
 				obj.color = color;
 				monkeyBound.push(obj);
 			}
