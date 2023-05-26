@@ -279,7 +279,7 @@ class Primitive {
     for (let i = 0; i < this.length; i+= 3) {
       let i2 = i * 2;
       let i3 = i * 3;
-      this.textureArray.push(
+      this.textureArray.push.apply(this.textureArray, [
         this.#vertices[i3 + 0], this.#vertices[i3 + 1], this.#vertices[i3 + 2],
         this.#vertices[i3 + 3], this.#vertices[i3 + 4], this.#vertices[i3 + 5],
         this.#vertices[i3 + 6], this.#vertices[i3 + 7], this.#vertices[i3 + 8],
@@ -288,7 +288,7 @@ class Primitive {
         this.#textureNums[0], this.#textureNums[1], this.#textureNums[2],
         this.#uvs[i2 + 0],this.#uvs[i2 + 1], this.#uvs[i2 + 2],
         this.#uvs[i2 + 3], this.#uvs[i2 + 4], this.#uvs[i2 + 5]
-      );
+      ]);
     }
   }
     
@@ -300,6 +300,11 @@ class Primitive {
 
   set vertices (v) {
     this.#vertices = v;
+    /*for (let i = 0; i < this.length; i++) {
+      let i3 = i * 3;
+      for (let j = )
+    }
+    this.*/
     this.#buildTextureArray();
   }
   set color (c) {

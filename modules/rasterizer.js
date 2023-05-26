@@ -171,13 +171,12 @@ export class Rasterizer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
-    mat2x3 v = matrixCompMult(mat2x3(minCorner, maxCorner) - mat2x3(p, p), mat2x3(invRay, invRay));
-    float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
-    float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
-    // Cuboid is behind ray
-    // Ray points in cuboid direction, but doesn't intersect
-    return max(lowest, BIAS) <= highest;
+  bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+    vec3 v0 = (minCorner - p) * invRay;
+    vec3 v1 = (maxCorner - p) * invRay;
+    float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
+    float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
+    return tmax >= max(tmin, BIAS) && tmin < l;
   }
 
   // Simplified rayTracer to only test if ray intersects anything
@@ -185,7 +184,7 @@ export class Rasterizer {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 invRay = 1.0 / ray.unitDirection;
     // Precomput max length
-    float max = length(ray.direction);
+    float minLen = length(ray.direction);
     // Get texture size as max iteration value
     int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
@@ -199,16 +198,16 @@ export class Rasterizer {
         texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
       // Read normal from scene graph
-      // vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
       // Three cases:
       // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
       // all vertices are 0 0 0 => end of list: return false
       // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
-      if (t[2].yz == vec2(0)) {
+      if (n == vec3(0)) {
         if (t[2] == vec3(0)) break;
-        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+        if (!rayCuboid(minLen, invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
       } else {
-        if (moellerTrumboreCull(max, ray, t)) return true;
+        if (moellerTrumboreCull(minLen, ray, t)) return true;
       }
     }
     // Tested all triangles, but there is no intersection
@@ -509,8 +508,8 @@ export class Rasterizer {
         // Increase object id
         bufferId ++;
 
-        let bufferIdHigh = (bufferId % 65536) >> 16;
-        let bufferIdLow = (bufferId % 256) >> 8;
+        let bufferIdHigh = (bufferId % 65536) / 65535;
+        let bufferIdLow = (bufferId % 256) / 255;
         // Give item new id property to identify vertex in fragment shader
         for (let i = 0; i < len * 3; i += 9) {
           let idHigh = Math.floor(id >> 16);
@@ -536,7 +535,6 @@ export class Rasterizer {
     this.#bufferLength = bufferLength;
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
     data.push.apply(data, new Array(6144 - data.length % 6144).fill(0));
-    // console.log(data);
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
     // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
@@ -546,6 +544,8 @@ export class Rasterizer {
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    // this.#gl.texStorage2D(this.#gl.TEXTURE_2D, 1, this.#gl.RGB32F, 2048, dataHeight);
+    // this.#gl.texSubImage2D(this.#gl.TEXTURE_2D, 0, 0, 0, 2048, dataHeight, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
   }
 
   async render() {

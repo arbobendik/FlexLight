@@ -20,6 +20,7 @@ export class PathTracer {
   hdr = true;
   // Performance metric
   fps = 0;
+  fpsLimit = Infinity;
 
   #antialiasing = 'taa';
   #AAObject;
@@ -36,7 +37,6 @@ export class PathTracer {
   #uvBufferArray;
   #bufferLength;
 
-  #randomTextures = new Array(this.temporalSamples);
   // Internal gl texture variables of texture atlases
   #textureAtlas;
   #pbrAtlas;
@@ -97,6 +97,7 @@ export class PathTracer {
   `;
   #fragmentGlsl = `#version 300 es
   #define PI 3.141592653589793
+  #define PHI 1.61803398874989484820459
   #define SQRT3 1.73205
   #define POW32 4294967296.0
   #define BIAS 0.00001525879
@@ -134,6 +135,9 @@ export class PathTracer {
   uniform int maxReflections;
   uniform float minImportancy;
   uniform int useFilter;
+  uniform int isTemporal;
+
+  uniform float randomSeed;
   // Get global illumination color, intensity
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
@@ -141,8 +145,6 @@ export class PathTracer {
 
   // Texture with information about all triangles in scene
   uniform sampler2D worldTex;
-  // Random texture to multiply with normal map to simulate rough surfaces
-  uniform sampler2D random;
   uniform sampler2D translucencyTex;
   uniform sampler2D pbrTex;
   uniform sampler2D tex;
@@ -176,6 +178,10 @@ export class PathTracer {
     );
     // Return texel on requested location
     return texture(atlas, atlasCoords);
+  }
+
+  vec4 noise (vec2 n, float seed) {
+    return fract(sin(dot(n.xy, vec2(12.9898, 78.233)) + vec4(53.0, 59.0, 61.0, 67.0) * (seed + randomSeed * PHI)) * 43758.5453) * 2.0 - 1.0;
   }
 
   mat2x4 moellerTrumbore (float l, Ray ray, mat3 t) {
@@ -218,12 +224,12 @@ export class PathTracer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+  bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
     vec3 v0 = (minCorner - p) * invRay;
     vec3 v1 = (maxCorner - p) * invRay;
-    float lowest = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
-    float highest = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-    return max(lowest, BIAS) <= highest;
+    float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
+    float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
+    return tmax >= max(tmin, BIAS) && tmin < l;
   }
 
   // Test for closest ray triangle intersection
@@ -236,11 +242,13 @@ export class PathTracer {
     // Length to latest intersection
     float minLen = POW32;
     // Get texture size as max iteration value
-    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
+    ivec2 worldTexSize = textureSize(worldTex, 0).xy;
+    int size = worldTexSize.y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
+      float fi = float(i);
       // Get position of current triangle/vertex in worldTex
-      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
+      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 8.0, fi * INV_TRIANGLES_PER_ROW);
       mat3 t = mat3(
         texelFetch(worldTex, index, 0).xyz,
         texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
@@ -254,7 +262,7 @@ export class PathTracer {
       // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
       if (n == vec3(0)) {
         if (t[2] == vec3(0)) break;
-        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+        if (!rayCuboid(minLen, invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
       } else {
         // Test if triangle intersects ray
         mat2x4 currentIntersection = moellerTrumbore(minLen, ray, t);
@@ -275,9 +283,10 @@ export class PathTracer {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 invRay = 1.0 / ray.unitDirection;
     // Precomput max length
-    float max = length(ray.direction);
+    float minLen = length(ray.direction);
     // Get texture size as max iteration value
-    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
+    ivec2 worldTexSize = textureSize(worldTex, 0).xy;
+    int size = worldTexSize.y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
       // Get position of current triangle/vertex in worldTex
@@ -296,9 +305,9 @@ export class PathTracer {
       // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
       if (n == vec3(0)) {
         if (t[2] == vec3(0)) break;
-        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+        if (!rayCuboid(minLen, invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
       } else {
-        if (moellerTrumboreCull(max, ray, t)) return true;
+        if (moellerTrumboreCull(minLen, ray, t)) return true;
       }
     }
     // Tested all triangles, but there is no intersection
@@ -365,7 +374,7 @@ export class PathTracer {
     int reservoirNum = 0;
     float reservoirWeight;
     vec3 reservoirLightDir;
-    vec2 lastRandom = abs(randomVec.zw);
+    vec2 lastRandom = noise(randomVec.zw, BIAS).xy;
 
     for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
       // Read light position
@@ -383,14 +392,14 @@ export class PathTracer {
       float weight = length(colorForLight);
       totalWeight += weight;
 
-      if (lastRandom.y * totalWeight <= weight) {
+      if (abs(lastRandom.y) * totalWeight <= weight) {
         reservoirNum = j;
         reservoirWeight = weight;
         reservoirLightDir = dir;
       }
 
       // Update pseudo random variable.
-      lastRandom = texture(random, lastRandom).zw;
+      lastRandom = noise(lastRandom, BIAS).zw;
     }
 
     // Compute quick exit criterion to potentially skip expensive shadow test
@@ -426,12 +435,14 @@ export class PathTracer {
     for (int i = 0; i < bounces && length(importancyFactor) >= minImportancy * SQRT3; i++){
       float fi = float(i);
       // Multiply albedo with either absorption value or filter color
-      if (dontFilter && sampleN == 0) originalColor *= material.albedo;
-      else importancyFactor *= material.albedo;
+      if (dontFilter) {
+        if (sampleN == 0) originalColor *= material.albedo;
+      } else {
+        importancyFactor *= material.albedo;
+      }
       
       // Generate pseudo random vector
-      ivec2 randomCoord = ivec2(mod(((clipSpace.xy / clipSpace.z) + (sin(fi) + cosSampleN)) * 2.0, 1.0) * vec2(textureSize(random, 0).xy));
-      vec4 randomVec = texelFetch(random, randomCoord, 0) * 2.0 - 1.0;
+      vec4 randomVec = noise(clipSpace.xy / clipSpace.z, fi + cosSampleN);
       
       // Obtain normalized viewing direction
       vec3 V = normalize(viewPoint - ray.origin);
@@ -532,7 +543,7 @@ export class PathTracer {
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertexId.x * 65536.0 + vertexId.y;
+    float id = vertexId.x * 65535.0 + vertexId.y;
     ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
     vec3 color = texelFetch(worldTex, index + ivec2(3, 0), 0).xyz;
@@ -563,15 +574,28 @@ export class PathTracer {
     finalColor /= float(samples);
     firstRayLength /= float(samples);
     originalRMEx /= float(samples);
-    // Render all relevant information to 4 textures for the post processing shader
-    renderColor = vec4(mix(finalColor * originalColor, mod(finalColor, 1.0), float(useFilter)), 1.0);
-    // 16 bit HDR for improved filtering
-    renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
+    if (useFilter == 1) {
+      // Render all relevant information to 4 textures for the post processing shader
+      renderColor = vec4(mod(finalColor, 1.0), 1.0);
+      // 16 bit HDR for improved filtering
+      renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
+    } else {
+      finalColor *= originalColor;
+      if (isTemporal == 1) {
+        renderColor = vec4(mod(finalColor, 1.0), 1.0);
+        // 16 bit HDR for improved filtering
+        renderColorIp = vec4(floor(finalColor) * INV_256, 1.0);
+      } else {
+        renderColor = vec4(finalColor, 1.0);
+      }
+    }
+
     renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
-		renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
+    renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
     renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
     float div = 2.0 * length(position - player);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
+    
   }
   `;
   #firstFilterGlsl = `#version 300 es
@@ -990,13 +1014,12 @@ export class PathTracer {
           // get updated bounding of lower element
           let b = fillData (item[i]);
           // update maximums and minimums
-          minMax = minMax.map((e, i) => (i % 2 === 0) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
+          minMax = minMax.map((e, i) => (i < 3) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
         }
-
         let len = Math.floor((data.length - dataPos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 3; i++) data[dataPos + i] = minMax[i];
+        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
         data[dataPos + 6] = len - 1;
       } else {
         let len = item.length;
@@ -1045,8 +1068,8 @@ export class PathTracer {
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
     data.push.apply(data, new Array(6144 - data.length % 6144).fill(0));
     // console.log(data);
-    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
+    // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
@@ -1054,6 +1077,8 @@ export class PathTracer {
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    // this.#gl.texStorage2D(this.#gl.TEXTURE_2D, 1, this.#gl.RGB32F, 2048, this.#gl.MAX_TEXTURE_SIZE);
+    // this.#gl.texSubImage2D(this.#gl.TEXTURE_2D, 0, 0, 0, 2048, dataHeight, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
   }
 
   async render() {
@@ -1068,9 +1093,9 @@ export class PathTracer {
     let Frames = 0;
     let LastMeasuredFrames = 0;
     // Internal GL objects
-    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, FilterLocation, HdrLocation, AmbientLocation, TextureWidth;
+    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, RandomSeedLocation, FilterLocation, TemporalLocation, HdrLocation, AmbientLocation, TextureWidth;
     let TempProgram, TempHdrLocation;
-    let WorldTex, RandomTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    let WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, Post Program buffers and textures
@@ -1143,7 +1168,9 @@ export class PathTracer {
     // Internal render engine Functions
     function frameCycle (Millis) {
       // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
+      if (!rt.#halt) setTimeout(function () {
+        requestAnimationFrame(frameCycle)
+      }, 1000 / rt.fpsLimit);
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
@@ -1183,14 +1210,12 @@ export class PathTracer {
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#randomTextures[rt.temporal ? Frames % rt.temporalSamples : 0]);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE5);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
       // Set 3d camera position
@@ -1207,22 +1232,24 @@ export class PathTracer {
       rt.#gl.uniform1f(MinImportancyLocation, rt.minImportancy);
       // Instuct shader to render for filter or not
       rt.#gl.uniform1i(FilterLocation, rt.filter);
+      // Instuct shader to render for temporal or not
+      rt.#gl.uniform1i(TemporalLocation, rt.temporal);
       // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
+      // Pass random seed
+      rt.#gl.uniform1f(RandomSeedLocation, rt.temporal ? Frames % rt.temporalSamples : 0);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
       // Pass whole current world space as data structure to GPU
       rt.#gl.uniform1i(WorldTex, 0);
-      // Pass random texture to GPU
-      rt.#gl.uniform1i(RandomTex, 1);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 2);
+      rt.#gl.uniform1i(PbrTex, 1);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 3);
+      rt.#gl.uniform1i(TranslucencyTex, 2);
       // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 4);
+      rt.#gl.uniform1i(Tex, 3);
       // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 5);
+      rt.#gl.uniform1i(LightTex, 4);
     }
 
     function fillBuffers() {
@@ -1413,11 +1440,7 @@ export class PathTracer {
     }
 
 
-    function renderTextureBuilder(){
-      for (let i = 0; i < rt.temporalSamples; i++) {
-        rt.#randomTextures[i] = rt.#gl.createTexture();
-        GLLib.randomTextureBuilder(rt.#gl.canvas.width / 4, rt.#gl.canvas.height / 4, rt.#gl, rt.#randomTextures[i]);
-      }
+    function renderTextureBuilder () {
       // Init textures for denoiser
       [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
         parent.forEach(function(item){
@@ -1466,35 +1489,27 @@ export class PathTracer {
         float centerW = texelFetch(cache0, texel, 0).w;
       `;
 
-      this.#tempGlsl += rt.filter ? `
+      this.#tempGlsl += `
         vec3 color = texelFetch(cache0, texel, 0).xyz + texelFetch(cacheIp0, texel, 0).xyz * 256.0;
         float glassFilter = texelFetch(cacheIp0, texel, 0).w;
-      ` : `
-        vec3 color = texelFetch(cache0, texel, 0).xyz;` + newLine;
+      `;
 
       for (let i = 1; i < rt.temporalSamples; i += 4) {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-        if (rt.filter) {
-          this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
-          for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-          this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-        }
+        this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
-        this.#tempGlsl += rt.filter ? `
+        this.#tempGlsl += `
         for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
         for (int i = 0; i < 4; i++) glassFilter += ip` + i + `[i].w;
-        ` : `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
-          color += c` + i + `[i].xyz;
-          counter ++;
-        }
         `;
       }
 
@@ -1541,9 +1556,10 @@ export class PathTracer {
       MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'maxReflections');
       MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'minImportancy');
       FilterLocation = rt.#gl.getUniformLocation(Program, 'useFilter');
+      TemporalLocation = rt.#gl.getUniformLocation(Program, 'isTemporal');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
+      RandomSeedLocation = rt.#gl.getUniformLocation(Program, 'randomSeed');
       WorldTex = rt.#gl.getUniformLocation(Program, 'worldTex');
-      RandomTex = rt.#gl.getUniformLocation(Program, 'random');
       TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
 
       LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
@@ -1645,6 +1661,6 @@ export class PathTracer {
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle
-    frameCycle();
+    requestAnimationFrame(frameCycle);
   }
 }

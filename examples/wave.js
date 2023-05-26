@@ -79,9 +79,7 @@ async function buildScene() {
 		// Increase iterator.
 		t += 0.02;
 		// Package cuboids together in a shared bounding volume.
-		let test = drawMap(2 * power, 0, 0, false);
-		engine.scene.queue[1] = test;
-		engine.scene.updateBoundings();
+		engine.scene.queue[1] = drawMap(2 * power, 0, 0, false);
 	}, 100 / 6);
 
 	// Start render engine.
