@@ -50,12 +50,12 @@ export class WebIo {
 
 	update = (time) => {
 		if (!this.#isListening) return;
-			const c = this.camera;
-			const difference = (time - this.#savedTime) * this.movementSpeed;
-			c.x += difference * (this.#movement[0] * Math.cos(c.fx) - this.#movement[2] * Math.sin(c.fx));
-			c.y += difference * this.#movement[1];
-			c.z += difference * (this.#movement[2] * Math.cos(c.fx) + this.#movement[0] * Math.sin(c.fx));
-			this.#savedTime = time;
+		const c = this.camera;
+		const difference = (time - this.#savedTime) * this.movementSpeed;
+		c.x += difference * (this.#movement[0] * Math.cos(c.fx) - this.#movement[2] * Math.sin(c.fx));
+		c.y += difference * this.#movement[1];
+		c.z += difference * (this.#movement[2] * Math.cos(c.fx) + this.#movement[0] * Math.sin(c.fx));
+		this.#savedTime = time;
 	}
 
 	resetMovement = () => { for (const key in this.#pressedKeys) this.#pressedKeys[key] = false };

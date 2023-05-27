@@ -13,13 +13,13 @@ export class FXAA {
     #define FXAA_SUBPIX_CAP 7.0 / 8.0
     #define FXAA_SEARCH_STEPS 6
     precision highp float;
-    in vec2 clip_space;
-    uniform sampler2D pre_render;
+    in vec2 clipSpace;
+    uniform sampler2D preRender;
     out vec4 out_color;
     vec2 texel;
 
     vec4 fetch(int x, int y) {
-      return texelFetch(pre_render, ivec2(texel) + ivec2(x, y), 0);
+      return texelFetch(preRender, ivec2(texel) + ivec2(x, y), 0);
     }
 
     // Color to luminance conversion from NVIDIA FXAA white paper
@@ -69,7 +69,7 @@ export class FXAA {
 
     void main() {
       // Get texture size
-      texel = vec2(textureSize(pre_render, 0)) * clip_space;
+      texel = vec2(textureSize(preRender, 0)) * clipSpace;
       vec4 original_color = fetch(0, 0);
       float original_luma = tex_luma(0, 0);
 
@@ -152,7 +152,7 @@ export class FXAA {
         gl.bindVertexArray(this.#vao);
         gl.useProgram(this.#program);
 
-        this.#tex = gl.getUniformLocation(this.#program, 'pre_render');
+        this.#tex = gl.getUniformLocation(this.#program, 'preRender');
         this.#vertexBuffer = gl.createBuffer();
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);

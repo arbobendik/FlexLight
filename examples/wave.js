@@ -15,8 +15,8 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normal_tex = await scene.textureFromRME([0.1, 0.5, 0], 1, 1);
-	let cuboid_tex = await scene.textureFromRME([0.2, 0.3, 0.02], 1, 1);
+	let normal_tex = await scene.textureFromRME([0.7, 1, 0], 1, 1);
+	let cuboid_tex = await scene.textureFromRME([0.1, 0, 0.02], 1, 1);
 	scene.pbrTextures.push(normal_tex, cuboid_tex);
 	// Generate translucency texture for cube.
 	let translucencyTex = await scene.textureFromTPO([0, 0, 1.3 / 4], 1, 1);
@@ -24,10 +24,10 @@ async function buildScene() {
 	// Set light source.
 	scene.primaryLightSources = [[0, 10, 0]];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 200;
+	scene.primaryLightSources[0].intensity = 1000;
 	// Generate plane.
 	let this_plane = scene.Plane([-100,-1,-100], [100,-1,-100], [100,-1,100], [-100,-1,100]);
-  	this_plane.setTextureNums(-1, 0, -1);
+  	this_plane.textureNums = [-1, 0, -1];
 	// Push both objects to render queue.
 	scene.queue.push(this_plane);
 	// Set power of 2 square length.
@@ -51,8 +51,8 @@ async function buildScene() {
 		if (pot === 0) {
 			let cuboid = scene.Cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
 			// Set PBR properties and colors for blocks.
-      		cuboid.setTextureNums(-1, 1, 0);
-      		cuboid.setColor(colors[x][y]);
+      		cuboid.textureNums = [-1, 1, 0];
+      		cuboid.color = colors[x][y];
 			return cuboid;
 		}
 		// Decide to split vertically or horizontally.
@@ -79,9 +79,7 @@ async function buildScene() {
 		// Increase iterator.
 		t += 0.02;
 		// Package cuboids together in a shared bounding volume.
-		let test = drawMap(2 * power, 0, 0, false);
-		engine.scene.queue[1] = test;
-		engine.scene.updateBoundings();
+		engine.scene.queue[1] = drawMap(2 * power, 0, 0, false);
 	}, 100 / 6);
 
 	// Start render engine.
@@ -93,8 +91,5 @@ async function buildScene() {
 	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update texture atlases.
-		engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
-	}, 1000);
+	}, 100);
 }

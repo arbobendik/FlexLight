@@ -42,9 +42,9 @@ async function buildScene() {
 
 	scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 	// Make light dimmer (default = 200)
-	scene.primaryLightSources[0].intensity = 70;
+	scene.primaryLightSources[0].intensity = 400;
 	scene.primaryLightSources[0].variation = 0.2;
-	scene.primaryLightSources[1].intensity = 100;
+	scene.primaryLightSources[1].intensity = 300;
 	// Set ambient illumination
 	scene.ambientLight = [0.05, 0.05, 0.05];
 
@@ -54,7 +54,7 @@ async function buildScene() {
 	// Generate new more diffuse texture for the grass block
 	let diffuseTex = await scene.textureFromRME([1, 0, 0], 1, 1);
 	let diffuseGlowTex = await scene.textureFromRME([1, 0.5, 0.5], 1, 1);
-	let smoothMetallicTex = await scene.textureFromRME([0, 0.2, 0], 1, 1);
+	let smoothMetallicTex = await scene.textureFromRME([0, 0, 0], 1, 1);
 	// Add those textures to render queue
 	scene.pbrTextures.push(normalTex, diffuseTex, smoothMetallicTex, diffuseGlowTex); // 1 2 3 4
 
@@ -69,7 +69,7 @@ async function buildScene() {
 	let groundPlane = scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
 
 	// Set normal texture for each plane
-  	groundPlane.setTextureNums(-1, 1, -1);
+  	groundPlane.textureNums = [-1, 1, -1];
 
 	// Generate a few cuboids on surface
 	let cuboids = [
@@ -80,10 +80,12 @@ async function buildScene() {
 	];
 
 	// Color all cuboid in center
-	for (let i = 0; i < 4; i++) {
-		cuboids[i].setColor(Math.random() * 255, Math.random() * 255, Math.random() * 255);
-		cuboids[i].setTextureNums(-1, 3, 0);
-	}
+	for (let i = 0; i < 4; i++) cuboids[i].textureNums = [-1, 3, 0];
+	
+	cuboids[0].color = [230, 170, 0];
+	cuboids[1].color = [0, 150, 150];
+	cuboids[2].color = [150, 0, 100];
+	cuboids[3].color = [0, 0, 200];
 
 	// Spawn cubes with grass block textures
 	let grassCube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8);
@@ -95,22 +97,19 @@ async function buildScene() {
 	let wall = scene.Cuboid(2.5, 7.5, -1, 1.5, 5, 7);
 
 	// Make red cube red and emissive and lantern emissive
-	redCube.setTextureNums(3, 0, -1);
-	lantern.setTextureNums(4, 4, -1);
+	redCube.textureNums = [3, 0, -1];
+	lantern.textureNums = [4, 4, -1];
 	// Change diffusion properties of wall on specific sides
-	wall.top.setTextureNums(-1, 2, -1);
-	wall.left.setTextureNums(-1, 2, -1);
+	wall.top.textureNums = [-1, 2, -1];
+	// wall.left.textureNums = [-1, 2, -1];
 	// Set different textures for different sides of the array
 	// And make cube full diffuse
 	[grassCube, grassCube2].forEach((item) => {
-		item.setTextureNums(1, 2, -1);
+		item.textureNums = [1, 2, -1];
 		// Set different textures for top and bottom.
-		item.top.setTextureNums(0, 2, -1);
-		item.bottom.setTextureNums(2, 2, -1);
+		item.top.textureNums = [0, 2, -1];
+		item.bottom.textureNums = [2, 2, -1];
 	});
-
-	//let obj = await scene.fetchObjFile('objects/cube.obj');
-	//obj.move(6, 0, -3);
 
 	// pack cuboids in tree structure to increase raytracing effiecency
 	let cuboidTree = [cuboids[0], [cuboids[1], [cuboids[2], cuboids[3]]]];
@@ -135,8 +134,6 @@ async function buildScene() {
 	setInterval(function(){
 		fpsCounter.textContent = engine.renderer.fps;
 		// update textures every second
-		engine.renderer.updateTextures();
-		engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
+		
 	}, 1000);
 };

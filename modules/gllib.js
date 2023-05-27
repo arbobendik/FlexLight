@@ -4,14 +4,14 @@ import { Math } from './math.js';
 export class GLLib {
 
   static postVertex = `#version 300 es
-  in vec2 position_2d;
+  in vec2 position2d;
   // Pass clip space position to fragment shader
-  out vec2 clip_space;
+  out vec2 clipSpace;
   void main() {
-    vec2 pos = position_2d * 2.0 - 1.0;
+    vec2 pos = position2d * 2.0 - 1.0;
     // Set final clip space position
     gl_Position = vec4(pos, 0, 1);
-    clip_space = position_2d;
+    clipSpace = position2d;
   }
   `;
 
@@ -39,6 +39,7 @@ export class GLLib {
       } else {
         // Log debug info and delete shader if shader fails to compile.
         console.warn(gl.getShaderInfoLog(shader));
+        console.log(item.source);
         gl.deleteShader(shader);
       }
     });
@@ -53,12 +54,10 @@ export class GLLib {
       return program;
     }
   };
-
+  
   static setTexParams = (gl) => {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   };
 
   static setByteTexture = (gl, array, width, height) => {

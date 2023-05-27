@@ -3,7 +3,7 @@
 
 import { Camera } from './modules/camera.js';
 import { Scene } from './modules/scene.js';
-import { RayTracer } from './modules/raytracer.js';
+import { PathTracer } from './modules/pathtracer.js';
 import { Rasterizer } from './modules/rasterizer.js';
 import { WebIo } from './modules/io.js';
 import { UI } from './modules/ui.js';
@@ -70,10 +70,11 @@ export class FlexLight {
 
   set renderer (renderer) {
     this.#idRenderer = renderer ?? 'rasterizer';
+    // if (this.#idRenderer == this.#renderer.type) return;
     this.#renderer.halt();
     switch (this.#idRenderer) {
-      case 'raytracer':
-        this.#renderer = new RayTracer(this.#canvas, this.camera, this.#scene);
+      case 'pathtracer':
+        this.#renderer = new PathTracer(this.#canvas, this.camera, this.#scene);
         break;
       case 'rasterizer':
         this.#renderer = new Rasterizer(this.#canvas, this.camera, this.#scene);

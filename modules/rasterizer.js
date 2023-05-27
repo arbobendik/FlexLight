@@ -15,234 +15,315 @@ export class Rasterizer {
 
   #antialiasing = 'taa';
   #AAObject;
-
-  halt = () => this.#halt = true;
-  #halt = false;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
+
+  #halt = false;
+  #worldTexture;
+  // Buffer arrays
+  #positionBufferArray;
+  #idBufferArray;
+  #uvBufferArray;
+  #bufferLength;
+  
   // Internal gl texture variables of texture atlases
-  #worldTexture = null;
-  #pbrTexture = null;
-  #translucencyTexture = null;
-  #texture = null;
-  #lightTexture = null;
+  #textureAtlas;
+  #pbrAtlas;
+  #translucencyAtlas;
+
+  #textureList = [];
+  #pbrList = [];
+  #translucencyList = [];
+  #lightSourcesList = [];
+
+  #lightTexture;
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
   precision highp float;
-  in vec3 position_3d;
+  in vec3 position3d;
   in vec4 id;
-  in vec2 tex_pos;
-  uniform vec3 camera_position;
+  in vec2 texPos;
+
+  uniform vec3 cameraPosition;
   uniform vec2 perspective;
   uniform vec4 conf;
+
   out vec3 position;
-  out vec2 tex_coord;
-  out vec3 clip_space;
-  flat out vec4 vertex_id;
-  flat out vec3 player;
+  out vec2 texCoord;
+  out vec3 clipSpace;
+  flat out vec4 vertexId;
+  flat out vec3 camera;
+
+  vec3 clipPosition (vec3 pos, vec2 dir) {
+    vec2 translatePX = vec2(
+      pos.x * cos(dir.x) + pos.z * sin(dir.x),
+      pos.z * cos(dir.x) - pos.x * sin(dir.x)
+    );
+
+    vec2 translatePY = vec2(
+      pos.y * cos(dir.y) + translatePX.y * sin(dir.y),
+      translatePX.y * cos(dir.y) - pos.y * sin(dir.y)
+    );
+
+    vec2 translate2d = vec2(translatePX.x / conf.y, translatePY.x) / conf.x;
+    return vec3(translate2d, translatePY.y);
+  }
+
   void main(){
-    vec3 move_3d = position_3d + vec3(camera_position.x, - camera_position.yz) * vec3(-1.0, 1.0, 1.0);
-    vec2 translate_px = vec2(
-      move_3d.x * cos(perspective.x) + move_3d.z * sin(perspective.x),
-      move_3d.z * cos(perspective.x) - move_3d.x * sin(perspective.x)
-    );
-    vec2 translate_py = vec2(
-      move_3d.y * cos(perspective.y) + translate_px.y * sin(perspective.y),
-      translate_px.y * cos(perspective.y) - move_3d.y * sin(perspective.y)
-    );
-    vec2 translate_2d = vec2(translate_px.x / conf.y, translate_py.x) / conf.x;
-    // Set final clip space position
-    gl_Position = vec4(translate_2d, - 1.0 / (1.0 + exp(- length(move_3d / 1048576.0))), translate_py.y);
-    position = position_3d;
-    tex_coord = tex_pos;
-    clip_space = vec3(translate_2d, translate_py.y);
-    vertex_id = id;
-    player = camera_position;
+    vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
+
+    clipSpace = clipPosition (move3d, perspective + conf.zw);
+    
+    // Set triangle position in clip space
+    gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d / 1048576.0))), clipSpace.z);
+
+    position = position3d;
+    texCoord = texPos;
+    vertexId = id;
+    camera = cameraPosition;
   }
   `;
   #fragmentGlsl = `#version 300 es
-  #define SQRT3 1.7320508075688772
-  #define BIAS 0.0000152587890625
-  #define TrianglesPerRow 256
+  #define PI 3.141592653589793
+  #define SQRT3 1.73205
+  #define BIAS 0.00001525879
+  #define INV_TRIANGLES_PER_ROW 0.00390625
+  #define TRIANGLES_PER_ROW 256.0
+  #define INV_256 0.00390625
+  #define INV_65536 0.00001525879
+  #define THIRD 0.333333
+
   precision highp float;
   precision highp sampler2D;
+
+  float inv_texture_width = 1.0;
+
+  struct Ray {
+    vec3 direction;
+    vec3 unitDirection;
+    vec3 origin;
+    vec3 normal;
+  };
+
+  struct Material {
+    vec3 albedo;
+    vec3 rme;
+    vec3 tpo;
+  };
+
+  struct Light {
+    vec3 origin;
+    float strength;
+    float variance;
+  };
+
   in vec3 position;
-  in vec2 tex_coord;
-  in vec3 clip_space;
-  flat in vec4 vertex_id;
-  flat in vec3 player;
+  in vec2 texCoord;
+  in vec3 clipSpace;
+  flat in vec4 vertexId;
+  flat in vec3 camera;
+
   // Get global illumination color, intensity
   uniform vec3 ambient;
   // Textures in parallel for texture atlas
-  uniform int texture_width;
+  uniform int textureWidth;
   uniform int hdr;
   // Texture with information about all triangles in scene
-  uniform sampler2D world_tex;
+  uniform sampler2D worldTex;
   // Random texture to multiply with normal map to simulate rough surfaces
-  uniform sampler2D translucency_tex;
-  uniform sampler2D pbr_tex;
+  uniform sampler2D translucencyTex;
+  uniform sampler2D pbrTex;
   uniform sampler2D tex;
   // Texture with all primary light sources of scene
-  uniform sampler2D light_tex;
-  layout(location = 0) out vec4 render_color;
-  // Prevent blur over shadow border or over (close to) perfect reflections
-  float first_ray_length = 1.0;
-  // Accumulate color of mirror reflections
-  float original_rmex = 0.0;
-  vec3 original_color = vec3(1.0);
+  uniform sampler2D lightTex;
+  
+  layout(location = 0) out vec4 renderColor;
+
+  float invTextureWidth = 1.0;
+
   // Lookup values for texture atlases
-  vec4 lookup(sampler2D atlas, vec3 coords){
-    float atlas_height_factor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) / float(texture_width);
-    float atlas_width_factor = 1.0 / float(texture_width);
-    vec2 atlas_coords = vec2(
-      (coords.x + mod(coords.z, float(texture_width))) * atlas_width_factor,
-      (coords.y + floor(coords.z / float(texture_width))) * atlas_height_factor
+  vec4 lookup(sampler2D atlas, vec3 coords) {
+    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
+    vec2 atlasCoords = vec2(
+      (coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth,
+      (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor
     );
     // Return texel on requested location
-    return texture(atlas, atlas_coords);
+    return texture(atlas, atlasCoords);
   }
-  // Test if ray intersects triangle and return intersection
-  mat2x4 rayTriangle(float l, vec3 r, vec3 p, mat3 t, vec3 n, vec3 on){
-    // Can't intersect with triangle with the same normal as the origin
-    if (n == on) return mat2x4(0);
-    // Get distance to intersection point
-    float s = dot(n, t[0] - p) / dot(n, r);
-    // Ensure that ray triangle intersection is between light source and texture
-    if (s > l || s <= BIAS) return mat2x4(0);
-    // Calculate intersection point
-    vec3 d = (s * r) + p;
-    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
-    vec3 v0 = t[1] - t[0];
-    vec3 v1 = t[2] - t[0];
-    vec3 v2 = d - t[0];
-    float d00 = dot(v0, v0);
-    float d01 = dot(v0, v1);
-    float d11 = dot(v1, v1);
-    float d20 = dot(v2, v0);
-    float d21 = dot(v2, v1);
-    float denom = d00 * d11 - d01 * d01;
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u =  1.0 - v - w;
-    if (min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return mat2x4(0);
-    // Return uvw and intersection point on triangle.
-    return mat2x4(vec4(d, s), vec4(u, v, w, 0));
+
+  // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
+  bool moellerTrumboreCull (float l, Ray ray, mat3 t) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
+    vec3 pvec = cross(ray.unitDirection, edge2);
+    float det = dot(edge1, pvec);
+    float invDet = 1.0 / det;
+    if (det < BIAS) return false;
+    vec3 tvec = ray.origin - t[0];
+    float u = dot(tvec, pvec) * invDet;
+    if (u < BIAS || u > 1.0) return false;
+    vec3 qvec = cross(tvec, edge1);
+    float v = dot(ray.unitDirection, qvec) * invDet;
+    if (v < 0.0 || u + v > 1.0) return false;
+    float s = dot(edge2, qvec) * invDet;
+    return (s <= l && s > BIAS);
   }
+
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 inv_ray, vec3 p, vec3 min_corner, vec3 max_corner) {
-    mat2x3 v = matrixCompMult(mat2x3(min_corner, max_corner) - mat2x3(p, p), mat2x3(inv_ray, inv_ray));
-    // vec2 v1 = (vec2(min_corner.x, max_corner.x) - p.x) * inv_ray.x;
-    // vec2 v2 = (vec2(min_corner.y, max_corner.y) - p.y) * inv_ray.y;
-    // vec2 v3 = (vec2(min_corner.z, max_corner.z) - p.z) * inv_ray.z;
-    float lowest = max(max(min(v[0].x, v[1].x), min(v[0].y, v[1].y)), min(v[0].z, v[1].z));
-    float highest = min(min(max(v[0].x, v[1].x), max(v[0].y, v[1].y)), max(v[0].z, v[1].z));
-    // Cuboid is behind ray
-    // Ray points in cuboid direction, but doesn't intersect
-    return max(lowest, BIAS) <= highest;
+  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+    vec3 v0 = (minCorner - p) * invRay;
+    vec3 v1 = (maxCorner - p) * invRay;
+    float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
+    float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
+    return tmax >= max(tmin, BIAS);
   }
-  // Simplified rayTracer test only if ray intersects anything
-  bool shadowTest(vec3 ray, vec3 light, vec3 origin, vec3 origin_normal){
-    // return false;
+
+  // Simplified rayTracer to only test if ray intersects anything
+  bool shadowTest(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 inv_ray = 1.0 / ray;
+    vec3 invRay = 1.0 / ray.unitDirection;
+    // Precomput max length
+    float minLen = length(ray.direction);
     // Get texture size as max iteration value
-    int size = textureSize(world_tex, 0).y * TrianglesPerRow;
+    int size = textureSize(worldTex, 0).y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
-    for (int i = 0; i < size; i++){
-      // Get position of current triangle/vertex in world_tex
-      ivec2 index = ivec2(mod(float(i), float(TrianglesPerRow)) * 8.0, i / TrianglesPerRow);
-      // Read normal and triangle from world_tex
-      vec3 n = texelFetch(world_tex, index + ivec2(4, 0), 0).xyz;
-      // Fetch triangle coordinates from world texture
+    for (int i = 0; i < size; i++) {
+      // Get position of current triangle/vertex in worldTex
+      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 8.0, float(i) * INV_TRIANGLES_PER_ROW);
+      // Fetch triangle coordinates from scene graph
       mat3 t = mat3(
-        texelFetch(world_tex, index, 0).xyz,
-        texelFetch(world_tex, index + ivec2(1, 0), 0).xyz,
-        texelFetch(world_tex, index + ivec2(2, 0), 0).xyz
+        texelFetch(worldTex, index, 0).xyz,
+        texelFetch(worldTex, index + ivec2(1, 0), 0).xyz,
+        texelFetch(worldTex, index + ivec2(2, 0), 0).xyz
       );
-      //  Three cases:
-      //   - normal is not 0 0 0 --> normal vertex
-      //   - normal is 0 0 0 --> beginning of new bounding volume
-      if (n != vec3(0)) {
-        // Test if triangle intersects ray and return true if there is shadow
-        if (rayTriangle(length(light - origin), ray, origin, t, normalize(n), origin_normal)[0].xyz != vec3(0)) return true;
-      } else if (t == mat3(0)) {
-        // Break if all values are zero and texture already ended
-        break;
-      } else if (!rayCuboid(inv_ray, origin, vec3(t[0].x, t[0].z, t[1].y), vec3(t[0].y, t[1].x, t[1].z))){
-        // Test if Ray intersects bounding volume
-        // t[0] = x x2 y
-        // t[1] = y2 z z2
-        // If it doesn't intersect, skip shadow test for all elements in bounding volume
-        i += int(t[2].x);
+      // Read normal from scene graph
+      vec3 n = texelFetch(worldTex, index + ivec2(4, 0), 0).xyz;
+      // Three cases:
+      // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
+      // all vertices are 0 0 0 => end of list: return false
+      // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
+      if (n == vec3(0)) {
+        if (t[2] == vec3(0)) break;
+        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+      } else {
+        if (moellerTrumboreCull(minLen, ray, t)) return true;
       }
     }
     // Tested all triangles, but there is no intersection
     return false;
   }
-  float forwardTrace(vec3 normal, vec3 light_ray, vec3 origin, vec3 position, float metallicity, float strength){
-    // Calculate intensity of light reflection, which decreases squared over distance
-    float intensity = strength / pow(1.0 + length(light_ray),2.0);
-    // Process specularity of ray in view from origin's perspective
-    vec3 halfVector = normalize(normalize(light_ray) + normalize(origin - position));
-    float light = abs(dot(normalize(light_ray), normal)) * (1.0 - metallicity);
-    float specular = pow(abs(dot(normal, halfVector)), 300.0 / intensity) * 8.0 * metallicity;
-    // Determine final color and return it
-    if (dot(normal, halfVector) > 0.0) return light * intensity + specular * intensity;
-    // Return just light if specular is negative
-    return light * intensity;
+
+  float trowbridgeReitz (float alpha, float NdotH) {
+    float numerator = alpha * alpha;
+    float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
+    return numerator / max(PI * denom * denom, BIAS);
   }
-  float fresnel(vec3 normal, vec3 lightDir) {
-    // Apply fresnel effect
-    return dot(normal, lightDir);
+
+  float schlickBeckmann (float alpha, float NdotX) {
+    float k = alpha / 2.0;
+    float denominator = NdotX * (1.0 - k) + k;
+    denominator = max(denominator, BIAS);
+    return NdotX / denominator;
   }
+
+  float smith (float alpha, float NdotV, float NdotL) {
+    return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
+  }
+
+  vec3 fresnel(vec3 F0, float VdotH) {
+    // Use Schlick approximation
+    return F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
+  }
+
+  vec3 forwardTrace (vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
+    float lenP1 = 1.0 + length(lightDir);
+    // Apply inverse square law
+    float brightness = strength / (lenP1 * lenP1);
+
+    float alpha = material.rme.x * material.rme.x;
+    vec3 F0 = material.albedo * material.rme.y;
+    vec3 L = normalize(lightDir);
+    vec3 H = normalize(V + L);
+    
+    float VdotH = max(dot(V, H), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+
+    vec3 fresnelFactor = fresnel(F0, VdotH);
+    vec3 Ks = fresnelFactor;
+    vec3 Kd = (1.0 - Ks) * (1.0 - material.rme.y);
+    vec3 lambert = material.albedo / PI;
+
+    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
+    float cookTorranceDenominator = 4.0 * NdotV * NdotL;
+    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
+
+    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+    vec3 BRDF = Kd * lambert + cookTorrance;
+
+    // Outgoing light to camera
+    return BRDF * NdotL * brightness;
+  }
+
   void main(){
-    float id = vertex_id.x * 65535.0 + vertex_id.y;
-    ivec2 index = ivec2(mod(id, float(TrianglesPerRow)) * 8.0, id / float(TrianglesPerRow));
+    // Calculate constant for this pass
+    invTextureWidth = 1.0 / float(textureWidth);
+
+    float id = vertexId.x * 65536.0 + vertexId.y;
+    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 8.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
-    vec3 color = texelFetch(world_tex, index + ivec2(3, 0), 0).xyz;
-    vec3 normal = normalize(texelFetch(world_tex, index + ivec2(4, 0), 0).xyz);
-    vec3 texture_nums = texelFetch(world_tex, index + ivec2(5, 0), 0).xyz;
+    vec3 textureNums = texelFetch(worldTex, index + ivec2(5, 0), 0).xyz;
+    // Default texColor to color
+    vec3 color = mix(texelFetch(worldTex, index + ivec2(3, 0), 0).xyz, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0));
+    vec3 normal = normalize(texelFetch(worldTex, index + ivec2(4, 0), 0).xyz);
+    
     // Test if pixel is in frustum or not
-    if (clip_space.z < 0.0) return;
+    if (clipSpace.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
-    // Default roughness, metallicity and emissiveness
-    // Set roughness to texture value if texture is defined
-    vec3 rme = mix(vec3(0.5, 0.5, 0.0), lookup(pbr_tex, vec3(tex_coord, texture_nums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texture_nums.y + 1.0));
-    // Default to non translucent object (translucency, particle density, optical density) => tpo
-    vec3 tpo = mix(vec3(0.0, 1.0, 0.25), lookup(translucency_tex, vec3(tex_coord, texture_nums.z)).xyz, sign(texture_nums.z + 1.0));
-    // Preserve original roughness for filter pass.
-    // Start hybrid ray tracing on a per light source base
-    // Directly add emissive light of original surface to final_color
-    vec3 final_color = vec3(rme.z) + ambient;
-    // Calculate primary light sources for this pass
-    for (int j = 0; j < textureSize(light_tex, 0).y; j++){
+    // Default texColor to color
+    Material material = Material (
+      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(textureNums.y + 1.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
+    );
+
+    vec3 finalColor = vec3(material.rme.z);
+    // Calculate primary light sources for this pass if ray hits non translucent object
+    for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
       // Read light position
-      vec3 light = texelFetch(light_tex, ivec2(0, j), 0).xyz;
+      vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
       // Read light strength from texture
-      float strength = texelFetch(light_tex, ivec2(1, j), 0).x;
+      float strength = texelFetch(lightTex, ivec2(1, j), 0).x;
       // Skip if strength is negative or zero
       if (strength <= 0.0) continue;
-      // Recalculate position -> light vector
-      vec3 active_light_ray = light - position;
+
+      // Form light vector
+      vec3 dir = light - position;
+      Ray lightRay = Ray (dir, normalize(dir), position, normal);
+
+      vec3 localColor = forwardTrace(dir, normal, normalize(camera - position), material, strength);
+
+      // Compute quick exit criterion to potentially skip expensive shadow test
+      bool quickExitCriterion = length(localColor) == 0.0 || dot(lightRay.unitDirection, normal) <= BIAS;
+
       // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(normalize(active_light_ray), light, position, normal)) final_color += forwardTrace(normal, active_light_ray, player, position, rme.y, strength);
+      if (!quickExitCriterion && !shadowTest(lightRay)) finalColor += localColor;
     }
-    // Default tex_color to color
-    vec3 tex_color = mix(color, lookup(tex, vec3(tex_coord, texture_nums.x)).xyz, sign(texture_nums.x + 1.0));
-    // Set color
-    final_color *= tex_color;
-   
+
+    finalColor *= color;
+
     if (hdr == 1) {
       // Apply Reinhard tone mapping
-      final_color = final_color / (final_color + vec3(1.0));
+      finalColor = finalColor / (finalColor + vec3(1.0));
       // Gamma correction
       float gamma = 0.8;
-      final_color = pow(4.0 * final_color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+      finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
     }
-    render_color = vec4(final_color, 1.0 - tpo.x * 0.3);
-    
+    renderColor = vec4(finalColor, 1.0 - material.tpo.x * 0.3);
   }
   `;
   // Create new raysterizer from canvas and setup movement
@@ -251,7 +332,15 @@ export class Rasterizer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
-    this.#AAObject = new TAA(this.#gl);
+    this.halt = () => {
+      try {
+        this.#gl.loseContext();
+      } catch (e) {
+        console.warn("Unable to lose previous context, reload page in case of performance issue");
+      }
+      this.#halt = true;
+    }
+    this.#antialiasing = 'taa';
   }
 
   // Make canvas read only accessible
@@ -272,7 +361,7 @@ export class Rasterizer {
         break;
       case 'taa':
         this.#antialiasing = val;
-        this.#AAObject = new TAA(this.#gl);
+        this.#AAObject = new TAA(this.#gl, this);
         break;
       default:
         this.#antialiasing = null;
@@ -280,71 +369,77 @@ export class Rasterizer {
     }
   }
 
-
   // Functions to update texture atlases to add more textures during runtime
-	#updateTextureType (type) {
+	async #updateAtlas (list) {
 		// Test if there is even a texture
-		if (type.length === 0) {
+		if (list.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
 			return;
 		}
 
 		const [width, height] = this.scene.standardTextureSizes;
 		const textureWidth = Math.floor(2048 / width);
-
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
 		canvas.width = width * textureWidth;
-		canvas.height = height * type.length;
+		canvas.height = height * list.length;
 		ctx.imageSmoothingEnabled = false;
-
-		type.forEach(async (texture, i) => {
+		list.forEach(async (texture, i) => {
 			// textureWidth for third argument was 3 for regular textures
 			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
 		});
-		this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, Uint8Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data));
+
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
 	}
-  updatePbrTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrTexture);
+
+  async #updateTextureAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
+    this.#textureList = this.scene.textures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textureAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.pbrTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.textures);
   }
-  updateTranslucencyTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyTexture);
+
+  async #updatePbrAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
+    this.#pbrList = this.scene.pbrTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-
-		this.#updateTextureType(this.scene.translucencyTextures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.pbrTextures);
   }
-  updateTextures () {
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#texture);
+
+  async #updateTranslucencyAtlas () {
+    // Don't build texture atlas if there are no changes.
+    if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
+    this.#translucencyList = this.scene.translucencyTextures;
+
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyAtlas);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
-		this.#updateTextureType(this.scene.textures);
+    GLLib.setTexParams(this.#gl);
+		this.#updateAtlas(this.scene.translucencyTextures);
   }
+
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
+		// Don't update light sources if there are or no changes
+    if (this.scene.primaryLightSources.length === this.#lightSourcesList.length && this.scene.primaryLightSources.every((e, i) => e === this.#lightSourcesList[i])) return;
+    this.#lightSourcesList = this.scene.primaryLightSources;
+    
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
-		// Don't update light sources if there is none
+    GLLib.setTexParams(this.#gl);
+    // Skip processing if there are no light sources
 		if (this.scene.primaryLightSources.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
 			return;
@@ -362,88 +457,101 @@ export class Rasterizer {
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
+  
   updateScene () {
+    // Bias of 2^(-16)
+    const BIAS = 0.00152587890625;
+    // Object ids to keep track of
     let id = 0;
+    let bufferId = 0;
+    // build buffer Arrays
+    let [positions, ids, uvs] = [[], [], []];
+    let bufferLength = 0;
     // Set data variable for texels in world space texture
     var data = [];
+    
     // Build simple AABB tree (Axis aligned bounding box)
-    var fillData = async (item) => {
+    let fillData = (item) => {
+      let minMax = [];
       if (Array.isArray(item) || item.indexable) {
-        let b = item.bounding;
-        // Save position of len variable in array
-        let len_pos = data.length;
+        if (item.length === 0) return [];
+        let dataPos = data.length;
         // Begin bounding volume array
-        data.push(b[0],b[1],b[2],b[3],b[4],b[5],0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-        id++;
-        // Iterate over all sub elements and skip bounding (item[0])
-        for (let i = 0; i < item.length; i++) {
-          // Push sub elements in queue
-          fillData(item[i]);
+        data.push.apply(data, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        id ++;
+        // Iterate over all sub elements
+        minMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // get updated bounding of lower element
+          let b = fillData (item[i]);
+          // update maximums and minimums
+          minMax = minMax.map((e, i) => (i < 3) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
         }
-        let len = Math.floor((data.length - len_pos) / 24);
+
+        let len = Math.floor((data.length - dataPos) / 24);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        data[len_pos + 6] = len;
-      } else {
-        // Alias object properties to simplify data texture assembly
-        let v = item.vertices;
-        let c = item.colors;
-        let n = item.normals;
-        let t = item.textureNums;
-        let uv = item.uvs;
-        let len = item.length;
+        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
+        // for (let i = 3; i < 6; i++) data[dataPos + i] = minMax[(i % 3) * 2 + 1];
+        data[dataPos + 6] = len - 1;
 
-        //console.log(n[1]);
-        // transform normal vectors to unit vectors
-        let unitN = [];
-        for (let i = 0; i < n.length; i+=3) {
-          let v = [n[i], n[i+1], n[i+2]];
-          // get length
-          let length = Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2);
-          // devide by length
-          unitN.push(v[0] / length, v[1] / length, v[2] / length);
+      } else {
+        let len = item.length;
+        // Declare bounding volume of object
+        let v = item.vertices;
+        minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          minMax[0] = Math.min(minMax[0], v[i]);
+          minMax[1] = Math.min(minMax[1], v[i + 1]);
+          minMax[2] = Math.min(minMax[2], v[i + 2]);
+          minMax[3] = Math.max(minMax[3], v[i]);
+          minMax[4] = Math.max(minMax[4], v[i + 1]);
+          minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        // replace n with n as unit vectors
-        n = unitN.flat();
-        
-        // Test if bounding volume is set
-        if (item.bounding !== undefined) {
-          // Declare bounding volume of object
-          let b = item.bounding;
-          data.push(b[0],b[1],b[2],b[3],b[4],b[5],len/3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-          id++;
-        } else if (item.length > 3) {
-          // Warn if length is greater than 3
-          console.warn(item);
-          // A single triangle needs no bounding voume, so nothing happens in this case
-        }
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        data.push.apply(data, item.textureArray);
+        // Increase object id
+        bufferId ++;
+
+        let bufferIdHigh = (bufferId % 65536) / 65535;
+        let bufferIdLow = (bufferId % 256) / 255;
         // Give item new id property to identify vertex in fragment shader
-        item.ids = [];
-        for (let i = 0; i < len * 3; i += 9){
-          let j = i/3*2;
+        for (let i = 0; i < len * 3; i += 9) {
+          let idHigh = Math.floor(id >> 16);
+          let idLow = id % 65536;
           // 1 vertex = 1 line in world texture
-          // a, b, c, color, normal, texture_nums, UVs1, UVs2
-          data.push(v[i],v[i+1],v[i+2],v[i+3],v[i+4],v[i+5],v[i+6],v[i+7],v[i+8],c[i/3],c[i/3+1],c[i/3+2],n[i],n[i+1],n[i+2],t[j],t[j+1],t[j+2],uv[j],uv[j+1],uv[j+2],uv[j+3],uv[j+4],uv[j+5]);
-          item.ids.push(Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535, Math.floor(id / 65535), id % 65535);
-          id++;
+          // Fill id buffer
+          ids.push.apply(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+          id ++;
         }
+        // Fill buffers
+        positions.push.apply(positions, item.vertices);
+        uvs.push.apply(uvs, item.uvs);
+        bufferLength += item.length;
       }
+      return minMax;
     }
-    // Fill texture with data pixels
+    // Fill scene describing texture with data pixels
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    // Set buffer attributes
+    this.#positionBufferArray = new Float32Array(positions);
+    this.#idBufferArray =  new Float32Array(ids);
+    this.#uvBufferArray =  new Float32Array(uvs);
+    this.#bufferLength = bufferLength;
     // Round up data to next higher multiple of 6144 (8 pixels * 3 values * 256 vertecies per line)
-    data.push(new Array(6144 - data.length % 6144).fill(0));
-    data = data.flat();
+    data.push.apply(data, new Array(6144 - data.length % 6144).fill(0));
     // Calculate DataHeight by dividing value count through 6144 (8 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 6144;
-    // Manipulate actual webgl texture
+    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
+    GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2048, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
+    // this.#gl.texStorage2D(this.#gl.TEXTURE_2D, 1, this.#gl.RGB32F, 2048, dataHeight);
+    // this.#gl.texSubImage2D(this.#gl.TEXTURE_2D, 0, 0, 0, 2048, dataHeight, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
   }
 
   async render() {
@@ -459,7 +567,7 @@ export class Rasterizer {
     // Internal GL objects
     let Program, CameraPosition, Perspective, RenderConf, AmbientLocation, TextureWidth, HdrLocation, WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    let PositionBuffer, IdBuffer, TexBuffer;
+    let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, other buffers and textures
     let Framebuffer;
     let DepthTexture = this.#gl.createTexture();
@@ -469,11 +577,6 @@ export class Rasterizer {
     // Check if recompile is needed
     let State = this.renderQuality;
 
-    // Detect mouse movements
-    // Handle canvas resize
-    window.addEventListener('resize', function(){
-    	resize();
-    });
     // Function to handle canvas resize
     let resize = () => {
 			const canvas = rt.canvas;
@@ -482,10 +585,12 @@ export class Rasterizer {
     	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
       // Rebuild textures with every resize
       renderTextureBuilder();
-      if (rt.#antialiasing !== null) this.#AAObject.buildTexture();
+      if (this.#AAObject != null) this.#AAObject.buildTexture();
     }
     // Init canvas parameters and textures with resize
     resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
 
     function renderTextureBuilder() {
       // Init single channel depth texture
@@ -496,8 +601,16 @@ export class Rasterizer {
 
     // Internal render engine Functions
     function frameCycle (Millis) {
-      // generate bounding volumes
-      rt.scene.updateBoundings();
+      // Request the browser to render frame with hardware acceleration
+      if (!rt.#halt) requestAnimationFrame(frameCycle);
+      // Update Textures
+      rt.#updateTextureAtlas();
+      rt.#updatePbrAtlas();
+      rt.#updateTranslucencyAtlas();
+      // Set scene graph
+      rt.updateScene();
+      // build bounding boxes for scene first
+      rt.updatePrimaryLightSources();
 			// Clear screen
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
@@ -506,8 +619,6 @@ export class Rasterizer {
         prepareEngine();
         State = rt.renderQuality;
       }
-      // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Render new Image, work through queue
       renderFrame();
       // Update frame counter
@@ -521,35 +632,32 @@ export class Rasterizer {
     }
 
     function texturesToGPU() {
+      let [jitterX, jitterY] = [0, 0];
+      if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) {
+        let jitter = rt.#AAObject.jitter(rt.#canvas);
+        [jitterX, jitterY] = [jitter.x, jitter.y];
+      }
+
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
-      // Set world-texture
-      rt.updateScene();
-      rt.updatePrimaryLightSources();
 
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#texture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE4);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
-      // Randomize camera position if Taa is enabled
-      if (rt.#antialiasing !== null && rt.#antialiasing.toLocaleLowerCase() === 'taa') {
-        let jitter = rt.#AAObject.jitter(rt.#canvas);
-        rt.#gl.uniform2f(Perspective, rt.camera.fx + jitter.x, rt.camera.fy + jitter.y);
-      } else  {
-        rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
-      }
+      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, 1, 1);
+      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, jitterX, jitterY);
       // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
       // Set width of height and normal texture
@@ -569,42 +677,17 @@ export class Rasterizer {
     }
 
     function fillBuffers() {
-      let vertices = [];
-      let ids = [];
-      let uvs = [];
-      let id = 0;
-      let length = 0;
-      // Iterate through render queue and build arrays for GPU
-      var flattenQUEUE = (item) => {
-        if (Array.isArray(item) || item.indexable){
-          // Iterate over all sub elements
-          for (let i = 0; i < item.length; i++){
-            // flatten sub element of queue
-            flattenQUEUE(item[i]);
-          }
-        } else {
-					id ++;
-          for(let i = 0; i < item.ids.length; i+=2) {
-            ids.push(item.ids[i], item.ids[i + 1], id / 65535, id / 256);
-          }
-					vertices.push(item.vertices);
-          uvs.push(item.uvs);
-          length += item.length;
-        }
-      };
-      // Start recursion
-      rt.scene.queue.forEach(item => flattenQUEUE(item));
       // Set buffers
       [
-        [PositionBuffer, vertices],
-        [IdBuffer, ids],
-        [TexBuffer, uvs]
+        [PositionBuffer, rt.#positionBufferArray],
+        [IdBuffer, rt.#idBufferArray],
+        [UvBuffer, rt.#uvBufferArray]
       ].forEach(function(item) {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Float32Array(item[1].flat()), rt.#gl.DYNAMIC_DRAW);
+        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, item[1], rt.#gl.DYNAMIC_DRAW);
       });
       // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, length);
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
     }
 
     let renderFrame = () => {
@@ -620,36 +703,35 @@ export class Rasterizer {
       } else {
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
       }
-
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-
       texturesToGPU();
       fillBuffers();
       // Apply antialiasing shader if enabled
-      if (rt.#antialiasing !== null) this.#AAObject.renderFrame();
+      if (this.#AAObject != null) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
-      rt.updateTextures();
-      rt.updatePbrTextures();
-      rt.updateTranslucencyTextures();
+      // Force update textures by resetting texture Lists
+      rt.#textureList = [];
+      rt.#pbrList = [];
+      rt.#translucencyList = [];
       // Compile shaders and link them into Program global
       Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'camera_position');
+      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
       Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
       RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      WorldTex = rt.#gl.getUniformLocation(Program, 'world_tex');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'texture_width');
+      WorldTex = rt.#gl.getUniformLocation(Program, 'worldTex');
+      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
       HdrLocation = rt.#gl.getUniformLocation(Program, 'hdr');
 
-      LightTex = rt.#gl.getUniformLocation(Program, 'light_tex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbr_tex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucency_tex');
+      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
+      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
+      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
       Tex = rt.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.enable(rt.#gl.BLEND);
@@ -657,29 +739,27 @@ export class Rasterizer {
       rt.#gl.blendEquation(rt.#gl.FUNC_ADD);
       rt.#gl.blendFuncSeparate(rt.#gl.ONE, rt.#gl.ONE_MINUS_SRC_ALPHA, rt.#gl.ONE, rt.#gl.ONE);
       rt.#gl.depthMask(true);
-      // Cull (exclude from rendering) hidden vertices at the other side of objects
-      // rt.#gl.enable(rt.#gl.CULL_FACE);
       // Set clear color for framebuffer
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
       rt.#gl.useProgram(Program);
       // Create Textures for primary render
-      rt.#pbrTexture = rt.#gl.createTexture();
-      rt.#translucencyTexture = rt.#gl.createTexture();
-      rt.#texture = rt.#gl.createTexture();
+      rt.#pbrAtlas = rt.#gl.createTexture();
+      rt.#translucencyAtlas = rt.#gl.createTexture();
+      rt.#textureAtlas = rt.#gl.createTexture();
       // Create texture for all primary light sources in scene
       rt.#lightTexture = rt.#gl.createTexture();
       // Init a world texture containing all information about world space
       rt.#worldTexture = rt.#gl.createTexture();
       // Create buffers
-      [PositionBuffer, IdBuffer, TexBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
         // Bind world space position buffer
         [PositionBuffer, 3, false],
         // Surface id buffer
         [IdBuffer, 4, false],
         // Set barycentric texture coordinates
-        [TexBuffer, 2, true]
+        [UvBuffer, 2, true]
       ].forEach((item, i) => {
         rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
         rt.#gl.enableVertexAttribArray(i);
@@ -696,7 +776,7 @@ export class Rasterizer {
             this.#AAObject = new FXAA(rt.#gl);
             break;
           case "taa":
-            this.#AAObject = new TAA(rt.#gl);
+            this.#AAObject = new TAA(rt.#gl, rt);
             break;
           default:
             this.#AAObject = null;
@@ -709,6 +789,6 @@ export class Rasterizer {
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle
-    frameCycle();
+    requestAnimationFrame(frameCycle);
   }
 }

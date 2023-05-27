@@ -34,12 +34,12 @@ async function buildScene() {
   ].flat(), 11, 3);
 	scene.pbrTextures.push(roughTex, smoothTex, backMirrorTex);
 
-  scene.translucencyTextures.push(await scene.textureFromTPO(1, 0, 0.6));
+  scene.translucencyTextures.push(await scene.textureFromTPO([1, 0, 0.6], 1, 1));
   // Move camera out of center.
   camera.x = 35;
   camera.y = 35;
   camera.z = -53;
-  camera.fx = -0.47;
+  camera.fx = 0.47;
   camera.fy = 0.44;
 	// Set primary light source.
 	scene.primaryLightSources = [
@@ -50,13 +50,7 @@ async function buildScene() {
   // Set ambientLight to 0.
   scene.ambientLight = [0, 0, 0];
 	// Modify brightness.
-  for (let i = 0; i < 9; i++) {
-    if (i < 4) {
-      scene.primaryLightSources[i].intensity = 300;
-    } else {
-      scene.primaryLightSources[i].intensity = 300;
-    }
-  }
+  for (let i = 0; i < 9; i++) scene.primaryLightSources[i].intensity = 300;
 	// Generate side planes of box.
 	let bottom_plane = scene.Plane([-43.03, 0, -28], [43.03, 0, -28], [43.03, 0, 27.28], [-43.03, 0, 27.28]);
   let back_plane = scene.Plane([-24.5, 0, 27.28], [24.5, 0, 27.28], [24.5, 22, 27.28], [-24.5, 22, 27.28]);
@@ -64,15 +58,14 @@ async function buildScene() {
   let right_plane = scene.Plane([43.03, 0, 0], [43.03, 22, 0], [24.5, 22, 27.28], [24.5, 0, 27.28]);
 
   // Make planes diffuse.
-	bottom_plane.setTextureNums(0, 1, -1);
-  back_plane.setTextureNums(-1, 2, -1);
-  left_plane.setTextureNums(-1, 0, -1);
-  right_plane.setTextureNums(-1, 0, -1);
+	bottom_plane.textureNums = [0, 1, -1];
+  back_plane.textureNums = [-1, 2, -1];
+  left_plane.textureNums = [-1, 0, -1];
+  right_plane.textureNums = [-1, 0, -1];
 
   // Create cube in center.
   let cube = scene.Cuboid(-3, 3, 0, 17, 2, 8);
-  cube.setColor(255, 80, 120);
-  //cube.setTextureNums(-1, -1, -1);
+  cube.color = [255, 80, 120];
 
 	let box = [
 		bottom_plane, back_plane, left_plane, right_plane,
@@ -90,9 +83,5 @@ async function buildScene() {
 	// Update Counter periodically.
 	setInterval(async function(){
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update texture atlases.
-		engine.renderer.updateTextures();
-    engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 100);
 }

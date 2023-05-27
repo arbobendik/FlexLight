@@ -2,7 +2,7 @@
 
 ## JavaScript + WebGL 2
 
-### [DEMO]( https://arbobendik.github.io/FlexLight/exampleLoader.html?v=example1)
+### [Live Demo]( https://arbobendik.github.io/FlexLight/exampleLoader.html?v=cornell)
 
 ### Description
 Generates a canvas and scenery through JavaScript and traces the flow of light in real time.
@@ -12,29 +12,36 @@ You can create triangles, planes and even cuboids with this library.
 ### Getting started
 To generate a new FlexLight engine, you need to write the following line of code:
 ```javascript
+// Setup engine for a chosen canvas
 var engine = new FlexLight(canvas);
-engine.renderer = 'raytracer'; // or 'rasterizer'
+// Choose pathtracing renderer
+engine.renderer = 'pathtracer';
+// Use web io
 engine.io = 'web';
 ```
 
-Primary light sources can be added via the librarys rt.primaryLightSources object.The engine supports custom textures,
+Primary light sources can be added via the librarys rt.primaryLightSources object. The engine supports custom textures,
 pbr (rough, metallic) textures with emissives and several physical effects like the fresnel effect.
 All structures are aranged in AABBs (Axis Aligned Bounding Boxes) to improve performance.
 This tree like structure is completly customizable over the API by appending all objects in
-their respective desired bounding tree to the rt.queue object, where the 0th position of all sub arrays
-describes the minimum and maximum values of their respective AABB. For example:
+their respective desired bounding tree to the rt.queue object. For example:
 
 ```javascript
-let cuboid0 = engine.scene.Cuboid(xMin, xMax, yMin, yMax, zMin, zMax);
-
-engine.scene.queue = [
-    // set min and max values for bounding box
-    [xMin, xMax, yMin, yMax, zMin, zMax],
-    // Actual sub elements of this bounding box.
-    // Bounding boxes can be sub elements of other bounding boxes.
-    cuboid, plane, triangle
-];
+// Configure primary lightsources
+scene.primaryLightSources = [[10, 0, 10]];
+scene.primaryLightSources[0].intensity = 500;
+// Set ambient (RGB)
+scene.ambientLight = [0.1, 0.1, 0.1];
+// Create cube object
+let cube = engine.scene.Cuboid(xMin, xMax, yMin, yMax, zMin, zMax);
+// Append cube to render queue
+engine.scene.queue.push(cuboid);
+// Start frame generation
+engine.renderer.render();
 ```
+
+For working in depth examples check out the '/exaples' folder in this repo.
+
 For performance reasons the raytracer works with 1 Sample per ray and 7 3x3 filter passes and one 5x5 pass.
 The Filter can be switched on/off via the renderer.filter variable.
 The sample count per ray can be controlled over the rt.samplesPerRay varible as well.
