@@ -10,7 +10,7 @@ export class Scene {
   textures = [];
   pbrTextures = [];
   translucencyTextures = [];
-  standardTextureSizes = [64, 64];
+  standardTextureSizes = [1024, 1024];
   // The queue object contains all data of all vertices in the scene
   queue = [];
   // texture constructors
@@ -48,14 +48,112 @@ export class Scene {
   // Generate translucency texture (translucency, particle density, optical density)
   // Pbr images are generated the same way
   textureFromTPO = async (array, width, height) => await Scene.textureFromRME (array, width, height);
-  // update all bounding volumes in scene
+
+
+  fitsInBound (bound, obj) {
+    return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
+    && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
+  }
+
+  // Autogenerate oct-tree for imported structures or structures without BVH-tree
+  generateBVH (objects = this.queue) {
+    const minBoundingWidth = 1 / 128;
+    // get scene for reference inside object
+    let scene = this;
+
+    let topTree = new Bounding(objects);
+    // Determine bounding for each object
+    this.updateBoundings(topTree);
+
+    let polyCount = 0;
+
+    // Test how many triangles can be sorted into neiter bounding.
+    let testOnEdge = (objs, bounding0, bounding1) => {
+      let onEdge = 0;
+      for (let i = 0; i < objs.length; i++) if ((! scene.fitsInBound(bounding0, objs[i])) && (! scene.fitsInBound(bounding1, objs[i]))) onEdge++;
+      return onEdge;
+    }
+
+    let divideTree = (objs, depth = 0) => {
+      // If there are only 4 or less objects in tree, there is no need to subdivide
+      if (objs.length <= 4) {
+        polyCount += objs.length;
+        console.log("loaded", polyCount, "polygons so far.");
+        return objs;
+      } else {
+        // Find center
+        let center = [
+          (objs.bounding[0] + objs.bounding[1]) / 2,
+          (objs.bounding[2] + objs.bounding[3]) / 2,
+          (objs.bounding[4] + objs.bounding[5]) / 2
+        ];
+
+        let idealSplit = 0;
+        let leastOnEdge = Infinity;
+
+        for (let i = 0; i < 3; i++) {
+          let bounding0 = [... objs.bounding];
+          let bounding1 = [... objs.bounding];
+
+          bounding0[i * 2] = center[i];
+          bounding1[i * 2 + 1] = center[i];
+
+          let minDiff = Math.min(bounding0[i * 2 + 1] - center[i], center[i] - bounding1[i * 2]);
+          let onEdge = testOnEdge(objs, bounding0, bounding1);
+
+          if (leastOnEdge >= onEdge && minDiff > minBoundingWidth) {
+            idealSplit = i;
+            leastOnEdge = onEdge;
+          }
+        }
+
+        if (leastOnEdge === Infinity) {
+          console.error("OPTIMIZATION failed for subtree!");
+          return objs;
+        }
+        // Sort into ideal buckets
+        // The third bucket is for the objects in the cut
+        let buckets = [[], [], []];
+        let bounds = [[... objs.bounding], [... objs.bounding], objs.bounding];
+        bounds[0][idealSplit * 2] = center[idealSplit];
+        bounds[1][idealSplit * 2 + 1] = center[idealSplit];
+
+        for (let i = 0; i < objs.length; i++) {
+          if (scene.fitsInBound(bounds[0], objs[i])) buckets[0].push(objs[i]);
+          else if (scene.fitsInBound(bounds[1], objs[i])) buckets[1].push(objs[i]);
+          else buckets[2].push(objs[i]);
+        }
+        // Iterate over all filled buckets and return 
+        let finalObjArray = [];
+
+        for (let i = 0; i < 2; i++) if (buckets[i].length !== 0) {
+          // Tighten bounding
+          let b = new Bounding(buckets[i], scene);
+          scene.updateBoundings(b);
+          finalObjArray.push(divideTree(b, depth + 1));
+        }
+        finalObjArray.push(...buckets[2]);
+        // Return sorted object array as bounding volume.
+        let commonBounding = new Bounding(finalObjArray, scene);
+        commonBounding.bounding = objs.bounding;
+        return commonBounding;
+      }
+    }
+    
+    topTree = divideTree(topTree);
+    console.log("done building BVH-Tree");
+    return topTree;
+  }
+  
+  // Update all bounding volumes in scene
   updateBoundings (obj = this.queue) {
     // subtract bias of 2^(-16)
     const bias = 0.00152587890625;
     let minMax = new Array(6);
     if (Array.isArray(obj) || obj.indexable) {
-      if (obj.length === 0) {
+      if (obj.length === 0 && !obj.blockError) {
         console.error('problematic object structure', 'isArray:', Array.isArray(obj), 'indexable:', obj.indexable, 'object:', obj);
+        obj.blockError = true;
       } else {
         minMax = this.updateBoundings (obj[0]);
         for (let i = 1; i < obj.length; i++) {
@@ -79,42 +177,7 @@ export class Scene {
     // return current bounding box
     return minMax;
   }
-
-  // Raytracer
-  rayTracer = (item) => {
-    if (Array.isArray(item) || item.indexable) {
-      let b = item.bounding;
-      // Save position of len variable in array
-      let len_pos = data.length;
-      // Begin bounding volume array
-      data.push(b[0], b[1], b[2], b[3], b[4], b[5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, s0);
-      id++;
-      // Iterate over all sub elements and skip bounding (item[0])
-      for (let i = 0; i < item.length; i++) {
-        // Push sub elements in queue
-        fillData(item[i]);
-      }
-      let len = Math.floor((data.length - len_pos) / 24);
-      // Set now calculated vertices length of bounding box
-      // to skip if ray doesn't intersect with it
-      data[len_pos + 6] = len;
-    } else {
-      // Alias object properties to simplify data texture assembly
-      let v = item.vertices;
-      let c = item.colors;
-      let n = item.normals;
-      let t = item.textureNums;
-      let uv = item.uvs;
-      let len = item.length;
-      // Test if bounding volume is set
-      if (item.bounding === undefined && item.length > 3) {
-        // Warn if length is greater than 3
-        console.warn(item);
-        // A single triangle needs no bounding voume, so nothing happens in this case
-      }
-    }
-  };
-    
+  
   // object constructors
   // axis aligned cuboid element prototype
   Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2, this);
@@ -195,47 +258,113 @@ export class Scene {
     let text = await (await fetch(path)).text();
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
-    obj = new Bounding(obj, scene);
-    scene.updateBoundings(obj);
+    obj = await scene.generateBVH(obj);
+    await scene.updateBoundings(obj);
     // return built object
     return obj;
   }
 }
 
-class Object3D {
-  setColor (r, g, b) {
-    if (Array.isArray(r)) [r, g, b] = r;
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].setColor(r, g, b);
-    } else {
-      this.colors = new Array(this.length).fill([r / 255, g / 255, b / 255]).flat();
+class Primitive {
+  #vertices;
+  #color;
+  #uvs;
+  #textureNums;
+  #normal;
+
+  textureArray;
+
+  #buildTextureArray = () => {
+    this.textureArray = [];
+    for (let i = 0; i < this.length; i += 3) {
+      this.textureArray.push.apply(this.textureArray, this.#vertices.slice(i * 3, i * 3 + 9));
+      this.textureArray.push.apply(this.textureArray, this.#color);
+      this.textureArray.push.apply(this.textureArray, this.#normal);
+      this.textureArray.push.apply(this.textureArray, this.#textureNums);
+      this.textureArray.push.apply(this.textureArray, this.#uvs.slice(i * 2, i * 2 + 6));
     }
   }
-  setTextureNums (tex, pbr, trans) {
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].setTextureNums(tex, pbr, trans);
-    } else {
-      this.textureNums = new Array(this.length).fill([tex, pbr, trans]).flat();
-    }
+    
+  get vertices () { return this.#vertices };
+  get color () { return this.#color };
+  get uvs () { return this.#uvs };
+  get textureNums () { return this.#textureNums };
+  get normal () {return this.#normal };
+
+  set vertices (v) {
+    this.#vertices = v;
+    this.#buildTextureArray();
+  }
+  set color (c) {
+    this.#color = c.map(val => val / 255);
+    this.#buildTextureArray();
+  }
+  set uvs (uv) {
+    this.#uvs = uv;
+    this.#buildTextureArray();
+  }
+  set textureNums (tn) {
+    this.#textureNums = tn;
+    this.#buildTextureArray();
+  }
+  set normals (n) {
+    this.#normal = n;
+    this.#buildTextureArray();
+  }
+
+  constructor (length, vertices, normal, uvs) {
+    this.indexable = false;
+    this.length = length;
+    this.#vertices = vertices;
+    this.#normal = normal;
+    this.#color = [1, 1, 1];
+    this.#uvs = uvs;
+    this.#textureNums = [-1, -1, -1];
+    this.#buildTextureArray();
+  }
+}
+
+class Object3D {
+  set color (color) {
+    for (let i = 0; i < this.length; i++) this[i].color = color;
+  }
+
+  set textureNums (nums) {
+    for (let i = 0; i < this.length; i++) this[i].textureNums = nums;
   }
   // move object by given vector
   move (x, y, z) {
-    if (this.indexable) {
-      for (let i = 0; i < this.length; i++) this[i].move(x, y, z, true);
-    } else {
-      this.vertices = this.vertices.map((coord, i) => {
-        switch (i % 3){
-          case 0:
-            return coord + x;
-          case 1:
-            return coord + y;
-          case 2:
-            return coord + z;
-        }
-      });
+    this.relativePosition = [x, y, z];
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].move(x, y, z);
+      } else {
+        this[i].vertices = this[i].vertices.map((coord, i) => {
+          switch (i % 3){
+            case 0:
+              return coord + x;
+            case 1:
+              return coord + y;
+            case 2:
+              return coord + z;
+          }
+        });
+      }
     }
   }
+
+  scale (s) {
+    for (let i = 0; i < this.length; i++) {
+      if (this[i].indexable) {
+        this[i].scale(s);
+      } else {
+        this[i].vertices = this[i].vertices.map((coord, i) => (coord - this.relativePosition[i % 3]) * s + this.relativePosition[i % 3]);
+      }
+    }
+  }
+  
   constructor (length, indexable, scene) {
+    this.relativePosition = [0, 0, 0];
     this.length = length;
     this.indexable = indexable;
     this.scene = scene;
@@ -270,43 +399,14 @@ class Cuboid extends Object3D {
   }
 }
 
-class Plane extends Object3D {
-  // default color to white
-  colors = new Array(18).fill(1);
-  // set UVs
-  uvs = [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0];
-  // set used textures
-  textureNums = new Array(6).fill([- 1, - 1, - 1]).flat();
-
-  normals;
-
-  constructor (c0, c1, c2, c3, scene) {
-    super(6, false, scene);
-    // set normals
-    this.normals = new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat();
-    // set vertices
-    this.vertices = [c0, c1, c2, c2, c3, c0].flat();
+class Plane extends Primitive {
+  constructor (c0, c1, c2, c3) {
+    super(6, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
   }
 }
 
-class Triangle extends Object3D {
-  // default color to white
-  colors = new Array(9).fill(1);
-  // UVs to map textures on triangle
-  uvs = [0, 0, 0, 1, 1, 1];
-  // set used textures
-  textureNums = new Array(3).fill([- 1, - 1, - 1]).flat();
-
-  normals;
-
-  constructor (a, b, c, scene) {
-    super(3, false, scene);
-    // generate surface normal
-    this.normals = new Array(3).fill(Math.cross(
-      Math.diff(a, c),
-      Math.diff(a, b)
-    )).flat();
-    // vertecies for queue
-    this.vertices = [a, b, c].flat();
+class Triangle extends Primitive {
+  constructor (a, b, c) {
+    super(3, [a, b, c].flat(), Math.cross(Math.diff(a, c), Math.diff(a, b)), [0, 0, 0, 1, 1, 1]);
   }
 }

@@ -28,33 +28,36 @@ async function buildScene() {
 			].flat()).flat()
 		].flat(),
 	128, 128);
+
 	scene.pbrTextures.push(roughTex, caroTex);
   	// Move camera out of center.
   	camera.z = -20;
 	// Set primary light source.
 	scene.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 20;
+	scene.primaryLightSources[0].intensity = 50;
+	// let light = scene.Plane([-2,4.9,-2],[-2,4.9,2],[2,4.9,2],[2,4.9,-2]);
+	// light.textureNums = [- 1, 2, - 1];
 	// Generate side planes of box.
-	let bottom_plane = scene.Plane([-5,-5,-15],[5,-5,-15],[5,-5,5],[-5,-5,5]);
-  	let top_plane = scene.Plane([-5,5,-15],[-5,5,5],[5,5,5],[5,5,-15]);
+	let bottom_plane = scene.Plane([-5,-5,-21],[5,-5,-21],[5,-5,5],[-5,-5,5]);
+  	let top_plane = scene.Plane([-5,5,-21],[-5,5,5],[5,5,5],[5,5,-21]);
   	let back_plane = scene.Plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5]);
-	let front_plane = scene.Plane([-5,-5,-15],[-5,5,-15],[5,5,-15],[5,-5,-15]);
-  	let left_plane = scene.Plane([-5,-5,-15],[-5,-5,5],[-5,5,5],[-5,5,-15]);
-  	let right_plane = scene.Plane([5,-5,-15],[5,5,-15],[5,5,5],[5,-5,5]);
+	let front_plane = scene.Plane([-5,-5,-21],[-5,5,-21],[5,5,-21],[5,-5,-21]);
+  	let left_plane = scene.Plane([-5,-5,-21],[-5,-5,5],[-5,5,5],[-5,5,-21]);
+  	let right_plane = scene.Plane([5,-5,-21],[5,5,-21],[5,5,5],[5,-5,5]);
 
   	// Make planes diffuse.
   	[bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
-		item.setTextureNums(-1, 0, -1);
-		left_plane.setColor(230, 230, 230);
+		item.textureNums = [- 1, 0, - 1];
+		item.color = [230, 230, 230];
 	});
   	// Color left and right plane.
-  	left_plane.setColor(220, 0, 0);
-  	right_plane.setColor(0, 150, 0);
+  	left_plane.color = [220, 0, 0];
+  	right_plane.color = [0, 150, 0];
 	// Generate a few cuboids in the box with respective bounding box.
 	let cube = [[], []];
 	cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
-	cube[0].setTextureNums(-1, 1, -1);
+	cube[0].textureNums = [-1, 1, -1];
 	// Generate rotated cube object from planes.
 	var [x, x2, y, y2, z, z2] = [0, 3, -5, -1, -1, 2];
 	cube[1] = scene.Cuboid(0, 3, -5, -1, -1, 2);
@@ -68,7 +71,7 @@ async function buildScene() {
 	cube[1][5] = scene.Plane(t0,b0,b1,t1,[0,0,-1]);
 	// Set textures for cuboids.
   	// Make second cuboid smooth and semi-translucent.
-	for (let i = 0; i < 6; i++) cube[1][i].setTextureNums(-1, 0, -1);
+	for (let i = 0; i < 6; i++) cube[1][i].textureNums = [- 1, 0, - 1];
 
 	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.
@@ -81,11 +84,7 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
 	// Update Counter periodically.
-  	setInterval(function(){
+  	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update textures every second
-		engine.renderer.updateTextures();
-    	engine.renderer.updatePbrTextures();
-    	engine.renderer.updateTranslucencyTextures();
-	},1000);
+	}, 100);
 }
