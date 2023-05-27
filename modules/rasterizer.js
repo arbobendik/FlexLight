@@ -35,6 +35,7 @@ export class Rasterizer {
   #textureList = [];
   #pbrList = [];
   #translucencyList = [];
+  #lightSourcesList = [];
 
   #lightTexture;
   // Shader sources in glsl 3.0.0 es
@@ -171,12 +172,12 @@ export class Rasterizer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
     vec3 v0 = (minCorner - p) * invRay;
     vec3 v1 = (maxCorner - p) * invRay;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-    return tmax >= max(tmin, BIAS) && tmin < l;
+    return tmax >= max(tmin, BIAS);
   }
 
   // Simplified rayTracer to only test if ray intersects anything
@@ -205,7 +206,7 @@ export class Rasterizer {
       // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
       if (n == vec3(0)) {
         if (t[2] == vec3(0)) break;
-        if (!rayCuboid(minLen, invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
+        if (!rayCuboid(invRay, ray.origin, t[0], t[1])) i += int(t[2].x);
       } else {
         if (moellerTrumboreCull(minLen, ray, t)) return true;
       }
@@ -304,8 +305,13 @@ export class Rasterizer {
       vec3 dir = light - position;
       Ray lightRay = Ray (dir, normalize(dir), position, normal);
 
+      vec3 localColor = forwardTrace(dir, normal, normalize(camera - position), material, strength);
+
+      // Compute quick exit criterion to potentially skip expensive shadow test
+      bool quickExitCriterion = length(localColor) == 0.0 || dot(lightRay.unitDirection, normal) <= BIAS;
+
       // Update pixel color if coordinate is not in shadow
-      if (!shadowTest(lightRay)) finalColor += forwardTrace(dir, normal, normalize(camera - position), material, strength);
+      if (!quickExitCriterion && !shadowTest(lightRay)) finalColor += localColor;
     }
 
     finalColor *= color;
@@ -425,15 +431,15 @@ export class Rasterizer {
 
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
+		// Don't update light sources if there are or no changes
+    if (this.scene.primaryLightSources.length === this.#lightSourcesList.length && this.scene.primaryLightSources.every((e, i) => e === this.#lightSourcesList[i])) return;
+    this.#lightSourcesList = this.scene.primaryLightSources;
+    
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MIN_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAG_FILTER, this.#gl.NEAREST);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_S, this.#gl.CLAMP_TO_EDGE);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_WRAP_T, this.#gl.CLAMP_TO_EDGE);
-
-		// Don't update light sources if there is none
+    GLLib.setTexParams(this.#gl);
+    // Skip processing if there are no light sources
 		if (this.scene.primaryLightSources.length === 0) {
 			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
 			return;
@@ -452,7 +458,7 @@ export class Rasterizer {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
   
-  async updateScene () {
+  updateScene () {
     // Bias of 2^(-16)
     const BIAS = 0.00152587890625;
     // Object ids to keep track of
@@ -783,6 +789,6 @@ export class Rasterizer {
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle
-    frameCycle();
+    requestAnimationFrame(frameCycle);
   }
 }

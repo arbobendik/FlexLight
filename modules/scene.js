@@ -270,25 +270,18 @@ class Primitive {
   #color;
   #uvs;
   #textureNums;
-  #normals;
+  #normal;
 
   textureArray;
 
   #buildTextureArray = () => {
     this.textureArray = [];
-    for (let i = 0; i < this.length; i+= 3) {
-      let i2 = i * 2;
-      let i3 = i * 3;
-      this.textureArray.push.apply(this.textureArray, [
-        this.#vertices[i3 + 0], this.#vertices[i3 + 1], this.#vertices[i3 + 2],
-        this.#vertices[i3 + 3], this.#vertices[i3 + 4], this.#vertices[i3 + 5],
-        this.#vertices[i3 + 6], this.#vertices[i3 + 7], this.#vertices[i3 + 8],
-        this.#color[0], this.#color[1], this.#color[2],
-        this.#normals[0], this.#normals[1], this.#normals[2],
-        this.#textureNums[0], this.#textureNums[1], this.#textureNums[2],
-        this.#uvs[i2 + 0],this.#uvs[i2 + 1], this.#uvs[i2 + 2],
-        this.#uvs[i2 + 3], this.#uvs[i2 + 4], this.#uvs[i2 + 5]
-      ]);
+    for (let i = 0; i < this.length; i += 3) {
+      this.textureArray.push.apply(this.textureArray, this.#vertices.slice(i * 3, i * 3 + 9));
+      this.textureArray.push.apply(this.textureArray, this.#color);
+      this.textureArray.push.apply(this.textureArray, this.#normal);
+      this.textureArray.push.apply(this.textureArray, this.#textureNums);
+      this.textureArray.push.apply(this.textureArray, this.#uvs.slice(i * 2, i * 2 + 6));
     }
   }
     
@@ -296,19 +289,14 @@ class Primitive {
   get color () { return this.#color };
   get uvs () { return this.#uvs };
   get textureNums () { return this.#textureNums };
-  get normals () {return this.#normals };
+  get normal () {return this.#normal };
 
   set vertices (v) {
     this.#vertices = v;
-    /*for (let i = 0; i < this.length; i++) {
-      let i3 = i * 3;
-      for (let j = )
-    }
-    this.*/
     this.#buildTextureArray();
   }
   set color (c) {
-    this.#color = new Array(this.length).fill(c.map(val => val / 255)).flat();;
+    this.#color = c.map(val => val / 255);
     this.#buildTextureArray();
   }
   set uvs (uv) {
@@ -316,41 +304,33 @@ class Primitive {
     this.#buildTextureArray();
   }
   set textureNums (tn) {
-    this.#textureNums = new Array(this.length).fill(tn).flat();
+    this.#textureNums = tn;
     this.#buildTextureArray();
   }
   set normals (n) {
-    this.#normals = n;
+    this.#normal = n;
     this.#buildTextureArray();
   }
 
-  constructor (length, vertices, normals, uvs) {
+  constructor (length, vertices, normal, uvs) {
     this.indexable = false;
     this.length = length;
     this.#vertices = vertices;
-    this.#normals = normals;
-    this.#color = new Array(length).fill([1, 1, 1]).flat();
+    this.#normal = normal;
+    this.#color = [1, 1, 1];
     this.#uvs = uvs;
-    this.#textureNums = new Array(length).fill([-1, -1, -1]).flat();
+    this.#textureNums = [-1, -1, -1];
     this.#buildTextureArray();
   }
 }
 
 class Object3D {
   set color (color) {
-    for (let i = 0; i < this.length; i++) {
-      this[i].color = color;
-    }
+    for (let i = 0; i < this.length; i++) this[i].color = color;
   }
 
   set textureNums (nums) {
-    for (let i = 0; i < this.length; i++) {
-      if (this[i].indexable) {
-        this[i].textureNums = nums;
-      } else {
-        this[i].textureNums = new Array(this.length).fill(nums).flat();
-      }
-    }
+    for (let i = 0; i < this.length; i++) this[i].textureNums = nums;
   }
   // move object by given vector
   move (x, y, z) {
@@ -421,12 +401,12 @@ class Cuboid extends Object3D {
 
 class Plane extends Primitive {
   constructor (c0, c1, c2, c3) {
-    super(6, [c0, c1, c2, c2, c3, c0].flat(), new Array(6).fill(Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1)))).flat(), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
+    super(6, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
   }
 }
 
 class Triangle extends Primitive {
   constructor (a, b, c) {
-    super(3, [a, b, c].flat(), new Array(3).fill(Math.cross(Math.diff(a, c), Math.diff(a, b))).flat(), [0, 0, 0, 1, 1, 1]);
+    super(3, [a, b, c].flat(), Math.cross(Math.diff(a, c), Math.diff(a, b)), [0, 0, 0, 1, 1, 1]);
   }
 }

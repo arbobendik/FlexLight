@@ -1326,6 +1326,9 @@ export class PathTracer {
           } else if (rt.#antialiasing) {
             rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
           }
+        } else {
+          // Render to canvas now
+          this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
         }
 
         [TempTexture, TempIpTexture, TempIdTexture].flat().forEach(function(item, i){
@@ -1407,6 +1410,9 @@ export class PathTracer {
           // Configure where the final image should go
           rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        } else {
+          // Render to canvas now
+          this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
         }
 
         let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
@@ -1477,11 +1483,14 @@ export class PathTracer {
         this.#tempGlsl += 'uniform sampler2D cacheId' + i + ';' + newLine;
       }
 
-      this.#tempGlsl += `
+      this.#tempGlsl += rt.filter ? `
       layout(location = 0) out vec4 renderColor;
       layout(location = 1) out vec4 renderColorIp;
-    
-      void main () {
+      ` : `
+      layout(location = 0) out vec4 renderColor;
+      `;
+
+      this.#tempGlsl += `void main () {
         ivec2 texel = ivec2(vec2(textureSize(cache0, 0)) * clipSpace);
         vec4 id = texelFetch(cacheId0, texel, 0);
         float counter = 1.0;
