@@ -15,7 +15,7 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([0.05, 0, 0], 1, 1);
+	let normalTex = await scene.textureFromRME([1, 1, 0], 1, 1);
 	scene.pbrTextures.push(normalTex);
 
 	// Set camera perspective and position.
@@ -24,7 +24,7 @@ async function buildScene() {
 
 	// Generate plane.
 	let plane = scene.Plane([-50,0,-50],[50,0,-50],[50,0,50],[-50,0,50]);
-    plane.setColor(50, 50, 150);
+    plane.color = [50, 50, 150];
 
 	let e = scene.Bounding([
 		scene.Bounding([
@@ -98,10 +98,10 @@ async function buildScene() {
 	]);
 
 	let eth = scene.Bounding([e, t, h]);
-	eth.setTextureNums(-1, 0, -1);
+	eth.textureNums = [-1, 0, -1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 5000;
+	scene.primaryLightSources[0].intensity = 500;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
 	scene.queue.push(plane, eth);
@@ -115,8 +115,5 @@ async function buildScene() {
   	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-		// Update texture atlases.
-		engine.renderer.updatePbrTextures();
-		engine.renderer.updateTranslucencyTextures();
-	}, 1000);
+	}, 100);
 }

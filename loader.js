@@ -18,14 +18,14 @@ function load(search) {
     // Get form elements
 		const scriptForm = document.getElementById('scriptForm');
     const parameterForm = document.getElementById('parameterForm');
-    const tickBoxes = ['filter', 'hdr'];
+    const tickBoxes = ['filter', 'temporal', 'hdr'];
     const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy', 'antialiasing'];
 
-    document.getElementById('raytracing').checked = (localStorage.getItem('raytracing') ?? 'true') === 'true';
-    engine.renderer = document.getElementById('raytracing').checked ? 'raytracer' : 'rasterizer';
+    document.getElementById('pathtracing').checked = (localStorage.getItem('pathtracing') ?? 'true') === 'true';
+    engine.renderer = document.getElementById('pathtracing').checked ? 'pathtracer' : 'rasterizer';
     renderer = engine.renderer;
     renderer.render();
-    // Restore values in raytracer
+    // Restore values in pathtracer
     tickBoxes.forEach((item) => {
       renderer[item] = (localStorage.getItem(item) ?? 'true') === 'true';
       parameterForm.children[item].checked = renderer[item];
@@ -53,9 +53,9 @@ function load(search) {
     scriptForm.addEventListener('change', () => location.search = '?v=' + scriptForm[0].value);
     // Update gl quality params on form change
     parameterForm.addEventListener('change', () => {
-      if ((localStorage.getItem('raytracing') === 'true') !== document.getElementById('raytracing').checked) {
-        localStorage.setItem('raytracing', document.getElementById('raytracing').checked);
-        engine.renderer = document.getElementById('raytracing').checked ? 'raytracer' : 'rasterizer';
+      if ((localStorage.getItem('pathtracing') === 'true') !== document.getElementById('pathtracing').checked) {
+        localStorage.setItem('pathtracing', document.getElementById('pathtracing').checked);
+        engine.renderer = document.getElementById('pathtracing').checked ? 'pathtracer' : 'rasterizer';
         renderer = engine.renderer;
         renderer.render();
       }
