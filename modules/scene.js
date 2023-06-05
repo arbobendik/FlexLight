@@ -267,48 +267,69 @@ export class Scene {
 
 class Primitive {
   #vertices;
+  #normals;
+  #normal;
+  #textureNums;
+  #colors;
   #color;
   #uvs;
-  #textureNums;
-  #normal;
 
   textureArray;
+  geometryTextureArray;
 
   #buildTextureArray = () => {
     this.textureArray = [];
+    this.geometryTextureArray = [];
     for (let i = 0; i < this.length; i += 3) {
+      this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#vertices.slice(i * 3, i * 3 + 9));
+      this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#normal);
+
       this.textureArray.push.apply(this.textureArray, this.#vertices.slice(i * 3, i * 3 + 9));
-      this.textureArray.push.apply(this.textureArray, this.#color);
-      this.textureArray.push.apply(this.textureArray, this.#normal);
-      this.textureArray.push.apply(this.textureArray, this.#textureNums);
+      this.textureArray.push.apply(this.textureArray, this.#normals.slice(i * 3, i * 3 + 9));
       this.textureArray.push.apply(this.textureArray, this.#uvs.slice(i * 2, i * 2 + 6));
+      this.textureArray.push.apply(this.textureArray, this.#textureNums.slice(0, 3));
+      this.textureArray.push.apply(this.textureArray, this.#color);
     }
   }
     
   get vertices () { return this.#vertices };
-  get color () { return this.#color };
-  get uvs () { return this.#uvs };
+  get normal () { return this.#normal };
+  get normals () { return this.#normals };
   get textureNums () { return this.#textureNums };
-  get normal () {return this.#normal };
+  get color () { return this.#color };
+  get colors () { return this.#colors };
+  get uvs () { return this.#uvs };
 
   set vertices (v) {
     this.#vertices = v;
     this.#buildTextureArray();
   }
+
+  set normals (ns) {
+    this.#normals = ns;
+    this.#normal = ns.slice(0, 3);
+    this.#buildTextureArray();
+  }
+
+  set normal (n) {
+    this.#normal = n;
+    this.#normals = new Array(this.length).fill(n).flat();
+    this.#buildTextureArray();
+  }
+
+  set textureNums (tn) {
+    this.#textureNums = new Array(this.length).fill(tn).flat();
+    this.#buildTextureArray();
+  }
+
   set color (c) {
     this.#color = c.map(val => val / 255);
+    this.#colors = new Array(this.length).fill(this.#color).flat();
     this.#buildTextureArray();
   }
+
   set uvs (uv) {
     this.#uvs = uv;
-    this.#buildTextureArray();
-  }
-  set textureNums (tn) {
-    this.#textureNums = tn;
-    this.#buildTextureArray();
-  }
-  set normals (n) {
-    this.#normal = n;
     this.#buildTextureArray();
   }
 
@@ -316,10 +337,12 @@ class Primitive {
     this.indexable = false;
     this.length = length;
     this.#vertices = vertices;
+    this.#normals = new Array(this.length).fill(normal).flat();
     this.#normal = normal;
     this.#color = [1, 1, 1];
+    this.#colors = new Array(this.length * 3).fill(1);
     this.#uvs = uvs;
-    this.#textureNums = [-1, -1, -1];
+    this.#textureNums = new Array(this.length * 3).fill(- 1).flat();
     this.#buildTextureArray();
   }
 }

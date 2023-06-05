@@ -78,7 +78,7 @@ async function buildScene() {
 			scene.queue.push(obj);
 			break;
 		case "monkeys":
-			scene.primaryLightSources[0].intensity = 100000;
+			scene.primaryLightSources[0].intensity = 10000;
 			let monkeyBound = [];
 			for (let i = 0; i < 3; i++) {
 				let obj = await scene.fetchObjFile('objects/monke.obj');
