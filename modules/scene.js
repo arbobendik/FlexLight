@@ -274,21 +274,20 @@ class Primitive {
   #color;
   #uvs;
 
-  textureArray;
   geometryTextureArray;
+  sceneTextureArray;
 
-  #buildTextureArray = () => {
-    this.textureArray = [];
+  #buildTextureArrays = () => {
     this.geometryTextureArray = [];
+    this.sceneTextureArray = [];
     for (let i = 0; i < this.length; i += 3) {
       this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#vertices.slice(i * 3, i * 3 + 9));
       this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#normal);
 
-      this.textureArray.push.apply(this.textureArray, this.#vertices.slice(i * 3, i * 3 + 9));
-      this.textureArray.push.apply(this.textureArray, this.#normals.slice(i * 3, i * 3 + 9));
-      this.textureArray.push.apply(this.textureArray, this.#uvs.slice(i * 2, i * 2 + 6));
-      this.textureArray.push.apply(this.textureArray, this.#textureNums.slice(0, 3));
-      this.textureArray.push.apply(this.textureArray, this.#color);
+      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#normals.slice(i * 3, i * 3 + 9));
+      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#uvs.slice(i * 2, i * 2 + 6));
+      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#textureNums.slice(0, 3));
+      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#color);
     }
   }
     
@@ -302,35 +301,35 @@ class Primitive {
 
   set vertices (v) {
     this.#vertices = v;
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   set normals (ns) {
     this.#normals = ns;
     this.#normal = ns.slice(0, 3);
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   set normal (n) {
     this.#normal = n;
     this.#normals = new Array(this.length).fill(n).flat();
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   set textureNums (tn) {
     this.#textureNums = new Array(this.length).fill(tn).flat();
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   set color (c) {
     this.#color = c.map(val => val / 255);
     this.#colors = new Array(this.length).fill(this.#color).flat();
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   set uvs (uv) {
     this.#uvs = uv;
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 
   constructor (length, vertices, normal, uvs) {
@@ -343,7 +342,7 @@ class Primitive {
     this.#colors = new Array(this.length * 3).fill(1);
     this.#uvs = uvs;
     this.#textureNums = new Array(this.length * 3).fill(- 1).flat();
-    this.#buildTextureArray();
+    this.#buildTextureArrays();
   }
 }
 
