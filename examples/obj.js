@@ -51,7 +51,7 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	let model = "grass";
+	let model = "bike";
 	
 	switch (model) {
 		case "bike":
@@ -72,8 +72,8 @@ async function buildScene() {
 			obj.move(3, 2.1, - 3);
 			scene.queue.push(obj);
 			break;
-		case "cube":
-			var obj = await scene.fetchObjFile('objects/cube.obj');
+		case "prim":
+			var obj = await scene.fetchObjFile('objects/uv_sphere_tri.obj');
 			obj.move(3, 2.1, - 3);
 			scene.queue.push(obj);
 			break;

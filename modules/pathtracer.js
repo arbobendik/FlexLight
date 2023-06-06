@@ -30,7 +30,8 @@ export class PathTracer {
 
   #halt = false;
 
-  #worldTexture;
+  #geometryTexture;
+  #sceneTexture;
   // Buffer arrays
   #positionBufferArray;
   #idBufferArray;
@@ -144,7 +145,8 @@ export class PathTracer {
   uniform int textureWidth;
 
   // Texture with information about all triangles in scene
-  uniform sampler2D worldTex;
+  uniform sampler2D geometryTex;
+  uniform sampler2D sceneTex;
   uniform sampler2D translucencyTex;
   uniform sampler2D pbrTex;
   uniform sampler2D tex;
@@ -233,7 +235,7 @@ export class PathTracer {
   }
 
   // Test for closest ray triangle intersection
-  // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in worldTex (rayTracer[1].w)
+  // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in geometryTex (rayTracer[1].w)
   mat2x4 rayTracer(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
     vec3 invRay = 1.0 / ray.unitDirection;
@@ -242,19 +244,19 @@ export class PathTracer {
     // Length to latest intersection
     float minLen = POW32;
     // Get texture size as max iteration value
-    ivec2 worldTexSize = textureSize(worldTex, 0).xy;
-    int size = worldTexSize.y * int(TRIANGLES_PER_ROW);
+    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
+    int size = geometryTexSize.y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
       float fi = float(i);
-      // Get position of current triangle/vertex in worldTex
-      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 10.0, fi * INV_TRIANGLES_PER_ROW);
+      // Get position of current triangle/vertex in geometryTex
+      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 4.0, fi * INV_TRIANGLES_PER_ROW);
       // Fetch triangle coordinates from scene graph
-      vec3 a = texelFetch(worldTex, index, 0).xyz;
-      vec3 b = texelFetch(worldTex, index + ivec2(1, 0), 0).xyz;
-      vec3 c = texelFetch(worldTex, index + ivec2(2, 0), 0).xyz;
+      vec3 a = texelFetch(geometryTex, index, 0).xyz;
+      vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
+      vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
       // Read normal from scene graph
-      vec3 n = texelFetch(worldTex, index + ivec2(3, 0), 0).xyz;
+      vec3 n = texelFetch(geometryTex, index + ivec2(3, 0), 0).xyz;
       // Three cases:
       // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
       // all vertices are 0 0 0 => end of list: return false
@@ -284,18 +286,19 @@ export class PathTracer {
     // Precomput max length
     float minLen = length(ray.direction);
     // Get texture size as max iteration value
-    ivec2 worldTexSize = textureSize(worldTex, 0).xy;
-    int size = worldTexSize.y * int(TRIANGLES_PER_ROW);
+    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
+    int size = geometryTexSize.y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
-      // Get position of current triangle/vertex in worldTex
-      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 10.0, float(i) * INV_TRIANGLES_PER_ROW);
+      float fi = float(i);
+      // Get position of current triangle/vertex in geometryTex
+      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 4.0, fi * INV_TRIANGLES_PER_ROW);
       // Fetch triangle coordinates from scene graph
-      vec3 a = texelFetch(worldTex, index, 0).xyz;
-      vec3 b = texelFetch(worldTex, index + ivec2(1, 0), 0).xyz;
-      vec3 c = texelFetch(worldTex, index + ivec2(2, 0), 0).xyz;
+      vec3 a = texelFetch(geometryTex, index, 0).xyz;
+      vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
+      vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
       // Read normal from scene graph
-      vec3 n = texelFetch(worldTex, index + ivec2(3, 0), 0).xyz;
+      vec3 n = texelFetch(geometryTex, index + ivec2(3, 0), 0).xyz;
       // Three cases:
       // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
       // all vertices are 0 0 0 => end of list: return false
@@ -506,24 +509,24 @@ export class PathTracer {
       if (intersection[0] == vec4(0)) break;
       // Update last used tpo.x value
       if (dontFilter) originalTPOx = material.tpo.x;
-      // Get position of current triangle/vertex in worldTex
-      ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 10.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
+      // Get position of current triangle/vertex in sceneTex
+      ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 7.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
       // Fetch normal
-      ray.normal = normalize(texelFetch(worldTex, index + ivec2(3, 0), 0).xyz);
+      ray.normal = normalize(texelFetch(sceneTex, index + ivec2(0, 0), 0).xyz);
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
-      vec3 vUVs1 = texelFetch(worldTex, index + ivec2(6, 0), 0).xyz;
-      vec3 vUVs2 = texelFetch(worldTex, index + ivec2(7, 0), 0).xyz;
+      vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
+      vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz;
       mat3x2 vertexUVs = mat3x2(vUVs1, vUVs2);
       // Interpolate final barycentric coordinates
       vec2 barycentric = vertexUVs * intersection[1].xyz;
       // Read triangle normal
-      vec3 texNums = texelFetch(worldTex, index + ivec2(8, 0), 0).xyz;
+      vec3 texNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
       // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
       material = Material(
-        mix(texelFetch(worldTex, index + ivec2(9, 0), 0).xyz, lookup(tex, vec3(barycentric, texNums.x)).xyz, sign(texNums.x + 1.0)),
-        mix(vec3(0.5, 0.5, 0.0), lookup(pbrTex, vec3(barycentric, texNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(texNums.y + 1.0)),
-        mix(vec3(0.0, 1.0, 0.25), lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, sign(texNums.z + 1.0))
+        mix(texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz, lookup(tex, vec3(barycentric, texNums.x)).xyz, max(sign(texNums.x + 0.5), 0.0)),
+        mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(barycentric, texNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(texNums.y + 0.5), 0.0)),
+        mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, max(sign(texNums.z + 0.5), 0.0))
       );
       // Update other parameters
       viewPoint = ray.origin;
@@ -541,22 +544,23 @@ export class PathTracer {
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertexId.x * 65535.0 + vertexId.y;
-    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 10.0, id * INV_TRIANGLES_PER_ROW);
+    float id = vertexId.x * 65536.0 + vertexId.y;
+    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 7.0, id * INV_TRIANGLES_PER_ROW);
     // Read base attributes from world texture.
-    vec3 normal = normalize(texelFetch(worldTex, index + ivec2(3, 0), 0).xyz);
-    vec3 textureNums = texelFetch(worldTex, index + ivec2(8, 0), 0).xyz;
-    vec3 color = texelFetch(worldTex, index + ivec2(9, 0), 0).xyz;
+    vec3 normal = normalize(texelFetch(sceneTex, index + ivec2(0, 0), 0).xyz);
+    vec3 textureNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
+    vec3 color = texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz;
     // Test if pixel is in frustum or not
     if (clipSpace.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default texColor to color
     Material material = Material (
-      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, sign(textureNums.x + 1.0)),
-      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), sign(textureNums.y + 1.0)),
-      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, sign(textureNums.z + 1.0))
+      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, max(sign(textureNums.x + 0.5), 0.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(textureNums.y + 0.5), 0.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, max(sign(textureNums.z + 0.5), 0.0))
     );
+
 
     originalTPOx = material.tpo.x;
     // Preserve original roughness for filter pass
@@ -986,8 +990,6 @@ export class PathTracer {
   }
 
   async updateScene () {
-    // Bias of 2^(-16)
-    const BIAS = 0.00152587890625;
     // Object ids to keep track of
     let id = 0;
     let bufferId = 0;
@@ -995,16 +997,18 @@ export class PathTracer {
     let [positions, ids, uvs] = [[], [], []];
     let bufferLength = 0;
     // Set data variable for texels in world space texture
-    var data = [];
+    let geometryData = [];
+    let sceneData = [];
     
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
       if (Array.isArray(item) || item.indexable) {
         if (item.length === 0) return [];
-        let dataPos = data.length;
+        let dataPos = geometryData.length;
         // Begin bounding volume array
-        data.push.apply(data, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        geometryData.push.apply(geometryData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        sceneData.push.apply(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
         id ++;
         // Iterate over all sub elements
         minMax = fillData (item[0]);
@@ -1012,14 +1016,19 @@ export class PathTracer {
           // get updated bounding of lower element
           let b = fillData (item[i]);
           // update maximums and minimums
-          minMax = minMax.map((e, i) => (i < 3) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
+          minMax[0] = Math.min(minMax[0], b[0]);
+          minMax[1] = Math.min(minMax[1], b[1]);
+          minMax[2] = Math.min(minMax[2], b[2]);
+          minMax[3] = Math.max(minMax[3], b[3]);
+          minMax[4] = Math.max(minMax[4], b[4]);
+          minMax[5] = Math.max(minMax[5], b[5]);
         }
 
-        let len = Math.floor((data.length - dataPos) / 30);
+        let len = Math.floor((geometryData.length - dataPos) / 12);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
-        data[dataPos + 6] = len - 1;
+        for (let i = 0; i < 6; i++) geometryData[dataPos + i] = minMax[i];
+        geometryData[dataPos + 6] = len - 1;
 
       } else {
         let len = item.length;
@@ -1036,7 +1045,8 @@ export class PathTracer {
           minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        data.push.apply(data, item.textureArray);
+        geometryData.push.apply(geometryData, item.geometryTextureArray);
+        sceneData.push.apply(sceneData, item.sceneTextureArray);
         // Increase object id
         bufferId ++;
 
@@ -1065,17 +1075,28 @@ export class PathTracer {
     this.#idBufferArray =  new Float32Array(ids);
     this.#uvBufferArray =  new Float32Array(uvs);
     this.#bufferLength = bufferLength;
-    // Round up data to next higher multiple of 7680 (10 pixels * 3 values * 256 vertecies per line)
-    data.push.apply(data, new Array(7680 - data.length % 7680).fill(0));
-    // Calculate DataHeight by dividing value count through 7680 (10 pixels * 3 values * 256 vertecies per line)
-    var dataHeight = data.length / 7680;
-    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#worldTexture);
+
+    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
+    geometryData.push.apply(geometryData, new Array(3072 - geometryData.length % 3072).fill(0));
+    // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
+    var geometryDataHeight = geometryData.length / 3072;
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2560, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, geometryDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryData));
+
+    // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
+    sceneData.push.apply(sceneData, new Array(5376 - sceneData.length % 5376).fill(0));
+    // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
+    let sceneDataHeight = sceneData.length / 5376;
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
+    // Tell webgl to use 4 bytes per value for the 32 bit floats
+    this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
+    // Set data texture details and tell webgl, that no mip maps are required
+    GLLib.setTexParams(this.#gl);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
   }
 
   async render() {
@@ -1092,7 +1113,7 @@ export class PathTracer {
     // Internal GL objects
     let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, RandomSeedLocation, FilterLocation, TemporalLocation, HdrLocation, AmbientLocation, TextureWidth;
     let TempProgram, TempHdrLocation;
-    let WorldTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    let GeometryTex, SceneTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, Post Program buffers and textures
@@ -1205,14 +1226,16 @@ export class PathTracer {
       rt.#gl.useProgram(Program);
 
       rt.#gl.activeTexture(rt.#gl.TEXTURE0);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#worldTexture);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#geometryTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#sceneTexture);
       rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
       rt.#gl.activeTexture(rt.#gl.TEXTURE4);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE5);
       rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
       // Set uniforms for shaders
       // Set 3d camera position
@@ -1237,16 +1260,18 @@ export class PathTracer {
       rt.#gl.uniform1f(RandomSeedLocation, rt.temporal ? Frames % rt.temporalSamples : 0);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
-      // Pass whole current world space as data structure to GPU
-      rt.#gl.uniform1i(WorldTex, 0);
+      // Pass whole geometry data structure to GPU
+      rt.#gl.uniform1i(GeometryTex, 0);
+      // Pass whole triangle attributes data structure to GPU
+      rt.#gl.uniform1i(SceneTex, 1);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 1);
+      rt.#gl.uniform1i(PbrTex, 2);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 2);
+      rt.#gl.uniform1i(TranslucencyTex, 3);
       // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 3);
+      rt.#gl.uniform1i(Tex, 4);
       // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 4);
+      rt.#gl.uniform1i(LightTex, 5);
     }
 
     function fillBuffers() {
@@ -1565,7 +1590,8 @@ export class PathTracer {
       TemporalLocation = rt.#gl.getUniformLocation(Program, 'isTemporal');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
       RandomSeedLocation = rt.#gl.getUniformLocation(Program, 'randomSeed');
-      WorldTex = rt.#gl.getUniformLocation(Program, 'worldTex');
+      GeometryTex = rt.#gl.getUniformLocation(Program, 'geometryTex');
+      SceneTex = rt.#gl.getUniformLocation(Program, 'sceneTex');
       TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
 
       LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
@@ -1587,8 +1613,9 @@ export class PathTracer {
       rt.#textureAtlas = rt.#gl.createTexture();
       // Create texture for all primary light sources in scene
       rt.#lightTexture = rt.#gl.createTexture();
-      // Init a world texture containing all information about world space
-      rt.#worldTexture = rt.#gl.createTexture();
+      // Init textures containing all information about the scene to enable pathtracing
+      rt.#geometryTexture = rt.#gl.createTexture();
+      rt.#sceneTexture = rt.#gl.createTexture();
       // Create buffers
       [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
