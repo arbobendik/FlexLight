@@ -456,15 +456,11 @@ export class Rasterizer {
   }
   
   updateScene () {
-    // Bias of 2^(-16)
-    const BIAS = 0.00152587890625;
-    // Object ids to keep track of
     // build buffer Arrays
     let [positions, normals, nums, colors, uvs] = [[], [], [], [], []];
     let bufferLength = 0;
     // Set data variable for texels in world space texture
     var data = [];
-    
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
@@ -479,7 +475,12 @@ export class Rasterizer {
           // get updated bounding of lower element
           let b = fillData (item[i]);
           // update maximums and minimums
-          minMax = minMax.map((e, i) => (i < 3) ? Math.min(e, b[i] - BIAS) : Math.max(e, b[i] + BIAS));
+          minMax[0] = Math.min(minMax[0], b[0]);
+          minMax[1] = Math.min(minMax[1], b[1]);
+          minMax[2] = Math.min(minMax[2], b[2]);
+          minMax[3] = Math.max(minMax[3], b[3]);
+          minMax[4] = Math.max(minMax[4], b[4]);
+          minMax[5] = Math.max(minMax[5], b[5]);
         }
 
         let len = Math.floor((data.length - dataPos) / 12);
@@ -506,18 +507,16 @@ export class Rasterizer {
         // Fill buffers
         positions.push.apply(positions, item.vertices);
         uvs.push.apply(uvs, item.uvs);
-
         normals.push.apply(normals, item.normals);
         nums.push.apply(nums, item.textureNums);
-
         colors.push.apply(colors, item.colors);
 
         bufferLength += item.length;
       }
-      return minMax;
+      return minMax;//[minMax, item.vertices, item.uvs, item.normals, item.textureNums, item.colors];
     }
     // Fill scene describing texture with data pixels
-    for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    fillData(this.scene.queue);
     // Set buffer attributes
     this.#positionBufferArray = new Float32Array(positions);
     this.#uvBufferArray =  new Float32Array(uvs);
