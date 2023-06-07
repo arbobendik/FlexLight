@@ -51,7 +51,7 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	let model = "bike";
+	let model = "grass";
 	
 	switch (model) {
 		case "bike":
