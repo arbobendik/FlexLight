@@ -37,7 +37,6 @@ export class Rasterizer {
   #textureList = [];
   #pbrList = [];
   #translucencyList = [];
-  #lightSourcesList = [];
 
   #lightTexture;
   // Shader sources in glsl 3.0.0 es
@@ -392,7 +391,7 @@ export class Rasterizer {
 
   async #updateTextureAtlas () {
     // Don't build texture atlas if there are no changes.
-    //if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
+    if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
     this.#textureList = this.scene.textures;
 
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textureAtlas);
@@ -404,7 +403,7 @@ export class Rasterizer {
 
   async #updatePbrAtlas () {
     // Don't build texture atlas if there are no changes.
-    //if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
+    if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
     this.#pbrList = this.scene.pbrTextures;
 
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#pbrAtlas);
@@ -416,7 +415,7 @@ export class Rasterizer {
 
   async #updateTranslucencyAtlas () {
     // Don't build texture atlas if there are no changes.
-    //if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
+    if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
     this.#translucencyList = this.scene.translucencyTextures;
 
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#translucencyAtlas);
@@ -429,9 +428,6 @@ export class Rasterizer {
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
 		// Don't update light sources if there are or no changes
-    //if (this.scene.primaryLightSources.length === this.#lightSourcesList.length && this.scene.primaryLightSources.every((e, i) => e === this.#lightSourcesList[i])) return;
-    this.#lightSourcesList = this.scene.primaryLightSources;
-    
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -456,19 +452,26 @@ export class Rasterizer {
   }
   
   updateScene () {
-    // build buffer Arrays
-    let [positions, normals, nums, colors, uvs] = [[], [], [], [], []];
+    // Build unordered triangle list using recursion
+    let dataList = [];
+    let dataIsBounding = [];
+    let objList = [];
+
+    let index = 0;
     let bufferLength = 0;
-    // Set data variable for texels in world space texture
-    var data = [];
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
       if (Array.isArray(item) || item.indexable) {
         if (item.length === 0) return [];
-        let dataPos = data.length;
+        
+        let dataPos = index;
+        index += 12;
+        
+        let boundingArray = new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         // Begin bounding volume array
-        data.push.apply(data, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        dataList.push(boundingArray);
+        dataIsBounding.push(true);
         // Iterate over all sub elements
         minMax = fillData (item[0]);
         for (let i = 1; i < item.length; i++) {
@@ -482,13 +485,12 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], b[4]);
           minMax[5] = Math.max(minMax[5], b[5]);
         }
-
-        let len = Math.floor((data.length - dataPos) / 12);
+        
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) data[dataPos + i] = minMax[i];
-        data[dataPos + 6] = len - 1;
-
+        boundingArray.set(minMax);
+        boundingArray[6] = (index - dataPos) / 12 - 1;
+        
       } else {
         // Declare bounding volume of object
         let v = item.vertices;
@@ -502,44 +504,62 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], v[i + 1]);
           minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        data.push.apply(data, item.geometryTextureArray);
-        // Fill buffers
-        positions.push.apply(positions, item.vertices);
-        uvs.push.apply(uvs, item.uvs);
-        normals.push.apply(normals, item.normals);
-        nums.push.apply(nums, item.textureNums);
-        colors.push.apply(colors, item.colors);
-
+        
+        dataList.push(item);
+        dataIsBounding.push(false);
+        objList.push(item);
+        
+        index += item.length * 4;
         bufferLength += item.length;
       }
-      return minMax;//[minMax, item.vertices, item.uvs, item.normals, item.textureNums, item.colors];
+      return minMax;
     }
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
-    // Set buffer attributes
-    this.#positionBufferArray = new Float32Array(positions);
-    this.#uvBufferArray =  new Float32Array(uvs);
 
-    this.#normalBufferArray =  new Float32Array(normals);
-    this.#numBufferArray =  new Float32Array(nums);
-    this.#colorBufferArray =  new Float32Array(colors);
+    // Set data variable for texels in world space texture
+    let data = new Float32Array(Math.ceil(index / 3072) * 3072);
 
-    this.#bufferLength = bufferLength;
-    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
-    data.push.apply(data, new Array(3072 - data.length % 3072).fill(0));
+    let dataIterator = 0;
+    for (let i = 0; i < dataList.length; i ++) {
+      if (dataIsBounding[i]) {
+        data.set(dataList[i], dataIterator);
+        dataIterator += 12;
+      } else {
+        data.set(dataList[i].geometryTextureArray, dataIterator);
+        dataIterator += dataList[i].length * 4;
+      }
+    }
     // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
     var dataHeight = data.length / 3072;
-    // Manipulate actual webglfor (int i = 0; i < 4; i++) out_color += min(max(c[i], minRGB), maxRGB); texture
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(data));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, data);
+    
+    // Set buffer attributes
+    this.#positionBufferArray = new Float32Array(bufferLength * 3);
+    this.#uvBufferArray =  new Float32Array(bufferLength * 2);
+    this.#normalBufferArray =  new Float32Array(bufferLength * 3);
+    this.#numBufferArray =  new Float32Array(bufferLength * 3);
+    this.#colorBufferArray =  new Float32Array(bufferLength * 3);
+
+    let objIterator = 0;
+    for (let i = 0; i < objList.length; i ++) {
+      let item = objList[i];
+      this.#positionBufferArray.set(item.vertices, objIterator * 3);
+      this.#uvBufferArray.set(item.uvs, objIterator * 2);
+      this.#normalBufferArray.set(item.normals, objIterator * 3);
+      this.#numBufferArray.set(item.textureNums, objIterator * 3);
+      this.#colorBufferArray.set(item.colors, objIterator * 3);
+      objIterator += item.length;
+    }
+    this.#bufferLength = bufferLength;
   }
 
-  async render() {
+  render() {
     // start rendering
     let rt = this;
     // Allow frame rendering
@@ -569,6 +589,7 @@ export class Rasterizer {
     	rt.#gl.viewport(0, 0, rt.canvas.width, rt.canvas.height);
       // Rebuild textures with every resize
       renderTextureBuilder();
+      // rt.updatePrimaryLightSources();
       if (this.#AAObject != null) this.#AAObject.buildTexture();
     }
     // Init canvas parameters and textures with resize
@@ -596,8 +617,6 @@ export class Rasterizer {
       rt.updateScene();
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
-			// Clear screen
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       // Check if recompile is required
       if (State !== rt.renderQuality) {
         resize();

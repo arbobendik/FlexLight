@@ -1175,8 +1175,8 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1;
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 600), 2);
+      rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
     }
     // Init canvas parameters and textures with resize
     resize();
