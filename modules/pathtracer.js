@@ -10,7 +10,7 @@ export class PathTracer {
   // Quality settings
   samplesPerRay = 1;
   renderQuality = 1;
-  maxReflections = 3;
+  maxReflections = 5;
   minImportancy = 0.3;
   firstPasses = 0;
   secondPasses = 0;
