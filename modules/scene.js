@@ -278,70 +278,74 @@ class Primitive {
   sceneTextureArray;
 
   #buildTextureArrays = () => {
-    this.geometryTextureArray = [];
-    this.sceneTextureArray = [];
     for (let i = 0; i < this.length; i += 3) {
-      this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#vertices.slice(i * 3, i * 3 + 9));
-      this.geometryTextureArray.push.apply(this.geometryTextureArray, this.#normal);
-
-      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#normals.slice(i * 3, i * 3 + 9));
-      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#uvs.slice(i * 2, i * 2 + 6));
-      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#textureNums.slice(0, 3));
-      this.sceneTextureArray.push.apply(this.sceneTextureArray, this.#color);
+      let i12 = i * 4;
+      this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
+      this.geometryTextureArray.set(this.#normal, i12 + 9);
+      let i21 = i * 7;
+      this.sceneTextureArray.set(this.#normals.slice(i * 3, i * 3 + 9), i21);
+      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 9);
+      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 15);
+      this.sceneTextureArray.set(this.#color, i21 + 18);
     }
   }
     
   get vertices () { return this.#vertices };
-  get normal () { return this.#normal };
   get normals () { return this.#normals };
+  get normal () { return this.#normal };
   get textureNums () { return this.#textureNums };
   get color () { return this.#color };
   get colors () { return this.#colors };
   get uvs () { return this.#uvs };
 
   set vertices (v) {
-    this.#vertices = v;
+    this.#vertices = new Float32Array(v);
     this.#buildTextureArrays();
   }
 
   set normals (ns) {
-    this.#normals = ns;
-    this.#normal = ns.slice(0, 3);
+    this.#normals = new Float32Array(ns);
+    this.#normal = new Float32Array(ns.slice(0, 3));
     this.#buildTextureArrays();
   }
 
   set normal (n) {
-    this.#normal = n;
-    this.#normals = new Array(this.length).fill(n).flat();
+    this.#normal = new Float32Array(n);
+    this.#normals = new Float32Array(new Array(this.length).fill(n).flat());
     this.#buildTextureArrays();
   }
 
   set textureNums (tn) {
-    this.#textureNums = new Array(this.length).fill(tn).flat();
+    this.#textureNums = new Float32Array(new Array(this.length).fill(tn).flat());
     this.#buildTextureArrays();
   }
 
   set color (c) {
-    this.#color = c.map(val => val / 255);
-    this.#colors = new Array(this.length).fill(this.#color).flat();
+    let color = c.map(val => val / 255);
+    this.#color = new Float32Array(color);
+    this.#colors = new Float32Array(new Array(this.length).fill(color).flat());
     this.#buildTextureArrays();
   }
 
   set uvs (uv) {
-    this.#uvs = uv;
+    this.#uvs = new Float32Array(uv);
     this.#buildTextureArrays();
   }
 
   constructor (length, vertices, normal, uvs) {
     this.indexable = false;
     this.length = length;
-    this.#vertices = vertices;
-    this.#normals = new Array(this.length).fill(normal).flat();
-    this.#normal = normal;
-    this.#color = [1, 1, 1];
-    this.#colors = new Array(this.length * 3).fill(1);
-    this.#uvs = uvs;
-    this.#textureNums = new Array(this.length * 3).fill(- 1).flat();
+    
+    this.#vertices = new Float32Array(vertices);
+    this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
+    this.#normal = new Float32Array(normal);
+    this.#textureNums = new Float32Array(new Array(this.length * 3).fill(- 1).flat());
+    this.#color = new Float32Array([1, 1, 1]);
+    this.#colors = new Float32Array(new Array(this.length * 3).fill(1));
+    this.#uvs = new Float32Array(uvs);
+    
+    this.geometryTextureArray = new Float32Array(this.length * 4);
+    this.sceneTextureArray = new Float32Array(this.length * 7);
     this.#buildTextureArrays();
   }
 }

@@ -10,7 +10,7 @@ export class PathTracer {
   // Quality settings
   samplesPerRay = 1;
   renderQuality = 1;
-  maxReflections = 3;
+  maxReflections = 5;
   minImportancy = 0.3;
   firstPasses = 0;
   secondPasses = 0;
@@ -1175,8 +1175,8 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = 1;
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 600), 2);
+      rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
     }
     // Init canvas parameters and textures with resize
     resize();
