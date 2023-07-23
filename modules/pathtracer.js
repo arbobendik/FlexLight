@@ -64,8 +64,7 @@ export class PathTracer {
   out vec3 position;
   out vec2 texCoord;
   out vec3 clipSpace;
-  flat out vec4 vertexId;
-  flat out vec3 player;
+  flat out vec4 idNums;
 
   vec3 clipPosition (vec3 pos, vec2 dir) {
     vec2 translatePX = vec2(
@@ -82,7 +81,7 @@ export class PathTracer {
     return vec3(translate2d, translatePY.y);
   }
 
-  void main(){
+  void main () {
     vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
 
     clipSpace = clipPosition (move3d, perspective + conf.zw);
@@ -92,9 +91,48 @@ export class PathTracer {
 
     position = position3d;
     texCoord = texPos;
-    vertexId = id;
-    player = cameraPosition;
+    idNums = id;
   }
+  `;
+  #orderGlsl = `#version 300 es
+  precision highp float;
+  precision highp sampler2D;
+
+  in vec3 position;
+  in vec2 texCoord;
+  in vec3 clipSpace;
+  flat in vec4 idNums;
+
+  layout(location = 0) out vec4 orderPosX;
+  layout(location = 1) out vec4 orderPosY;
+  layout(location = 2) out vec4 orderPosZ;
+  layout(location = 3) out vec4 orderTexCoordX;
+  layout(location = 4) out vec4 orderTexCoordY;
+  layout(location = 5) out vec4 orderBufferId;
+  layout(location = 6) out vec4 orderTriangleId;
+
+  // Split float into 4 8-bit texture channels.
+  vec4 toBytes(float num) {
+    uint intValue = floatBitsToUint(num);
+    uint byteMask = uint(255);
+    vec4 bytes;
+    bytes.x = float(intValue & byteMask);
+    bytes.y = float((intValue >> 8) & byteMask);
+    bytes.z = float((intValue >> 16) & byteMask);
+    bytes.w = float((intValue >> 24) & byteMask);
+    return round(bytes) / 255.0;
+  }
+
+  void main () {
+    orderPosX = toBytes(position.x);
+    orderPosY = toBytes(position.y);
+    orderPosZ = toBytes(position.z);
+    orderTexCoordX = toBytes(texCoord.x);
+    orderTexCoordY = toBytes(texCoord.y);
+    orderBufferId = vec4(idNums.zw, 0, 0);
+    orderTriangleId = toBytes(idNums.x * 65536.0 + idNums.y);
+  }
+
   `;
   #fragmentGlsl = `#version 300 es
   #define PI 3.141592653589793
@@ -124,12 +162,17 @@ export class PathTracer {
     vec3 tpo;
   };
 
-  in vec3 position;
-  in vec2 texCoord;
-  in vec3 clipSpace;
+  in vec2 clipSpace;
 
-  flat in vec4 vertexId;
-  flat in vec3 player;
+  uniform sampler2D orderPosX;
+  uniform sampler2D orderPosY;
+  uniform sampler2D orderPosZ;
+  uniform sampler2D orderTexCoordX;
+  uniform sampler2D orderTexCoordY;
+  uniform sampler2D orderBufferId;
+  uniform sampler2D orderTriangleId;
+
+  uniform vec3 camera;
 
   // Quality configurators
   uniform int samples;
@@ -170,6 +213,13 @@ export class PathTracer {
   float originalRMEx = 0.0;
   float originalTPOx = 0.0;
   vec3 originalColor = vec3(1.0);
+
+  // Convert 4 bytes, texture channels to usable float.
+  float toFloat(vec4 bytes) {
+    ivec4 intBytes = ivec4(bytes * 255.0);
+    uint intValue = uint(intBytes.x) | (uint(intBytes.y) << 8) | (uint(intBytes.z) << 16) | (uint(intBytes.w) << 24);
+    return uintBitsToFloat(intValue);
+  }
 
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords) {
@@ -320,15 +370,13 @@ export class PathTracer {
     return numerator / max(PI * denom * denom, BIAS);
   }
 
-  float schlickBeckmann (float alpha, float NdotX) {
-    float k = alpha / 2.0;
-    float denominator = NdotX * (1.0 - k) + k;
-    denominator = max(denominator, BIAS);
-    return NdotX / denominator;
+  float schlickBeckmannDenom (float k, float NdotX) {
+    return max(NdotX * (1.0 - k) + k, BIAS);
   }
 
-  float smith (float alpha, float NdotV, float NdotL) {
-    return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
+  float smithDenom (float alpha, float NdotV, float NdotL) {
+    float k = alpha / 2.0;
+    return (schlickBeckmannDenom(k, NdotV) * schlickBeckmannDenom(k, NdotL));
   }
 
   vec3 fresnel(vec3 F0, float VdotH) {
@@ -356,11 +404,8 @@ export class PathTracer {
     vec3 Kd = (1.0 - Ks) * (1.0 - material.rme.y);
     vec3 lambert = material.albedo / PI;
 
-    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
-    float cookTorranceDenominator = 4.0 * NdotV * NdotL;
-    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
-
-    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+    float cookTorranceDenom = 4.0 * smithDenom(alpha, NdotV, NdotL);
+    vec3 cookTorrance = fresnelFactor * trowbridgeReitz(alpha, NdotH) / cookTorranceDenom;
     vec3 BRDF = Kd * lambert + cookTorrance;
 
     // Outgoing light to camera
@@ -442,7 +487,7 @@ export class PathTracer {
       }
       
       // Generate pseudo random vector
-      vec4 randomVec = noise(clipSpace.xy / clipSpace.z, fi + cosSampleN);
+      vec4 randomVec = noise(clipSpace.xy, fi + cosSampleN);
       
       // Obtain normalized viewing direction
       vec3 V = normalize(viewPoint - ray.origin);
@@ -456,9 +501,13 @@ export class PathTracer {
       roughNormal = sign(dot(roughNormal, ray.normal)) * roughNormal;
 
       vec3 H = normalize(V + ray.normal);
+
       float VdotH = max(dot(V, H), 0.0);
+      float UdotN = dot(ray.unitDirection, ray.normal);
+
       vec3 f = fresnel(material.albedo, VdotH) * BRDF;
       float fresnelReflect = max(f.x, max(f.y, f.z));
+
       // object is solid or translucent by chance because of the fresnel effect
       bool isSolid = material.tpo.x * fresnelReflect <= abs(randomVec.w);
       
@@ -479,6 +528,8 @@ export class PathTracer {
       
       // Intersection of ray with triangle
       mat2x4 intersection;
+
+
       // Handle translucency and skip rest of light calculation
       if (isSolid) {
         if (dontFilter && material.tpo.x > 0.5) {
@@ -487,7 +538,7 @@ export class PathTracer {
         }
         // If ray reflects from inside an transparent object,
         // the surface faces in the opposite direction as usual
-        ray.normal *= - sign(dot(ray.unitDirection, ray.normal));
+        ray.normal *= - sign(UdotN);
         // Calculate reflecting ray
         ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), roughnessBRDF));
         if (dot(ray.unitDirection, ray.normal) <= 0.0) ray.unitDirection = normalize(ray.unitDirection + ray.normal);
@@ -496,9 +547,10 @@ export class PathTracer {
         // Calculate primary light sources for this pass if ray hits non translucent object
         finalColor += localColor * importancyFactor;
       } else {
-        float sign = sign(dot(ray.unitDirection, roughNormal));
+        float sign = sign(UdotN);
+        float IOR = mix(0.25 / material.tpo.z * 0.25, material.tpo.z * 4.0, max(sign, 0.0)); 
         // Refract ray depending on IOR (material.tpo.z)
-        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * roughNormal, mix(0.25 / material.tpo.z * 0.25, material.tpo.z * 4.0, max(sign, 0.0))));
+        ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - sign * roughNormal, IOR));
       }
 
       // Apply emissive texture and ambient light
@@ -541,17 +593,34 @@ export class PathTracer {
   }
   
   void main(){
+    vec2 modClipSpace = clipSpace;
+
+    // Get attributes from ordered textures.
+    vec2 bufferId = texture(orderBufferId, modClipSpace).xy;
+    float id = toFloat(texture(orderTriangleId, modClipSpace));
+    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 7.0, id * INV_TRIANGLES_PER_ROW);
+
+    vec3 position = vec3(
+      toFloat(texture(orderPosX, modClipSpace)),
+      toFloat(texture(orderPosY, modClipSpace)),
+      toFloat(texture(orderPosZ, modClipSpace))
+    );
+
+    if (position == vec3(0)) return;
+
+    vec2 texCoord = vec2(
+      toFloat(texture(orderTexCoordX, modClipSpace)),
+      toFloat(texture(orderTexCoordY, modClipSpace))
+    );
+
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
-
-    float id = vertexId.x * 65536.0 + vertexId.y;
-    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 7.0, id * INV_TRIANGLES_PER_ROW);
+    
     // Read base attributes from world texture.
     vec3 normal = normalize(texelFetch(sceneTex, index + ivec2(0, 0), 0).xyz);
+
     vec3 textureNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
     vec3 color = texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz;
-    // Test if pixel is in frustum or not
-    if (clipSpace.z < 0.0) return;
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default texColor to color
@@ -567,10 +636,10 @@ export class PathTracer {
     float filterRoughness = material.rme.x;
     vec3 finalColor = vec3(0);
     // Generate camera ray
-    vec3 dir = normalize(position - player);
+    vec3 dir = normalize(position - camera);
     Ray ray = Ray (dir, dir, position, normalize(normal));
     // Generate multiple samples
-    for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material, i, maxReflections);
+    for (int i = 0; i < samples; i++) finalColor += lightTrace(camera, ray, material, i, maxReflections);
     
     // Average ray colors over samples.
     finalColor /= float(samples);
@@ -593,12 +662,15 @@ export class PathTracer {
     }
 
     renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
-    renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
-    renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
-    float div = 2.0 * length(position - player);
+    renderId += vec4(bufferId, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
+    renderOriginalId = vec4(bufferId, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
+    float div = 2.0 * length(position - camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
     
   }
+  `;
+  #restoreGlsl = `#version 300 es
+
   `;
   #firstFilterGlsl = `#version 300 es
   #define INV_256 0.00390625
@@ -1059,12 +1131,13 @@ export class PathTracer {
           // 1 vertex = 1 line in world texture
           // Fill id buffer
           ids.push.apply(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+          // uvs.push.apply(uvs, [1, 1, 1, 0, 0, 0]);
           id ++;
         }
         // Fill buffers
         positions.push.apply(positions, item.vertices);
         uvs.push.apply(uvs, item.uvs);
-        bufferLength += item.length;
+        bufferLength += len;
       }
       return minMax;
     }
@@ -1072,8 +1145,8 @@ export class PathTracer {
     for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
     // Set buffer attributes
     this.#positionBufferArray = new Float32Array(positions);
-    this.#idBufferArray =  new Float32Array(ids);
-    this.#uvBufferArray =  new Float32Array(uvs);
+    this.#idBufferArray = new Float32Array(ids);
+    this.#uvBufferArray = new Float32Array(uvs);
     this.#bufferLength = bufferLength;
 
     // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
@@ -1110,14 +1183,20 @@ export class PathTracer {
     // Total frames calculated since last meassured
     let Frames = 0;
     let LastMeasuredFrames = 0;
-    // Internal GL objects
-    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, RandomSeedLocation, FilterLocation, TemporalLocation, HdrLocation, AmbientLocation, TextureWidth;
+    // Internal Order objects
+    let OrderProgram, CameraPosition, Perspective, RenderConf;
+    // Internal Pathtracer objects
+    let PathTracerProgram, PathTracerCameraPosition, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, RandomSeedLocation, FilterLocation, TemporalLocation, HdrLocation, AmbientLocation, TextureWidth;
     let TempProgram, TempHdrLocation;
     let GeometryTex, SceneTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let PositionBuffer, IdBuffer, UvBuffer;
     // Framebuffer, Post Program buffers and textures
-    let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
+    let OrderFramebuffer, Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
+    let OrderPosXTex, OrderPosYTex, OrderPosZTex, OrderTexCoordXTex, OrderTexCoordYTex, OrderBufferIdTex, OrderTriangleIdTex;
+    // Create Order Textures
+    let [OrderPosXTexture, OrderPosYTexture, OrderPosZTexture, OrderTexCoordXTexture, OrderTexCoordYTexture, OrderBufferIdTexture, OrderTriangleIdTexture] 
+        = [rt.#gl.createTexture(), rt.#gl.createTexture(), rt.#gl.createTexture(), rt.#gl.createTexture(), rt.#gl.createTexture(), rt.#gl.createTexture(), rt.#gl.createTexture()];
     // Set post program array
     let PostProgram = [];
     // Create textures for Framebuffers in PostPrograms
@@ -1158,7 +1237,8 @@ export class PathTracer {
     let PostVertexBuffer = new Array(5);
     let PostFramebuffer = new Array(5);
     // Create different Vaos for different rendering/filtering steps in pipeline
-    let Vao = this.#gl.createVertexArray();
+    let OrderVao = this.#gl.createVertexArray();
+    let PathTracerVao = this.#gl.createVertexArray();
 
     let TempVao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
@@ -1215,35 +1295,56 @@ export class PathTracer {
       }
     }
 
-    function texturesToGPU() {
+    function orderTexturesToGPU () {
       let [jitterX, jitterY] = [0, 0];
       if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) {
         let jitter = rt.#AAObject.jitter(rt.#canvas);
         [jitterX, jitterY] = [jitter.x, jitter.y];
       }
 
-      rt.#gl.bindVertexArray(Vao);
-      rt.#gl.useProgram(Program);
-
-      rt.#gl.activeTexture(rt.#gl.TEXTURE0);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#geometryTexture);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#sceneTexture);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE5);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
-      // Set uniforms for shaders
+      rt.#gl.bindVertexArray(OrderVao);
+      rt.#gl.useProgram(OrderProgram);
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set x and y rotation of camera
       rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
       // Set fov and X/Y ratio of screen
       rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, jitterX, jitterY);
+    }
+
+    function pathTracerTexturesToGPU () {
+      rt.#gl.bindVertexArray(PathTracerVao);
+      rt.#gl.useProgram(PathTracerProgram);
+
+      rt.#gl.activeTexture(rt.#gl.TEXTURE0);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderPosXTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE1);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderPosYTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderPosZTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderTexCoordXTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderTexCoordYTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE5);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderBufferIdTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE6);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OrderTriangleIdTexture);
+
+      rt.#gl.activeTexture(rt.#gl.TEXTURE7);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#geometryTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE8);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#sceneTexture);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE9);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE10);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE11);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
+      rt.#gl.activeTexture(rt.#gl.TEXTURE12);
+      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
+      // Set 3d camera position
+      rt.#gl.uniform3f(PathTracerCameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set amount of samples per ray
       rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
       // Set max reflections per ray
@@ -1260,18 +1361,26 @@ export class PathTracer {
       rt.#gl.uniform1f(RandomSeedLocation, rt.temporal ? Frames % rt.temporalSamples : 0);
       // Set width of height and normal texture
       rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
+      // Pass Order-Textures to GPU
+      rt.#gl.uniform1i(OrderPosXTex, 0);
+      rt.#gl.uniform1i(OrderPosYTex, 1);
+      rt.#gl.uniform1i(OrderPosZTex, 2);
+      rt.#gl.uniform1i(OrderTexCoordXTex, 3);
+      rt.#gl.uniform1i(OrderTexCoordYTex, 4);
+      rt.#gl.uniform1i(OrderBufferIdTex, 5);
+      rt.#gl.uniform1i(OrderTriangleIdTex, 6);
       // Pass whole geometry data structure to GPU
-      rt.#gl.uniform1i(GeometryTex, 0);
+      rt.#gl.uniform1i(GeometryTex, 7);
       // Pass whole triangle attributes data structure to GPU
-      rt.#gl.uniform1i(SceneTex, 1);
+      rt.#gl.uniform1i(SceneTex, 8);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 2);
+      rt.#gl.uniform1i(PbrTex, 9);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 3);
+      rt.#gl.uniform1i(TranslucencyTex, 10);
       // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 4);
+      rt.#gl.uniform1i(Tex, 11);
       // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 5);
+      rt.#gl.uniform1i(LightTex, 12);
     }
 
     function fillBuffers() {
@@ -1287,8 +1396,26 @@ export class PathTracer {
       // Actual drawcall
       rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
     }
-
+    
     let renderFrame = () => {
+      // Calculate basic geometry and reorder pixels to leverage GPU warps / waveforms
+      rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, OrderFramebuffer);
+      rt.#gl.drawBuffers([rt.#gl.COLOR_ATTACHMENT0, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.COLOR_ATTACHMENT5, rt.#gl.COLOR_ATTACHMENT6]);
+
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, OrderPosXTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, OrderPosYTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OrderPosZTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, OrderTexCoordXTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OrderTexCoordYTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT5, rt.#gl.TEXTURE_2D, OrderBufferIdTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT6, rt.#gl.TEXTURE_2D, OrderTriangleIdTexture, 0);
+      rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
+      // Clear depth and color buffers from last frame
+      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
+      orderTexturesToGPU();
+      fillBuffers();
+
       // Configure where the final image should go
       if (rt.temporal || rt.filter || rt.#antialiasing) {
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
@@ -1323,13 +1450,13 @@ export class PathTracer {
         } else if (rt.#antialiasing) {
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
         }
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
       }
 
       // Clear depth and color buffers from last frame
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-      texturesToGPU();
-      fillBuffers();
+      // rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT);
+      pathTracerTexturesToGPU();
+      // Post processing drawcall
+      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
 
       if (rt.temporal) {
         if (rt.filter || rt.#antialiasing) {
@@ -1470,12 +1597,13 @@ export class PathTracer {
 
     function renderTextureBuilder () {
       // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
-        parent.forEach(function(item){
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-          rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-          GLLib.setTexParams(rt.#gl);
-        });
+      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture,
+        [OrderPosXTexture, OrderPosYTexture, OrderPosZTexture, OrderTexCoordXTexture, OrderTexCoordYTexture, OrderBufferIdTexture, OrderTriangleIdTexture, OriginalIdRenderTexture]].forEach((parent) => {
+          parent.forEach(function(item){
+            rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+            rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
+            GLLib.setTexParams(rt.#gl);
+          });
       });
       // Init single channel depth textures
       DepthTexture.forEach((item) => {
@@ -1483,10 +1611,6 @@ export class PathTracer {
         rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
         GLLib.setTexParams(rt.#gl);
       });
-      // Init other textures
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OriginalIdRenderTexture);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-      GLLib.setTexParams(rt.#gl);
     }
 
     let prepareEngine = () => {
@@ -1569,7 +1693,8 @@ export class PathTracer {
       rt.#pbrList = [];
       rt.#translucencyList = [];
       // Compile shaders and link them into Program global
-      Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
+      OrderProgram = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#orderGlsl);
+      PathTracerProgram = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#fragmentGlsl);
       TempProgram = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#tempGlsl);
       // Compile shaders and link them into PostProgram global
       for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#firstFilterGlsl);
@@ -1577,45 +1702,15 @@ export class PathTracer {
       for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#secondFilterGlsl);
       // Compile shaders and link them into PostProgram global
       PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#finalFilterGlsl);
-      // Create global vertex array object (Vao)
-      rt.#gl.bindVertexArray(Vao);
-      // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
-      Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
-      RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
-      SamplesLocation = rt.#gl.getUniformLocation(Program, 'samples');
-      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'maxReflections');
-      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'minImportancy');
-      FilterLocation = rt.#gl.getUniformLocation(Program, 'useFilter');
-      TemporalLocation = rt.#gl.getUniformLocation(Program, 'isTemporal');
-      AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      RandomSeedLocation = rt.#gl.getUniformLocation(Program, 'randomSeed');
-      GeometryTex = rt.#gl.getUniformLocation(Program, 'geometryTex');
-      SceneTex = rt.#gl.getUniformLocation(Program, 'sceneTex');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
 
-      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
-      Tex = rt.#gl.getUniformLocation(Program, 'tex');
-      // Enable depth buffer and therefore overlapping vertices
-      rt.#gl.disable(rt.#gl.BLEND);
-      rt.#gl.enable(rt.#gl.DEPTH_TEST);
-      rt.#gl.depthMask(true);
-      // Cull (exclude from rendering) hidden vertices at the other side of objects
-      rt.#gl.enable(rt.#gl.CULL_FACE);
-      // Set clear color for framebuffer
-      rt.#gl.clearColor(0, 0, 0, 0);
-      // Define Program with its currently bound shaders as the program to use for the webgl2 context
-      rt.#gl.useProgram(Program);
-      rt.#pbrAtlas = rt.#gl.createTexture();
-      rt.#translucencyAtlas = rt.#gl.createTexture();
-      rt.#textureAtlas = rt.#gl.createTexture();
-      // Create texture for all primary light sources in scene
-      rt.#lightTexture = rt.#gl.createTexture();
-      // Init textures containing all information about the scene to enable pathtracing
-      rt.#geometryTexture = rt.#gl.createTexture();
-      rt.#sceneTexture = rt.#gl.createTexture();
+
+      // Start by initializing the Order Program and its components
+      rt.#gl.bindVertexArray(OrderVao);
+      rt.#gl.useProgram(OrderProgram);
+      // Bind uniforms to Program
+      CameraPosition = rt.#gl.getUniformLocation(OrderProgram, 'cameraPosition');
+      Perspective = rt.#gl.getUniformLocation(OrderProgram, 'perspective');
+      RenderConf = rt.#gl.getUniformLocation(OrderProgram, 'conf');
       // Create buffers
       [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
       [
@@ -1630,11 +1725,68 @@ export class PathTracer {
         rt.#gl.enableVertexAttribArray(i);
         rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
       });
+
+      OrderFramebuffer = rt.#gl.createFramebuffer();
+
+      // Continue with attributes of the pathtracing shader
+      rt.#gl.bindVertexArray(PathTracerVao);
+      rt.#gl.useProgram(PathTracerProgram);
+      PathTracerCameraPosition = rt.#gl.getUniformLocation(PathTracerProgram, 'camera');
+      SamplesLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'samples');
+      MaxReflectionsLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'maxReflections');
+      MinImportancyLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'minImportancy');
+      FilterLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'useFilter');
+      TemporalLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'isTemporal');
+      AmbientLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'ambient');
+      RandomSeedLocation = rt.#gl.getUniformLocation(PathTracerProgram, 'randomSeed');
+      GeometryTex = rt.#gl.getUniformLocation(PathTracerProgram, 'geometryTex');
+      SceneTex = rt.#gl.getUniformLocation(PathTracerProgram, 'sceneTex');
+      TextureWidth = rt.#gl.getUniformLocation(PathTracerProgram, 'textureWidth');
+
+      OrderPosXTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderPosX');
+      OrderPosYTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderPosY');
+      OrderPosZTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderPosZ');
+      OrderTexCoordXTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderTexCoordX');
+      OrderTexCoordYTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderTexCoordY');
+      OrderBufferIdTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderBufferId');
+      OrderTriangleIdTex = rt.#gl.getUniformLocation(PathTracerProgram, 'orderTriangleId');
+
+      LightTex = rt.#gl.getUniformLocation(PathTracerProgram, 'lightTex');
+      PbrTex = rt.#gl.getUniformLocation(PathTracerProgram, 'pbrTex');
+      TranslucencyTex = rt.#gl.getUniformLocation(PathTracerProgram, 'translucencyTex');
+      Tex = rt.#gl.getUniformLocation(PathTracerProgram, 'tex');
+      // Enable depth buffer and therefore overlapping vertices
+      rt.#gl.disable(rt.#gl.BLEND);
+      rt.#gl.enable(rt.#gl.DEPTH_TEST);
+      rt.#gl.depthMask(true);
+      // Cull (exclude from rendering) hidden vertices at the other side of objects
+      rt.#gl.enable(rt.#gl.CULL_FACE);
+      // Set clear color for framebuffer
+      rt.#gl.clearColor(0, 0, 0, 0);
+      // Define Program with its currently bound shaders as the program to use for the webgl2 context
+      rt.#gl.useProgram(PathTracerProgram);
+      rt.#pbrAtlas = rt.#gl.createTexture();
+      rt.#translucencyAtlas = rt.#gl.createTexture();
+      rt.#textureAtlas = rt.#gl.createTexture();
+      // Create texture for all primary light sources in scene
+      rt.#lightTexture = rt.#gl.createTexture();
+      // Init textures containing all information about the scene to enable pathtracing
+      rt.#geometryTexture = rt.#gl.createTexture();
+      rt.#sceneTexture = rt.#gl.createTexture();
+      
       // Create frame buffers and textures to be rendered to
+      let VertexBuffer = rt.#gl.createBuffer();
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, VertexBuffer);
+      rt.#gl.enableVertexAttribArray(0);
+      rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
+      // Fill buffer with data for two verices
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, VertexBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
       [Framebuffer, OriginalIdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
 
       renderTextureBuilder();
 
+      // Continue with initialization of TempProgram components.
       rt.#gl.bindVertexArray(TempVao);
       rt.#gl.useProgram(TempProgram);
       TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
