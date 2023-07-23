@@ -101,7 +101,7 @@ async function buildScene() {
 	eth.textureNums = [-1, 0, -1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 500;
+	scene.primaryLightSources[0].intensity = 50000;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 	
 	scene.queue.push(plane, eth);
