@@ -65,7 +65,7 @@ export class PathTracer {
   out vec2 texCoord;
   out vec3 clipSpace;
   flat out vec4 vertexId;
-  flat out vec3 player;
+  flat out vec3 camera;
 
   vec3 clipPosition (vec3 pos, vec2 dir) {
     vec2 translatePX = vec2(
@@ -93,7 +93,7 @@ export class PathTracer {
     position = position3d;
     texCoord = texPos;
     vertexId = id;
-    player = cameraPosition;
+    camera = cameraPosition;
   }
   `;
   #fragmentGlsl = `#version 300 es
@@ -129,7 +129,7 @@ export class PathTracer {
   in vec3 clipSpace;
 
   flat in vec4 vertexId;
-  flat in vec3 player;
+  flat in vec3 camera;
 
   // Quality configurators
   uniform int samples;
@@ -367,7 +367,7 @@ export class PathTracer {
     return BRDF * NdotL * brightness;
   }
 
-  vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 normal, vec3 lastRoughNormal, vec3 origin, vec3 view, Material material, bool dontFilter, int i) {
+  vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 normal, vec3 N, vec3 origin, vec3 V, Material material, bool dontFilter, int i) {
     vec3 localColor = vec3(0);
     float reservoirLength = 0.0;
     float totalWeight = 0.0;
@@ -387,7 +387,7 @@ export class PathTracer {
       // Alter light source position according to variation.
       light = randomVec.xyz * strengthVariation.y + light;
       vec3 dir = light - origin;
-      vec3 colorForLight = forwardTrace(dir, lastRoughNormal, view, material, strengthVariation.x);
+      vec3 colorForLight = forwardTrace(dir, N, V, material, strengthVariation.x);
       localColor += colorForLight;
       float weight = length(colorForLight);
       totalWeight += weight;
@@ -403,7 +403,7 @@ export class PathTracer {
     }
 
     // Compute quick exit criterion to potentially skip expensive shadow test
-    bool quickExitCriterion = reservoirLength == 0.0 || reservoirWeight == 0.0 || dot(reservoirLightDir, lastRoughNormal) <= BIAS;
+    bool quickExitCriterion = reservoirLength == 0.0 || reservoirWeight == 0.0 || dot(reservoirLightDir, N) <= BIAS;
     Ray lightRay = Ray(reservoirLightDir, normalize(reservoirLightDir), origin, normal);
 
     // Test if in shadow
@@ -467,11 +467,8 @@ export class PathTracer {
         // Add filtering intensity for respective surface
         originalRMEx += lastFilterRoughness;
         // Update render id
-        if (originalTPOx > 0.0) {
-          renderId += pow(2.0, - fi) * vec4(ray.normal.xy, (lastFilterRoughness * 2.0 + material.rme.y) * THIRD, 0.0);
-        } else {
-          renderId += pow(2.0, - fi) * vec4(lastId * INV_65536, lastId * INV_256, (lastFilterRoughness * 2.0 + material.rme.y) * THIRD, 0.0);
-        }
+        vec2 renderIdPart = (originalTPOx > 0.0) ? ray.normal.xy : vec2(lastId);
+        renderId += pow(2.0, - fi) * vec4(renderIdPart, (lastFilterRoughness * 2.0 + material.rme.y) * THIRD, 0.0);
         originalTPOx ++;
       }
       // Update dontFilter variable
@@ -567,15 +564,16 @@ export class PathTracer {
     float filterRoughness = material.rme.x;
     vec3 finalColor = vec3(0);
     // Generate camera ray
-    vec3 dir = normalize(position - player);
+    vec3 dir = normalize(position - camera);
     Ray ray = Ray (dir, dir, position, normalize(normal));
     // Generate multiple samples
-    for (int i = 0; i < samples; i++) finalColor += lightTrace(player, ray, material, i, maxReflections);
+    for (int i = 0; i < samples; i++) finalColor += lightTrace(camera, ray, material, i, maxReflections);
     
     // Average ray colors over samples.
-    finalColor /= float(samples);
-    firstRayLength /= float(samples);
-    originalRMEx /= float(samples);
+    float invSamples = 1.0 / float(samples);
+    finalColor *= invSamples;
+    firstRayLength *= invSamples;
+    originalRMEx *= invSamples;
     if (useFilter == 1) {
       // Render all relevant information to 4 textures for the post processing shader
       renderColor = vec4(mod(finalColor, 1.0), 1.0);
@@ -595,7 +593,7 @@ export class PathTracer {
     renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
     renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
     renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
-    float div = 2.0 * length(position - player);
+    float div = 2.0 * length(position - camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
     
   }
@@ -1176,7 +1174,7 @@ export class PathTracer {
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
       rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 3);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1470,7 +1468,7 @@ export class PathTracer {
 
     function renderTextureBuilder () {
       // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture].forEach((parent) => {
+      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach((parent) => {
         parent.forEach(function(item){
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
@@ -1483,10 +1481,6 @@ export class PathTracer {
         rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
         GLLib.setTexParams(rt.#gl);
       });
-      // Init other textures
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, OriginalIdRenderTexture);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-      GLLib.setTexParams(rt.#gl);
     }
 
     let prepareEngine = () => {
