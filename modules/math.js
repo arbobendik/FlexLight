@@ -20,14 +20,23 @@ Object.assign(Math, {
     const dim = (obj) => (Array.isArray(obj)) ? dim(obj[0]) + 1 : 0;
     const dimA = dim(a);
     const dimB = dim(b);
-    if (dimA === 2 && dimB === 2) return matMul(a, b);
-    if (dimA === 2 && dimB === 1) return matMul(a, b.map((e) => [e])).flat();
-    if (dimA === 2 && dimB === 0) return a.map((row) => row.map((e) => e * b));
-    if (dimA === 0 && dimB === 2) return b.map((row) => row.map((e) => e * a));
-    if (dimA === 1 && dimB === 1) return a.map((e, i) => Math.stabilize(e* b[i]));
-    if (dimA === 1 && dimB === 0) return a.map((e) => Math.stabilize(e * b));
-    if (dimA === 0 && dimB === 1) return b.map((e) => Math.stabilize(e * a));
-    return Math.stabilize(a * b);
+    switch (dimA) {
+      case 0: switch (dimB) {
+        case 0: return a * b;
+        case 1: return b.map(e => Math.stabilize(e * a));
+        case 2: return b.map(row => row.map(e => e * a));
+      }
+      case 1: switch (dimB) {
+        case 0: return a.map(e => Math.stabilize(e * b));
+        case 1: return a.map((e, i) => Math.stabilize(e* b[i]));
+        case 2: return null;
+      }
+      case 2: switch (dimB) {
+        case 0: return a.map((row) => row.map((e) => e * b));
+        case 1: return matMul(a, b.map((e) => [e])).flat();
+        case 2: return matMul(a, b);
+      }
+    }
   },
   // Calculate dot product
   dot: (a, b) => Math.stabilize(Math.mul(a, b).reduce((p, c) => p + c, 0)),

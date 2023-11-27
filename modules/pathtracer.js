@@ -1174,7 +1174,7 @@ export class PathTracer {
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
       rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 3);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1530,7 +1530,7 @@ export class PathTracer {
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         this.#tempGlsl += `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
+        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyzw == id.xyzw) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
