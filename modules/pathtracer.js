@@ -739,23 +739,19 @@ export class PathTracer {
     float count = 0.0;
     float oCount = 0.0;
 
-    const vec2 stencil[89] = vec2[89](
-                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
-                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
-                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
-                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
-      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
-      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
-      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
-                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
-                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
-                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
-                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
+    const vec2 stencil3[37] = vec2[37](
+                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
+                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
+    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
+    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
+    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
+                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
+                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
     // Apply blur filter on image
-    for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+    for (int i = 0; i < 37; i++) {
+      ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
       vec4 id = texelFetch(preRenderId, coord, 0);
       vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
       vec4 nextColor = texelFetch(preRenderColor, coord, 0);
@@ -808,34 +804,33 @@ export class PathTracer {
     float count = 0.0;
     float oCount = 0.0;
 
-    const vec2 stencil[89] = vec2[89](
-                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
-                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
-                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
-                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
-      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
-      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
-      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
-                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
-                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
-                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
-                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
+    const vec2 stencil3[37] = vec2[37](
+                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
+                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
+    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
+    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
+    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
+                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
+                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
 
     // Apply blur filter on image
-    for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+    for (int i = 0; i < 37; i++) {
+      ivec2 coord = texel + ivec2(stencil3[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
       vec4 id = texelFetch(preRenderId, coord, 0);
       vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
       vec4 nextColor = texelFetch(preRenderColor, coord, 0);
       vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
       vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
-      if (max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) >= 0.5 && centerOId.xyz == nextOId.xyz) {
-        color += nextColor + nextColorIp * 255.0;
-        count ++;
+
+      // Test if at least one pixel is translucent, , they are pixels of the same object.
+      bool blurTranslucent = max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) >= 0.1 && centerOId.xyz == nextOId.xyz;
+      if (blurTranslucent) {
         oColor += nextOColor;
         oCount ++;
-      } else if (id.xyz == centerId.xyz) {
+      }
+      
+      if (blurTranslucent || id.xyz == centerId.xyz) {
         color += nextColor + nextColorIp * 255.0;
         count ++;
       }
@@ -1173,8 +1168,8 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.firstPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
+      rt.secondPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1530,7 +1525,7 @@ export class PathTracer {
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         this.#tempGlsl += `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
+        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyzw == id.xyzw) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
