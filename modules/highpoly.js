@@ -391,11 +391,8 @@ export class Rasterizer {
   
   updateScene () {
     // Build unordered triangle list using recursion
-    let dataList = [];
-    let dataIsBounding = [];
     let objList = [];
 
-    let index = 0;
     let bufferLength = 0;
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
