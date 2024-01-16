@@ -1,6 +1,7 @@
 'use strict';
 
 import { Math } from './math.js';
+import { Arrays } from './arrays.js';
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
@@ -388,11 +389,121 @@ class Object3D {
       }
     }
   }
+
+  toStatic () {
+    // Object ids to keep track of
+    this.textureLength = 0;
+    // Precalculate arrays and values
+    this.geometryTextureArray = [];
+    this.sceneTextureArray = [];
+    this.vertices = [];
+    this.objectLengths = [];
+    this.uvs = [];
+    this.normals = [];
+    this.cachedTextureNums = [];
+    this.colors = [];
+    this.bufferLength = 0;
+    // Flatten AABB tree (Axis aligned bounding box)
+    let fillData = (item) => {
+      let minMax = [];
+      if (item.static) {
+        // Item is static and precaluculated values can just be used.
+        this.geometryTextureArray = Arrays.push(this.geometryTextureArray, item.geometryTextureArray);
+        this.sceneTextureArray = Arrays.push(this.sceneTextureArray, item.sceneTextureArray);
+        this.vertices = Arrays.push(this.vertices, item.vertices);
+        this.objectLengths = Arrays.push(this.objectLengths, item.objectLengths);
+        this.textureLength += item.textureLength;
+        // Fill buffers
+        this.uvs = Arrays.push(this.uvs, item.uvs);
+        this.normals = Arrays.push(this.normals, item.normals);
+        this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.cachedTextureNums);
+        this.colors = Arrays.push(this.colors, item.colors);
+        this.bufferLength += item.bufferLength;
+        return item.minMax;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return [];
+        let dataPos = this.geometryTextureArray.length;
+        // Begin bounding volume array
+        this.geometryTextureArray = Arrays.push(this.geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        this.sceneTextureArray = Arrays.push(this.sceneTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        this.textureLength ++;
+        // Iterate over all sub elements
+        minMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // Get updated bounding of lower element
+          let b = fillData (item[i]);
+          // Update maximums and minimums
+          minMax[0] = Math.min(minMax[0], b[0]);
+          minMax[1] = Math.min(minMax[1], b[1]);
+          minMax[2] = Math.min(minMax[2], b[2]);
+          minMax[3] = Math.max(minMax[3], b[3]);
+          minMax[4] = Math.max(minMax[4], b[4]);
+          minMax[5] = Math.max(minMax[5], b[5]);
+        }
+        
+        let len = Math.floor((this.geometryTextureArray.length - dataPos) / 12);
+        // Set now calculated vertices length of bounding box
+        // to skip if ray doesn't intersect with it
+        for (let i = 0; i < 6; i++) this.geometryTextureArray[dataPos + i] = minMax[i];
+        this.geometryTextureArray[dataPos + 6] = len - 1;
+        return minMax;
+      } else {
+        // Item is dynamic and non-indexable.
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        this.geometryTextureArray = Arrays.push(this.geometryTextureArray, item.geometryTextureArray);
+        this.sceneTextureArray = Arrays.push(this.sceneTextureArray, item.sceneTextureArray);
+        // Increase object id
+        let objectIds = [];
+        // Give item new id property to identify vertex in fragment shader
+        for (let i = 0; i < item.length * 3; i += 9) objectIds.push(this.textureLength ++);
+        this.objectLengths.push(objectIds);
+        // Fill buffers
+        this.vertices = Arrays.push(this.vertices, item.vertices);
+        this.uvs = Arrays.push(this.uvs, item.uvs);
+        this.normals = Arrays.push(this.normals, item.normals);
+        this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.textureNums);
+        this.colors = Arrays.push(this.colors, item.colors);
+        this.bufferLength += item.length;
+        // Declare bounding volume of object.
+        let v = item.vertices;
+        minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // Get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          minMax[0] = Math.min(minMax[0], v[i]);
+          minMax[1] = Math.min(minMax[1], v[i + 1]);
+          minMax[2] = Math.min(minMax[2], v[i + 2]);
+          minMax[3] = Math.max(minMax[3], v[i]);
+          minMax[4] = Math.max(minMax[4], v[i + 1]);
+          minMax[5] = Math.max(minMax[5], v[i + 2]);
+        }
+        return minMax;
+      }
+    }
+    // Set min and max x, y, z coordinates and start recursion
+    this.minMax = fillData(this);
+    // Set static flag to true
+    this.static = true;
+  }
   
-  constructor (length, indexable, scene) {
+  toDynamic () {
+    this.static = false;
+    // Object ids to keep track of
+    this.textureLength = 0;
+    // Precalculate arrays and values
+    this.geometryTextureArray = [];
+    this.sceneTextureArray = [];
+    this.vertices = [];
+    this.objectLengths = [];
+    this.uvs = [];
+    this.minMax = [];
+    this.bufferLength = 0;
+  }
+  
+  constructor (length, scene) {
     this.relativePosition = [0, 0, 0];
     this.length = length;
-    this.indexable = indexable;
+    this.indexable = true;
     this.scene = scene;
   }
 }
@@ -400,14 +511,14 @@ class Object3D {
 
 class Bounding extends Object3D {
   constructor (array, scene) { 
-    super(array.length, true, scene);
+    super(array.length, scene);
     array.forEach((item, i) => this[i] = item);
   }
 }
 
 class Cuboid extends Object3D {
   constructor (x, x2, y, y2, z, z2, scene) {
-    super(6, true, scene);
+    super(6, scene);
     // Add bias of 2^(-16)
     const bias = 0.00152587890625;
     [x, y, z] = [x + bias, y + bias, z + bias];
