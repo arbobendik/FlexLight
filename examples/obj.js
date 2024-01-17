@@ -5,8 +5,6 @@ var engine;
 buildScene();
 // Build example scene
 async function buildScene() {
-
-
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
   	// Append it to body.
@@ -58,6 +56,7 @@ async function buildScene() {
 			var obj = await scene.fetchObjFile('objects/bike.obj');
 			// obj.scale(5);
 			obj.move(20, 0, - 20);
+			obj.staticPermanent = true;
 			scene.queue.push(obj);
 			break;
 		case "grass":
@@ -65,16 +64,20 @@ async function buildScene() {
 			grass.move(8, -2, - 8)
 			grass.scale(2);
 			grass.textureNums = [0, - 1, - 1];
+			grass.staticPermanent = true;
+			//grass.static = false;
 			scene.queue.push(grass);
 			break;
 		case "monkey":
 			var obj = await scene.fetchObjFile('objects/monke.obj');
 			obj.move(3, 2.1, - 3);
+			obj.static = true;
 			scene.queue.push(obj);
 			break;
 		case "prim":
 			var obj = await scene.fetchObjFile('objects/uv_sphere_tri.obj');
 			obj.move(3, 2.1, - 3);
+			obj.static = true;
 			scene.queue.push(obj);
 			break;
 		case "monkeys":
@@ -84,7 +87,7 @@ async function buildScene() {
 				let obj = await scene.fetchObjFile('objects/monke.obj');
 				obj.scale(i * 0.2 + 1);
 				obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
-				obj.textureNums = [- 1, 1, 0]
+				// obj.textureNums = [- 1, 1, 0]
 				let color = [150, 150, 150];
 				color[i] += 100;
 				obj.color = color;

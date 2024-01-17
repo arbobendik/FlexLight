@@ -3,6 +3,7 @@
 import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
+import { Arrays, Float16Array } from './arrays.js';
 
 export class PathTracer {
   type = 'pathtracer';
@@ -646,7 +647,7 @@ export class PathTracer {
                                   vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
-    if (centerOId.w > 0.0 && centerColorIp.w > 0.0) {
+    if (centerOId.w != 0.0 && centerColorIp.w != 0.0) {
       vec4 id = centerId;
 
       mat4 ids = mat4(0);
@@ -668,10 +669,10 @@ export class PathTracer {
         }
       }
 
-      int maxVote = 0;
+      int maxVote = vote[0];
       int idNumber = 0;
 
-      for (int i = 0; i < 4; i++) {
+      for (int i = 1; i < 4; i++) {
         if (vote[i] >= maxVote) {
           maxVote = vote[i];
           idNumber = i;
@@ -679,7 +680,7 @@ export class PathTracer {
       }
       
       renderId = ids[idNumber];
-      renderColorIp.w = 1.0 - sign(float(maxVote));
+      renderColorIp.w = max(1.0 - sign(float(maxVote)), 0.0);
     }
 
     if (centerOColor.w == 0.0) {
@@ -698,7 +699,7 @@ export class PathTracer {
 
         vec4 nextColor = texelFetch(preRenderColor, coord, 0);
         vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
-        if (id.xyz == centerId.xyz && (centerLightNum != lightNum || centerShadow == shadow)) {
+        if (centerId.xyz == id.xyz && (centerLightNum != lightNum || centerShadow == shadow)) {
           color += nextColor + nextColorIp * 256.0;
           count ++;
         }
@@ -733,56 +734,51 @@ export class PathTracer {
     vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
     vec4 centerId = texelFetch(preRenderId, texel, 0);
     vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
-    vec4 color = vec4(0);
-    vec4 oColor = vec4(0);
-    float ipw = 0.0;
-    float count = 0.0;
-    float oCount = 0.0;
+    vec4 color = centerColor + vec4(centerColorIp.xyz, 0.0) * 256.0;;
+    vec4 oColor = centerOColor;
+    float ipw = centerColorIp.w;
+    float count = 1.0;
+    float oCount = 1.0;
 
-    const vec2 stencil[89] = vec2[89](
-                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
-                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
-                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
-                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
-      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
-      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
-      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
-                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
-                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
-                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
-                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
+    const vec2 stencil3[36] = vec2[36](
+                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
+                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
+    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
+    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1),              vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
+    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
+                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
+                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
     
     // Apply blur filter on image
-    for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+    for (int i = 0; i < 36; i++) {
+      ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
       vec4 id = texelFetch(preRenderId, coord, 0);
       vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
       vec4 nextColor = texelFetch(preRenderColor, coord, 0);
       vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
       vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
 
-      if (min(centerOId.w, nextOId.w) > 0.1) {
-        if (id == centerId || (max(nextColorIp.w, centerColorIp.w) != 0.0 && centerOId.xyz == nextOId.xyz)) {
+      if ((min(centerOId.w, nextOId.w) > 0.1) &&
+        (id == centerId || (max(nextColorIp.w, centerColorIp.w) >= 0.1 && centerOId.xyz == nextOId.xyz))) {
           color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
           count ++;
           ipw += nextColorIp.w;
           oColor += nextOColor;
           oCount ++;
-        }
-      }
-
-      if (id.xyz == centerId.xyz) {
+      } else if (id.xyz == centerId.xyz) {
         color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
         count ++;
       }
+
+      
     }
 
     float invCount = 1.0 / count;
     renderColor = centerColor.w * vec4(mod(color.xyz * invCount, 1.0), color.w * invCount);
     // Set out color for render texture for the antialiasing filter
     renderColorIp =  centerColor.w * vec4(floor(color.xyz * invCount) * INV_256, ipw);
-    renderOriginalColor = centerColor.w * (oCount == 0.0 ? centerOColor : oColor / oCount);
+    renderOriginalColor = centerColor.w * oColor / oCount;
   }
   `;
   #finalFilterGlsl = `#version 300 es
@@ -808,34 +804,33 @@ export class PathTracer {
     float count = 0.0;
     float oCount = 0.0;
 
-    const vec2 stencil[89] = vec2[89](
-                                                              vec2(-5, -1), vec2(-5, 0), vec2(-5, 1),
-                                  vec2(-4, -3), vec2(-4, -2), vec2(-4, -1), vec2(-4, 0), vec2(-4, 1), vec2(-4, 2), vec2(-4, 3),
-                    vec2(-3, -4), vec2(-3, -3), vec2(-3, -2), vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), vec2(-3, 2), vec2(-3, 3), vec2(-3, 4),
-                    vec2(-2, -4), vec2(-2, -3), vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2), vec2(-2, 3), vec2(-2, 4),
-      vec2(-1, -5), vec2(-1, -4), vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3), vec2(-1, 4), vec2(-1, 5),
-      vec2( 0, -5), vec2( 0, -4), vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3), vec2( 0, 4), vec2( 0, 5),
-      vec2( 1, -5), vec2( 1, -4), vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3), vec2( 1, 4), vec2( 1, 5),
-                    vec2( 2, -4), vec2( 2, -3), vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2), vec2( 2, 3), vec2( 2, 4),
-                    vec2( 3, -4), vec2( 3, -3), vec2( 3, -2), vec2( 3, -1), vec2( 3, 0), vec2( 3, 1), vec2( 3, 2), vec2( 3, 3), vec2( 3, 4),
-                                  vec2( 4, -3), vec2( 4, -2), vec2( 4, -1), vec2( 4, 0), vec2( 4, 1), vec2( 4, 2), vec2( 4, 3),
-                                                              vec2( 5, -1), vec2( 5, 0), vec2( 5, 1)
+    const vec2 stencil3[37] = vec2[37](
+                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
+                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
+    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
+    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
+    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
+                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
+                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
     );
 
     // Apply blur filter on image
-    for (int i = 0; i < 89; i++) {
-      ivec2 coord = texel + ivec2(stencil[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
+    for (int i = 0; i < 37; i++) {
+      ivec2 coord = texel + ivec2(stencil3[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
       vec4 id = texelFetch(preRenderId, coord, 0);
       vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
       vec4 nextColor = texelFetch(preRenderColor, coord, 0);
       vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
       vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
-      if (max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) >= 0.5 && centerOId.xyz == nextOId.xyz) {
-        color += nextColor + nextColorIp * 255.0;
-        count ++;
+
+      // Test if at least one pixel is translucent and they are pixels of the same object.
+      bool blurTranslucent = max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) > 0.0 && centerOId.xyz == nextOId.xyz;
+      if (blurTranslucent) {
         oColor += nextOColor;
         oCount ++;
-      } else if (id.xyz == centerId.xyz) {
+      }
+      
+      if (blurTranslucent || centerId.xyz == id.xyz) {
         color += nextColor + nextColorIp * 255.0;
         count ++;
       }
@@ -857,6 +852,7 @@ export class PathTracer {
     } else {
       outColor = vec4(0);
     }
+    // outColor = vec4(centerId.xyz, 0.0);
   }
   `;
   // Create new PathTracer from canvas and setup movement
@@ -865,6 +861,9 @@ export class PathTracer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
+
+
+    
     this.halt = () => {
       try {
         this.#gl.loseContext();
@@ -991,7 +990,7 @@ export class PathTracer {
     // Object ids to keep track of
     let id = 0;
     let bufferId = 0;
-    // build buffer Arrays
+    // Build buffer Arrays
     let [positions, ids, uvs] = [[], [], []];
     let bufferLength = 0;
     // Set data variable for texels in world space texture
@@ -1001,12 +1000,39 @@ export class PathTracer {
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
-      if (Array.isArray(item) || item.indexable) {
+      if (item.static) {
+        // Item is static and precaluculated values can just be used.
+        geometryData = Arrays.push(geometryData, item.geometryTextureArray);
+        sceneData = Arrays.push(sceneData, item.sceneTextureArray);
+        positions = Arrays.push(positions, item.vertices);
+        
+        for (let i = 0; i < item.objectLengths.length; i++) {
+          // Increase object id
+          let bufferIdHigh = (bufferId % 65536) / 65535;
+          let bufferIdLow = (bufferId % 256) / 255;
+          bufferId ++;
+          // Give item new id property to identify vertex in fragment shader
+          for (let j = 0; j < item.objectLengths[i].length; j++) {
+            let curId = id + item.objectLengths[i][j];
+            let idHigh = Math.floor(curId >> 16);
+            let idLow = curId % 65536;
+            // Fill id buffer
+            ids = Arrays.push(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+          }
+        }
+        uvs = Arrays.push(uvs, item.uvs);
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        id += item.textureLength;
+        bufferLength += item.bufferLength;
+        minMax = item.minMax;
+        
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
         if (item.length === 0) return [];
         let dataPos = geometryData.length;
         // Begin bounding volume array
-        geometryData.push.apply(geometryData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
-        sceneData.push.apply(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        geometryData = Arrays.push(geometryData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        sceneData = Arrays.push(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
         id ++;
         // Iterate over all sub elements
         minMax = fillData (item[0]);
@@ -1027,10 +1053,29 @@ export class PathTracer {
         // to skip if ray doesn't intersect with it
         for (let i = 0; i < 6; i++) geometryData[dataPos + i] = minMax[i];
         geometryData[dataPos + 6] = len - 1;
-
       } else {
-        let len = item.length;
-        // Declare bounding volume of object
+        // Item is dynamic and non-indexable.
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        geometryData = Arrays.push(geometryData, item.geometryTextureArray);
+        sceneData = Arrays.push(sceneData, item.sceneTextureArray);
+        // Increase object id
+        let bufferIdHigh = (bufferId % 65536) / 65535;
+        let bufferIdLow = (bufferId % 256) / 255;
+        bufferId ++;
+        // Give item new id property to identify vertex in fragment shader
+        for (let i = 0; i < item.length * 3; i += 9) {
+          let idLow = id % 65536;
+          let idHigh = Math.floor(id >> 16);
+          // Fill id buffer
+          ids = Arrays.push(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+          // 1 vertex = 1 line in world texture
+          id ++;
+        }
+        // Fill buffers
+        positions = Arrays.push(positions, item.vertices);
+        uvs = Arrays.push(uvs, item.uvs);
+        bufferLength += item.length;
+        // Declare bounding volume of object.
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
         // get min and max values of veritces of object
@@ -1042,27 +1087,6 @@ export class PathTracer {
           minMax[4] = Math.max(minMax[4], v[i + 1]);
           minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryData.push.apply(geometryData, item.geometryTextureArray);
-        sceneData.push.apply(sceneData, item.sceneTextureArray);
-        // Increase object id
-        bufferId ++;
-
-        let bufferIdHigh = (bufferId % 65536) / 65535;
-        let bufferIdLow = (bufferId % 256) / 255;
-        // Give item new id property to identify vertex in fragment shader
-        for (let i = 0; i < len * 3; i += 9) {
-          let idHigh = Math.floor(id >> 16);
-          let idLow = id % 65536;
-          // 1 vertex = 1 line in world texture
-          // Fill id buffer
-          ids.push.apply(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
-          id ++;
-        }
-        // Fill buffers
-        positions.push.apply(positions, item.vertices);
-        uvs.push.apply(uvs, item.uvs);
-        bufferLength += item.length;
       }
       return minMax;
     }
@@ -1073,9 +1097,8 @@ export class PathTracer {
     this.#idBufferArray =  new Float32Array(ids);
     this.#uvBufferArray =  new Float32Array(uvs);
     this.#bufferLength = bufferLength;
-
     // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
-    geometryData.push.apply(geometryData, new Array(3072 - geometryData.length % 3072).fill(0));
+    geometryData = Arrays.push(geometryData, new Array(3072 - geometryData.length % 3072).fill(0));
     // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
     var geometryDataHeight = geometryData.length / 3072;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
@@ -1086,15 +1109,17 @@ export class PathTracer {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, geometryDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryData));
 
     // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
-    sceneData.push.apply(sceneData, new Array(5376 - sceneData.length % 5376).fill(0));
+    sceneData = Arrays.push(sceneData, new Array(5376 - sceneData.length % 5376).fill(0));
     // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
     let sceneDataHeight = sceneData.length / 5376;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
-    // Tell webgl to use 4 bytes per value for the 32 bit floats
-    this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
-    // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
+    // Tell webgl to use 2 bytes per value for the 16 bit floats
+    this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 2);
+    // Set data texture details and tell webgl, that no mip maps are required
+    let f16SceneData = new Float16Array(sceneData);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, f16SceneData);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
   }
 
   async render() {
@@ -1173,8 +1198,8 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
-      rt.secondPasses = Math.max(1 + Math.round(Math.min(canvas.width, canvas.height) / 800), 2);
+      rt.firstPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
+      rt.secondPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1530,7 +1555,7 @@ export class PathTracer {
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
         this.#tempGlsl += `
-        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyz == id.xyz) {
+        for (int i = 0; i < 4; i++) if (id` + i + `[i].xyzw == id.xyzw) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
