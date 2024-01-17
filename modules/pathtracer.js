@@ -1119,6 +1119,7 @@ export class PathTracer {
     // Set data texture details and tell webgl, that no mip maps are required
     let f16SceneData = new Float16Array(sceneData);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, f16SceneData);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
   }
 
   async render() {

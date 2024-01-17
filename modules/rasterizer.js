@@ -13,6 +13,7 @@ export class Rasterizer {
   hdr = true;
   // Performance metric
   fps = 0;
+  fpsLimit = Infinity;
 
   #antialiasing = 'taa';
   #AAObject;
@@ -603,7 +604,9 @@ export class Rasterizer {
     function frameCycle () {
       let timeStamp = performance.now();
       // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
+      if (!rt.#halt) setTimeout(function () {
+        requestAnimationFrame(frameCycle)
+      }, 1000 / rt.fpsLimit);
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();

@@ -117,15 +117,18 @@ async function buildScene() {
 	let cubeWallTree = [wall, [grassCube, redCube]];
 	let cubeTree = [grassCube2, lantern];
 	// pack all trees together to one tree with all objects on the plane
-	let objectTree = [
+	let objectTree = scene.Bounding([
 	  	cuboidTree,
 	 	cubeWallTree,
     	cubeTree
-	];
+	]);
+
+	objectTree.static = true;
 	// append plane tree and object tree to render queue
 	scene.queue.push(groundPlane, objectTree);
 	// start render engine
 	engine.renderer.render();
+	engine.renderer.fpsLimit = 30;
 	// add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
 	// append it to body
