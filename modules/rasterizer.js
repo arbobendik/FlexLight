@@ -3,6 +3,7 @@
 import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
+import { Arrays } from './arrays.js';
 
 export class Rasterizer {
   type = 'rasterizer';
@@ -12,6 +13,7 @@ export class Rasterizer {
   hdr = true;
   // Performance metric
   fps = 0;
+  fpsLimit = Infinity;
 
   #antialiasing = 'taa';
   #AAObject;
@@ -453,31 +455,32 @@ export class Rasterizer {
   
   updateScene () {
     // Build unordered triangle list using recursion
-    let dataList = [];
-    let dataIsBounding = [];
     let objList = [];
+    let geometryTextureArray = [];
 
     let index = 0;
     let bufferLength = 0;
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
-      if (Array.isArray(item) || item.indexable) {
+      if (item.static) {
+        // Item is static and precaluculated values can just be used.
+        objList.push(item);
+        geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
+        bufferLength += item.bufferLength;
+        // Return precomputed bounding
+        return item.minMax;
+      } else if (Array.isArray(item) || item.indexable) {
         if (item.length === 0) return [];
-        
-        let dataPos = index;
-        index += 12;
-        
-        let boundingArray = new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        // Begin bounding volume array
-        dataList.push(boundingArray);
-        dataIsBounding.push(true);
+        let dataPos = geometryTextureArray.length;
+
+        geometryTextureArray = Arrays.push(geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
         // Iterate over all sub elements
         minMax = fillData (item[0]);
         for (let i = 1; i < item.length; i++) {
-          // get updated bounding of lower element
+          // Get updated bounding of lower element
           let b = fillData (item[i]);
-          // update maximums and minimums
+          // Update maximums and minimums
           minMax[0] = Math.min(minMax[0], b[0]);
           minMax[1] = Math.min(minMax[1], b[1]);
           minMax[2] = Math.min(minMax[2], b[2]);
@@ -485,17 +488,24 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], b[4]);
           minMax[5] = Math.max(minMax[5], b[5]);
         }
-        
+
+        let len = Math.floor((geometryTextureArray.length - dataPos) / 12);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        boundingArray.set(minMax);
-        boundingArray[6] = (index - dataPos) / 12 - 1;
-        
+        for (let i = 0; i < 6; i++) geometryTextureArray[dataPos + i] = minMax[i];
+        geometryTextureArray[dataPos + 6] = len - 1;
+
+        return minMax;
       } else {
+        objList.push(item);
+        geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
+        
+        index += item.length * 4;
+        bufferLength += item.length;
         // Declare bounding volume of object
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
-        // get min and max values of veritces of object
+        // Get min and max values of veritces of object
         for (let i = 3; i < v.length; i += 3) {
           minMax[0] = Math.min(minMax[0], v[i]);
           minMax[1] = Math.min(minMax[1], v[i + 1]);
@@ -504,40 +514,21 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], v[i + 1]);
           minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        
-        dataList.push(item);
-        dataIsBounding.push(false);
-        objList.push(item);
-        
-        index += item.length * 4;
-        bufferLength += item.length;
+        return minMax;
       }
-      return minMax;
     }
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
-
-    // Set data variable for texels in world space texture
-    let data = new Float32Array(Math.ceil(index / 3072) * 3072);
-
-    let dataIterator = 0;
-    for (let i = 0; i < dataList.length; i ++) {
-      if (dataIsBounding[i]) {
-        data.set(dataList[i], dataIterator);
-        dataIterator += 12;
-      } else {
-        data.set(dataList[i].geometryTextureArray, dataIterator);
-        dataIterator += dataList[i].length * 4;
-      }
-    }
+    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
+    geometryTextureArray = Arrays.push(geometryTextureArray, new Array(3072 - geometryTextureArray.length % 3072).fill(0));
     // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
-    var dataHeight = data.length / 3072;
+    var dataHeight = geometryTextureArray.length / 3072;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, data);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryTextureArray));
     
     // Set buffer attributes
     this.#positionBufferArray = new Float32Array(bufferLength * 3);
@@ -552,9 +543,14 @@ export class Rasterizer {
       this.#positionBufferArray.set(item.vertices, objIterator * 3);
       this.#uvBufferArray.set(item.uvs, objIterator * 2);
       this.#normalBufferArray.set(item.normals, objIterator * 3);
-      this.#numBufferArray.set(item.textureNums, objIterator * 3);
       this.#colorBufferArray.set(item.colors, objIterator * 3);
-      objIterator += item.length;
+      if (item.static) {
+        this.#numBufferArray.set(item.cachedTextureNums, objIterator * 3);
+        objIterator += item.bufferLength;
+      } else {
+        this.#numBufferArray.set(item.textureNums, objIterator * 3);
+        objIterator += item.length;
+      }
     }
     this.#bufferLength = bufferLength;
   }
@@ -608,7 +604,9 @@ export class Rasterizer {
     function frameCycle () {
       let timeStamp = performance.now();
       // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) requestAnimationFrame(frameCycle);
+      if (!rt.#halt) setTimeout(function () {
+        requestAnimationFrame(frameCycle)
+      }, 1000 / rt.fpsLimit);
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
