@@ -20,6 +20,18 @@ export class Arrays {
             return a1;
         }
     }
+
+    /*
+    static pushFloat32 = (a1, a2) => {
+        if (a1.length === 1) return a2;
+        // Merging arrays in r
+        let r = new Float32Array(a1.length + a2.length);
+        r.set(a1, 0);
+        r.set(a2, a1.length);
+        // console.log(r);
+        return r;
+    }
+    */
 }
 
 export class Float16Array extends Uint16Array {
