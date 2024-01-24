@@ -289,11 +289,11 @@ class Primitive {
       let i12 = i * 4;
       this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
       this.geometryTextureArray.set(this.#normal, i12 + 9);
-      let i21 = i * 7;
-      this.sceneTextureArray.set(this.#normals.slice(i * 3, i * 3 + 9), i21);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 9);
-      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 15);
-      this.sceneTextureArray.set(this.#color, i21 + 18);
+      let i21 = i * 5;
+      this.sceneTextureArray.set(this.#normal, i21);
+      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 3);
+      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 9);
+      this.sceneTextureArray.set(this.#color, i21 + 12);
     }
   }
     
@@ -352,7 +352,7 @@ class Primitive {
     this.#uvs = new Float32Array(uvs);
     
     this.geometryTextureArray = new Float32Array(this.length * 4);
-    this.sceneTextureArray = new Float32Array(this.length * 7);
+    this.sceneTextureArray = new Float32Array(this.length * 5);
     this.#buildTextureArrays();
   }
 }
@@ -436,7 +436,7 @@ class Object3D {
           let dataPos = this.geometryTextureArray.length;
           // Begin bounding volume array
           this.geometryTextureArray = Arrays.push(this.geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
-          this.sceneTextureArray = Arrays.push(this.sceneTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+          this.sceneTextureArray = Arrays.push(this.sceneTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
           this.textureLength ++;
           // Iterate over all sub elements
           minMax = fillData (item[0]);

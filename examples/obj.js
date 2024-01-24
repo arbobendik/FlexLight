@@ -65,7 +65,7 @@ async function buildScene() {
 			grass.scale(2);
 			grass.textureNums = [0, - 1, - 1];
 			grass.staticPermanent = true;
-			//grass.static = false;
+			// grass.static = false;
 			scene.queue.push(grass);
 			break;
 		case "monkey":
@@ -104,6 +104,8 @@ async function buildScene() {
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
   	// Update Counter periodically.
+	setTimeout(() => engine.renderer.freeze = true, 1000);
+	
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
 	}, 100);

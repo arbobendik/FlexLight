@@ -34,9 +34,7 @@ export class PathTracer {
   #geometryTexture;
   #sceneTexture;
   // Buffer arrays
-  #positionBufferArray;
-  #idBufferArray;
-  #uvBufferArray;
+  #triangleIdBufferArray;
   #bufferLength;
 
   // Internal gl texture variables of texture atlases
@@ -53,20 +51,37 @@ export class PathTracer {
   #tempGlsl;
   // Shader sources in glsl 3.0.0 es
   #vertexGlsl = `#version 300 es
+  #define TRIANGLES_PER_ROW_POWER 8
+  #define TRIANGLES_PER_ROW 256
+
   precision highp float;
-  in vec3 position3d;
-  in vec4 id;
-  in vec2 texPos;
+
+  in int triangleId;
+  in int vertexId;
 
   uniform vec3 cameraPosition;
   uniform vec2 perspective;
   uniform vec4 conf;
 
+  // Texture with information about all triangles in scene
+  uniform sampler2D geometryTex;
+  uniform sampler2D sceneTex;
+
   out vec3 position;
-  out vec2 texCoord;
+  out vec2 uv;
   out vec3 clipSpace;
-  flat out vec4 vertexId;
+
   flat out vec3 camera;
+  flat out int fragmentTriangleId;
+
+  const vec2 baseUVs[3] = vec2[3](
+    vec2(1, -1),
+    //1-11
+    vec2(0, 0),
+    //001
+    vec2(0, 1)
+    //010
+  );
 
   vec3 clipPosition (vec3 pos, vec2 dir) {
     vec2 translatePX = vec2(
@@ -84,27 +99,36 @@ export class PathTracer {
   }
 
   void main(){
+    // Calculate vertex position in texture
+    int triangleColumn = triangleId >> 8;
+    ivec2 index = ivec2((triangleId - triangleColumn * TRIANGLES_PER_ROW) << 2, triangleColumn);
+
+    // Read vertex position from texture
+    vec3 position3d = texelFetch(geometryTex, index + ivec2(vertexId, 0), 0).xyz;
+
     vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
 
     clipSpace = clipPosition (move3d, perspective + conf.zw);
     
     // Set triangle position in clip space
     gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d / 1048576.0))), clipSpace.z);
-
     position = position3d;
-    texCoord = texPos;
-    vertexId = id;
+    
+
+    uv = baseUVs[vertexId];
     camera = cameraPosition;
+    fragmentTriangleId = triangleId;
   }
   `;
   #fragmentGlsl = `#version 300 es
+  #define TRIANGLES_PER_ROW_POWER 8
+  #define TRIANGLES_PER_ROW 256.0
+  #define INV_TRIANGLES_PER_ROW 0.00390625
   #define PI 3.141592653589793
   #define PHI 1.61803398874989484820459
   #define SQRT3 1.73205
   #define POW32 4294967296.0
   #define BIAS 0.00001525879
-  #define INV_TRIANGLES_PER_ROW 0.00390625
-  #define TRIANGLES_PER_ROW 256.0
   #define INV_256 0.00390625
   #define INV_65536 0.00001525879
   #define THIRD 0.333333
@@ -126,11 +150,11 @@ export class PathTracer {
   };
 
   in vec3 position;
-  in vec2 texCoord;
+  in vec2 uv;
   in vec3 clipSpace;
 
-  flat in vec4 vertexId;
   flat in vec3 camera;
+  flat in int fragmentTriangleId;
 
   // Quality configurators
   uniform int samples;
@@ -508,21 +532,21 @@ export class PathTracer {
       // Update last used tpo.x value
       if (dontFilter) originalTPOx = material.tpo.x;
       // Get position of current triangle/vertex in sceneTex
-      ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 7.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
+      ivec2 index = ivec2(mod(intersection[1].w, TRIANGLES_PER_ROW) * 5.0, intersection[1].w * INV_TRIANGLES_PER_ROW);
       // Fetch normal
       ray.normal = normalize(texelFetch(sceneTex, index + ivec2(0, 0), 0).xyz);
       // Calculate barycentric coordinates to map textures
       // Read UVs of vertices
-      vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
-      vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz;
+      vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(1, 0), 0).xyz;
+      vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(2, 0), 0).xyz;
       mat3x2 vertexUVs = mat3x2(vUVs1, vUVs2);
       // Interpolate final barycentric coordinates
       vec2 barycentric = vertexUVs * intersection[1].xyz;
       // Read triangle normal
-      vec3 texNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
+      vec3 texNums = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
       // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
       material = Material(
-        mix(texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz, lookup(tex, vec3(barycentric, texNums.x)).xyz, max(sign(texNums.x + 0.5), 0.0)),
+        mix(texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz, lookup(tex, vec3(barycentric, texNums.x)).xyz, max(sign(texNums.x + 0.5), 0.0)),
         mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(barycentric, texNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(texNums.y + 0.5), 0.0)),
         mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, max(sign(texNums.z + 0.5), 0.0))
       );
@@ -539,24 +563,33 @@ export class PathTracer {
   }
   
   void main(){
+    // Test if pixel is in frustum or not
+    if (clipSpace.z < 0.0) return;
     // Calculate constant for this pass
     invTextureWidth = 1.0 / float(textureWidth);
 
-    float id = vertexId.x * 65536.0 + vertexId.y;
-    ivec2 index = ivec2(mod(id, TRIANGLES_PER_ROW) * 7.0, id * INV_TRIANGLES_PER_ROW);
+    // Calculate vertex position in texture
+    int triangleColumn = fragmentTriangleId >> 8;
+    ivec2 index = ivec2((fragmentTriangleId - triangleColumn * 256) * 5, triangleColumn);
+
     // Read base attributes from world texture.
     vec3 normal = normalize(texelFetch(sceneTex, index + ivec2(0, 0), 0).xyz);
-    vec3 textureNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
-    vec3 color = texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz;
-    // Test if pixel is in frustum or not
-    if (clipSpace.z < 0.0) return;
+    // Read UVs of vertices
+    vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(1, 0), 0).xyz;
+    vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(2, 0), 0).xyz;
+    vec3 textureNums = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
+    vec3 color = texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz;
+    mat3x2 vertexUVs = mat3x2(vUVs1, vUVs2);
+    // Interpolate final barycentric coordinates
+    vec2 barycentric = vertexUVs * vec3(uv, 1.0 - uv.x - uv.y);
+
     // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default texColor to color
     Material material = Material (
-      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, max(sign(textureNums.x + 0.5), 0.0)),
-      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(textureNums.y + 0.5), 0.0)),
-      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, max(sign(textureNums.z + 0.5), 0.0))
+      mix(color, lookup(tex, vec3(barycentric, textureNums.x)).xyz, max(sign(textureNums.x + 0.5), 0.0)),
+      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(barycentric, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(textureNums.y + 0.5), 0.0)),
+      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(barycentric, textureNums.z)).xyz, max(sign(textureNums.z + 0.5), 0.0))
     );
 
 
@@ -592,8 +625,8 @@ export class PathTracer {
     }
 
     renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
-    renderId += vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
-    renderOriginalId = vec4(vertexId.zw, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
+    renderId += vec4(0, 0, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
+    renderOriginalId = vec4(0, 0, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
     float div = 2.0 * length(position - camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
     
@@ -991,7 +1024,7 @@ export class PathTracer {
     let id = 0;
     let bufferId = 0;
     // Build buffer Arrays
-    let [positions, ids, uvs] = [[], [], []];
+    let ids = [];
     let bufferLength = 0;
     // Set data variable for texels in world space texture
     let geometryData = [];
@@ -1004,41 +1037,35 @@ export class PathTracer {
         // Item is static and precaluculated values can just be used.
         geometryData = Arrays.push(geometryData, item.geometryTextureArray);
         sceneData = Arrays.push(sceneData, item.sceneTextureArray);
-        positions = Arrays.push(positions, item.vertices);
         
         for (let i = 0; i < item.objectLengths.length; i++) {
           // Increase object id
-          let bufferIdHigh = (bufferId % 65536) / 65535;
-          let bufferIdLow = (bufferId % 256) / 255;
           bufferId ++;
           // Give item new id property to identify vertex in fragment shader
           for (let j = 0; j < item.objectLengths[i].length; j++) {
             let curId = id + item.objectLengths[i][j];
-            let idHigh = Math.floor(curId >> 16);
-            let idLow = curId % 65536;
             // Fill id buffer
-            ids = Arrays.push(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+            ids = Arrays.push(ids, [curId, curId, curId]);
           }
         }
-        uvs = Arrays.push(uvs, item.uvs);
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
         id += item.textureLength;
-        bufferLength += item.bufferLength;
         minMax = item.minMax;
         
       } else if (Array.isArray(item) || item.indexable) {
+        // console.log(id);
         // Item is dynamic and indexable, recursion continues
         if (item.length === 0) return [];
         let dataPos = geometryData.length;
         // Begin bounding volume array
         geometryData = Arrays.push(geometryData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
-        sceneData = Arrays.push(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        sceneData = Arrays.push(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
         id ++;
         // Iterate over all sub elements
         minMax = fillData (item[0]);
         for (let i = 1; i < item.length; i++) {
           // get updated bounding of lower element
-          let b = fillData (item[i]);
+          let b = fillData(item[i]);
           // update maximums and minimums
           minMax[0] = Math.min(minMax[0], b[0]);
           minMax[1] = Math.min(minMax[1], b[1]);
@@ -1059,22 +1086,14 @@ export class PathTracer {
         geometryData = Arrays.push(geometryData, item.geometryTextureArray);
         sceneData = Arrays.push(sceneData, item.sceneTextureArray);
         // Increase object id
-        let bufferIdHigh = (bufferId % 65536) / 65535;
-        let bufferIdLow = (bufferId % 256) / 255;
-        bufferId ++;
+        bufferLength += item.length;
         // Give item new id property to identify vertex in fragment shader
         for (let i = 0; i < item.length * 3; i += 9) {
-          let idLow = id % 65536;
-          let idHigh = Math.floor(id >> 16);
           // Fill id buffer
-          ids = Arrays.push(ids, [idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow, idHigh, idLow, bufferIdHigh, bufferIdLow]);
+          ids = Arrays.push(ids, [id, id, id]);
           // 1 vertex = 1 line in world texture
           id ++;
         }
-        // Fill buffers
-        positions = Arrays.push(positions, item.vertices);
-        uvs = Arrays.push(uvs, item.uvs);
-        bufferLength += item.length;
         // Declare bounding volume of object.
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -1091,12 +1110,12 @@ export class PathTracer {
       return minMax;
     }
     // Fill scene describing texture with data pixels
-    for (let i = 0; i < this.scene.queue.length; i++) fillData(this.scene.queue[i]);
+    // console.log(this.scene.queue);
+    fillData(this.scene.queue);
+    // document.once = true;
     // Set buffer attributes
-    this.#positionBufferArray = new Float32Array(positions);
-    this.#idBufferArray =  new Float32Array(ids);
-    this.#uvBufferArray =  new Float32Array(uvs);
-    this.#bufferLength = bufferLength;
+    this.#triangleIdBufferArray = new Int32Array(ids);
+    this.#bufferLength = ids.length;
     // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
     geometryData = Arrays.push(geometryData, new Array(3072 - geometryData.length % 3072).fill(0));
     // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
@@ -1108,18 +1127,20 @@ export class PathTracer {
     GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, geometryDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryData));
 
-    // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
-    sceneData = Arrays.push(sceneData, new Array(5376 - sceneData.length % 5376).fill(0));
+    // Round up data to next higher multiple of 3840 (5 pixels * 3 values * 256 vertecies per line)
+    sceneData = Arrays.push(sceneData, new Array(3840 - sceneData.length % 3840).fill(0));
     // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
-    let sceneDataHeight = sceneData.length / 5376;
+    let sceneDataHeight = sceneData.length / 3840;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
     // Tell webgl to use 2 bytes per value for the 16 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 2);
     // Set data texture details and tell webgl, that no mip maps are required
-    let f16SceneData = new Float16Array(sceneData);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, f16SceneData);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1792, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
+    // let f16SceneData = new Float16Array(sceneData);
+    
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, f16SceneData);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
   }
 
   async render() {
@@ -1138,7 +1159,7 @@ export class PathTracer {
     let TempProgram, TempHdrLocation;
     let GeometryTex, SceneTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    let PositionBuffer, IdBuffer, UvBuffer;
+    let triangleIdBuffer, vertexIdBuffer;
     // Framebuffer, Post Program buffers and textures
     let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
     // Set post program array
@@ -1299,16 +1320,13 @@ export class PathTracer {
 
     function fillBuffers() {
       // Set buffers
-      [
-        [PositionBuffer, rt.#positionBufferArray],
-        [IdBuffer, rt.#idBufferArray],
-        [UvBuffer, rt.#uvBufferArray]
-      ].forEach(function(item) {
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, item[1], rt.#gl.DYNAMIC_DRAW);
-      });
-      // Actual drawcall
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
+      // console.log(rt.#triangleIdBufferArray);
+      
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
+      
     }
 
     let renderFrame = () => {
@@ -1352,7 +1370,10 @@ export class PathTracer {
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       texturesToGPU();
+
       fillBuffers();
+      // Actual drawcall
+      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
 
       if (rt.temporal) {
         if (rt.filter || rt.#antialiasing) {
@@ -1636,19 +1657,16 @@ export class PathTracer {
       rt.#geometryTexture = rt.#gl.createTexture();
       rt.#sceneTexture = rt.#gl.createTexture();
       // Create buffers
-      [PositionBuffer, IdBuffer, UvBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
-      [
-        // Bind world space position buffer
-        [PositionBuffer, 3, false],
-        // Surface id buffer
-        [IdBuffer, 4, false],
-        // Set barycentric texture coordinates
-        [UvBuffer, 2, true]
-      ].forEach((item, i) => {
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.enableVertexAttribArray(i);
-        rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
-      });
+      [triangleIdBuffer, vertexIdBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      rt.#gl.enableVertexAttribArray(0);
+      rt.#gl.vertexAttribIPointer(0, 1, rt.#gl.INT, false, 0, 0);
+      rt.#gl.vertexAttribDivisor(0, 1);
+
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      rt.#gl.enableVertexAttribArray(1);
+      rt.#gl.vertexAttribIPointer(1, 1, rt.#gl.INT, false, 0, 0);
       // Create frame buffers and textures to be rendered to
       [Framebuffer, OriginalIdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
 
