@@ -487,13 +487,15 @@ export class Rasterizer {
       // Request the browser to render frame with hardware acceleration
       if (!rt.#halt) requestAnimationFrame(frameCycle);
       // Update Textures
-      rt.#updateTextureAtlas();
-      rt.#updatePbrAtlas();
-      rt.#updateTranslucencyAtlas();
-      // Set scene graph
-      rt.updateScene();
-      // build bounding boxes for scene first
-      rt.updatePrimaryLightSources();
+      if (!rt.freeze) {
+        rt.#updateTextureAtlas();
+        rt.#updatePbrAtlas();
+        rt.#updateTranslucencyAtlas();
+        // Set scene graph
+        rt.updateScene();
+        // build bounding boxes for scene first
+        rt.updatePrimaryLightSources();
+      }
       // Check if recompile is required
       if (State !== rt.renderQuality) {
         resize();
@@ -591,8 +593,14 @@ export class Rasterizer {
       }
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+
       texturesToGPU();
-      fillBuffers();
+
+      if (!rt.freeze) {
+        fillBuffers();
+      } else {
+        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
+      }
       // Apply antialiasing shader if enabled
       if (this.#AAObject != null) this.#AAObject.renderFrame();
     }
