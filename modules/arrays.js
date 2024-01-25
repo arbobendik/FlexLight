@@ -35,8 +35,7 @@ export class Arrays {
 }
 
 export class Float16Array extends Uint16Array {
-    constructor (array) {
-        super(array.length);
+    from = (array) => {
         // Create view arrays to convert array
         let floatView = new Float32Array(array);
         let int32View = new Int32Array(floatView.buffer);
@@ -78,6 +77,16 @@ export class Float16Array extends Uint16Array {
             * the exponent, which is OK. */
             bits += m & 1;
             this[i] = bits;
+        }
+        return this;
+    }
+
+    constructor (item) {
+        if (Array.isArray(item)) {
+            super(item.length);
+            this.from(item);
+        } else if (Number.isInteger(item)) {
+            super(item);
         }
     }
 }

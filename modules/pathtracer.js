@@ -1020,46 +1020,43 @@ export class PathTracer {
   }
 
   async updateScene () {
-    // Object ids to keep track of
-    let id = 0;
-    let bufferId = 0;
-    // Build buffer Arrays
-    let ids = [];
-    let bufferLength = 0;
-    // Set data variable for texels in world space texture
-    let geometryData = [];
-    let sceneData = [];
+    
+    let walkGraph = (item) => {
+      if (item.static) {
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        textureLength += item.textureLength;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return 0;
+        textureLength ++;
+        // Iterate over all sub elements
+        for (let i = 0; i < item.length; i++) walkGraph(item[i]);
+      } else {
+        // Give item new id property to identify vertex in fragment shader
+        textureLength += item.length / 3;
+      }
+    }
     
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
       if (item.static) {
-        // Item is static and precaluculated values can just be used.
-        geometryData = Arrays.push(geometryData, item.geometryTextureArray);
-        sceneData = Arrays.push(sceneData, item.sceneTextureArray);
-        
+        // Item is static and precaluculated values can just be used
+        geometryTextureArray.set(item.geometryTextureArray, id * 12);
+        sceneTextureArray.set(item.sceneTextureArray, id * 15);
+        // Fill id buffer
         for (let i = 0; i < item.objectLengths.length; i++) {
-          // Increase object id
-          bufferId ++;
-          // Give item new id property to identify vertex in fragment shader
-          for (let j = 0; j < item.objectLengths[i].length; j++) {
-            let curId = id + item.objectLengths[i][j];
-            // Fill id buffer
-            ids = Arrays.push(ids, [curId, curId, curId]);
-          }
+          for (let j = 0; j < item.objectLengths[i].length; j++) ids.push(id + item.objectLengths[i][j]);
         }
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
         id += item.textureLength;
         minMax = item.minMax;
         
       } else if (Array.isArray(item) || item.indexable) {
-        // console.log(id);
         // Item is dynamic and indexable, recursion continues
         if (item.length === 0) return [];
-        let dataPos = geometryData.length;
         // Begin bounding volume array
-        geometryData = Arrays.push(geometryData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
-        sceneData = Arrays.push(sceneData, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        let oldId = id;
         id ++;
         // Iterate over all sub elements
         minMax = fillData (item[0]);
@@ -1074,26 +1071,17 @@ export class PathTracer {
           minMax[4] = Math.max(minMax[4], b[4]);
           minMax[5] = Math.max(minMax[5], b[5]);
         }
-
-        let len = Math.floor((geometryData.length - dataPos) / 12);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryData[dataPos + i] = minMax[i];
-        geometryData[dataPos + 6] = len - 1;
+        for (let i = 0; i < 6; i++) geometryTextureArray[oldId * 12 + i] = minMax[i];
+        geometryTextureArray[oldId * 12 + 6] = id - oldId - 1;
       } else {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryData = Arrays.push(geometryData, item.geometryTextureArray);
-        sceneData = Arrays.push(sceneData, item.sceneTextureArray);
-        // Increase object id
-        bufferLength += item.length;
+        geometryTextureArray.set(item.geometryTextureArray, id * 12);
+        sceneTextureArray.set(item.sceneTextureArray, id * 15);
         // Give item new id property to identify vertex in fragment shader
-        for (let i = 0; i < item.length * 3; i += 9) {
-          // Fill id buffer
-          ids = Arrays.push(ids, [id, id, id]);
-          // 1 vertex = 1 line in world texture
-          id ++;
-        }
+        for (let i = 0; i < item.length * 3; i += 9) ids.push(id ++);
         // Declare bounding volume of object.
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -1109,37 +1097,45 @@ export class PathTracer {
       }
       return minMax;
     }
+
+    // Lengths that will be probed by the walkGraph method
+    let textureLength = 0;
+
+    // Walk entire scene graph to receive array sizes and preallocate
+    walkGraph(this.scene.queue);
+    // Triangle id in texture
+    let id = 0;
+    let ids = [];
+    // Preallocate arrays for scene graph as a texture
+    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
+    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / 3072) * 3072);
+    // Round up data to next higher multiple of 3840 (5 pixels * 3 values * 256 vertecies per line)
+    let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 15 / 3840) * 3840);
     // Fill scene describing texture with data pixels
-    // console.log(this.scene.queue);
     fillData(this.scene.queue);
-    // document.once = true;
-    // Set buffer attributes
+    // Set buffer array.
     this.#triangleIdBufferArray = new Int32Array(ids);
     this.#bufferLength = ids.length;
-    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
-    geometryData = Arrays.push(geometryData, new Array(3072 - geometryData.length % 3072).fill(0));
     // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
-    var geometryDataHeight = geometryData.length / 3072;
+    var geometryTextureArrayHeight = geometryTextureArray.length / 3072;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, geometryDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryData));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
 
-    // Round up data to next higher multiple of 3840 (5 pixels * 3 values * 256 vertecies per line)
-    sceneData = Arrays.push(sceneData, new Array(3840 - sceneData.length % 3840).fill(0));
     // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
-    let sceneDataHeight = sceneData.length / 3840;
+    let sceneTextureArrayHeight = sceneTextureArray.length / 3840;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
     // Tell webgl to use 2 bytes per value for the 16 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 2);
     // Set data texture details and tell webgl, that no mip maps are required
-    // let f16SceneData = new Float16Array(sceneData);
     
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, f16SceneData);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(sceneData));
+    // let f16SceneData = new Float16Array(sceneData);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, sceneTextureArray);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1280, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
   }
 
@@ -1373,7 +1369,7 @@ export class PathTracer {
 
       fillBuffers();
       // Actual drawcall
-      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
+      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 9, rt.#bufferLength);
 
       if (rt.temporal) {
         if (rt.filter || rt.#antialiasing) {
