@@ -60,6 +60,20 @@ async function buildScene() {
 			scene.queue.push(obj);
 			break;
 		case "grass":
+			let array = [];
+			/*for (let i = 0; i < 4; i++) {
+				for (let j = 0; j < 4; i++) {
+					let grass = await scene.fetchObjFile('objects/erde.obj');
+					grass.move(i * 2, -2, - i * 2)
+					grass.scale(2);
+					grass.textureNums = [0, - 1, - 1];
+					grass.staticPermanent = true;
+					// grass.static = false;
+					array.push(grass);
+				}
+			}
+			scene.generateBVH(array);
+			*/
 			let grass = await scene.fetchObjFile('objects/erde.obj');
 			grass.move(8, -2, - 8)
 			grass.scale(2);

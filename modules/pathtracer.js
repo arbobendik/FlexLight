@@ -54,7 +54,9 @@ export class PathTracer {
   #define TRIANGLES_PER_ROW_POWER 8
   #define TRIANGLES_PER_ROW 256
 
+  precision highp int;
   precision highp float;
+  precision highp sampler2D;
 
   in int triangleId;
   in int vertexId;
@@ -75,12 +77,9 @@ export class PathTracer {
   flat out int fragmentTriangleId;
 
   const vec2 baseUVs[3] = vec2[3](
-    vec2(1, -1),
-    //1-11
-    vec2(0, 0),
-    //001
-    vec2(0, 1)
-    //010
+    vec2(1, 0),
+    vec2(0, 1),
+    vec2(0, 0)
   );
 
   vec3 clipPosition (vec3 pos, vec2 dir) {
@@ -107,14 +106,12 @@ export class PathTracer {
     vec3 position3d = texelFetch(geometryTex, index + ivec2(vertexId, 0), 0).xyz;
 
     vec3 move3d = position3d + vec3(cameraPosition.x, - cameraPosition.yz) * vec3(-1.0, 1.0, 1.0);
-
     clipSpace = clipPosition (move3d, perspective + conf.zw);
     
     // Set triangle position in clip space
     gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d / 1048576.0))), clipSpace.z);
     position = position3d;
     
-
     uv = baseUVs[vertexId];
     camera = cameraPosition;
     fragmentTriangleId = triangleId;
@@ -129,10 +126,11 @@ export class PathTracer {
   #define SQRT3 1.73205
   #define POW32 4294967296.0
   #define BIAS 0.00001525879
+  #define THIRD 0.333333
   #define INV_256 0.00390625
   #define INV_65536 0.00001525879
-  #define THIRD 0.333333
 
+  precision highp int;
   precision highp float;
   precision highp sampler2D;
 
@@ -195,6 +193,26 @@ export class PathTracer {
   float originalRMEx = 0.0;
   float originalTPOx = 0.0;
   vec3 originalColor = vec3(1.0);
+
+  float to4BitRepresentation (float a, float b) {
+    uint aui = uint(a * 255.0) & uint(240);
+    uint bui = (uint(b * 255.0) & uint(240)) >> 4;
+    return float(aui + bui) / 255.0;
+  }
+
+  float normalToSphearical4BitRepresentation (vec3 n) {
+    float phi = (atan(n.z, n.x) / PI) * 0.5 + 0.5;
+    float theta = (atan(n.x, n.y) / PI) * 0.5 + 0.5;
+    return to4BitRepresentation (phi, theta);
+  }
+
+  vec3 combineNormalRME (vec3 n, vec3 rme) {
+    return vec3(
+      normalToSphearical4BitRepresentation(n),
+      rme.x,
+      to4BitRepresentation(rme.y, rme.z)
+    );
+  }
 
   // Lookup values for texture atlases
   vec4 lookup(sampler2D atlas, vec3 coords) {
@@ -492,8 +510,7 @@ export class PathTracer {
         // Add filtering intensity for respective surface
         originalRMEx += lastFilterRoughness;
         // Update render id
-        vec2 renderIdPart = (originalTPOx > 0.0) ? ray.normal.xy : vec2(lastId);
-        renderId += pow(2.0, - fi) * vec4(renderIdPart, (lastFilterRoughness * 2.0 + material.rme.y) * THIRD, 0.0);
+        renderId += pow(2.0, - fi) * vec4(combineNormalRME(ray.normal, material.rme), 0.0);
         originalTPOx ++;
       }
       // Update dontFilter variable
@@ -624,9 +641,14 @@ export class PathTracer {
       }
     }
 
+    material.rme.x = filterRoughness;
+
     renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625 * material.tpo.x) * (firstRayLength + 0.06125));
-    renderId += vec4(0, 0, (filterRoughness * 2.0 + material.rme.y) / 3.0, 0.0);
-    renderOriginalId = vec4(0, 0, (filterRoughness * 2.0 + material.rme.y) / 3.0, originalTPOx);
+    // render normal (last in transparency)
+    renderId += vec4(combineNormalRME(normal, material.rme), 0.0);
+    // render material (last in transparency)
+    renderOriginalId = vec4(combineNormalRME(normal, material.rme), originalTPOx);
+    // render modulus of absolute position (last in transparency)
     float div = 2.0 * length(position - camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z);
     
@@ -950,10 +972,8 @@ export class PathTracer {
 		canvas.width = width * textureWidth;
 		canvas.height = height * list.length;
 		ctx.imageSmoothingEnabled = false;
-		list.forEach(async (texture, i) => {
-			// textureWidth for third argument was 3 for regular textures
-			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
-		});
+    // TextureWidth for third argument was 3 for regular textures
+		list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
 	}
@@ -1215,8 +1235,8 @@ export class PathTracer {
       renderTextureBuilder();
       if (rt.#AAObject != null) this.#AAObject.buildTexture();
 
-      rt.firstPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
-      rt.secondPasses = Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
+      rt.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
+      rt.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
     }
     // Init canvas parameters and textures with resize
     resize();
@@ -1369,7 +1389,7 @@ export class PathTracer {
 
       fillBuffers();
       // Actual drawcall
-      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 9, rt.#bufferLength);
+      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
 
       if (rt.temporal) {
         if (rt.filter || rt.#antialiasing) {
