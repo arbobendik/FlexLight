@@ -123,9 +123,36 @@ async function buildScene() {
     	cubeTree
 	]);
 
-	objectTree.static = true;
+	// objectTree.static = true;
 	// append plane tree and object tree to render queue
 	scene.queue.push(groundPlane, objectTree);
+
+	let recreateBVH = (subTree) => {
+		let list = [];
+		let disasembleGraph = (item) => {
+			if (item.static) {
+				list.push(item);
+			} else if (Array.isArray(item) || item.indexable) {
+				if (item.length === 0) return;
+				for (let i = 0; i < item.length; i++) disasembleGraph(item[i]);
+			} else {
+				list.push(item);
+			}
+		}
+		disasembleGraph(subTree);
+		let newSubTree = scene.generateBVH(list);
+		for (let i = 0; i < Math.max(subTree.length, newSubTree.length); i++) {
+			if (i < newSubTree.length) {
+				subTree[i] = newSubTree[i];
+			} else {
+				// Dereference old children of subtree
+				subTree[i] = undefined;
+			}
+		}
+		console.log(subTree);
+	}
+
+	recreateBVH(scene.queue);
 	// start render engine
 	engine.renderer.render();
 	engine.renderer.fpsLimit = 30;
