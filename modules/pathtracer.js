@@ -5,6 +5,21 @@ import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
 import { Arrays, Float16Array } from './arrays.js';
 
+
+const PathtracingUniformLocationIdentifiers = [
+  'cameraPosition', 'perspective', 'conf',
+  'samples', 'maxReflections', 'minImportancy', 'useFilter', 'isTemporal',
+  'ambient', 'randomSeed', 'textureWidth',
+  'geometryTex', 'sceneTex', 'pbrTex', 'translucencyTex', 'tex', 'lightTex'
+];
+
+const PathtracingUniformFunctionTypes = [
+  'uniform3f', 'uniform2f', 'uniform4f',
+  'uniform1i', 'uniform1i', 'uniform1f', 'uniform1i', 'uniform1i',
+  'uniform3f', 'uniform1f', 'uniform1i',
+  'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i'
+];
+
 export class PathTracer {
   type = 'pathtracer';
   // Configurable runtime properties of the pathtracer (public attributes)
@@ -125,10 +140,11 @@ export class PathTracer {
   #define PHI 1.61803398874989484820459
   #define SQRT3 1.73205
   #define POW32 4294967296.0
-  #define BIAS 0.00001525879
+  #define BIAS 0.0000152587890625
   #define THIRD 0.333333
   #define INV_256 0.00390625
-  #define INV_65536 0.00001525879
+  #define INV_255 0.00392156862745098
+  #define INV_65536 0.0000152587890625
 
   precision highp int;
   precision highp float;
@@ -197,7 +213,7 @@ export class PathTracer {
   float to4BitRepresentation (float a, float b) {
     uint aui = uint(a * 255.0) & uint(240);
     uint bui = (uint(b * 255.0) & uint(240)) >> 4;
-    return float(aui + bui) / 255.0;
+    return float(aui + bui) * INV_255;
   }
 
   float normalToSphearical4BitRepresentation (vec3 n) {
@@ -528,8 +544,9 @@ export class PathTracer {
         // the surface faces in the opposite direction as usual
         ray.normal *= - sign(dot(ray.unitDirection, ray.normal));
         // Calculate reflecting ray
-        ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), normalize(randomVec.xyz), roughnessBRDF));
-        if (dot(ray.unitDirection, ray.normal) <= 0.0) ray.unitDirection = normalize(ray.unitDirection + ray.normal);
+        vec3 randomHalfSpheareVec = sign(dot(randomVec.xyz, ray.normal)) * normalize(randomVec.xyz);
+        ray.unitDirection = normalize(mix(reflect(ray.unitDirection, ray.normal), randomHalfSpheareVec, roughnessBRDF));
+        if (dot(ray.unitDirection, ray.normal) <= BIAS) ray.unitDirection = normalize(ray.unitDirection + ray.normal);
         // Determine local color considering PBR attributes and lighting
         vec3 localColor = reservoirSample (lightTex, randomVec, ray.normal, roughNormal, ray.origin, V, material, dontFilter, i);
         // Calculate primary light sources for this pass if ray hits non translucent object
@@ -659,15 +676,18 @@ export class PathTracer {
 
   precision highp float;
   in vec2 clipSpace;
+  
   uniform sampler2D preRenderColor;
   uniform sampler2D preRenderColorIp;
   uniform sampler2D preRenderNormal;
   uniform sampler2D preRenderOriginalColor;
   uniform sampler2D preRenderId;
   uniform sampler2D preRenderOriginalId;
+
   layout(location = 0) out vec4 renderColor;
   layout(location = 1) out vec4 renderColorIp;
   layout(location = 2) out vec4 renderId;
+
   void main() {
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
@@ -690,6 +710,14 @@ export class PathTracer {
                      ivec2(-1, 0), 
       ivec2( 0, -1),              ivec2( 0, 1),
                      ivec2( 1, 0)
+    );
+    
+    const vec2 stencil2[21] = vec2[21](
+                  vec2(-2, -1), vec2(-2, 0), vec2(-2, 1),
+    vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2),
+    vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2),
+    vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2),
+                  vec2( 2, -1), vec2( 2, 0), vec2( 2, 1)
     );
 
     const vec2 stencil3[37] = vec2[37](
@@ -754,7 +782,7 @@ export class PathTracer {
 
         vec4 nextColor = texelFetch(preRenderColor, coord, 0);
         vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
-        if (centerId.xyz == id.xyz && (centerLightNum != lightNum || centerShadow == shadow)) {
+        if (centerId.xyz == id.xyz && centerOId == originalId && (centerLightNum != lightNum || centerShadow == shadow)) {
           color += nextColor + nextColorIp * 256.0;
           count ++;
         }
@@ -773,14 +801,17 @@ export class PathTracer {
   
   precision highp float;
   in vec2 clipSpace;
+
   uniform sampler2D preRenderColor;
   uniform sampler2D preRenderColorIp;
   uniform sampler2D preRenderOriginalColor;
   uniform sampler2D preRenderId;
   uniform sampler2D preRenderOriginalId;
+
   layout(location = 0) out vec4 renderColor;
   layout(location = 1) out vec4 renderColorIp;
   layout(location = 2) out vec4 renderOriginalColor;
+
   void main(){
     // Get texture size
     ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
@@ -794,6 +825,15 @@ export class PathTracer {
     float ipw = centerColorIp.w;
     float count = 1.0;
     float oCount = 1.0;
+
+
+    const vec2 stencil2[20] = vec2[20](
+                  vec2(-2, -1), vec2(-2, 0), vec2(-2, 1),
+    vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2),
+    vec2( 0, -2), vec2( 0, -1),              vec2( 0, 1), vec2( 0, 2),
+    vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2),
+                  vec2( 2, -1), vec2( 2, 0), vec2( 2, 1)
+    );
 
     const vec2 stencil3[36] = vec2[36](
                                 vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
@@ -814,16 +854,17 @@ export class PathTracer {
       vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
       vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
 
-      if ((min(centerOId.w, nextOId.w) > 0.1) &&
-        (id == centerId || (max(nextColorIp.w, centerColorIp.w) >= 0.1 && centerOId.xyz == nextOId.xyz))) {
+      if (centerOId.xyz == nextOId.xyz) {
+        if (min(centerOId.w, nextOId.w) > 0.1 && (id == centerId || max(nextColorIp.w, centerColorIp.w) >= 0.1)) {
+            color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
+            count ++;
+            ipw += nextColorIp.w;
+            oColor += nextOColor;
+            oCount ++;
+        } else if (id.xyz == centerId.xyz) {
           color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
           count ++;
-          ipw += nextColorIp.w;
-          oColor += nextOColor;
-          oCount ++;
-      } else if (id.xyz == centerId.xyz) {
-        color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
-        count ++;
+        }
       }
 
       
@@ -879,13 +920,13 @@ export class PathTracer {
       vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
 
       // Test if at least one pixel is translucent and they are pixels of the same object.
-      bool blurTranslucent = max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) > 0.0 && centerOId.xyz == nextOId.xyz;
-      if (blurTranslucent) {
+      bool blurTranslucent = max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) > 0.0;
+      if (blurTranslucent && centerOId.xyz == nextOId.xyz) {
         oColor += nextOColor;
         oCount ++;
       }
       
-      if (blurTranslucent || centerId.xyz == id.xyz) {
+      if ((blurTranslucent || centerId.xyz == id.xyz) && centerOId.xyz == nextOId.xyz) {
         color += nextColor + nextColorIp * 255.0;
         count ++;
       }
@@ -1166,18 +1207,17 @@ export class PathTracer {
     rt.#halt = false;
     // Initialize internal globals of render functiod
     // The millis variable is needed to calculate fps and movement speed
-    let TimeElapsed = performance.now();
+    // let TimeElapsed = performance.now();
     // Total frames calculated since last meassured
     let Frames = 0;
-    let LastMeasuredFrames = 0;
     // Internal GL objects
-    let Program, CameraPosition, Perspective, RenderConf, SamplesLocation, MaxReflectionsLocation, MinImportancyLocation, RandomSeedLocation, FilterLocation, TemporalLocation, HdrLocation, AmbientLocation, TextureWidth;
+    let Program;
     let TempProgram, TempHdrLocation;
-    let GeometryTex, SceneTex, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
     let triangleIdBuffer, vertexIdBuffer;
     // Framebuffer, Post Program buffers and textures
     let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
+    let HdrLocation;
     // Set post program array
     let PostProgram = [];
     // Create textures for Framebuffers in PostPrograms
@@ -1190,15 +1230,18 @@ export class PathTracer {
     let TempTexture = new Array(this.temporalSamples);
     let TempIpTexture = new Array(this.temporalSamples);
     let TempIdTexture = new Array(this.temporalSamples);
+    let TempOriginalIdTexture = new Array(this.temporalSamples);
     
     let TempTex = new Array(this.temporalSamples);
     let TempIpTex = new Array(this.temporalSamples);
     let TempIdTex = new Array(this.temporalSamples);
+    let TempOriginalIdTex = new Array(this.temporalSamples);
 
     for (let i = 0; i < this.temporalSamples; i++) {
       TempTexture[i] = this.#gl.createTexture();
       TempIpTexture[i] = this.#gl.createTexture();
       TempIdTexture[i] = this.#gl.createTexture();
+      TempOriginalIdTexture[i] = this.#gl.createTexture();
     }
 
     let RenderTex = new Array(5);
@@ -1223,8 +1266,6 @@ export class PathTracer {
     let TempVao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
     let PostVao = new Array(5).map(() => this.#gl.createVertexArray());
-    // Check if recompile is needed
-    let State = [this.filter, this.renderQuality];
     // Function to handle canvas resize
     let resize = () => {
 			const canvas = rt.canvas;
@@ -1244,11 +1285,8 @@ export class PathTracer {
     window.addEventListener('resize', resize);
 
     // Internal render engine Functions
-    function frameCycle (Millis) {
-      // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) setTimeout(function () {
-        requestAnimationFrame(frameCycle)
-      }, 1000 / rt.fpsLimit);
+    let frameCycle = engineState => {
+      let timeStamp = performance.now();
       // Update Textures
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
@@ -1258,94 +1296,85 @@ export class PathTracer {
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
       // Check if recompile is required
-      if (State[0] !== rt.filter || State[1] !== rt.renderQuality) {
+      if (engineState.filter !== rt.filter || engineState.renderQuality !== rt.renderQuality) {
         resize();
-        prepareEngine();
-        State = [rt.filter, rt.renderQuality];
+        engineState = prepareEngine();
       }
       // Render new Image, work through queue
-      renderFrame();
+      renderFrame(engineState);
       // Update frame counter
-      Frames ++;
+      engineState.intermediateFrames ++;
       // Calculate Fps
-			const timeDifference = Millis - TimeElapsed;
-      if (timeDifference > 50) {
-        rt.fps = (1000 * (Frames - LastMeasuredFrames) / timeDifference).toFixed(0);
-        [TimeElapsed, LastMeasuredFrames] = [Millis, Frames];
+			let timeDifference = timeStamp - engineState.lastTimeStamp;
+      if (timeDifference > 500) {
+        rt.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
+        engineState.lastTimeStamp = timeStamp;
+        engineState.intermediateFrames = 0;
       }
+      // Request browser to render frame with hardware acceleration
+      if (!rt.#halt) setTimeout(function () {
+        requestAnimationFrame(() => frameCycle(engineState))
+      }, 1000 / rt.fpsLimit);
     }
 
-    function texturesToGPU() {
-      let [jitterX, jitterY] = [0, 0];
-      if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) {
-        let jitter = rt.#AAObject.jitter(rt.#canvas);
-        [jitterX, jitterY] = [jitter.x, jitter.y];
-      }
+    let pathtracingPass = engineState => {
+      // console.log(uniformLocations);
+      let jitter = {x: 0, y: 0};
+      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(rt.#canvas);
 
-      rt.#gl.bindVertexArray(Vao);
-      rt.#gl.useProgram(Program);
+      this.#gl.bindVertexArray(Vao);
+      this.#gl.useProgram(Program);
 
-      rt.#gl.activeTexture(rt.#gl.TEXTURE0);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#geometryTexture);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#sceneTexture);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE5);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
+      [this.#geometryTexture, this.#sceneTexture, this.#pbrAtlas, this.#translucencyAtlas, this.#textureAtlas, this.#lightTexture].forEach((texture, i) => {
+        this.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+        this.#gl.bindTexture(rt.#gl.TEXTURE_2D, texture);
+      });
       // Set uniforms for shaders
-      // Set 3d camera position
-      rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
-      // Set x and y rotation of camera
-      rt.#gl.uniform2f(Perspective, rt.camera.fx, rt.camera.fy);
-      // Set fov and X/Y ratio of screen
-      rt.#gl.uniform4f(RenderConf, rt.camera.fov, rt.#gl.canvas.width / rt.#gl.canvas.height, jitterX, jitterY);
-      // Set amount of samples per ray
-      rt.#gl.uniform1i(SamplesLocation, rt.samplesPerRay);
-      // Set max reflections per ray
-      rt.#gl.uniform1i(MaxReflectionsLocation, rt.maxReflections);
-      // Set min importancy of light ray
-      rt.#gl.uniform1f(MinImportancyLocation, rt.minImportancy);
-      // Instuct shader to render for filter or not
-      rt.#gl.uniform1i(FilterLocation, rt.filter);
-      // Instuct shader to render for temporal or not
-      rt.#gl.uniform1i(TemporalLocation, rt.temporal);
-      // Set global illumination
-      rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
-      // Pass random seed
-      rt.#gl.uniform1f(RandomSeedLocation, rt.temporal ? Frames % rt.temporalSamples : 0);
-      // Set width of height and normal texture
-      rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
-      // Pass whole geometry data structure to GPU
-      rt.#gl.uniform1i(GeometryTex, 0);
-      // Pass whole triangle attributes data structure to GPU
-      rt.#gl.uniform1i(SceneTex, 1);
-      // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 2);
-      // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 3);
-      // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 4);
-      // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 5);
-    }
+      // console.log(engineState.intermediateFrames);
+      let uniformValues = [
+        // 3d position of camera
+        [this.camera.x, this.camera.y, this.camera.z],
+        // sphearical rotation of camera
+        [this.camera.fx, this.camera.fy],
+        // fov and X/Y ratio of screen
+        [this.camera.fov, this.#gl.canvas.width / this.#gl.canvas.height, jitter.x, jitter.y],
+        // amount of samples per ray
+        [this.samplesPerRay],
+        // max reflections of ray
+        [this.maxReflections],
+        // min importancy of light ray
+        [this.minImportancy],
+        // render for filter or not
+        [this.filter],
+        // render for temporal or not
+        [this.temporal],
+        // ambient background color
+        [this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2]],
+        // random seed for monte carlo pathtracing
+        [this.temporal ? engineState.intermediateFrames % this.temporalSamples : 0],
+        // width of textures
+        [Math.floor(2048 / this.scene.standardTextureSizes[0])],
+        // whole triangle based geometry scene graph, triangle attributes for scene graph
+        [0], [1],
+        // pbr texture, translucency texture, texture
+        [2], [3], [4],
+        // data texture of all primary light sources
+        [5]
+      ];
 
-    function fillBuffers() {
+      PathtracingUniformFunctionTypes.forEach((functionType, i) => this.#gl[functionType](engineState.pathtracingUniformLocations[i], ... uniformValues[i]));
+      
       // Set buffers
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
       rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
       // console.log(rt.#triangleIdBufferArray);
-      
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
       rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
-      
+      // Actual drawcall
+      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
     }
 
-    let renderFrame = () => {
+    let renderFrame = engineState => {
       // Configure where the final image should go
       if (rt.temporal || rt.filter || rt.#antialiasing) {
         rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
@@ -1364,13 +1393,16 @@ export class PathTracer {
           TempTexture.unshift(TempTexture.pop());
           TempIpTexture.unshift(TempIpTexture.pop());
           TempIdTexture.unshift(TempIdTexture.pop());
+          TempOriginalIdTexture.unshift(TempOriginalIdTexture.pop());
 
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, TempTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, TempIpTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, TempOriginalIdTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT5, rt.#gl.TEXTURE_2D, TempIdTexture[0], 0);
+
+          OriginalIdRenderTexture = TempOriginalIdTexture[0];
         } else if (rt.filter) {
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
           rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
@@ -1385,11 +1417,7 @@ export class PathTracer {
 
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-      texturesToGPU();
-
-      fillBuffers();
-      // Actual drawcall
-      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
+      pathtracingPass(engineState);
 
       if (rt.temporal) {
         if (rt.filter || rt.#antialiasing) {
@@ -1413,7 +1441,7 @@ export class PathTracer {
           this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
         }
 
-        [TempTexture, TempIpTexture, TempIdTexture].flat().forEach(function(item, i){
+        [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture].flat().forEach(function(item, i){
           rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
         });
@@ -1427,6 +1455,7 @@ export class PathTracer {
           rt.#gl.uniform1i(TempTex[i], i);
           rt.#gl.uniform1i(TempIpTex[i], rt.temporalSamples + i);
           rt.#gl.uniform1i(TempIdTex[i], 2 * rt.temporalSamples + i);
+          rt.#gl.uniform1i(TempOriginalIdTex[i], 3 * rt.temporalSamples + i);
         }
         
         // PostTemporal averaging processing drawcall
@@ -1530,7 +1559,7 @@ export class PathTracer {
 
     function renderTextureBuilder () {
       // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach((parent) => {
+      [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach((parent) => {
         parent.forEach(function(item){
           rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
           rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
@@ -1546,6 +1575,16 @@ export class PathTracer {
     }
 
     let prepareEngine = () => {
+
+      let engineState = {
+        // Attributes to meassure frames per second
+        intermediateFrames: 0,
+        lastTimeStamp: performance.now(),
+        // Parameters to compare against current state of the engine and recompile shaders on change
+        filter: rt.filter,
+        renderQuality: rt.renderQuality
+      };
+
       let newLine = `
       `;
       // Build tempShader
@@ -1559,24 +1598,28 @@ export class PathTracer {
         this.#tempGlsl += 'uniform sampler2D cache' + i + ';' + newLine;
         this.#tempGlsl += 'uniform sampler2D cacheIp' + i + ';' + newLine;
         this.#tempGlsl += 'uniform sampler2D cacheId' + i + ';' + newLine;
+        this.#tempGlsl += 'uniform sampler2D cacheOriginalId' + i + ';' + newLine;
       }
 
-      this.#tempGlsl += rt.filter ? `
-      layout(location = 0) out vec4 renderColor;
-      layout(location = 1) out vec4 renderColorIp;
-      ` : `
-      layout(location = 0) out vec4 renderColor;
-      `;
+      if (rt.filter) {
+        this.#tempGlsl += `
+        layout(location = 0) out vec4 renderColor;
+        layout(location = 1) out vec4 renderColorIp;
+        `;
+      } else {
+        this.#tempGlsl += `
+        layout(location = 0) out vec4 renderColor;
+        `;
+      }
 
       this.#tempGlsl += `void main () {
         ivec2 texel = ivec2(vec2(textureSize(cache0, 0)) * clipSpace);
         vec4 id = texelFetch(cacheId0, texel, 0);
+        vec4 originalId = texelFetch(cacheOriginalId0, texel, 0);
         float counter = 1.0;
+        float glassCounter = 1.0;
         
         float centerW = texelFetch(cache0, texel, 0).w;
-      `;
-
-      this.#tempGlsl += `
         vec3 color = texelFetch(cache0, texel, 0).xyz + texelFetch(cacheIp0, texel, 0).xyz * 256.0;
         float glassFilter = texelFetch(cacheIp0, texel, 0).w;
       `;
@@ -1585,41 +1628,58 @@ export class PathTracer {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+
         this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
         for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
         this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+
+        this.#tempGlsl += 'mat4 originalId' + i + ' = mat4(';
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheOriginalId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheOriginalId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+
         this.#tempGlsl += `
         for (int i = 0; i < 4; i++) if (id` + i + `[i].xyzw == id.xyzw) {
           color += c` + i + `[i].xyz + ip` + i + `[i].xyz * 256.0;
           counter ++;
         }
-        for (int i = 0; i < 4; i++) glassFilter += ip` + i + `[i].w;
+        for (int i = 0; i < 4; i++) if (originalId` + i + `[i].xyzw == originalId.xyzw) {
+          glassFilter += ip` + i + `[i].w;
+          glassCounter ++;
+        }
         `;
       }
 
-      this.#tempGlsl += 'color /= counter;' + newLine;
+      this.#tempGlsl += `
+      color /= counter;
+      glassFilter /= glassCounter;
+      `;
 
-      this.#tempGlsl += rt.filter ? `
-        renderColor = vec4(mod(color, 1.0), centerW);
-        // 16 bit HDR for improved filtering
-        renderColorIp = vec4(floor(color) / 256.0, glassFilter);
-      }` : `
-        if (hdr == 1) {
-          // Apply Reinhard tone mapping
-          color = color / (color + vec3(1));
-          // Gamma correction
-          float gamma = 0.8;
-          color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+      if (rt.filter) {
+        this.#tempGlsl += `
+          renderColor = vec4(mod(color, 1.0), centerW);
+          // 16 bit HDR for improved filtering
+          renderColorIp = vec4(floor(color) / 256.0, glassFilter);
+        }`;
+      } else {
+        this.#tempGlsl += `
+          if (hdr == 1) {
+            // Apply Reinhard tone mapping
+            color = color / (color + vec3(1));
+            // Gamma correction
+            float gamma = 0.8;
+            color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+            renderColor = vec4(color, centerW);
+          } else {
+            // Set color of object itself
+            renderColor = vec4(color, centerW);
+          }
           renderColor = vec4(color, centerW);
-        } else {
-          // Set color of object itself
-          renderColor = vec4(color, centerW);
-        }
-        renderColor = vec4(color, centerW);
-      }`;
+        }`;
+      }
       // Force update textures by resetting texture Lists
       rt.#textureList = [];
       rt.#pbrList = [];
@@ -1636,24 +1696,7 @@ export class PathTracer {
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
-      Perspective = rt.#gl.getUniformLocation(Program, 'perspective');
-      RenderConf = rt.#gl.getUniformLocation(Program, 'conf');
-      SamplesLocation = rt.#gl.getUniformLocation(Program, 'samples');
-      MaxReflectionsLocation = rt.#gl.getUniformLocation(Program, 'maxReflections');
-      MinImportancyLocation = rt.#gl.getUniformLocation(Program, 'minImportancy');
-      FilterLocation = rt.#gl.getUniformLocation(Program, 'useFilter');
-      TemporalLocation = rt.#gl.getUniformLocation(Program, 'isTemporal');
-      AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      RandomSeedLocation = rt.#gl.getUniformLocation(Program, 'randomSeed');
-      GeometryTex = rt.#gl.getUniformLocation(Program, 'geometryTex');
-      SceneTex = rt.#gl.getUniformLocation(Program, 'sceneTex');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
-
-      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
-      Tex = rt.#gl.getUniformLocation(Program, 'tex');
+      engineState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => rt.#gl.getUniformLocation(Program, identifier));
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.disable(rt.#gl.BLEND);
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
@@ -1696,6 +1739,7 @@ export class PathTracer {
         TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache' + i);
         TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
         TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
+        TempOriginalIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheOriginalId' + i);
       }
       
       let TempVertexBuffer = rt.#gl.createBuffer();
@@ -1743,10 +1787,12 @@ export class PathTracer {
       } else {
         this.#AAObject = null;
       }
+      // Return initialized objects for engine.
+      return engineState;
     }
     // Prepare Renderengine
-    prepareEngine();
+    let engineState = prepareEngine();
     // Begin frame cycle
-    requestAnimationFrame(frameCycle);
+    requestAnimationFrame(() => frameCycle(engineState));
   }
 }
