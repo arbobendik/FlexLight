@@ -176,12 +176,12 @@ export class Rasterizer {
   }
 
   // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+  bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
     vec3 v0 = (minCorner - p) * invRay;
     vec3 v1 = (maxCorner - p) * invRay;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-    return tmax >= max(tmin, BIAS);
+    return tmax >= max(tmin, BIAS) && tmin < l;
   }
 
   // Simplified rayTracer to only test if ray intersects anything
@@ -191,27 +191,26 @@ export class Rasterizer {
     // Precomput max length
     float minLen = length(ray.direction);
     // Get texture size as max iteration value
-    int size = textureSize(geometryTex, 0).y * int(TRIANGLES_PER_ROW);
+    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
+    int size = geometryTexSize.y * int(TRIANGLES_PER_ROW);
     // Iterate through lines of texture
     for (int i = 0; i < size; i++) {
+      float fi = float(i);
       // Get position of current triangle/vertex in geometryTex
-      ivec2 index = ivec2(mod(float(i), TRIANGLES_PER_ROW) * 4.0, float(i) * INV_TRIANGLES_PER_ROW);
+      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 3.0, fi * INV_TRIANGLES_PER_ROW);
       // Fetch triangle coordinates from scene graph
       vec3 a = texelFetch(geometryTex, index, 0).xyz;
       vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
       vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
-      // Read normal from scene graph
-      vec3 n = texelFetch(geometryTex, index + ivec2(3, 0), 0).xyz;
       // Three cases:
-      // normal is not 0 0 0    => is triangle: if ray intersects triangle, return true
-      // all vertices are 0 0 0 => end of list: return false
-      // normal is 0 0 0        => beginning of bounding volume: if ray intersects bounding, skip all triangles in boundingvolume
-      if (n == vec3(0)) {
-        if (c == vec3(0)) break;
-        if (!rayCuboid(invRay, ray.origin, a, b)) i += int(c.x);
-      } else {
-        
-        if (moellerTrumboreCull(minLen, ray, a, b, c)) return true;
+      // c is X 0 0        => is bounding volume: do AABB intersection test
+      // c is 0 0 0        => end of list: stop loop
+      // otherwise         => is triangle: do triangle intersection test
+      if (c.yz == vec2(0)) {
+        if (c.x == 0.0) break;
+        if (!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
+      } else if (moellerTrumboreCull(minLen, ray, a, b, c)) {
+        return true;
       }
     }
     // Tested all triangles, but there is no intersection
@@ -225,7 +224,7 @@ export class Rasterizer {
   }
 
   float schlickBeckmann (float alpha, float NdotX) {
-    float k = alpha / 2.0;
+    float k = alpha * 0.5;
     float denominator = NdotX * (1.0 - k) + k;
     denominator = max(denominator, BIAS);
     return NdotX / denominator;
@@ -474,7 +473,7 @@ export class Rasterizer {
         if (item.length === 0) return [];
         let dataPos = geometryTextureArray.length;
 
-        geometryTextureArray = Arrays.push(geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        geometryTextureArray = Arrays.push(geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0]);
         // Iterate over all sub elements
         minMax = fillData (item[0]);
         for (let i = 1; i < item.length; i++) {
@@ -489,7 +488,7 @@ export class Rasterizer {
           minMax[5] = Math.max(minMax[5], b[5]);
         }
 
-        let len = Math.floor((geometryTextureArray.length - dataPos) / 12);
+        let len = Math.floor((geometryTextureArray.length - dataPos) / 9);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
         for (let i = 0; i < 6; i++) geometryTextureArray[dataPos + i] = minMax[i];
@@ -500,7 +499,7 @@ export class Rasterizer {
         objList.push(item);
         geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
         
-        index += item.length * 4;
+        index += item.length * 3;
         bufferLength += item.length;
         // Declare bounding volume of object
         let v = item.vertices;
@@ -519,16 +518,16 @@ export class Rasterizer {
     }
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
-    // Round up data to next higher multiple of 3072 (4 pixels * 3 values * 256 vertecies per line)
-    geometryTextureArray = Arrays.push(geometryTextureArray, new Array(3072 - geometryTextureArray.length % 3072).fill(0));
-    // Calculate DataHeight by dividing value count through 3072 (4 pixels * 3 values * 256 vertecies per line)
-    var dataHeight = geometryTextureArray.length / 3072;
+    // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
+    geometryTextureArray = Arrays.push(geometryTextureArray, new Array(2304 - geometryTextureArray.length % 2304).fill(0));
+    // Calculate DataHeight by dividing value count through 3072 (3 pixels * 3 values * 256 vertecies per line)
+    var dataHeight = geometryTextureArray.length / 2304;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1024, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryTextureArray));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 768, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryTextureArray));
     
     // Set buffer attributes
     this.#positionBufferArray = new Float32Array(bufferLength * 3);

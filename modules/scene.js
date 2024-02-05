@@ -286,9 +286,8 @@ class Primitive {
 
   #buildTextureArrays = () => {
     for (let i = 0; i < this.length; i += 3) {
-      let i12 = i * 4;
+      let i12 = i * 3;
       this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
-      this.geometryTextureArray.set(this.#normal, i12 + 9);
       let i21 = i * 5;
       this.sceneTextureArray.set(this.#normal, i21);
       this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 3);
@@ -351,7 +350,7 @@ class Primitive {
     this.#colors = new Float32Array(new Array(this.length * 3).fill(1));
     this.#uvs = new Float32Array(uvs);
     
-    this.geometryTextureArray = new Float32Array(this.length * 4);
+    this.geometryTextureArray = new Float32Array(this.length * 3);
     this.sceneTextureArray = new Float32Array(this.length * 5);
     this.#buildTextureArrays();
     // console.log(this.sceneTextureArray);
@@ -408,6 +407,7 @@ class Object3D {
         if (item.static) {
           // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
           this.textureLength += item.textureLength;
+          this.bufferLength += item.bufferLength;
         } else if (Array.isArray(item) || item.indexable) {
           // Item is dynamic and indexable, recursion continues
           if (item.length === 0) return 0;
@@ -417,6 +417,7 @@ class Object3D {
         } else {
           // Give item new id property to identify vertex in fragment shader
           this.textureLength += item.length / 3;
+          this.bufferLength += item.length / 3;
         }
       }
 
@@ -425,25 +426,26 @@ class Object3D {
         let minMax = [];
         if (item.static) {
           // Item is static and precaluculated values can just be used
-          this.geometryTextureArray.set(item.geometryTextureArray, id * 12);
-          this.sceneTextureArray.set(item.sceneTextureArray, id * 15);
+          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 15);
 
           this.vertices = Arrays.push(this.vertices, item.vertices);
-          this.objectLengths = Arrays.push(this.objectLengths, item.objectLengths);
-          id += item.textureLength;
+          // Update id buffer
+          for (let i = 0; i < item.bufferLength; i++) this.idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
+          texturePos += item.textureLength;
+          bufferPos += item.bufferLength;
           // Fill buffers
           this.uvs = Arrays.push(this.uvs, item.uvs);
           this.normals = Arrays.push(this.normals, item.normals);
           this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.cachedTextureNums);
           this.colors = Arrays.push(this.colors, item.colors);
-          this.bufferLength += item.bufferLength;
           return item.minMax;
         } else if (Array.isArray(item) || item.indexable) {
           // Item is dynamic and indexable, recursion continues
           if (item.length === 0) return [];
           // Begin bounding volume array
-          let oldId = id;
-          id ++;
+          let oldTexturePos = texturePos;
+          texturePos ++;
           // Iterate over all sub elements
           minMax = fillData (item[0]);
           for (let i = 1; i < item.length; i++) {
@@ -459,25 +461,21 @@ class Object3D {
           }
           // Set now calculated vertices length of bounding box
           // to skip if ray doesn't intersect with it
-          for (let i = 0; i < 6; i++) this.geometryTextureArray[oldId * 12 + i] = minMax[i];
-          this.geometryTextureArray[oldId * 12 + 6] = id - oldId - 1;
+          for (let i = 0; i < 6; i++) this.geometryTextureArray[oldTexturePos * 9 + i] = minMax[i];
+          this.geometryTextureArray[oldTexturePos * 9 + 6] = texturePos - oldTexturePos - 1;
         } else {
           // Item is dynamic and non-indexable.
           // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-          this.geometryTextureArray.set(item.geometryTextureArray, id * 12);
-          this.sceneTextureArray.set(item.sceneTextureArray, id * 15);
-          // Increase object id
-          let objectIds = [];
+          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 15);
           // Give item new id property to identify vertex in fragment shader
-          for (let i = 0; i < item.length * 3; i += 9) objectIds.push(id ++);
-          this.objectLengths.push(objectIds);
+          for (let i = 0; i < item.length / 3; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
           // Fill buffers
           this.vertices = Arrays.push(this.vertices, item.vertices);
           this.uvs = Arrays.push(this.uvs, item.uvs);
           this.normals = Arrays.push(this.normals, item.normals);
           this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.textureNums);
           this.colors = Arrays.push(this.colors, item.colors);
-          this.bufferLength += item.length;
           // Declare bounding volume of object.
           let v = item.vertices;
           minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -495,10 +493,12 @@ class Object3D {
       }
       // Determine array lengths by walking the graph
       this.textureLength = 0;
+      this.bufferLength = 0;
       walkGraph(this);
       // Create new texture and additional arrays
-      this.geometryTextureArray = new Float32Array(this.textureLength * 12);
+      this.geometryTextureArray = new Float32Array(this.textureLength * 9);
       this.sceneTextureArray = new Float32Array(this.textureLength * 15);
+      this.idBuffer = new Int32Array(this.bufferLength);
       // Precalculate arrays and values
       this.vertices = [];
       this.objectLengths = [];
@@ -506,9 +506,9 @@ class Object3D {
       this.normals = [];
       this.cachedTextureNums = [];
       this.colors = [];
-      this.bufferLength = 0;
 
-      let id = 0;
+      let texturePos = 0;
+      let bufferPos = 0;
       // Set min and max x, y, z coordinates and start recursion
       this.minMax = fillData(this);
       // Set static flag to true
