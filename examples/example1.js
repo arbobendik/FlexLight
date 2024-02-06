@@ -100,7 +100,7 @@ async function buildScene() {
 	redCube.textureNums = [3, 0, -1];
 	lantern.textureNums = [4, 4, -1];
 	// Change diffusion properties of wall on specific sides
-	wall.top.textureNums = [-1, 2, -1];
+	// wall.top.textureNums = [-1, 2, -1];
 	// wall.left.textureNums = [-1, 2, -1];
 	// Set different textures for different sides of the array
 	// And make cube full diffuse

@@ -238,7 +238,7 @@ export class Scene {
               scene
             );
             // set uvs according to .obj file
-            plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
+            // plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
             plane.normals = [3, 2, 1, 1, 0, 3].map(i => (vn[data[i][2] - 1] ?? plane.normals.slice(i * 3, i * 3 + 2))).flat();
             // push new plane in object array
@@ -252,9 +252,10 @@ export class Scene {
               scene
             );
             // set uvs according to .obj file
-            triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
+            // triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
             triangle.normals = [2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat();
+            // console.log([2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat());
             // triangle.setColor(triangle.normals[0] * 1000);
             obj.push(triangle);
           }
@@ -288,11 +289,11 @@ class Primitive {
     for (let i = 0; i < this.length; i += 3) {
       let i12 = i * 3;
       this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
-      let i21 = i * 5;
-      this.sceneTextureArray.set(this.#normal, i21);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 3);
-      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 9);
-      this.sceneTextureArray.set(this.#color, i21 + 12);
+      let i21 = i * 7;
+      this.sceneTextureArray.set(this.#normals.slice(i * 3, i * 3 + 9), i21);
+      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 9);
+      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 15);
+      this.sceneTextureArray.set(this.#color, i21 + 18);
     }
   }
     
@@ -310,6 +311,7 @@ class Primitive {
   }
 
   set normals (ns) {
+    // console.log(new Float32Array(ns));
     this.#normals = new Float32Array(ns);
     this.#normal = new Float32Array(ns.slice(0, 3));
     this.#buildTextureArrays();
@@ -343,15 +345,15 @@ class Primitive {
     this.length = length;
     
     this.#vertices = new Float32Array(vertices);
-    this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
     this.#normal = new Float32Array(normal);
+    this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
     this.#textureNums = new Float32Array(new Array(this.length * 3).fill(- 1).flat());
     this.#color = new Float32Array([1, 1, 1]);
     this.#colors = new Float32Array(new Array(this.length * 3).fill(1));
     this.#uvs = new Float32Array(uvs);
     
     this.geometryTextureArray = new Float32Array(this.length * 3);
-    this.sceneTextureArray = new Float32Array(this.length * 5);
+    this.sceneTextureArray = new Float32Array(this.length * 7);
     this.#buildTextureArrays();
     // console.log(this.sceneTextureArray);
   }
@@ -427,7 +429,7 @@ class Object3D {
         if (item.static) {
           // Item is static and precaluculated values can just be used
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 15);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
 
           this.vertices = Arrays.push(this.vertices, item.vertices);
           // Update id buffer
@@ -467,7 +469,7 @@ class Object3D {
           // Item is dynamic and non-indexable.
           // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 15);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
           // Give item new id property to identify vertex in fragment shader
           for (let i = 0; i < item.length / 3; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
           // Fill buffers
@@ -497,7 +499,7 @@ class Object3D {
       walkGraph(this);
       // Create new texture and additional arrays
       this.geometryTextureArray = new Float32Array(this.textureLength * 9);
-      this.sceneTextureArray = new Float32Array(this.textureLength * 15);
+      this.sceneTextureArray = new Float32Array(this.textureLength * 21);
       this.idBuffer = new Int32Array(this.bufferLength);
       // Precalculate arrays and values
       this.vertices = [];
@@ -596,6 +598,6 @@ class Plane extends Primitive {
 
 class Triangle extends Primitive {
   constructor (a, b, c) {
-    super(3, [a, b, c].flat(), Math.cross(Math.diff(a, c), Math.diff(a, b)), [0, 0, 0, 1, 1, 1]);
+    super(3, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
   }
 }
