@@ -1,22 +1,22 @@
 'use strict';
 
-load(new URLSearchParams(location.search));
 
-function load(search) {
+load();
 
-	if(document.currentScript !== null) document.currentScript.remove();
-
-	if (search.has('v')) {
-		const script = document.createElement('script');
-		script.src = 'examples/' + search.get('v') + '.js';
-		document.head.appendChild(script);
-	}
+function load() {
+  
+  if(document.currentScript !== null) document.currentScript.remove();
+  
+  const urlParams = new URLSearchParams(location.search);
+  const script = document.createElement('script');
+  let sceneName = urlParams.get('v') ?? 'wave';
+  script.src = 'examples/' + sceneName + '.js';
+  document.head.appendChild(script);
 
 	window.addEventListener('load', function() {
-
     let renderer = engine.renderer;
     // Get form elements
-		const scriptForm = document.getElementById('scriptForm');
+    const scriptForm = document.getElementById('scriptForm');
     const parameterForm = document.getElementById('parameterForm');
     const tickBoxes = ['filter', 'temporal', 'hdr'];
     const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy', 'antialiasing'];
@@ -44,13 +44,16 @@ function load(search) {
       slider.addEventListener('input', () => item.value = slider.value);
     });
 
-		if (search.has('v')) {
-			scriptForm[0].value = search.get('v');
+		if (urlParams.has('v')) {
+			scriptForm[0].value = urlParams.get('v');
 		} else {
 			scriptForm.submit();
 		}
     // Reload if scene changes
-    scriptForm.addEventListener('change', () => location.search = '?v=' + scriptForm[0].value);
+    scriptForm.addEventListener('change', () => {
+      urlParams.set('v', scriptForm[0].value);
+      location.search = urlParams.toString();
+    });
     // Update gl quality params on form change
     parameterForm.addEventListener('change', () => {
       if ((localStorage.getItem('pathtracing') === 'true') !== document.getElementById('pathtracing').checked) {
