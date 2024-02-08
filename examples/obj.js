@@ -59,7 +59,7 @@ async function buildScene() {
 	let modelUrl = 'objects/' + model + '.obj';
 	var obj = await scene.fetchObjFile(modelUrl);
 	// obj.scale(5);
-	obj.move(20, 0, - 20);
+	obj.move(20, 1, - 20);
 	obj.textureNums = [- 1, 0, - 1];
 	obj.staticPermanent = true;
 	scene.queue.push(obj);

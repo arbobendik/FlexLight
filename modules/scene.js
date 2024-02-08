@@ -302,7 +302,6 @@ class Primitive {
   get normal () { return this.#normal };
   get textureNums () { return this.#textureNums };
   get color () { return this.#color };
-  get colors () { return this.#colors };
   get uvs () { return this.#uvs };
 
   set vertices (v) {
@@ -347,9 +346,8 @@ class Primitive {
     this.#vertices = new Float32Array(vertices);
     this.#normal = new Float32Array(normal);
     this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
-    this.#textureNums = new Float32Array(new Array(this.length * 3).fill(- 1).flat());
+    this.#textureNums = new Float32Array(new Array(this.length).fill(- 1));
     this.#color = new Float32Array([1, 1, 1]);
-    this.#colors = new Float32Array(new Array(this.length * 3).fill(1));
     this.#uvs = new Float32Array(uvs);
     
     this.geometryTextureArray = new Float32Array(this.length * 3);
@@ -403,8 +401,7 @@ class Object3D {
 
   set static (isStatic) {
     if (isStatic) {
-      // Object ids to keep track of
-      
+      // Track ids
       let walkGraph = (item) => {
         if (item.static) {
           // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
@@ -431,16 +428,17 @@ class Object3D {
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
           this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
 
-          this.vertices = Arrays.push(this.vertices, item.vertices);
+          // Fill buffers
+          this.vertices.set(item.vertices, bufferPos * 9);
+          this.uvs.set(item.uvs, bufferPos * 6);
+          this.normals.set(item.normals, bufferPos * 9);
+          this.cachedTextureNums.set(item.cachedTextureNums, bufferPos * 3);
+          this.colors.set(item.colors, bufferPos * 3);
           // Update id buffer
           for (let i = 0; i < item.bufferLength; i++) this.idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
           texturePos += item.textureLength;
           bufferPos += item.bufferLength;
-          // Fill buffers
-          this.uvs = Arrays.push(this.uvs, item.uvs);
-          this.normals = Arrays.push(this.normals, item.normals);
-          this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.cachedTextureNums);
-          this.colors = Arrays.push(this.colors, item.colors);
+
           return item.minMax;
         } else if (Array.isArray(item) || item.indexable) {
           // Item is dynamic and indexable, recursion continues
@@ -470,14 +468,18 @@ class Object3D {
           // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
           this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
+          // Fill buffers
+          console.log(bufferPos);
+          this.vertices.length;
+          this.uvs.length
+          this.vertices.set(item.vertices, bufferPos * 9);
+          this.uvs.set(item.uvs, bufferPos * 6);
+          this.normals.set(item.normals, bufferPos * 9);
+          console.log(item.textureNums.length);
+          this.cachedTextureNums.set(item.textureNums, bufferPos * 3);
+          this.colors.set(item.color, bufferPos * 3);
           // Give item new id property to identify vertex in fragment shader
           for (let i = 0; i < item.length / 3; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
-          // Fill buffers
-          this.vertices = Arrays.push(this.vertices, item.vertices);
-          this.uvs = Arrays.push(this.uvs, item.uvs);
-          this.normals = Arrays.push(this.normals, item.normals);
-          this.cachedTextureNums = Arrays.push(this.cachedTextureNums, item.textureNums);
-          this.colors = Arrays.push(this.colors, item.colors);
           // Declare bounding volume of object.
           let v = item.vertices;
           minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -502,12 +504,11 @@ class Object3D {
       this.sceneTextureArray = new Float32Array(this.textureLength * 21);
       this.idBuffer = new Int32Array(this.bufferLength);
       // Precalculate arrays and values
-      this.vertices = [];
-      this.objectLengths = [];
-      this.uvs = [];
-      this.normals = [];
-      this.cachedTextureNums = [];
-      this.colors = [];
+      this.vertices = new Float32Array(this.bufferLength * 9);
+      this.uvs = new Float32Array(this.bufferLength * 6);
+      this.normals = new Float32Array(this.bufferLength * 9);
+      this.cachedTextureNums = new Float32Array(this.bufferLength * 9);
+      this.colors = new Float32Array(this.bufferLength * 3);
 
       let texturePos = 0;
       let bufferPos = 0;
@@ -520,14 +521,14 @@ class Object3D {
       this.#static = false;
       // Object ids to keep track of
       this.textureLength = 0;
-      // Precalculate arrays and values
-      this.geometryTextureArray = [];
-      this.sceneTextureArray = [];
-      this.vertices = [];
-      this.objectLengths = [];
-      this.uvs = [];
-      this.minMax = [];
       this.bufferLength = 0;
+      // Precalculate arrays and values
+      this.geometryTextureArray = null;
+      this.sceneTextureArray = null;
+      this.vertices = null;
+      this.objectLengths = null;
+      this.uvs = null;
+      this.minMax = null;
     }
   }
 
