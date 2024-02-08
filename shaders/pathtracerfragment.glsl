@@ -543,7 +543,7 @@ vec3 lightTrace(vec3 origin, Ray firstRay, Material m, vec3 smoothNormal, vec3 g
                 max(sign(texNums.x + 0.5f), 0.0f)
             ),
             mix(
-                vec3(0.0f, 1.0f, 0.0f), 
+                vec3(1.0f, 0.0f, 0.0f), 
                 lookup(pbrTex, vec3(barycentric, texNums.y)).xyz * vec3(1.0f, 1.0f, 4.0f), 
                 max(sign(texNums.y + 0.5f), 0.0f)
             ),
@@ -559,7 +559,7 @@ vec3 lightTrace(vec3 origin, Ray firstRay, Material m, vec3 smoothNormal, vec3 g
         ray.origin = intersection[0].xyz;
         // Preserve original roughness for filter pass
         lastFilterRoughness = material.rme.x;
-        if(i == 0) firstRayLength = min(length(ray.origin - viewPoint) / length(firstRay.origin - origin), 1.0f);
+        if(i == 0) firstRayLength = min(length(ray.origin - viewPoint) / length(firstRay.origin - origin), firstRayLength);
     }
     // Return final pixel color
     return finalColor;
@@ -586,9 +586,10 @@ void main() {
     // Read UVs of vertices
     vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
     vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz;
+    mat3x2 vertexUVs = mat3x2(vUVs1, vUVs2);
+    // Fetch texture ids for current face
     vec3 textureNums = texelFetch(sceneTex, index + ivec2(5, 0), 0).xyz;
     vec3 color = texelFetch(sceneTex, index + ivec2(6, 0), 0).xyz;
-    mat3x2 vertexUVs = mat3x2(vUVs1, vUVs2);
     // Interpolate final barycentric coordinates
     vec2 barycentric = vertexUVs * vec3(uv, 1.0f - uv.x - uv.y);
 
@@ -602,7 +603,7 @@ void main() {
             max(sign(textureNums.x + 0.5f), 0.0f)
         ), 
         mix(
-            vec3(0.0f, 1.0f, 0.0f), 
+            vec3(1.0f, 0.0f, 0.0f), 
             lookup(pbrTex, vec3(barycentric, textureNums.y)).xyz * vec3(1.0f, 1.0f, 4.0f), 
             max(sign(textureNums.y + 0.5f), 0.0f)
         ),
@@ -626,7 +627,6 @@ void main() {
     // Average ray colors over samples.
     float invSamples = 1.0f / float(samples);
     finalColor *= invSamples;
-    firstRayLength *= invSamples;
     originalRMEx *= invSamples;
     if(useFilter == 1) {
         // Render all relevant information to 4 textures for the post processing shader
@@ -646,12 +646,12 @@ void main() {
 
     material.rme.x = filterRoughness;
 
-    renderOriginalColor = vec4(originalColor, (material.rme.x + originalRMEx + 0.0625f * material.tpo.x) * (firstRayLength + 0.06125f));
+    renderOriginalColor = vec4(originalColor, min(material.rme.x + originalRMEx, firstRayLength) + INV_255);
     // render normal (last in transparency)
-    renderId += vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
+    renderId += vec4(combineNormalRME(smoothNormal, material.rme), INV_255);
     // render material (last in transparency)
-    renderOriginalId = vec4(combineNormalRME(smoothNormal, material.rme), originalTPOx);
+    renderOriginalId = vec4(combineNormalRME(smoothNormal, material.rme), originalTPOx + INV_255);
     // render modulus of absolute position (last in transparency)
     float div = 2.0f * length(position - camera);
-    renderLocationId = vec4(mod(position, div) / div, material.rme.z);
+    renderLocationId = vec4(mod(position, div) / div, material.rme.z + INV_255);
 }
