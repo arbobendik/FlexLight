@@ -49,7 +49,7 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
-	var obj = await scene.fetchObjFile('objects/dragon.obj');
+	var obj = await scene.fetchObjFile('objects/dragon_lp.obj');
 	obj.scale(0.5);
 	await obj.move(15, 0, 15);
 	obj.textureNums = [-1, 1, 0];

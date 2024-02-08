@@ -457,6 +457,27 @@ export class Rasterizer {
     let objList = [];
     let geometryTextureArray = [];
 
+    
+    // Track ids
+    let walkGraph = (item) => {
+      if (item.static) {
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        this.textureLength += item.textureLength;
+        this.bufferLength += item.bufferLength;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return 0;
+        this.textureLength ++;
+        // Iterate over all sub elements
+        for (let i = 0; i < item.length; i++) walkGraph(item[i]);
+      } else {
+        // Give item new id property to identify vertex in fragment shader
+        this.textureLength += item.length / 3;
+        this.bufferLength += item.length / 3;
+      }
+    }
+    
+
     let index = 0;
     let bufferLength = 0;
     // Build simple AABB tree (Axis aligned bounding box)
@@ -466,7 +487,6 @@ export class Rasterizer {
         // Item is static and precaluculated values can just be used.
         objList.push(item);
         geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
-        bufferLength += item.bufferLength;
         // Return precomputed bounding
         return item.minMax;
       } else if (Array.isArray(item) || item.indexable) {
@@ -499,8 +519,7 @@ export class Rasterizer {
         objList.push(item);
         geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
         
-        index += item.length * 3;
-        bufferLength += item.length;
+        index += item.length / 3;
         // Declare bounding volume of object
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -516,11 +535,15 @@ export class Rasterizer {
         return minMax;
       }
     }
+    // Determine array lengths by walking the graph
+    this.textureLength = 0;
+    this.bufferLength = 0;
+    walkGraph(this);
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
     // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
     geometryTextureArray = Arrays.push(geometryTextureArray, new Array(2304 - geometryTextureArray.length % 2304).fill(0));
-    // Calculate DataHeight by dividing value count through 3072 (3 pixels * 3 values * 256 vertecies per line)
+    // Calculate DataHeight by dividing value count through 2304 (3 pixels * 3 values * 256 vertecies per line)
     var dataHeight = geometryTextureArray.length / 2304;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
@@ -530,25 +553,25 @@ export class Rasterizer {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 768, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryTextureArray));
     
     // Set buffer attributes
-    this.#positionBufferArray = new Float32Array(bufferLength * 3);
-    this.#uvBufferArray =  new Float32Array(bufferLength * 2);
-    this.#normalBufferArray =  new Float32Array(bufferLength * 3);
-    this.#numBufferArray =  new Float32Array(bufferLength * 3);
-    this.#colorBufferArray =  new Float32Array(bufferLength * 3);
+    this.#positionBufferArray = new Float32Array(this.bufferLength * 3);
+    this.#uvBufferArray =  new Float32Array(this.bufferLength * 2);
+    this.#normalBufferArray =  new Float32Array(this.bufferLength * 9);
+    this.#numBufferArray =  new Float32Array(this.bufferLength * 3);
+    this.#colorBufferArray =  new Float32Array(this.bufferLength * 3);
 
     let objIterator = 0;
     for (let i = 0; i < objList.length; i ++) {
       let item = objList[i];
       this.#positionBufferArray.set(item.vertices, objIterator * 3);
       this.#uvBufferArray.set(item.uvs, objIterator * 2);
-      this.#normalBufferArray.set(item.normals, objIterator * 3);
+      this.#normalBufferArray.set(item.normals, objIterator * 9);
       this.#colorBufferArray.set(item.colors, objIterator * 3);
       if (item.static) {
         this.#numBufferArray.set(item.cachedTextureNums, objIterator * 3);
-        objIterator += item.bufferLength;
+        objIterator += item.bufferLength / 3;
       } else {
         this.#numBufferArray.set(item.textureNums, objIterator * 3);
-        objIterator += item.length;
+        objIterator += item.length / 3;
       }
     }
     this.#bufferLength = bufferLength;
