@@ -23,21 +23,12 @@ async function buildScene() {
 	  	scene.textures.push(img);
 	});
 
-	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let clearTex = await scene.textureFromRME([0, 0, 0], 1, 1);
-	scene.pbrTextures.push(normalTex, clearTex);
-
-	let translucencyTex = await scene.textureFromTPO([1, 0, 2.42 / 4], 1, 1);
-	scene.translucencyTextures.push(translucencyTex); // 0
-
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [0, 3, 0];
 	[camera.fx, camera.fy] = [- 2.38, 0.2];
 
 	// Generate plane.
 	let plane = scene.Plane([- 50, - 1, - 50], [50, - 1, - 50], [50, - 1, 50], [- 50, - 1, 50], [0, 1, 0]);
-	plane.textureNums = [- 1, 0, - 1];
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 20000;
@@ -57,10 +48,16 @@ async function buildScene() {
 	console.log('loading ' + model);
 
 	let modelUrl = 'objects/' + model + '.obj';
-	var obj = await scene.fetchObjFile(modelUrl);
+	let materialUrl = 'objects/' + model + '.mtl';
+	var mtl = await scene.importMtl(materialUrl);
+	var obj = await scene.importObj(modelUrl, mtl);
 	// obj.scale(5);
 	obj.move(20, 1, - 20);
-	obj.textureNums = [- 1, 0, - 1];
+	obj.roughness = 0;
+	console.log(obj);
+	obj.metallicity = 1;
+	obj.translucency = 1;
+	obj.ior = 1.5;
 	obj.staticPermanent = true;
 	scene.queue.push(obj);
 
@@ -73,5 +70,5 @@ async function buildScene() {
 	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-	}, 100);
+	}, 1000);
 }
