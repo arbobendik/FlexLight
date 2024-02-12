@@ -476,7 +476,7 @@ export class PathTracer {
   }
 
   async updateScene () {
-    
+    // Track ids
     let walkGraph = (item) => {
       if (item.static) {
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
@@ -490,8 +490,8 @@ export class PathTracer {
         for (let i = 0; i < item.length; i++) walkGraph(item[i]);
       } else {
         // Give item new id property to identify vertex in fragment shader
-        textureLength += item.length / 3;
-        this.#bufferLength += item.length / 3;
+        textureLength += item.length;
+        this.#bufferLength += item.length;
       }
     }
     
@@ -501,7 +501,7 @@ export class PathTracer {
       if (item.static) {
         // Item is static and precaluculated values can just be used
         geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Update id buffer
         for (let i = 0; i < item.bufferLength; i++) this.#triangleIdBufferArray[bufferPos + i] = texturePos + item.idBuffer[i];
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
@@ -535,9 +535,9 @@ export class PathTracer {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
         geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Push texture positions of triangles into triangle id array
-        for (let i = 0; i < item.length / 3; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
+        for (let i = 0; i < item.length; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
         // Declare bounding volume of object
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -564,36 +564,36 @@ export class PathTracer {
     let texturePos = 0;
     let bufferPos = 0;
     // Preallocate arrays for scene graph as a texture
-    let geometryTexWidth = 2304;
-    let sceneTexWidth = 5376;
+    let geometryTexWidth = 3 * 3 * 256;
+    let sceneTexWidth = 9 * 3 * 256;
     // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
     let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 9 / geometryTexWidth) * geometryTexWidth);
-    // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
-    let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 21 / sceneTexWidth) * sceneTexWidth);
+    // Round up data to next higher multiple of 5376 (9 pixels * 3 values * 256 vertecies per line)
+    let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 27 / sceneTexWidth) * sceneTexWidth);
     // Create new id buffer array
     this.#triangleIdBufferArray = new Int32Array(this.#bufferLength);
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
     // Calculate DataHeight by dividing value count through 2304 (3 pixels * 3 values * 256 vertecies per line)
-    var geometryTextureArrayHeight = geometryTextureArray.length / 2304;
+    var geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 768, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
 
-    // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
-    let sceneTextureArrayHeight = sceneTextureArray.length / 5376;
+    // Calculate DataHeight by dividing value count through 5376 (9 pixels * 3 values * 256 vertecies per line)
+    let sceneTextureArrayHeight = sceneTextureArray.length / sceneTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
     // Tell webgl to use 2 bytes per value for the 16 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 7 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 9 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 7 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
   }
 
@@ -1079,8 +1079,8 @@ export class PathTracer {
       rt.#pbrList = [];
       rt.#translucencyList = [];
       // Compile shaders and link them into Program global
-      let vertexShader = Network.fetchSync('shaders/pathtracervertex.glsl');
-      let fragmentShader = Network.fetchSync('shaders/pathtracerfragment.glsl');
+      let vertexShader = Network.fetchSync('shaders/pathtracer_vertex.glsl');
+      let fragmentShader = Network.fetchSync('shaders/pathtracer_fragment.glsl');
       Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
       TempProgram = GLLib.compile (this.#gl, GLLib.postVertex, rt.#tempGlsl);
       // Compile shaders and link them into PostProgram global

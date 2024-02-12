@@ -1,5 +1,6 @@
 'use strict';
 
+import { Network } from './network.js';
 import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
@@ -23,12 +24,9 @@ export class Rasterizer {
 
   #halt = false;
   #geometryTexture;
+  #sceneTexture;
   // Buffer arrays
-  #positionBufferArray;
-  #normalBufferArray;
-  #numBufferArray;
-  #colorBufferArray;
-  #uvBufferArray;
+  #triangleIdBufferArray;
   #bufferLength;
   
   // Internal gl texture variables of texture atlases
@@ -41,288 +39,6 @@ export class Rasterizer {
   #translucencyList = [];
 
   #lightTexture;
-  // Shader sources in glsl 3.0.0 es
-  #vertexGlsl = `#version 300 es
-  #define INV_65536 0.00001525879
-  precision highp float;
-
-  in vec3 position3d;
-  in vec2 texPos;
-
-  in vec3 inNormal;
-  in vec3 inNums;
-  in vec3 inColor;
-
-  uniform vec3 cameraPosition;
-  uniform mat3 matrix;
-
-  out vec3 position;
-  out vec2 texCoord;
-  out vec3 clipSpace;
-
-  out vec3 normal;
-  out vec3 textureNums;
-  out vec3 baseColor;
-
-  flat out vec3 camera;
-
-  void main(){
-    vec3 move3d = position3d - cameraPosition;
-
-    clipSpace = matrix * move3d;
-    
-    // Set triangle position in clip space
-    gl_Position = vec4(clipSpace.xy, - 1.0 / (1.0 + exp(- length(move3d) * INV_65536)), clipSpace.z);
-
-    position = position3d;
-    texCoord = texPos;
-
-    normal = inNormal;
-    textureNums = inNums;
-    baseColor = inColor;
-
-    camera = cameraPosition;
-  }
-  `;
-  #fragmentGlsl = `#version 300 es
-  #define PI 3.141592653589793
-  #define SQRT3 1.73205
-  #define BIAS 0.00001525879
-  #define INV_TRIANGLES_PER_ROW 0.00390625
-  #define TRIANGLES_PER_ROW 256.0
-  #define INV_256 0.00390625
-  #define INV_65536 0.00001525879
-  #define THIRD 0.333333
-
-  precision highp float;
-  precision highp sampler2D;
-
-  float inv_texture_width = 1.0;
-
-  struct Ray {
-    vec3 direction;
-    vec3 unitDirection;
-    vec3 origin;
-    vec3 normal;
-  };
-
-  struct Material {
-    vec3 albedo;
-    vec3 rme;
-    vec3 tpo;
-  };
-
-  struct Light {
-    vec3 origin;
-    float strength;
-    float variance;
-  };
-
-  in vec3 position;
-  in vec2 texCoord;
-  in vec3 clipSpace;
-
-  in vec3 normal;
-  in vec3 textureNums;
-  in vec3 baseColor;
-
-  flat in vec3 camera;
-
-  // Get global illumination color, intensity
-  uniform vec3 ambient;
-  // Textures in parallel for texture atlas
-  uniform int textureWidth;
-  uniform int hdr;
-  // Texture with information about all triangles in scene
-  uniform sampler2D geometryTex;
-  // Random texture to multiply with normal map to simulate rough surfaces
-  uniform sampler2D translucencyTex;
-  uniform sampler2D pbrTex;
-  uniform sampler2D tex;
-  // Texture with all primary light sources of scene
-  uniform sampler2D lightTex;
-  
-  layout(location = 0) out vec4 renderColor;
-
-  float invTextureWidth = 1.0;
-
-  // Lookup values for texture atlases
-  vec4 lookup(sampler2D atlas, vec3 coords) {
-    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
-    vec2 atlasCoords = vec2(
-      (coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth,
-      (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor
-    );
-    // Return texel on requested location
-    return texture(atlas, atlasCoords);
-  }
-
-  // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-  bool moellerTrumboreCull (float l, Ray ray, vec3 a, vec3 b, vec3 c) {
-    vec3 edge1 = b - a;
-    vec3 edge2 = c - a;
-    vec3 pvec = cross(ray.unitDirection, edge2);
-    float det = dot(edge1, pvec);
-    float invDet = 1.0 / det;
-    if (det < BIAS) return false;
-    vec3 tvec = ray.origin - a;
-    float u = dot(tvec, pvec) * invDet;
-    if (u < BIAS || u > 1.0) return false;
-    vec3 qvec = cross(tvec, edge1);
-    float v = dot(ray.unitDirection, qvec) * invDet;
-    if (v < 0.0 || u + v > 1.0) return false;
-    float s = dot(edge2, qvec) * invDet;
-    return (s <= l && s > BIAS);
-  }
-
-  // Don't return intersection point, because we're looking for a specific triangle
-  bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
-    vec3 v0 = (minCorner - p) * invRay;
-    vec3 v1 = (maxCorner - p) * invRay;
-    float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
-    float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-    return tmax >= max(tmin, BIAS) && tmin < l;
-  }
-
-  // Simplified rayTracer to only test if ray intersects anything
-  bool shadowTest(Ray ray) {
-    // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 invRay = 1.0 / ray.unitDirection;
-    // Precomput max length
-    float minLen = length(ray.direction);
-    // Get texture size as max iteration value
-    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
-    int size = geometryTexSize.y * int(TRIANGLES_PER_ROW);
-    // Iterate through lines of texture
-    for (int i = 0; i < size; i++) {
-      float fi = float(i);
-      // Get position of current triangle/vertex in geometryTex
-      ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 3.0, fi * INV_TRIANGLES_PER_ROW);
-      // Fetch triangle coordinates from scene graph
-      vec3 a = texelFetch(geometryTex, index, 0).xyz;
-      vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
-      vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
-      // Three cases:
-      // c is X 0 0        => is bounding volume: do AABB intersection test
-      // c is 0 0 0        => end of list: stop loop
-      // otherwise         => is triangle: do triangle intersection test
-      if (c.yz == vec2(0)) {
-        if (c.x == 0.0) break;
-        if (!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
-      } else if (moellerTrumboreCull(minLen, ray, a, b, c)) {
-        return true;
-      }
-    }
-    // Tested all triangles, but there is no intersection
-    return false;
-  }
-
-  float trowbridgeReitz (float alpha, float NdotH) {
-    float numerator = alpha * alpha;
-    float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
-    return numerator / max(PI * denom * denom, BIAS);
-  }
-
-  float schlickBeckmann (float alpha, float NdotX) {
-    float k = alpha * 0.5;
-    float denominator = NdotX * (1.0 - k) + k;
-    denominator = max(denominator, BIAS);
-    return NdotX / denominator;
-  }
-
-  float smith (float alpha, float NdotV, float NdotL) {
-    return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
-  }
-
-  vec3 fresnel(vec3 F0, float VdotH) {
-    // Use Schlick approximation
-    return F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
-  }
-
-  vec3 forwardTrace (vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
-    float lenP1 = 1.0 + length(lightDir);
-    // Apply inverse square law
-    float brightness = strength / (lenP1 * lenP1);
-
-    float alpha = material.rme.x * material.rme.x;
-    vec3 F0 = material.albedo * material.rme.y;
-    vec3 L = normalize(lightDir);
-    vec3 H = normalize(V + L);
-    
-    float VdotH = max(dot(V, H), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotV = max(dot(N, V), 0.0);
-
-    vec3 fresnelFactor = fresnel(F0, VdotH);
-    vec3 Ks = fresnelFactor;
-    vec3 Kd = (1.0 - Ks) * (1.0 - material.rme.y);
-    vec3 lambert = material.albedo / PI;
-
-    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
-    float cookTorranceDenominator = 4.0 * NdotV * NdotL;
-    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
-
-    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
-    vec3 BRDF = Kd * lambert + cookTorrance;
-
-    // Outgoing light to camera
-    return BRDF * NdotL * brightness;
-  }
-
-  void main() {
-    // Calculate constant for this pass
-    invTextureWidth = 1.0 / float(textureWidth);
-    // Read base attributes from world texture.
-    vec3 color = mix(baseColor, lookup(tex, vec3(texCoord, textureNums.x)).xyz, max(sign(textureNums.x + 0.5), 0.0));
-    
-    // Test if pixel is in frustum or not
-    if (clipSpace.z < 0.0) return;
-    // Alter normal and color according to texture and normal texture
-    // Test if textures are even set otherwise use defaults.
-    // Default texColor to color
-    Material material = Material (
-      mix(color, lookup(tex, vec3(texCoord, textureNums.x)).xyz, max(sign(textureNums.x + 0.5), 0.0)),
-      mix(vec3(0.5, 0.0, 0.0), lookup(pbrTex, vec3(texCoord, textureNums.y)).xyz * vec3(1.0, 1.0, 4.0), max(sign(textureNums.y + 0.5), 0.0)),
-      mix(vec3(0.0, 0.0, 0.25), lookup(translucencyTex, vec3(texCoord, textureNums.z)).xyz, max(sign(textureNums.z + 0.5), 0.0))
-    );
-
-    
-    vec3 finalColor = vec3(material.rme.z);
-    // Calculate primary light sources for this pass if ray hits non translucent object
-    for (int j = 0; j < textureSize(lightTex, 0).y; j++) {
-      // Read light position
-      vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
-      // Read light strength from texture
-      float strength = texelFetch(lightTex, ivec2(1, j), 0).x;
-      // Skip if strength is negative or zero
-      if (strength <= 0.0) continue;
-
-      // Form light vector
-      vec3 dir = light - position;
-      Ray lightRay = Ray (dir, normalize(dir), position, normal);
-
-      vec3 localColor = forwardTrace(dir, normal, normalize(camera - position), material, strength);
-
-      // Compute quick exit criterion to potentially skip expensive shadow test
-      bool quickExitCriterion = length(localColor) == 0.0 || dot(lightRay.unitDirection, normal) <= BIAS;
-
-      // Update pixel color if coordinate is not in shadow
-      if (!quickExitCriterion && !shadowTest(lightRay)) finalColor += localColor;
-    }
-    
-    finalColor *= color;
-
-    if (hdr == 1) {
-      // Apply Reinhard tone mapping
-      finalColor = finalColor / (finalColor + vec3(1.0));
-      // Gamma correction
-      float gamma = 0.8;
-      finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
-    }
-    renderColor = vec4(finalColor, 1.0 - material.tpo.x * 0.3);
-  }
-  `;
   // Create new raysterizer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
@@ -452,54 +168,51 @@ export class Rasterizer {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
   
-  updateScene () {
-    // Build unordered triangle list using recursion
-    let objList = [];
-    let geometryTextureArray = [];
-
-    
+  async updateScene () {
     // Track ids
     let walkGraph = (item) => {
       if (item.static) {
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
-        this.textureLength += item.textureLength;
-        this.bufferLength += item.bufferLength;
+        textureLength += item.textureLength;
+        this.#bufferLength += item.bufferLength;
       } else if (Array.isArray(item) || item.indexable) {
         // Item is dynamic and indexable, recursion continues
         if (item.length === 0) return 0;
-        this.textureLength ++;
+        textureLength ++;
         // Iterate over all sub elements
         for (let i = 0; i < item.length; i++) walkGraph(item[i]);
       } else {
         // Give item new id property to identify vertex in fragment shader
-        this.textureLength += item.length / 3;
-        this.bufferLength += item.length / 3;
+        textureLength += item.length;
+        this.#bufferLength += item.length;
       }
     }
     
-
-    let index = 0;
-    let bufferLength = 0;
     // Build simple AABB tree (Axis aligned bounding box)
     let fillData = (item) => {
       let minMax = [];
       if (item.static) {
-        // Item is static and precaluculated values can just be used.
-        objList.push(item);
-        geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
-        // Return precomputed bounding
-        return item.minMax;
+        // Item is static and precaluculated values can just be used
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
+        // Update id buffer
+        for (let i = 0; i < item.bufferLength; i++) this.#triangleIdBufferArray[bufferPos + i] = texturePos + item.idBuffer[i];
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        texturePos += item.textureLength;
+        bufferPos += item.bufferLength;
+        minMax = item.minMax;
       } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
         if (item.length === 0) return [];
-        let dataPos = geometryTextureArray.length;
-
-        geometryTextureArray = Arrays.push(geometryTextureArray, [0, 0, 0,  0, 0, 0,  0, 0, 0]);
+        // Begin bounding volume array
+        let oldTexturePos = texturePos;
+        texturePos ++;
         // Iterate over all sub elements
         minMax = fillData (item[0]);
         for (let i = 1; i < item.length; i++) {
-          // Get updated bounding of lower element
-          let b = fillData (item[i]);
-          // Update maximums and minimums
+          // get updated bounding of lower element
+          let b = fillData(item[i]);
+          // update maximums and minimums
           minMax[0] = Math.min(minMax[0], b[0]);
           minMax[1] = Math.min(minMax[1], b[1]);
           minMax[2] = Math.min(minMax[2], b[2]);
@@ -507,23 +220,21 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], b[4]);
           minMax[5] = Math.max(minMax[5], b[5]);
         }
-
-        let len = Math.floor((geometryTextureArray.length - dataPos) / 9);
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryTextureArray[dataPos + i] = minMax[i];
-        geometryTextureArray[dataPos + 6] = len - 1;
-
-        return minMax;
+        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 9 + i] = minMax[i];
+        geometryTextureArray[oldTexturePos * 9 + 6] = texturePos - oldTexturePos - 1;
       } else {
-        objList.push(item);
-        geometryTextureArray = Arrays.push(geometryTextureArray, item.geometryTextureArray);
-        
-        index += item.length / 3;
+        // Item is dynamic and non-indexable.
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
+        // Push texture positions of triangles into triangle id array
+        for (let i = 0; i < item.length; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
         // Declare bounding volume of object
         let v = item.vertices;
         minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
-        // Get min and max values of veritces of object
+        // get min and max values of veritces of object
         for (let i = 3; i < v.length; i += 3) {
           minMax[0] = Math.min(minMax[0], v[i]);
           minMax[1] = Math.min(minMax[1], v[i + 1]);
@@ -532,49 +243,51 @@ export class Rasterizer {
           minMax[4] = Math.max(minMax[4], v[i + 1]);
           minMax[5] = Math.max(minMax[5], v[i + 2]);
         }
-        return minMax;
       }
+      return minMax;
     }
-    // Determine array lengths by walking the graph
-    this.textureLength = 0;
-    this.bufferLength = 0;
-    walkGraph(this);
+
+    // Lengths that will be probed by the walkGraph method
+    let textureLength = 0;
+    this.#bufferLength = 0;
+
+    // Walk entire scene graph to receive array sizes and preallocate
+    walkGraph(this.scene.queue);
+    // Triangle id in texture
+    let texturePos = 0;
+    let bufferPos = 0;
+    // Preallocate arrays for scene graph as a texture
+    let geometryTexWidth = 3 * 3 * 256;
+    let sceneTexWidth = 9 * 3 * 256;
+    // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
+    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 9 / geometryTexWidth) * geometryTexWidth);
+    // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
+    let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 27 / sceneTexWidth) * sceneTexWidth);
+    // Create new id buffer array
+    this.#triangleIdBufferArray = new Int32Array(this.#bufferLength);
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
-    // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
-    geometryTextureArray = Arrays.push(geometryTextureArray, new Array(2304 - geometryTextureArray.length % 2304).fill(0));
     // Calculate DataHeight by dividing value count through 2304 (3 pixels * 3 values * 256 vertecies per line)
-    var dataHeight = geometryTextureArray.length / 2304;
+    var geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 768, dataHeight, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(geometryTextureArray));
-    
-    // Set buffer attributes
-    this.#positionBufferArray = new Float32Array(this.bufferLength * 3);
-    this.#uvBufferArray =  new Float32Array(this.bufferLength * 2);
-    this.#normalBufferArray =  new Float32Array(this.bufferLength * 9);
-    this.#numBufferArray =  new Float32Array(this.bufferLength * 3);
-    this.#colorBufferArray =  new Float32Array(this.bufferLength * 3);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 768, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
 
-    let objIterator = 0;
-    for (let i = 0; i < objList.length; i ++) {
-      let item = objList[i];
-      this.#positionBufferArray.set(item.vertices, objIterator * 3);
-      this.#uvBufferArray.set(item.uvs, objIterator * 2);
-      this.#normalBufferArray.set(item.normals, objIterator * 9);
-      this.#colorBufferArray.set(item.colors, objIterator * 3);
-      if (item.static) {
-        this.#numBufferArray.set(item.cachedTextureNums, objIterator * 3);
-        objIterator += item.bufferLength / 3;
-      } else {
-        this.#numBufferArray.set(item.textureNums, objIterator * 3);
-        objIterator += item.length / 3;
-      }
-    }
-    this.#bufferLength = bufferLength;
+    // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
+    let sceneTextureArrayHeight = sceneTextureArray.length / sceneTexWidth;
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
+    GLLib.setTexParams(this.#gl);
+    // Tell webgl to use 2 bytes per value for the 16 bit floats
+    this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
+    // Set data texture details and tell webgl, that no mip maps are required
+    
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 9 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
   }
 
   render() {
@@ -582,15 +295,16 @@ export class Rasterizer {
     let rt = this;
     // Allow frame rendering
     rt.#halt = false;
-    // Initialize internal globals of render functiod
+    // Init Buffers
+    let triangleIdBuffer, vertexIdBuffer;
     // The millis variable is needed to calculate fps and movement speed
     let LastTimeStamp = performance.now();
     // Total frames calculated since last meassured
     let Frames = 0;
     // Internal GL objects
-    let Program, CameraPosition, MatrixLocation, AmbientLocation, TextureWidth, HdrLocation, GeometryTex, PbrTex, TranslucencyTex, Tex, LightTex;
+    let Program, CameraPosition, MatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
     // Init Buffers
-    let PositionBuffer, NormalBuffer, NumBuffer, ColorBuffer,  UvBuffer;
+    let GeometryTex, SceneTex;
     // Framebuffer, other buffers and textures
     let Framebuffer;
     let DepthTexture = this.#gl.createTexture();
@@ -656,30 +370,24 @@ export class Rasterizer {
       }
     }
 
-    function texturesToGPU() {
+    let texturesToGPU = () => {
       let jitter = {x: 0, y: 0};
       if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = rt.#AAObject.jitter(rt.#canvas);
       // Calculate projection matrix
       let dir = {x: rt.camera.fx + jitter.x, y: rt.camera.fy + jitter.y};
       let matrix = [ 
-        Math.cos(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,  0,                              Math.sin(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,
-        - Math.sin(dir.x) * Math.sin(dir.y) / rt.camera.fov,                    Math.cos(dir.y) / rt.camera.fov, Math.cos(dir.x) * Math.sin(dir.y) / rt.camera.fov,
-        - Math.sin(dir.x) * Math.cos(dir.y),                                    - Math.sin(dir.y),               Math.cos(dir.x) * Math.cos(dir.y)
+        Math.cos(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,  0,                               Math.sin(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,
+      - Math.sin(dir.x) * Math.sin(dir.y) / rt.camera.fov,                       Math.cos(dir.y) / rt.camera.fov,    Math.cos(dir.x) * Math.sin(dir.y) / rt.camera.fov,
+      - Math.sin(dir.x) * Math.cos(dir.y),                                     - Math.sin(dir.y),                    Math.cos(dir.x) * Math.cos(dir.y)
       ];
 
       rt.#gl.bindVertexArray(Vao);
       rt.#gl.useProgram(Program);
 
-      rt.#gl.activeTexture(rt.#gl.TEXTURE0);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#geometryTexture);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE1);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#pbrAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE2);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#translucencyAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE3);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#textureAtlas);
-      rt.#gl.activeTexture(rt.#gl.TEXTURE4);
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, rt.#lightTexture);
+      [this.#geometryTexture, this.#sceneTexture, this.#pbrAtlas, this.#translucencyAtlas, this.#textureAtlas, this.#lightTexture].forEach((texture, i) => {
+        this.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
+        this.#gl.bindTexture(rt.#gl.TEXTURE_2D, texture);
+      });
       // Set uniforms for shaders
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
@@ -691,34 +399,29 @@ export class Rasterizer {
       rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
       // Enable or disable hdr
       rt.#gl.uniform1i(HdrLocation, rt.hdr);
-      // Pass whole current world space as data structure to GPU
+      // Pass current scene graph to GPU
       rt.#gl.uniform1i(GeometryTex, 0);
+      // Pass additional datapoints for scene graph
+      rt.#gl.uniform1i(SceneTex, 1);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 1);
+      rt.#gl.uniform1i(PbrTex, 2);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 2);
+      rt.#gl.uniform1i(TranslucencyTex, 3);
       // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 3);
+      rt.#gl.uniform1i(Tex, 4);
       // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 4);
+      rt.#gl.uniform1i(LightTex, 5);
     }
 
     function fillBuffers() {
       // Set buffers
-      [
-        [PositionBuffer, rt.#positionBufferArray],
-        [UvBuffer, rt.#uvBufferArray],
-
-        [NormalBuffer, rt.#normalBufferArray],
-        [NumBuffer, rt.#numBufferArray],
-        [ColorBuffer, rt.#colorBufferArray]
-      ].forEach((item, i) => {
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, item[1], rt.#gl.DYNAMIC_DRAW);
-      });
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
+      // console.log(rt.#triangleIdBufferArray);
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
       // Actual drawcall
-      // rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, rt.#bufferLength / 3, rt.#bufferLength);
-      rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, rt.#bufferLength);
+      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
     }
 
     let renderFrame = () => {
@@ -748,7 +451,9 @@ export class Rasterizer {
       rt.#pbrList = [];
       rt.#translucencyList = [];
       // Compile shaders and link them into Program global
-      Program = GLLib.compile (rt.#gl, rt.#vertexGlsl, rt.#fragmentGlsl);
+      let vertexShader = Network.fetchSync('shaders/rasterizer_vertex.glsl');
+      let fragmentShader = Network.fetchSync('shaders/rasterizer_fragment.glsl');
+      Program = GLLib.compile (rt.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
@@ -756,6 +461,7 @@ export class Rasterizer {
       MatrixLocation = rt.#gl.getUniformLocation(Program, 'matrix');
       AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
       GeometryTex = rt.#gl.getUniformLocation(Program, 'geometryTex');
+      SceneTex = rt.#gl.getUniformLocation(Program, 'sceneTex');
       TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
       HdrLocation = rt.#gl.getUniformLocation(Program, 'hdr');
 
@@ -780,23 +486,20 @@ export class Rasterizer {
       // Create texture for all primary light sources in scene
       rt.#lightTexture = rt.#gl.createTexture();
       // Init a world texture containing all information about world space
-      rt.#geometryTexture = rt.#gl.createTexture();
+      this.#geometryTexture = this.#gl.createTexture();
+      this.#sceneTexture = this.#gl.createTexture();
       // Create buffers
-      [PositionBuffer, UvBuffer, NormalBuffer, NumBuffer, ColorBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer(), rt.#gl.createBuffer()];
-      [
-        // Bind world space position buffer
-        [PositionBuffer, 3, false],
-        // Set barycentric texture coordinates
-        [UvBuffer, 2, true],
-        // Surface normal buffer
-        [NormalBuffer, 3, true],
-        [NumBuffer, 3, false],
-        [ColorBuffer, 3, false]
-      ].forEach((item, i) => {
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, item[0]);
-        rt.#gl.enableVertexAttribArray(i);
-        rt.#gl.vertexAttribPointer(i, item[1], rt.#gl.FLOAT, item[2], 0, 0);
-      });
+      [triangleIdBuffer, vertexIdBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      rt.#gl.enableVertexAttribArray(0);
+      rt.#gl.vertexAttribIPointer(0, 1, rt.#gl.INT, false, 0, 0);
+      rt.#gl.vertexAttribDivisor(0, 1);
+
+      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      rt.#gl.enableVertexAttribArray(1);
+      rt.#gl.vertexAttribIPointer(1, 1, rt.#gl.INT, false, 0, 0);
+
       // Create frame buffers and textures to be rendered to
       Framebuffer = rt.#gl.createFramebuffer();
       renderTextureBuilder();

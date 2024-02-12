@@ -58,16 +58,6 @@ export class Scene {
 
   // Autogenerate oct-tree for imported structures or structures without BVH-tree
   generateBVH (objects = this.queue) {
-    const minBoundingWidth = 1 / 256;
-    // get scene for reference inside object
-    let scene = this;
-
-    let topTree = new Bounding(objects);
-    // Determine bounding for each object
-    this.updateBoundings(topTree);
-
-    let polyCount = 0;
-
     // Test how many triangles can be sorted into neiter bounding.
     let testOnEdge = (objs, bounding0, bounding1) => {
       let onEdge = 0;
@@ -145,6 +135,15 @@ export class Scene {
       }
     }
 
+    const minBoundingWidth = 1 / 256;
+    // get scene for reference inside object
+    let scene = this;
+    let topTree = new Bounding(objects);
+    // Determine bounding for each object
+    this.updateBoundings(topTree);
+
+    let polyCount = 0;
+
     let maxTree = Math.log2(topTree.length) + 8;
     topTree = divideTree(topTree);
     console.log("done building BVH-Tree");
@@ -195,8 +194,8 @@ export class Scene {
   // bounding element
   Bounding = (array) => new Bounding (array, this);
   // generate object from array
-  // create object from .obj file
-  fetchObjFile = async (path) => {
+  // Create object from .obj file
+  importObj = async path => {
     // get scene for reference inside object
     let scene = this;
     // final object variable 
@@ -209,7 +208,7 @@ export class Scene {
     let interpreteLine = line => {
       let words = [];
       // get array of words
-      line.split(' ').forEach(word => { if (word !== '') words.push(word) });
+      line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
       // interpret current line
       switch (words[0]) {
         case 'v':
@@ -225,10 +224,16 @@ export class Scene {
           vn.push([Number(words[1]), Number(words[2]), Number(words[3])]);
           break;
         case 'f':
+          // "-" or space is sperating different vertices while "/" seperates different properties
+          let dataString = words.slice(1, words.length).join(' ');
           // extract array indecies form string
-          let data = words.slice(1, words.length).map(word => word.split('/').map(numStr => Number(numStr)));
+          let data = dataString.split(/[ ]/g).filter(vertex => vertex.length).map(vertex => vertex.split(/[/]/g).map(numStr => {
+            let num = Number(numStr);
+            if (num < 0) num = v.length + num + 1;
+            return num;
+          }));
           // test if new part should be a triangle or plane
-          if (words.length === 5) {
+          if (data.length === 4) {
             // generate plane with vertecies
             let plane = new Plane (
               v[data[3][0] - 1],
@@ -240,7 +245,10 @@ export class Scene {
             // set uvs according to .obj file
             // plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
-            plane.normals = [3, 2, 1, 1, 0, 3].map(i => (vn[data[i][2] - 1] ?? plane.normals.slice(i * 3, i * 3 + 2))).flat();
+            [3, 2, 1, 1, 0, 3].forEach((index, i) => {
+              if (vt[data[index][1] - 1] !== undefined) plane.uvs.set(vt[data[index][1] - 1], i * 2);
+              if (vn[data[index][2] - 1] !== undefined) plane.normals.set(vn[data[index][2] - 1], i * 3);
+            });
             // push new plane in object array
             obj.push(plane);
           } else {
@@ -254,11 +262,16 @@ export class Scene {
             // set uvs according to .obj file
             // triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
             // set normals according to .obj file
-            triangle.normals = [2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat();
+            [2, 1, 0].forEach((index, i) => {
+              if (vt[data[index][1] - 1] !== undefined) triangle.uvs.set(vt[data[index][1] - 1], i * 2);
+              if (vn[data[index][2] - 1] !== undefined) triangle.normals.set(vn[data[index][2] - 1], i * 3);
+            });
             // console.log([2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat());
             // triangle.setColor(triangle.normals[0] * 1000);
             obj.push(triangle);
           }
+          break;
+        case 'g':
           break;
       }
     };
@@ -266,34 +279,62 @@ export class Scene {
     let text = await (await fetch(path)).text();
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
-    obj = await scene.generateBVH(obj);
-    await scene.updateBoundings(obj);
+    obj = scene.generateBVH(obj);
+    scene.updateBoundings(obj);
     // return built object
     return obj;
+  }
+
+  importMtl = async path => {
+    // Accumulate information
+    let materials = [];
+    let currentMaterialName;
+    // line interpreter
+    let interpreteLine = line => {
+      let words = [];
+      // get array of words
+      line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
+      // interpret current line
+      switch (words[0]) {
+        case 'newmtl':
+          currentMaterialName = words[1];
+          materials[currentMaterialName] = {};
+          break;
+        case 'Ni':
+          // materials[currentMaterialName].metalicity = 
+      }
+    };
+    // fetch file and iterate over its lines
+    let text = await (await fetch(path)).text();
+    text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
   }
 }
 
 class Primitive {
   #vertices;
-  #normals;
   #normal;
-  #textureNums;
-  #colors;
-  #color;
+  #normals;
   #uvs;
+  #textureNums = new Float32Array([-1, -1, -1]);
+  #albedo = new Float32Array([1, 1, 1]);
+  #rme = new Float32Array([1, 0, 0]);
+  #tpo = new Float32Array([0, 0, 1]);
 
   geometryTextureArray;
   sceneTextureArray;
 
   #buildTextureArrays = () => {
-    for (let i = 0; i < this.length; i += 3) {
-      let i12 = i * 3;
-      this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
-      let i21 = i * 7;
-      this.sceneTextureArray.set(this.#normals.slice(i * 3, i * 3 + 9), i21);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 9);
-      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 15);
-      this.sceneTextureArray.set(this.#color, i21 + 18);
+    // a, b, c, na, nb, nc, uv01, uv12, tn, albedo, rme, tpo
+    for (let i = 0; i < this.length; i ++) {
+      let i9 = i * 9;
+      this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i9);
+      let i27 = i * 27;
+      this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i27);
+      this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i27 + 9);
+      this.sceneTextureArray.set(this.#textureNums, i27 + 15);
+      this.sceneTextureArray.set(this.#albedo, i27 + 18);
+      this.sceneTextureArray.set(this.#rme, i27 + 21);
+      this.sceneTextureArray.set(this.#tpo, i27 + 24);
     }
   }
     
@@ -301,7 +342,14 @@ class Primitive {
   get normals () { return this.#normals };
   get normal () { return this.#normal };
   get textureNums () { return this.#textureNums };
-  get color () { return this.#color };
+  get color () { return this.#albedo };
+  get albedo () { return this.#albedo };
+  get roughness () { return this.#rme[0] };
+  get metallicity () { return this.#rme[1] };
+  get emissiveness () { return this.#rme[2] };
+  get translucency () { return this.#tpo[0] };
+  get ior () { return this.#tpo[2] };
+
   get uvs () { return this.#uvs };
 
   set vertices (v) {
@@ -310,27 +358,54 @@ class Primitive {
   }
 
   set normals (ns) {
-    // console.log(new Float32Array(ns));
     this.#normals = new Float32Array(ns);
     this.#normal = new Float32Array(ns.slice(0, 3));
     this.#buildTextureArrays();
   }
 
   set normal (n) {
-    this.#normals = new Float32Array(new Array(this.length).fill(n).flat());
+    this.#normals = new Float32Array(new Array(this.length * 3).fill(n).flat());
     this.#normal = new Float32Array(n);
     this.#buildTextureArrays();
   }
 
   set textureNums (tn) {
-    this.#textureNums = new Float32Array(new Array(this.length).fill(tn).flat());
+    this.#textureNums = tn;
     this.#buildTextureArrays();
   }
 
   set color (c) {
     let color = c.map(val => val / 255);
-    this.#color = new Float32Array(color);
-    this.#colors = new Float32Array(new Array(this.length).fill(color).flat());
+    this.#albedo = new Float32Array(color);
+    this.#buildTextureArrays();
+  }
+
+  set albedo (c) {
+    this.color = c;
+  }
+
+  set roughness (r) {
+    this.#rme[0] = r;
+    this.#buildTextureArrays();
+  }
+
+  set metallicity (m) {
+    this.#rme[1] = m;
+    this.#buildTextureArrays();
+  }
+
+  set emissiveness (e) {
+    this.#rme[2] = e;
+    this.#buildTextureArrays();
+  }
+
+  set translucency (t) {
+    this.#tpo[0] = t;
+    this.#buildTextureArrays();
+  }
+
+  set ior (i) {
+    this.#tpo[2] = 1.5;
     this.#buildTextureArrays();
   }
 
@@ -345,15 +420,12 @@ class Primitive {
     
     this.#vertices = new Float32Array(vertices);
     this.#normal = new Float32Array(normal);
-    this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
-    this.#textureNums = new Float32Array(new Array(this.length).fill(- 1));
-    this.#color = new Float32Array([1, 1, 1]);
+    this.#normals = new Float32Array(new Array(this.length * 3).fill(normal).flat());
     this.#uvs = new Float32Array(uvs);
     
-    this.geometryTextureArray = new Float32Array(this.length * 3);
-    this.sceneTextureArray = new Float32Array(this.length * 7);
+    this.geometryTextureArray = new Float32Array(this.length * 9);
+    this.sceneTextureArray = new Float32Array(this.length * 27);
     this.#buildTextureArrays();
-    // console.log(this.sceneTextureArray);
   }
 }
 
@@ -361,12 +433,36 @@ class Object3D {
   #static = false;
   #staticPermanent = false;
 
-  set color (color) {
-    for (let i = 0; i < this.length; i++) this[i].color = color;
+  set textureNums (tn) {
+    for (let i = 0; i < this.length; i++) this[i].textureNums = tn;
   }
 
-  set textureNums (nums) {
-    for (let i = 0; i < this.length; i++) this[i].textureNums = nums;
+  set color (c) {
+    for (let i = 0; i < this.length; i++) this[i].color = c;
+  }
+
+  set albedo (a) {
+    for (let i = 0; i < this.length; i++) this[i].albedo = a;
+  }
+
+  set roughness (r) {
+    for (let i = 0; i < this.length; i++) this[i].roughness = r;
+  }
+
+  set metallicity (m) {
+    for (let i = 0; i < this.length; i++) this[i].metallicity = m;
+  }
+
+  set emissiveness (e) {
+    for (let i = 0; i < this.length; i++) this[i].emissiveness = e;
+  }
+
+  set translucency (t) {
+    for (let i = 0; i < this.length; i++) this[i].translucency = t;
+  }
+
+  set ior (i) {
+    for (let i = 0; i < this.length; i++) this[i].ior = i;
   }
   // move object by given vector
   move (x, y, z) {
@@ -415,8 +511,8 @@ class Object3D {
           for (let i = 0; i < item.length; i++) walkGraph(item[i]);
         } else {
           // Give item new id property to identify vertex in fragment shader
-          this.textureLength += item.length / 3;
-          this.bufferLength += item.length / 3;
+          this.textureLength += item.length;
+          this.bufferLength += item.length;
         }
       }
 
@@ -426,14 +522,7 @@ class Object3D {
         if (item.static) {
           // Item is static and precaluculated values can just be used
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
-
-          // Fill buffers
-          this.vertices.set(item.vertices, bufferPos * 9);
-          this.uvs.set(item.uvs, bufferPos * 6);
-          this.normals.set(item.normals, bufferPos * 9);
-          this.cachedTextureNums.set(item.cachedTextureNums, bufferPos * 3);
-          this.colors.set(item.colors, bufferPos * 3);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
           // Update id buffer
           for (let i = 0; i < item.bufferLength; i++) this.idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
           texturePos += item.textureLength;
@@ -467,19 +556,9 @@ class Object3D {
           // Item is dynamic and non-indexable.
           // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
           this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 21);
-          // Fill buffers
-          console.log(bufferPos);
-          this.vertices.length;
-          this.uvs.length
-          this.vertices.set(item.vertices, bufferPos * 9);
-          this.uvs.set(item.uvs, bufferPos * 6);
-          this.normals.set(item.normals, bufferPos * 9);
-          console.log(item.textureNums.length);
-          this.cachedTextureNums.set(item.textureNums, bufferPos * 3);
-          this.colors.set(item.color, bufferPos * 3);
+          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
           // Give item new id property to identify vertex in fragment shader
-          for (let i = 0; i < item.length / 3; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
+          for (let i = 0; i < item.length; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
           // Declare bounding volume of object.
           let v = item.vertices;
           minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
@@ -501,14 +580,8 @@ class Object3D {
       walkGraph(this);
       // Create new texture and additional arrays
       this.geometryTextureArray = new Float32Array(this.textureLength * 9);
-      this.sceneTextureArray = new Float32Array(this.textureLength * 21);
+      this.sceneTextureArray = new Float32Array(this.textureLength * 27);
       this.idBuffer = new Int32Array(this.bufferLength);
-      // Precalculate arrays and values
-      this.vertices = new Float32Array(this.bufferLength * 9);
-      this.uvs = new Float32Array(this.bufferLength * 6);
-      this.normals = new Float32Array(this.bufferLength * 9);
-      this.cachedTextureNums = new Float32Array(this.bufferLength * 9);
-      this.colors = new Float32Array(this.bufferLength * 3);
 
       let texturePos = 0;
       let bufferPos = 0;
@@ -525,9 +598,6 @@ class Object3D {
       // Precalculate arrays and values
       this.geometryTextureArray = null;
       this.sceneTextureArray = null;
-      this.vertices = null;
-      this.objectLengths = null;
-      this.uvs = null;
       this.minMax = null;
     }
   }
@@ -593,12 +663,12 @@ class Cuboid extends Object3D {
 
 class Plane extends Primitive {
   constructor (c0, c1, c2, c3) {
-    super(6, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
+    super(2, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
   }
 }
 
 class Triangle extends Primitive {
   constructor (a, b, c) {
-    super(3, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
+    super(1, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
   }
 }
