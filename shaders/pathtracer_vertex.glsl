@@ -1,6 +1,7 @@
 #version 300 es
 #define TRIANGLES_PER_ROW_POWER 8
 #define TRIANGLES_PER_ROW 256
+#define INV_65536 0.00001525879
 
 precision highp int;
 precision highp float;
@@ -13,9 +14,8 @@ uniform vec3 cameraPosition;
 uniform vec2 perspective;
 uniform vec4 conf;
 
-  // Texture with information about all triangles in scene
+// Texture with vertex information about all triangles in scene
 uniform sampler2D geometryTex;
-uniform sampler2D sceneTex;
 
 out vec3 position;
 out vec2 uv;
@@ -37,17 +37,17 @@ vec3 clipPosition(vec3 pos, vec2 dir) {
 
 void main() {
     // Calculate vertex position in texture
-    int triangleColumn = triangleId >> 8;
+    int triangleColumn = triangleId >> TRIANGLES_PER_ROW_POWER;
     ivec2 index = ivec2((triangleId - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
 
     // Read vertex position from texture
     vec3 position3d = texelFetch(geometryTex, index + ivec2(vertexId, 0), 0).xyz;
 
-    vec3 move3d = position3d + vec3(cameraPosition.x, -cameraPosition.yz) * vec3(-1.0f, 1.0f, 1.0f);
+    vec3 move3d = position3d - cameraPosition;
     clipSpace = clipPosition(move3d, perspective + conf.zw);
 
     // Set triangle position in clip space
-    gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(-length(move3d / 1048576.0f))), clipSpace.z);
+    gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(-length(move3d * INV_65536))), clipSpace.z);
     position = position3d;
 
     uv = baseUVs[vertexId];
