@@ -142,13 +142,32 @@ bool moellerTrumboreCull(float l, Ray ray, vec3 a, vec3 b, vec3 c) {
     return (s <= l && s > BIAS);
 }
 
-// Don't return intersection point, because we're looking for a specific triangle
+// Don't return intersection point, because we're looking for a specific triangle not bounding box
 bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
     vec3 v0 = (minCorner - p) * invRay;
     vec3 v1 = (maxCorner - p) * invRay;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
+}
+
+bool raySphere(float l, Ray ray, vec3 c, float r2) {
+    vec3 diff = c - ray.origin;
+    float cosa = dot(diff, ray.unitDirection);
+    // if (cosa < 0.0f) return false;
+    float d2 = dot(diff, diff) - cosa * cosa;
+    if (d2 > r2) return false;
+    float thc = sqrt(r2 - d2);
+    return true;//l > cosa + abs(thc);
+}
+
+bool rayCuboidS(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
+    vec3 dir = 1.0f / invRay;
+    vec3 c = (minCorner + maxCorner) * 0.5f;
+    Ray ray = Ray(dir, dir, p);
+    vec3 minVec = c - minCorner;
+    float r2 = length(minVec);
+    return raySphere(l, ray, c, r2 * r2);
 }
 
 // Test for closest ray triangle intersection
@@ -178,7 +197,7 @@ mat2x4 rayTracer(Ray ray) {
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
+            if(!rayCuboidS(minLen, invRay, ray.origin, a, b)) i += int(c.x);
         } else {
             // Test if triangle intersects ray
             mat2x4 currentIntersection = moellerTrumbore(minLen, ray, a, b, c);
@@ -218,7 +237,7 @@ bool shadowTest(Ray ray) {
         // otherwise         => is triangle: do triangle intersection test
         if (c.yz == vec2(0)) {
         if (c.x == 0.0) break;
-        if (!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
+        if (!rayCuboidS(minLen, invRay, ray.origin, a, b)) i += int(c.x);
         } else if (moellerTrumboreCull(minLen, ray, a, b, c)) return true;
     }
     // Tested all triangles, but there is no intersection
