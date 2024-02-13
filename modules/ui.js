@@ -6,11 +6,10 @@ export class UI {
     constructor (scene, camera) {
         this.scene = scene;
         this.camera = camera;
-        this.#runSelector();
+        // this.#runSelector();
     }
 
     #runSelector = () => {
-        /*
         setInterval(() => {
             let origin = [this.camera.x, this.camera.y, this.camera.z];
             let direction = [
@@ -29,8 +28,9 @@ export class UI {
             } else {
                 this.selected = null;
             }
-        }, 1);
-        */
+            // console.log(this.selected);
+            // this.selected.color = [0, 0, 0];
+        }, 10);
     }
 
     getObjectInCenter = (part, o, dir) => {
@@ -45,16 +45,16 @@ export class UI {
             }
             return least;
         } else {      
-            if (part.length === 6) {
-                let n = part.normals.slice(0, 3);
+            if (part.length === 2) {
+                let n = part.normal;
                 let t0 = [part.vertices.slice(0, 3), part.vertices.slice(3, 6), part.vertices.slice(6, 9)];
                 let t1 = [part.vertices.slice(9, 12), part.vertices.slice(12, 15), part.vertices.slice(15, 18)];
                 return {
                     distance: Math.min(Math.rayTriangle (o, dir, t0[0], t0[1], t0[2], n), Math.rayTriangle (o, dir, t1[0], t1[1], t1[2], n)),
                     object: part
                 };
-            } else if (part.length === 3) {
-                let n = part.normals.slice(0, 3);
+            } else if (part.length === 1) {
+                let n = part.normal;
                 let t = [part.vertices.slice(0, 3), part.vertices.slice(3, 6), part.vertices.slice(6, 9)];
                 return {
                     distance: Math.rayTriangle (o, dir, t[0], t[1], t[2], n),

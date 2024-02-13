@@ -71,10 +71,6 @@ async function buildScene() {
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
-	// setTimeout(() => engine.renderer.freeze = true, 1000);
-	
 	// Update Counter periodically.
-	setInterval(() => {
-		fpsCounter.textContent = engine.renderer.fps;
-	}, 1000);
+	setInterval(() => fpsCounter.textContent = engine.renderer.fps, 1000);
 }
