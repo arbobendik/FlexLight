@@ -69,7 +69,7 @@ export class Scene {
       // If there are only 4 or less objects in tree, there is no need to subdivide further
       if (objs.length <= 4 || depth > maxTree) {
         polyCount += objs.length;
-        console.log("loaded", polyCount, "polygons so far.");
+        // console.log("loaded", polyCount, "polygons so far.");
         return objs;
       } else {
         // Find center
