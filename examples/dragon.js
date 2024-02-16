@@ -36,7 +36,7 @@ async function buildScene() {
 	dragonTransform.move(15, 0, 15);
 	dragonTransform.scale(0.5);
 	var obj = await scene.importObj('objects/dragon_lp.obj');
-	//obj.scale(0.5);
+	// obj.move(15, 0, 15);
 	obj.transform = dragonTransform;
 	obj.roughness = 0;
 	obj.metallicity = 1;
@@ -46,7 +46,7 @@ async function buildScene() {
 	// obj.staticPermanent = true;
 	scene.queue.push(obj);
 	
-	var monke = await scene.importObj('objects/monke.obj');
+	var monke = await scene.importObj('objects/monke_smooth.obj');
 	monke.scale(2);
 	await monke.move(5, 1, 12);
 	monke.metallicity = 1;
@@ -61,8 +61,6 @@ async function buildScene() {
 	sphere.ior = 1.3;
 	scene.queue.push(sphere);
 
-	engine.renderer.updateScene();
-
 	/*
 	var sphere2 = await scene.importObj('objects/sphere.obj');
 	sphere2.scale(3);
@@ -71,6 +69,17 @@ async function buildScene() {
 	sphere2.translucency = 1;
 	scene.queue.push(sphere2);
 	*/
+
+	engine.renderer.updateScene();
+
+	let rotationAngle = 0;
+	setInterval(() => {
+		// dragonTransform.rotate([0, 0, 1], 0.0025);
+		///let pos = dragonTransform.position;
+		rotationAngle += 0.003;
+		// dragonTransform.move(Math.sin(rotationAngle) * 20, 0, Math.cos(rotationAngle) * 20);
+		dragonTransform.rotate([0, 1, 0], 0.002);
+	}, 1000 / 330);
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
 	// Append it to body.

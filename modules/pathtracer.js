@@ -4,18 +4,19 @@ import { Network } from './network.js';
 import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
+import { Transform } from './scene.js';
 import { Arrays, Float16Array } from './arrays.js';
 
 
 const PathtracingUniformLocationIdentifiers = [
-  'cameraPosition', 'perspective', 'conf',
+  'cameraPosition', 'viewMatrix',
   'samples', 'maxReflections', 'minImportancy', 'useFilter', 'isTemporal',
   'ambient', 'randomSeed', 'textureWidth',
   'geometryTex', 'sceneTex', 'pbrTex', 'translucencyTex', 'tex', 'lightTex'
 ];
 
 const PathtracingUniformFunctionTypes = [
-  'uniform3f', 'uniform2f', 'uniform4f',
+  'uniform3f', 'uniformMatrix3fv',
   'uniform1i', 'uniform1i', 'uniform1f', 'uniform1i', 'uniform1i',
   'uniform3f', 'uniform1f', 'uniform1i',
   'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i'
@@ -250,6 +251,7 @@ export class PathTracer {
         // to skip if ray doesn't intersect with it
         for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
         geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
       } else {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
@@ -326,6 +328,8 @@ export class PathTracer {
     let TempProgram, TempHdrLocation;
     // Init Buffers
     let triangleIdBuffer, vertexIdBuffer;
+    // Uniform variables
+    let UboBuffer, UboVariableOffsets;
     // Framebuffer, Post Program buffers and textures
     let Framebuffer, TempFramebuffer, OriginalIdRenderTexture;
     let HdrLocation;
@@ -402,8 +406,6 @@ export class PathTracer {
       rt.#updateTextureAtlas();
       rt.#updatePbrAtlas();
       rt.#updateTranslucencyAtlas();
-      // Set scene graph
-      rt.updateScene();
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
       // Check if recompile is required
@@ -430,9 +432,19 @@ export class PathTracer {
     }
 
     let pathtracingPass = engineState => {
-      // console.log(uniformLocations);
+
       let jitter = {x: 0, y: 0};
-      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(rt.#canvas);
+      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
+      // Calculate projection matrix
+      let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
+
+      let invFov = 1 / this.camera.fov;
+      let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
+      let viewMatrix = [
+        Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov,
+      - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov,
+      - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
+      ];
 
       this.#gl.bindVertexArray(Vao);
       this.#gl.useProgram(Program);
@@ -446,10 +458,8 @@ export class PathTracer {
       let uniformValues = [
         // 3d position of camera
         [this.camera.x, this.camera.y, this.camera.z],
-        // sphearical rotation of camera
-        [this.camera.fx, this.camera.fy],
-        // fov and X/Y ratio of screen
-        [this.camera.fov, this.#gl.canvas.width / this.#gl.canvas.height, jitter.x, jitter.y],
+        // View rotation and TAA jitter
+        [true, viewMatrix],
         // amount of samples per ray
         [this.samplesPerRay],
         // max reflections of ray
@@ -475,7 +485,20 @@ export class PathTracer {
       ];
 
       PathtracingUniformFunctionTypes.forEach((functionType, i) => this.#gl[functionType](engineState.pathtracingUniformLocations[i], ... uniformValues[i]));
-      
+
+      // Fill UBO
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
+      // Get transformation matrices
+      let UboBufferArray = Transform.buildUBOArray();
+      // Set matrices to buffer
+      this.#gl.bufferSubData(
+        this.#gl.UNIFORM_BUFFER,
+        UboVariableOffsets[0],
+        UboBufferArray,
+        0
+      );
+      // Bind buffer
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
       rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
       rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
@@ -815,6 +838,30 @@ export class PathTracer {
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
       initialState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => rt.#gl.getUniformLocation(Program, identifier));
+      // Create UBO objects
+      let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
+      // Get the size of the Uniform Block in bytes
+      let BlockSize = this.#gl.getActiveUniformBlockParameter(
+        Program,
+        BlockIndex,
+        this.#gl.UNIFORM_BLOCK_DATA_SIZE
+      );
+      
+      UboBuffer = this.#gl.createBuffer();
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
+      this.#gl.bufferData(this.#gl.UNIFORM_BUFFER, BlockSize, this.#gl.DYNAMIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
+      this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
+
+      let UboVariableIndices = this.#gl.getUniformIndices( Program, ['transform']);
+      UboVariableOffsets = this.#gl.getActiveUniforms(
+        Program,
+        UboVariableIndices,
+        this.#gl.UNIFORM_OFFSET
+      );
+
+      let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
+      this.#gl.uniformBlockBinding(Program, index, 0);
       // Enable depth buffer and therefore overlapping vertices
       rt.#gl.disable(rt.#gl.BLEND);
       rt.#gl.enable(rt.#gl.DEPTH_TEST);
@@ -905,6 +952,8 @@ export class PathTracer {
       } else {
         this.#AAObject = null;
       }
+      // Reload / Rebuild scene graph after resize or page reload
+      this.updateScene();
       // Return initialized objects for engine.
       return initialState;
     }
