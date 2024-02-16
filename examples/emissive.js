@@ -33,7 +33,7 @@ async function buildScene() {
 	scene.pbrTextures.push(roughTex, caroTex, roughLight, smoothTex);
 
 	// Generate translucency texture for cube.
-	let translucencyTex = await scene.textureFromTPO([1, 0, 1.3 / 4], 1, 1);
+	let translucencyTex = await scene.textureFromTPO([1, 0, 0.8], 1, 1);
 	scene.translucencyTextures.push(translucencyTex);
 
 	// Move camera out of center.
@@ -72,7 +72,9 @@ async function buildScene() {
 
 	cube[0].textureNums = [-1, 1, -1];
 	// Make second cuboid translucent.
-	cube[1].textureNums = [-1, 3, 0];
+	cube[1].textureNums = [-1, 3, -1];
+	cube[1].ior = 1.5;
+	cube[1].translucency = 1;
 
 	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.

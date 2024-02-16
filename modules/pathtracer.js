@@ -65,287 +65,6 @@ export class PathTracer {
   #lightTexture;
   // Shader source will be generated later
   #tempGlsl;
-  // Shader sources in glsl 3.0.0 es
-  #firstFilterGlsl = `#version 300 es
-  #define INV_256 0.00390625
-
-  precision highp float;
-  in vec2 clipSpace;
-  
-  uniform sampler2D preRenderColor;
-  uniform sampler2D preRenderColorIp;
-  uniform sampler2D preRenderNormal;
-  uniform sampler2D preRenderOriginalColor;
-  uniform sampler2D preRenderId;
-  uniform sampler2D preRenderOriginalId;
-
-  layout(location = 0) out vec4 renderColor;
-  layout(location = 1) out vec4 renderColorIp;
-  layout(location = 2) out vec4 renderId;
-
-  void main() {
-    // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
-    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
-    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
-    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
-    vec4 centerId = texelFetch(preRenderId, texel, 0);
-
-    int centerIdw = int(centerId.w * 255.0);
-    int centerLightNum = centerIdw / 2;
-    int centerShadow = centerIdw % 2;
-
-    renderId = centerId;
-
-    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
-    vec4 color = vec4(0);
-    float count = 0.0;
-
-    const ivec2 stencil1[4] = ivec2[4](
-                     ivec2(-1, 0), 
-      ivec2( 0, -1),              ivec2( 0, 1),
-                     ivec2( 1, 0)
-    );
-    
-    const vec2 stencil2[21] = vec2[21](
-                  vec2(-2, -1), vec2(-2, 0), vec2(-2, 1),
-    vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2),
-    vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2),
-    vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2),
-                  vec2( 2, -1), vec2( 2, 0), vec2( 2, 1)
-    );
-
-    const vec2 stencil3[37] = vec2[37](
-                                  vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
-                    vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
-      vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
-      vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
-      vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
-                    vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
-                                  vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
-    );
-    
-    if (centerOId.w != 0.0 && centerColorIp.w != 0.0) {
-      vec4 id = centerId;
-
-      mat4 ids = mat4(0);
-      mat4 oIds = mat4(0);
-
-      vec4 ipws = vec4(0);
-      for (int i = 0; i < 4; i++) {
-        ids[i] = texelFetch(preRenderId, texel + stencil1[i], 0);
-        oIds[i] = texelFetch(preRenderOriginalId, texel + stencil1[i], 0);
-        ipws[i] = texelFetch(preRenderColorIp, texel + stencil1[i], 0).w;
-      }
-
-      ivec4 vote = ivec4(0);
-      for (int i = 0; i < 4; i++) {
-        if (ipws[i] == 0.0) {
-          vote[i] = 1;
-          if (ids[i].xyz == id.xyz && oIds[i] == centerOId) vote[i] ++;
-          for (int j = i + 1; j < 4; j++) if (ids[i].xyz == ids[j].xyz && oIds[i] == oIds[j]) vote[i] ++;
-        }
-      }
-
-      int maxVote = vote[0];
-      int idNumber = 0;
-
-      for (int i = 1; i < 4; i++) {
-        if (vote[i] >= maxVote) {
-          maxVote = vote[i];
-          idNumber = i;
-        }
-      }
-      
-      renderId = ids[idNumber];
-      renderColorIp.w = max(1.0 - sign(float(maxVote)), 0.0);
-    }
-
-    if (centerOColor.w == 0.0) {
-      color = centerColor;
-      count = 1.0;
-    } else {
-      for (int i = 0; i < 37; i++) {
-        ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + centerOColor.w) * (1.0 + centerOColor.w) * 3.5);
-        
-        vec4 id = texelFetch(preRenderId, coord, 0);
-        vec4 originalId = texelFetch(preRenderOriginalId, coord, 0);
-
-        int idW = int(id.w * 255.0);
-        int lightNum = idW / 2;
-        int shadow = idW % 2;    
-
-        vec4 nextColor = texelFetch(preRenderColor, coord, 0);
-        vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
-        if (centerId.xyz == id.xyz && centerOId == originalId && (centerLightNum != lightNum || centerShadow == shadow)) {
-          color += nextColor + nextColorIp * 256.0;
-          count ++;
-        }
-      }
-    }
-    
-    
-    float invCount = 1.0 / count;
-    renderColor = sign(centerColor.w) * vec4(mod(color.xyz * invCount, 1.0), centerColor.w);
-    // Set out color for render texture for the antialiasing filter
-    renderColorIp = sign(centerColor.w) * vec4(floor(color.xyz * invCount) * INV_256, renderColorIp.w);
-  }
-  `;
-  #secondFilterGlsl = `#version 300 es
-  #define INV_256 0.00390625
-  
-  precision highp float;
-  in vec2 clipSpace;
-
-  uniform sampler2D preRenderColor;
-  uniform sampler2D preRenderColorIp;
-  uniform sampler2D preRenderOriginalColor;
-  uniform sampler2D preRenderId;
-  uniform sampler2D preRenderOriginalId;
-
-  layout(location = 0) out vec4 renderColor;
-  layout(location = 1) out vec4 renderColorIp;
-  layout(location = 2) out vec4 renderOriginalColor;
-
-  void main(){
-    // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
-    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
-    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
-    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
-    vec4 centerId = texelFetch(preRenderId, texel, 0);
-    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
-    vec4 color = centerColor + vec4(centerColorIp.xyz, 0.0) * 256.0;;
-    vec4 oColor = centerOColor;
-    float ipw = centerColorIp.w;
-    float count = 1.0;
-    float oCount = 1.0;
-
-
-    const vec2 stencil2[20] = vec2[20](
-                  vec2(-2, -1), vec2(-2, 0), vec2(-2, 1),
-    vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2),
-    vec2( 0, -2), vec2( 0, -1),              vec2( 0, 1), vec2( 0, 2),
-    vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2),
-                  vec2( 2, -1), vec2( 2, 0), vec2( 2, 1)
-    );
-
-    const vec2 stencil3[36] = vec2[36](
-                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
-                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
-    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
-    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1),              vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
-    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
-                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
-                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
-    );
-    
-    // Apply blur filter on image
-    for (int i = 0; i < 36; i++) {
-      ivec2 coord = texel + ivec2(stencil3[i] * (1.0 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
-      vec4 id = texelFetch(preRenderId, coord, 0);
-      vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
-      vec4 nextColor = texelFetch(preRenderColor, coord, 0);
-      vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
-      vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
-
-      if (centerOId.xyz == nextOId.xyz) {
-        if (min(centerOId.w, nextOId.w) > 0.1 && (id == centerId || max(nextColorIp.w, centerColorIp.w) >= 0.1)) {
-            color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
-            count ++;
-            ipw += nextColorIp.w;
-            oColor += nextOColor;
-            oCount ++;
-        } else if (id.xyz == centerId.xyz) {
-          color += nextColor + vec4(nextColorIp.xyz, 0.0) * 256.0;
-          count ++;
-        }
-      }
-
-      
-    }
-
-    float invCount = 1.0 / count;
-    renderColor = centerColor.w * vec4(mod(color.xyz * invCount, 1.0), color.w * invCount);
-    // Set out color for render texture for the antialiasing filter
-    renderColorIp =  centerColor.w * vec4(floor(color.xyz * invCount) * INV_256, ipw);
-    renderOriginalColor = centerColor.w * oColor / oCount;
-  }
-  `;
-  #finalFilterGlsl = `#version 300 es
-  precision highp float;
-  in vec2 clipSpace;
-  uniform sampler2D preRenderColor;
-  uniform sampler2D preRenderColorIp;
-  uniform sampler2D preRenderOriginalColor;
-  uniform sampler2D preRenderId;
-  uniform sampler2D preRenderOriginalId;
-  uniform int hdr;
-  out vec4 outColor;
-  void main(){
-    // Get texture size
-    ivec2 texel = ivec2(vec2(textureSize(preRenderColor, 0)) * clipSpace);
-    vec4 centerColor = texelFetch(preRenderColor, texel, 0);
-    vec4 centerColorIp = texelFetch(preRenderColorIp, texel, 0);
-    vec4 centerOColor = texelFetch(preRenderOriginalColor, texel, 0);
-    vec4 centerId = texelFetch(preRenderId, texel, 0);
-    vec4 centerOId = texelFetch(preRenderOriginalId, texel, 0);
-    vec4 color = vec4(0);
-    vec4 oColor = vec4(0);
-    float count = 0.0;
-    float oCount = 0.0;
-
-    const vec2 stencil3[37] = vec2[37](
-                                vec2(-3, -1), vec2(-3, 0), vec2(-3, 1), 
-                  vec2(-2, -2), vec2(-2, -1), vec2(-2, 0), vec2(-2, 1), vec2(-2, 2),
-    vec2(-1, -3), vec2(-1, -2), vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(-1, 2), vec2(-1, 3),
-    vec2( 0, -3), vec2( 0, -2), vec2( 0, -1), vec2( 0, 0), vec2( 0, 1), vec2( 0, 2), vec2( 0, 3),
-    vec2( 1, -3), vec2( 1, -2), vec2( 1, -1), vec2( 1, 0), vec2( 1, 1), vec2( 1, 2), vec2( 1, 3),
-                  vec2( 2, -2), vec2( 2, -1), vec2( 2, 0), vec2( 2, 1), vec2( 2, 2),
-                                vec2( 3, -1), vec2( 3, 0), vec2( 3, 1)
-    );
-
-    // Apply blur filter on image
-    for (int i = 0; i < 37; i++) {
-      ivec2 coord = texel + ivec2(stencil3[i] * (0.7 + 2.0 * tanh(centerOColor.w + centerOId.w * 4.0)));
-      vec4 id = texelFetch(preRenderId, coord, 0);
-      vec4 nextOId = texelFetch(preRenderOriginalId, coord, 0);
-      vec4 nextColor = texelFetch(preRenderColor, coord, 0);
-      vec4 nextColorIp = texelFetch(preRenderColorIp, coord, 0);
-      vec4 nextOColor = texelFetch(preRenderOriginalColor, coord, 0);
-
-      // Test if at least one pixel is translucent and they are pixels of the same object.
-      bool blurTranslucent = max(nextColorIp.w, centerColorIp.w) != 0.0 && min(centerOId.w, nextOId.w) > 0.0;
-      if (blurTranslucent && centerOId.xyz == nextOId.xyz) {
-        oColor += nextOColor;
-        oCount ++;
-      }
-      
-      if ((blurTranslucent || centerId.xyz == id.xyz) && centerOId.xyz == nextOId.xyz) {
-        color += nextColor + nextColorIp * 255.0;
-        count ++;
-      }
-    }
-    
-    if (centerColor.w > 0.0) {
-      // Set out targetColor for render texture for the antialiasing filter
-      vec3 finalColor = color.xyz / count;
-      finalColor *= (oCount == 0.0) ? centerOColor.xyz : oColor.xyz / oCount;
-
-      if (hdr == 1) {
-        // Apply Reinhard tone mapping
-        finalColor = finalColor / (finalColor + vec3(1.0));
-        // Gamma correction
-        float gamma = 0.8;
-        finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
-      }
-      outColor = vec4(finalColor, 1.0);
-    } else {
-      outColor = vec4(0);
-    }
-    // outColor = vec4(centerId.xyz, 0.0);
-  }
-  `;
   // Create new PathTracer from canvas and setup movement
   constructor (canvas, camera, scene) {
     this.#canvas = canvas;
@@ -484,7 +203,7 @@ export class PathTracer {
         this.#bufferLength += item.bufferLength;
       } else if (Array.isArray(item) || item.indexable) {
         // Item is dynamic and indexable, recursion continues
-        if (item.length === 0) return 0;
+        if (item.length === 0) return;
         textureLength ++;
         // Iterate over all sub elements
         for (let i = 0; i < item.length; i++) walkGraph(item[i]);
@@ -500,7 +219,7 @@ export class PathTracer {
       let minMax = [];
       if (item.static) {
         // Item is static and precaluculated values can just be used
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
         sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Update id buffer
         for (let i = 0; i < item.bufferLength; i++) this.#triangleIdBufferArray[bufferPos + i] = texturePos + item.idBuffer[i];
@@ -529,12 +248,12 @@ export class PathTracer {
         }
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 9 + i] = minMax[i];
-        geometryTextureArray[oldTexturePos * 9 + 6] = texturePos - oldTexturePos - 1;
+        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
+        geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
       } else {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
         sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Push texture positions of triangles into triangle id array
         for (let i = 0; i < item.length; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
@@ -564,27 +283,27 @@ export class PathTracer {
     let texturePos = 0;
     let bufferPos = 0;
     // Preallocate arrays for scene graph as a texture
-    let geometryTexWidth = 3 * 3 * 256;
+    let geometryTexWidth = 4 * 3 * 256;
     let sceneTexWidth = 9 * 3 * 256;
-    // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
-    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 9 / geometryTexWidth) * geometryTexWidth);
-    // Round up data to next higher multiple of 5376 (9 pixels * 3 values * 256 vertecies per line)
+    // Round up data to next higher multiple of (4 pixels * 3 values * 256 vertecies per line)
+    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / geometryTexWidth) * geometryTexWidth);
+    // Round up data to next higher multiple of (9 pixels * 3 values * 256 vertecies per line)
     let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 27 / sceneTexWidth) * sceneTexWidth);
     // Create new id buffer array
     this.#triangleIdBufferArray = new Int32Array(this.#bufferLength);
     // Fill scene describing texture with data pixels
     fillData(this.scene.queue);
-    // Calculate DataHeight by dividing value count through 2304 (3 pixels * 3 values * 256 vertecies per line)
+    // Calculate DataHeight by dividing value count through (4 pixels * 3 values * 256 vertecies per line)
     var geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
 
-    // Calculate DataHeight by dividing value count through 5376 (9 pixels * 3 values * 256 vertecies per line)
+    // Calculate DataHeight by dividing value count through (9 pixels * 3 values * 256 vertecies per line)
     let sceneTextureArrayHeight = sceneTextureArray.length / sceneTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
@@ -593,7 +312,7 @@ export class PathTracer {
     // Set data texture details and tell webgl, that no mip maps are required
     
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 9 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 7 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 9 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
   }
 
@@ -1081,14 +800,17 @@ export class PathTracer {
       // Compile shaders and link them into Program global
       let vertexShader = Network.fetchSync('shaders/pathtracer_vertex.glsl');
       let fragmentShader = Network.fetchSync('shaders/pathtracer_fragment.glsl');
+      let firstFilterShader = Network.fetchSync('shaders/pathtracer_first_filter.glsl');
+      let secondFilterShader = Network.fetchSync('shaders/pathtracer_second_filter.glsl');
+      let finalFIlterShader = Network.fetchSync('shaders/pathtracer_final_filter.glsl');
       Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
       TempProgram = GLLib.compile (this.#gl, GLLib.postVertex, rt.#tempGlsl);
       // Compile shaders and link them into PostProgram global
-      for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#firstFilterGlsl);
+      for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, firstFilterShader);
       // Compile shaders and link them into PostProgram global
-      for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#secondFilterGlsl);
+      for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, secondFilterShader);
       // Compile shaders and link them into PostProgram global
-      PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, rt.#finalFilterGlsl);
+      PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, finalFIlterShader);
       // Create global vertex array object (Vao)
       rt.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program

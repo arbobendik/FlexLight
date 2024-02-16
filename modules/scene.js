@@ -2,6 +2,8 @@
 
 import { Math } from './math.js';
 import { Float16Array, Arrays } from './arrays.js';
+
+const MAX_TRANSFORMS = 65520;
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
@@ -184,15 +186,16 @@ export class Scene {
     return minMax;
   }
   
-  // object constructors
+  // Pass some constructors
+  Transform = matrix => new Transform (matrix);
   // axis aligned cuboid element prototype
-  Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2, this);
+  Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2);
   // surface element prototype
-  Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3, this);
+  Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3);
   // triangle element prototype
-  Triangle = (a, b, c) => new Triangle (a, b, c, this);
+  Triangle = (a, b, c) => new Triangle (a, b, c);
   // bounding element
-  Bounding = (array) => new Bounding (array, this);
+  Bounding = array => new Bounding (array);
   // generate object from array
   // Create object from .obj file
   importObj = async path => {
@@ -310,11 +313,81 @@ export class Scene {
   }
 }
 
-class Primitive {
+export class Transform {
+  number = -1;
+  #matrix;
+
+  static used = new Array(MAX_TRANSFORMS);
+  static count = 0;
+  static transformList = new Array(MAX_TRANSFORMS);
+
+  static buildUBOArray = () => {
+    // Create UBO buffer array
+    let buffer = new Float32Array(16 * Transform.count);
+    // Iterate over set elements
+    for (let i = 0; i < Transform.count; i++) {
+      buffer.set(this.transformList[i].#matrix, i * 16);
+    }
+    // console.log(Transform.count);
+    return buffer;
+  }
+
+  set matrix (matrix) {
+    this.#matrix = new Float32Array(matrix);
+  }
+
+  get matrix () {
+    return Array.from(this.#matrix);
+  }
+
+  move (x, y, z) {
+    this.#matrix[12] = x;
+    this.#matrix[13] = y;
+    this.#matrix[14] = z;
+  }
+
+  scale (s) {
+    this.#matrix[0] = s;
+    this.#matrix[5] = s;
+    this.#matrix[10] = s;
+  }
+
+  constructor (matrix) {
+    if (Array.isArray(matrix)){
+      this.#matrix = new Float32Array(matrix);
+    } else {
+      this.#matrix = Math.identity(4).flat();
+      // Default to identity matrix
+    }
+    // Assign next larger available number
+    for (let i = 0; i < MAX_TRANSFORMS; i++) {
+      if (Transform.used[i]) continue;
+      Transform.used[i] = true;
+      this.number = i;
+      break;
+    }
+    // All transformation matricies slots in UBO are blocked
+    if (this.number === -1) {
+      console.error(
+        'Exceeded limit of', 
+        MAX_TRANSFORMS,
+        'transformation matrices! Try altering your matrices instead of generating them.'
+      );
+      return;
+    }
+    // Update max index
+    Transform.count = Math.max(Transform.count, this.number + 1);
+    // Set in transform list
+    Transform.transformList[this.number] = this;
+  }
+}
+
+export class Primitive {
   #vertices;
   #normal;
   #normals;
   #uvs;
+  #transform;
   #textureNums = new Float32Array([-1, -1, -1]);
   #albedo = new Float32Array([1, 1, 1]);
   #rme = new Float32Array([1, 0, 0]);
@@ -326,8 +399,9 @@ class Primitive {
   #buildTextureArrays = () => {
     // a, b, c, na, nb, nc, uv01, uv12, tn, albedo, rme, tpo
     for (let i = 0; i < this.length; i ++) {
-      let i9 = i * 9;
-      this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i9);
+      let i12 = i * 12;
+      this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
+      this.geometryTextureArray[i12 + 9] = this.transformNum;
       let i27 = i * 27;
       this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i27);
       this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i27 + 9);
@@ -341,6 +415,13 @@ class Primitive {
   get vertices () { return this.#vertices };
   get normals () { return this.#normals };
   get normal () { return this.#normal };
+
+  get transformNum () {
+    if (this.#transform === undefined) return - 1;
+    else return this.#transform.number;
+  }
+  get transform () { return this.#transform };
+  
   get textureNums () { return this.#textureNums };
   get color () { return this.#albedo };
   get albedo () { return this.#albedo };
@@ -349,7 +430,6 @@ class Primitive {
   get emissiveness () { return this.#rme[2] };
   get translucency () { return this.#tpo[0] };
   get ior () { return this.#tpo[2] };
-
   get uvs () { return this.#uvs };
 
   set vertices (v) {
@@ -369,6 +449,11 @@ class Primitive {
     this.#buildTextureArrays();
   }
 
+  set transform (t) {
+    this.#transform = t;
+    this.#buildTextureArrays();
+  }
+
   set textureNums (tn) {
     this.#textureNums = tn;
     this.#buildTextureArrays();
@@ -380,8 +465,8 @@ class Primitive {
     this.#buildTextureArrays();
   }
 
-  set albedo (c) {
-    this.color = c;
+  set albedo (a) {
+    this.color = a;
   }
 
   set roughness (r) {
@@ -423,15 +508,43 @@ class Primitive {
     this.#normals = new Float32Array(new Array(this.length * 3).fill(normal).flat());
     this.#uvs = new Float32Array(uvs);
     
-    this.geometryTextureArray = new Float32Array(this.length * 9);
+    this.geometryTextureArray = new Float32Array(this.length * 12);
     this.sceneTextureArray = new Float32Array(this.length * 27);
     this.#buildTextureArrays();
   }
 }
 
-class Object3D {
+export class Plane extends Primitive {
+  constructor (c0, c1, c2, c3) {
+    super(2, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
+  }
+}
+
+export class Triangle extends Primitive {
+  constructor (a, b, c) {
+    super(1, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
+  }
+}
+
+export class Object3D {
   #static = false;
   #staticPermanent = false;
+
+  #transform;
+
+  get transformNum () {
+    if (this.#transform === undefined) {
+      return -1;
+    } else {
+      return this.#transform.number;
+    }
+  }
+  get transform () { return this.#transform };
+
+  set transform (t) {
+    this.#transform = t;
+    for (let i = 0; i < this.length; i++) this[i].transform = t;
+  }
 
   set textureNums (tn) {
     for (let i = 0; i < this.length; i++) this[i].textureNums = tn;
@@ -521,7 +634,7 @@ class Object3D {
         let minMax = [];
         if (item.static) {
           // Item is static and precaluculated values can just be used
-          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
           this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
           // Update id buffer
           for (let i = 0; i < item.bufferLength; i++) this.idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
@@ -550,12 +663,13 @@ class Object3D {
           }
           // Set now calculated vertices length of bounding box
           // to skip if ray doesn't intersect with it
-          for (let i = 0; i < 6; i++) this.geometryTextureArray[oldTexturePos * 9 + i] = minMax[i];
-          this.geometryTextureArray[oldTexturePos * 9 + 6] = texturePos - oldTexturePos - 1;
+          for (let i = 0; i < 6; i++) this.geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
+          this.geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+          this.geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
         } else {
           // Item is dynamic and non-indexable.
           // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
           this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
           // Give item new id property to identify vertex in fragment shader
           for (let i = 0; i < item.length; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
@@ -579,7 +693,7 @@ class Object3D {
       this.bufferLength = 0;
       walkGraph(this);
       // Create new texture and additional arrays
-      this.geometryTextureArray = new Float32Array(this.textureLength * 9);
+      this.geometryTextureArray = new Float32Array(this.textureLength * 12);
       this.sceneTextureArray = new Float32Array(this.textureLength * 27);
       this.idBuffer = new Int32Array(this.bufferLength);
 
@@ -625,50 +739,36 @@ class Object3D {
   }
 
   
-  constructor (length, scene) {
+  constructor (length) {
     this.relativePosition = [0, 0, 0];
     this.length = length;
     this.indexable = true;
-    this.scene = scene;
   }
 }
 
-
-class Bounding extends Object3D {
-  constructor (array, scene) { 
-    super(array.length, scene);
+export class Bounding extends Object3D {
+  constructor (array) { 
+    super(array.length);
     array.forEach((item, i) => this[i] = item);
   }
 }
 
-class Cuboid extends Object3D {
-  constructor (x, x2, y, y2, z, z2, scene) {
-    super(6, scene);
+export class Cuboid extends Object3D {
+  constructor (x, x2, y, y2, z, z2) {
+    super(6);
     // Add bias of 2^(-16)
     const bias = 0.00152587890625;
     [x, y, z] = [x + bias, y + bias, z + bias];
     [x2, y2, z2] = [x2 - bias, y2 - bias, z2 - bias];
     // Create surface elements for cuboid
     this.bounding = [x, x2, y, y2, z, z2];
-    this.top = new Plane([x, y2, z], [x2, y2, z], [x2, y2, z2], [x, y2, z2], scene);
-    this.right = new Plane([x2, y2, z], [x2, y, z], [x2, y, z2], [x2, y2, z2], scene);
-    this.front = new Plane([x2, y2, z2], [x2, y, z2], [x, y, z2], [x, y2, z2], scene);
-    this.bottom = new Plane([x, y, z2], [x2, y, z2], [x2, y, z], [x, y, z], scene);
-    this.left = new Plane([x, y2, z2], [x, y, z2], [x, y, z], [x, y2, z], scene);
-    this.back = new Plane([x, y2, z], [x, y, z], [x2, y, z], [x2, y2, z], scene);
+    this.top = new Plane([x, y2, z], [x2, y2, z], [x2, y2, z2], [x, y2, z2]);
+    this.right = new Plane([x2, y2, z], [x2, y, z], [x2, y, z2], [x2, y2, z2]);
+    this.front = new Plane([x2, y2, z2], [x2, y, z2], [x, y, z2], [x, y2, z2]);
+    this.bottom = new Plane([x, y, z2], [x2, y, z2], [x2, y, z], [x, y, z]);
+    this.left = new Plane([x, y2, z2], [x, y, z2], [x, y, z], [x, y2, z]);
+    this.back = new Plane([x, y2, z], [x, y, z], [x2, y, z], [x2, y2, z]);
 
     [this.top, this.right, this.front, this.bottom, this.left, this.back].forEach((item, i) => this[i] = item);
-  }
-}
-
-class Plane extends Primitive {
-  constructor (c0, c1, c2, c3) {
-    super(2, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
-  }
-}
-
-class Triangle extends Primitive {
-  constructor (a, b, c) {
-    super(1, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
   }
 }

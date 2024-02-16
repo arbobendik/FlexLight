@@ -2,13 +2,13 @@
 
 
 import { Camera } from './modules/camera.js';
-import { Scene } from './modules/scene.js';
+import { Scene, Transform, Primitive, Triangle, Plane, Object3D, Cuboid, Bounding } from './modules/scene.js';
 import { PathTracer } from './modules/pathtracer.js';
 import { Rasterizer } from './modules/rasterizer.js';
 import { WebIo } from './modules/io.js';
 import { UI } from './modules/ui.js';
 
-export class FlexLight {
+class FlexLight {
   #idRenderer;
   #idIo;
   #canvas;
@@ -96,3 +96,5 @@ export class FlexLight {
     this.#io.renderer = this.#renderer;
   }
 }
+
+export { FlexLight, Scene, Transform, Primitive, Triangle, Plane, Object3D, Cuboid, Bounding };

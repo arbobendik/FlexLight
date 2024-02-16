@@ -4,6 +4,7 @@ import { Network } from './network.js';
 import { GLLib } from './gllib.js';
 import { FXAA } from './fxaa.js';
 import { TAA } from './taa.js';
+import { Transform } from './scene.js';
 import { Arrays } from './arrays.js';
 
 export class Rasterizer {
@@ -193,7 +194,7 @@ export class Rasterizer {
       let minMax = [];
       if (item.static) {
         // Item is static and precaluculated values can just be used
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
         sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Update id buffer
         for (let i = 0; i < item.bufferLength; i++) this.#triangleIdBufferArray[bufferPos + i] = texturePos + item.idBuffer[i];
@@ -222,12 +223,14 @@ export class Rasterizer {
         }
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 9 + i] = minMax[i];
-        geometryTextureArray[oldTexturePos * 9 + 6] = texturePos - oldTexturePos - 1;
+        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
+        geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+        geometryTextureArray[oldTexturePos * 12 + 9] = Array.isArray(item) ? -1 : item.transformNum;
+        // console.log(item.transformNum);
       } else {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 9);
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
         sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
         // Push texture positions of triangles into triangle id array
         for (let i = 0; i < item.length; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
@@ -257,11 +260,11 @@ export class Rasterizer {
     let texturePos = 0;
     let bufferPos = 0;
     // Preallocate arrays for scene graph as a texture
-    let geometryTexWidth = 3 * 3 * 256;
+    let geometryTexWidth = 4 * 3 * 256;
     let sceneTexWidth = 9 * 3 * 256;
-    // Round up data to next higher multiple of 2304 (3 pixels * 3 values * 256 vertecies per line)
-    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 9 / geometryTexWidth) * geometryTexWidth);
-    // Round up data to next higher multiple of 5376 (7 pixels * 3 values * 256 vertecies per line)
+    // Round up data to next higher multiple of (3 pixels * 3 values * 256 vertecies per line)
+    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / geometryTexWidth) * geometryTexWidth);
+    // Round up data to next higher multiple of (7 pixels * 3 values * 256 vertecies per line)
     let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 27 / sceneTexWidth) * sceneTexWidth);
     // Create new id buffer array
     this.#triangleIdBufferArray = new Int32Array(this.#bufferLength);
@@ -274,10 +277,10 @@ export class Rasterizer {
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 3 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 768, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
 
-    // Calculate DataHeight by dividing value count through 5376 (7 pixels * 3 values * 256 vertecies per line)
+    // Calculate DataHeight by dividing value count through (9 pixels * 3 values * 256 vertecies per line)
     let sceneTextureArrayHeight = sceneTextureArray.length / sceneTexWidth;
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
@@ -303,6 +306,7 @@ export class Rasterizer {
     let Frames = 0;
     // Internal GL objects
     let Program, CameraPosition, MatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
+    let UboBuffer, UboVariableOffsets;
     // Init Buffers
     let GeometryTex, SceneTex;
     // Framebuffer, other buffers and textures
@@ -348,7 +352,7 @@ export class Rasterizer {
       rt.#updatePbrAtlas();
       rt.#updateTranslucencyAtlas();
       // Set scene graph
-      rt.updateScene();
+      // rt.updateScene();
       // build bounding boxes for scene first
       rt.updatePrimaryLightSources();
       // Check if recompile is required
@@ -411,17 +415,29 @@ export class Rasterizer {
       rt.#gl.uniform1i(Tex, 4);
       // Pass texture with all primary light sources in the scene
       rt.#gl.uniform1i(LightTex, 5);
-    }
+      // Fill UBO
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
+      // console.log(UboVariableOffsets);
+      
+      let UboBufferArray = Transform.buildUBOArray();
+      // console.log(UboBufferArray);
+      // Push some data to our Uniform Buffer
+      this.#gl.bufferSubData(
+        this.#gl.UNIFORM_BUFFER,
+        UboVariableOffsets[0],
+        UboBufferArray,
+        0
+      );
 
-    function fillBuffers() {
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, this.#triangleIdBufferArray, this.#gl.DYNAMIC_DRAW);
       // console.log(rt.#triangleIdBufferArray);
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
+      this.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      this.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
       // Actual drawcall
-      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
+      this.#gl.drawArraysInstanced(this.#gl.TRIANGLES, 0, 3, this.#bufferLength);
     }
 
     let renderFrame = () => {
@@ -440,41 +456,70 @@ export class Rasterizer {
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       texturesToGPU();
-      fillBuffers();
+      // fillBuffers();
       // Apply antialiasing shader if enabled
       if (this.#AAObject != null) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
       // Force update textures by resetting texture Lists
-      rt.#textureList = [];
-      rt.#pbrList = [];
-      rt.#translucencyList = [];
+      this.#textureList = [];
+      this.#pbrList = [];
+      this.#translucencyList = [];
       // Compile shaders and link them into Program global
       let vertexShader = Network.fetchSync('shaders/rasterizer_vertex.glsl');
       let fragmentShader = Network.fetchSync('shaders/rasterizer_fragment.glsl');
       Program = GLLib.compile (rt.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
-      rt.#gl.bindVertexArray(Vao);
+      this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = rt.#gl.getUniformLocation(Program, 'cameraPosition');
-      MatrixLocation = rt.#gl.getUniformLocation(Program, 'matrix');
-      AmbientLocation = rt.#gl.getUniformLocation(Program, 'ambient');
-      GeometryTex = rt.#gl.getUniformLocation(Program, 'geometryTex');
-      SceneTex = rt.#gl.getUniformLocation(Program, 'sceneTex');
-      TextureWidth = rt.#gl.getUniformLocation(Program, 'textureWidth');
-      HdrLocation = rt.#gl.getUniformLocation(Program, 'hdr');
+      CameraPosition = this.#gl.getUniformLocation(Program, 'cameraPosition');
+      MatrixLocation = this.#gl.getUniformLocation(Program, 'matrix');
+      AmbientLocation = this.#gl.getUniformLocation(Program, 'ambient');
+      GeometryTex = this.#gl.getUniformLocation(Program, 'geometryTex');
+      SceneTex = this.#gl.getUniformLocation(Program, 'sceneTex');
+      TextureWidth = this.#gl.getUniformLocation(Program, 'textureWidth');
+      HdrLocation = this.#gl.getUniformLocation(Program, 'hdr');
 
-      LightTex = rt.#gl.getUniformLocation(Program, 'lightTex');
-      PbrTex = rt.#gl.getUniformLocation(Program, 'pbrTex');
-      TranslucencyTex = rt.#gl.getUniformLocation(Program, 'translucencyTex');
-      Tex = rt.#gl.getUniformLocation(Program, 'tex');
+      let BlockIndex = this.#gl.getUniformBlockIndex(Program, "transformMatrix");
+      // Get the size of the Uniform Block in bytes
+      let BlockSize = this.#gl.getActiveUniformBlockParameter(
+        Program,
+        BlockIndex,
+        this.#gl.UNIFORM_BLOCK_DATA_SIZE
+      );
+
+      // Create Uniform Buffer to store our data
+      UboBuffer = this.#gl.createBuffer();
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
+      this.#gl.bufferData(this.#gl.UNIFORM_BUFFER, BlockSize, this.#gl.DYNAMIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
+      this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
+
+      let UboVariableNames = ['transform'];
+      // Get the respective index of the member variables inside our Uniform Block
+      let UboVariableIndices = this.#gl.getUniformIndices( Program, UboVariableNames);
+      // Get the offset of the member variables inside our Uniform Block in bytes
+      UboVariableOffsets = this.#gl.getActiveUniforms(
+        Program,
+        UboVariableIndices,
+        this.#gl.UNIFORM_OFFSET
+      );
+
+      let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
+      this.#gl.uniformBlockBinding(Program, index, 0);
+
+
+      LightTex = this.#gl.getUniformLocation(Program, 'lightTex');
+      PbrTex = this.#gl.getUniformLocation(Program, 'pbrTex');
+      TranslucencyTex = this.#gl.getUniformLocation(Program, 'translucencyTex');
+      Tex = this.#gl.getUniformLocation(Program, 'tex');
       // Enable depth buffer and therefore overlapping vertices
-      rt.#gl.enable(rt.#gl.BLEND);
-      rt.#gl.enable(rt.#gl.DEPTH_TEST);
-      rt.#gl.blendEquation(rt.#gl.FUNC_ADD);
-      rt.#gl.blendFuncSeparate(rt.#gl.ONE, rt.#gl.ONE_MINUS_SRC_ALPHA, rt.#gl.ONE, rt.#gl.ONE);
-      rt.#gl.depthMask(true);
+      this.#gl.enable(this.#gl.BLEND);
+      this.#gl.enable(this.#gl.DEPTH_TEST);
+      this.#gl.blendEquation(this.#gl.FUNC_ADD);
+      this.#gl.blendFuncSeparate(this.#gl.ONE, this.#gl.ONE_MINUS_SRC_ALPHA, this.#gl.ONE, this.#gl.ONE);
+      this.#gl.depthMask(true);
       // Set clear color for framebuffer
       rt.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
@@ -520,6 +565,8 @@ export class Rasterizer {
         this.#AAObject = null;
       }
       
+      // Reload / Rebuild scene graph after resize or page reload
+      this.updateScene();
     }
     // Prepare Renderengine
     prepareEngine();
