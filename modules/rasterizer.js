@@ -225,7 +225,7 @@ export class Rasterizer {
         // to skip if ray doesn't intersect with it
         for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
         geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
-        geometryTextureArray[oldTexturePos * 12 + 9] = Array.isArray(item) ? -1 : item.transformNum;
+        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
         // console.log(item.transformNum);
       } else {
         // Item is dynamic and non-indexable.
@@ -305,7 +305,8 @@ export class Rasterizer {
     // Total frames calculated since last meassured
     let Frames = 0;
     // Internal GL objects
-    let Program, CameraPosition, MatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
+    let Program, CameraPosition, ViewMatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
+    // Uniform variables
     let UboBuffer, UboVariableOffsets;
     // Init Buffers
     let GeometryTex, SceneTex;
@@ -374,15 +375,18 @@ export class Rasterizer {
       }
     }
 
-    let texturesToGPU = () => {
+    let rasterizingPass = () => {
       let jitter = {x: 0, y: 0};
-      if (rt.#antialiasing !== null && (rt.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = rt.#AAObject.jitter(rt.#canvas);
+      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
       // Calculate projection matrix
-      let dir = {x: rt.camera.fx + jitter.x, y: rt.camera.fy + jitter.y};
-      let matrix = [ 
-        Math.cos(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,  0,                               Math.sin(dir.x) * rt.#canvas.height / rt.#canvas.width / rt.camera.fov,
-      - Math.sin(dir.x) * Math.sin(dir.y) / rt.camera.fov,                       Math.cos(dir.y) / rt.camera.fov,    Math.cos(dir.x) * Math.sin(dir.y) / rt.camera.fov,
-      - Math.sin(dir.x) * Math.cos(dir.y),                                     - Math.sin(dir.y),                    Math.cos(dir.x) * Math.cos(dir.y)
+      let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
+
+      let invFov = 1 / this.camera.fov;
+      let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
+      let viewMatrix = [
+        Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov,
+      - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov,
+      - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
       ];
 
       rt.#gl.bindVertexArray(Vao);
@@ -396,7 +400,7 @@ export class Rasterizer {
       // Set 3d camera position
       rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
       // Set projection matrix
-      rt.#gl.uniformMatrix3fv(MatrixLocation, true, matrix);
+      rt.#gl.uniformMatrix3fv(ViewMatrixLocation, true, viewMatrix);
       // Set global illumination
       rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
       // Set width of height and normal texture
@@ -417,18 +421,16 @@ export class Rasterizer {
       rt.#gl.uniform1i(LightTex, 5);
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
-      // console.log(UboVariableOffsets);
-      
+      // Get transformation matrices
       let UboBufferArray = Transform.buildUBOArray();
-      // console.log(UboBufferArray);
-      // Push some data to our Uniform Buffer
+      // Set matrices to buffer
       this.#gl.bufferSubData(
         this.#gl.UNIFORM_BUFFER,
         UboVariableOffsets[0],
         UboBufferArray,
         0
       );
-
+      // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
       this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
@@ -455,7 +457,7 @@ export class Rasterizer {
       }
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
-      texturesToGPU();
+      rasterizingPass();
       // fillBuffers();
       // Apply antialiasing shader if enabled
       if (this.#AAObject != null) this.#AAObject.renderFrame();
@@ -474,41 +476,27 @@ export class Rasterizer {
       this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
       CameraPosition = this.#gl.getUniformLocation(Program, 'cameraPosition');
-      MatrixLocation = this.#gl.getUniformLocation(Program, 'matrix');
       AmbientLocation = this.#gl.getUniformLocation(Program, 'ambient');
       GeometryTex = this.#gl.getUniformLocation(Program, 'geometryTex');
       SceneTex = this.#gl.getUniformLocation(Program, 'sceneTex');
       TextureWidth = this.#gl.getUniformLocation(Program, 'textureWidth');
       HdrLocation = this.#gl.getUniformLocation(Program, 'hdr');
-
-      let BlockIndex = this.#gl.getUniformBlockIndex(Program, "transformMatrix");
+      
+      ViewMatrixLocation = this.#gl.getUniformLocation(Program, 'viewMatrix');
+      let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       // Get the size of the Uniform Block in bytes
-      let BlockSize = this.#gl.getActiveUniformBlockParameter(
-        Program,
-        BlockIndex,
-        this.#gl.UNIFORM_BLOCK_DATA_SIZE
-      );
-
-      // Create Uniform Buffer to store our data
+      let BlockSize = this.#gl.getActiveUniformBlockParameter(Program, BlockIndex, this.#gl.UNIFORM_BLOCK_DATA_SIZE);
       UboBuffer = this.#gl.createBuffer();
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       this.#gl.bufferData(this.#gl.UNIFORM_BUFFER, BlockSize, this.#gl.DYNAMIC_DRAW);
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
-
-      let UboVariableNames = ['transform'];
-      // Get the respective index of the member variables inside our Uniform Block
-      let UboVariableIndices = this.#gl.getUniformIndices( Program, UboVariableNames);
-      // Get the offset of the member variables inside our Uniform Block in bytes
-      UboVariableOffsets = this.#gl.getActiveUniforms(
-        Program,
-        UboVariableIndices,
-        this.#gl.UNIFORM_OFFSET
-      );
+      
+      let UboVariableIndices = this.#gl.getUniformIndices( Program, ['transform']);
+      UboVariableOffsets = this.#gl.getActiveUniforms(Program, UboVariableIndices, this.#gl.UNIFORM_OFFSET);
 
       let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       this.#gl.uniformBlockBinding(Program, index, 0);
-
 
       LightTex = this.#gl.getUniformLocation(Program, 'lightTex');
       PbrTex = this.#gl.getUniformLocation(Program, 'pbrTex');

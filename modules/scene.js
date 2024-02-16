@@ -314,8 +314,10 @@ export class Scene {
 }
 
 export class Transform {
-  number = -1;
-  #matrix;
+  number = 0;
+  #rotationMatrix;
+  #position;
+  #scale = 1;
 
   static used = new Array(MAX_TRANSFORMS);
   static count = 0;
@@ -323,42 +325,60 @@ export class Transform {
 
   static buildUBOArray = () => {
     // Create UBO buffer array
-    let buffer = new Float32Array(16 * Transform.count);
+    let buffer = new Float32Array(32 * Transform.count);
     // Iterate over set elements
     for (let i = 0; i < Transform.count; i++) {
-      buffer.set(this.transformList[i].#matrix, i * 16);
+      let matrix = this.transformList[i].matrix;
+      buffer.set(new Float32Array(matrix.flat()), i * 32);
+      buffer.set(new Float32Array((Math.moorePenrose(matrix)).flat()), i * 32 + 16);
     }
     // console.log(Transform.count);
     return buffer;
   }
 
-  set matrix (matrix) {
-    this.#matrix = new Float32Array(matrix);
+  get matrix () {
+    let scaledRotation = Math.mul(this.#scale, this.#rotationMatrix);
+    return [
+      [scaledRotation[0][0],  scaledRotation[0][1],  scaledRotation[0][2],  0],
+      [scaledRotation[1][0],  scaledRotation[1][1],  scaledRotation[1][2],  0],
+      [scaledRotation[2][0],  scaledRotation[2][1],  scaledRotation[2][2],  0],
+      [this.#position[0],     this.#position[1],     this.#position[2],     1]
+    ];
   }
 
-  get matrix () {
-    return Array.from(this.#matrix);
+  get position () {
+    return this.#position;
   }
 
   move (x, y, z) {
-    this.#matrix[12] = x;
-    this.#matrix[13] = y;
-    this.#matrix[14] = z;
+    this.#position = [x, y, z];
+  }
+
+  rotate (normal, theta) {
+    let n = normal;
+    let sT = Math.sin(theta);
+    let cT = Math.cos(theta);
+    let currentRotation = [
+      [ n[0] * n[0] * (1 - cT) + cT,          n[0] * n[1] * (1 - cT) - n[2] * sT,   n[0] * n[2] * (1 - cT) + n[1] * sT  ],
+      [ n[0] * n[1] * (1 - cT) + n[2] * sT,   n[1] * n[1] * (1 - cT) + cT,          n[1] * n[2] * (1 - cT) - n[0] * sT  ],
+      [ n[0] * n[2] * (1 - cT) - n[1] * sT,   n[1] * n[2] * (1 - cT) + n[0] * sT,   n[2] * n[2] * (1- cT) + cT          ]  
+    ];
+    this.#rotationMatrix = Math.mul(this.#rotationMatrix, currentRotation);
   }
 
   scale (s) {
-    this.#matrix[0] = s;
-    this.#matrix[5] = s;
-    this.#matrix[10] = s;
+    this.#scale = s;
   }
 
-  constructor (matrix) {
-    if (Array.isArray(matrix)){
-      this.#matrix = new Float32Array(matrix);
-    } else {
-      this.#matrix = Math.identity(4).flat();
-      // Default to identity matrix
-    }
+  static classConstructor = (function() {
+    // Add one identity matrix transform at position 0 to default to.
+    new Transform();
+  })();
+
+  constructor () {
+    // Default to identity matrix
+    this.#rotationMatrix = Math.identity(3);
+    this.#position = [0, 0, 0];
     // Assign next larger available number
     for (let i = 0; i < MAX_TRANSFORMS; i++) {
       if (Transform.used[i]) continue;
@@ -379,6 +399,8 @@ export class Transform {
     Transform.count = Math.max(Transform.count, this.number + 1);
     // Set in transform list
     Transform.transformList[this.number] = this;
+
+    console.log(Transform.transformList);
   }
 }
 
@@ -417,7 +439,7 @@ export class Primitive {
   get normal () { return this.#normal };
 
   get transformNum () {
-    if (this.#transform === undefined) return - 1;
+    if (this.#transform === undefined) return 0;
     else return this.#transform.number;
   }
   get transform () { return this.#transform };

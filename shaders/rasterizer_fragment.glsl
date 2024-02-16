@@ -30,6 +30,7 @@ in vec3 clipSpace;
 
 flat in vec3 camera;
 flat in int fragmentTriangleId;
+flat in int transformationId;
 
 layout (std140) uniform transformMatrix {
     mat4 transform[65520];
@@ -50,14 +51,6 @@ uniform sampler2D tex;
 uniform sampler2D lightTex;
 
 layout(location = 0) out vec4 renderColor;
-
-const mat4 identityMatrix = mat4(
-    vec4(1.0f, 0.0f, 0.0f, 0.0f),
-    vec4(0.0f, 1.0f, 0.0f, 0.0f),
-    vec4(0.0f, 0.0f, 1.0f, 0.0f),
-    vec4(0.0f, 0.0f, 0.0f, 1.0f)
-);
-
 float invTextureWidth = 1.0f;
 
 
@@ -98,8 +91,6 @@ bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
 
 // Simplified rayTracer to only test if ray intersects anything
 bool shadowTest(Ray ray) {
-    // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 invRay = 1.0f / ray.unitDirection;
     // Precomput max length
     float minLen = length(ray.direction);
     // Get texture size as max iteration value
@@ -115,13 +106,10 @@ bool shadowTest(Ray ray) {
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
         vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
 
-        mat4 localTransform = identityMatrix;
         int transformationIndex = int(texelFetch(geometryTex, index + ivec2(3, 0), 0).x);
-        if (transformationIndex >= 0) {
-            localTransform = inverse(transform[transformationIndex]);
-        }
-        vec3 transformedDir = (localTransform * vec4(ray.unitDirection, 0.0)).xyz;
-        vec3 transformedOrigin = (localTransform * vec4(ray.origin, 1.0)).xyz;
+        mat4 localTransformInverse = transform[transformationIndex * 2 + 1];
+        vec3 transformedDir = (localTransformInverse * vec4(ray.unitDirection, 0.0)).xyz;
+        vec3 transformedOrigin = (localTransformInverse * vec4(ray.origin, 1.0)).xyz;
         // Three cases:
         // c is X 0 0        => is bounding volume: do AABB intersection test
         // c is 0 0 0        => end of list: stop loop
@@ -205,8 +193,9 @@ void main() {
         texelFetch(sceneTex, index + ivec2(1, 0), 0).xyz,
         texelFetch(sceneTex, index + ivec2(2, 0), 0).xyz
     );
-
-    vec3 smoothNormal = normals * vec3(uv, 1.0f - uv.x - uv.y);
+    // Transform normal with local transform
+    vec3 smoothNormal = normalize((transform[transformationId * 2] * vec4(normals * vec3(uv, 1.0f - uv.x - uv.y), 0.0)).xyz);
+    
     // Read UVs of vertices
     vec3 vUVs1 = texelFetch(sceneTex, index + ivec2(3, 0), 0).xyz;
     vec3 vUVs2 = texelFetch(sceneTex, index + ivec2(4, 0), 0).xyz;
@@ -218,8 +207,6 @@ void main() {
     vec3 tpo = texelFetch(sceneTex, index + ivec2(8, 0), 0).xyz;
     // Interpolate final barycentric coordinates
     vec2 barycentric = vertexUVs * vec3(uv, 1.0f - uv.x - uv.y);
-
-    // Alter normal and color according to texture and normal texture
     // Test if textures are even set otherwise use defaults.
     // Default texColor to color
     Material material = Material(
@@ -253,14 +240,11 @@ void main() {
         // Form light vector
         vec3 dir = light - position;
         Ray lightRay = Ray(dir, normalize(dir), position);
-
         vec3 localColor = forwardTrace(dir, smoothNormal, normalize(camera - position), material, strength);
         // Add emissive and ambient light
         localColor += material.rme.z + ambient * 0.25;
-
         // Compute quick exit criterion to potentially skip expensive shadow test
         bool quickExitCriterion = length(localColor) == 0.0f || dot(lightRay.unitDirection, smoothNormal) <= BIAS;
-
         // Update pixel color if coordinate is not in shadow
         if(!quickExitCriterion && !shadowTest(lightRay)) finalColor += localColor;
     }
