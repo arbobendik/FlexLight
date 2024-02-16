@@ -32,10 +32,12 @@ async function buildScene() {
 	// Start render engine.
 	engine.renderer.render();
 
+	let dragonTransform = engine.scene.Transform();
+	dragonTransform.move(15, 0, 15);
+	dragonTransform.scale(0.5);
 	var obj = await scene.importObj('objects/dragon_lp.obj');
-	obj.scale(0.5);
-	await obj.move(15, 0, 15);
-	// obj.textureNums = [-1, 1, 0];
+	//obj.scale(0.5);
+	obj.transform = dragonTransform;
 	obj.roughness = 0;
 	obj.metallicity = 1;
 	obj.translucency = 1;
@@ -58,6 +60,8 @@ async function buildScene() {
 	sphere.translucency = 1;
 	sphere.ior = 1.3;
 	scene.queue.push(sphere);
+
+	engine.renderer.updateScene();
 
 	/*
 	var sphere2 = await scene.importObj('objects/sphere.obj');

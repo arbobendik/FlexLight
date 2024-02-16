@@ -51,6 +51,12 @@ Object.assign(Math, {
     const length = Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0)));
     return a.map((e) => Math.stabilize(length) < Math.BIAS ? 0 : Math.stabilize(e / length));
   },
+  // Give identity matrix
+  identity: (dim) => {
+    let res =  new Array(dim).fill(0).map(item => new Array(dim).fill(0)); 
+    for (let i = 0; i < dim; i++) res[i][i] = 1;
+    return res;
+  },
   // Orthogonalization
   gramSchmidt: (A, dot = Math.dot) => {
     let B = [];

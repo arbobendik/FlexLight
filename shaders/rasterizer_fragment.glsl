@@ -31,6 +31,9 @@ in vec3 clipSpace;
 flat in vec3 camera;
 flat in int fragmentTriangleId;
 
+layout (std140) uniform transformMatrix {
+    mat4 transform[65520];
+};
 // Get global illumination color, intensity
 uniform vec3 ambient;
 // Textures in parallel for texture atlas
@@ -48,7 +51,15 @@ uniform sampler2D lightTex;
 
 layout(location = 0) out vec4 renderColor;
 
+const mat4 identityMatrix = mat4(
+    vec4(1.0f, 0.0f, 0.0f, 0.0f),
+    vec4(0.0f, 1.0f, 0.0f, 0.0f),
+    vec4(0.0f, 0.0f, 1.0f, 0.0f),
+    vec4(0.0f, 0.0f, 0.0f, 1.0f)
+);
+
 float invTextureWidth = 1.0f;
+
 
 // Lookup values for texture atlases
 vec3 lookup(sampler2D atlas, vec3 coords) {
@@ -98,20 +109,29 @@ bool shadowTest(Ray ray) {
     for(int i = 0; i < size; i++) {
         float fi = float(i);
         // Get position of current triangle/vertex in geometryTex
-        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 3.0f, fi * INV_TRIANGLES_PER_ROW);
+        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 4.0f, fi * INV_TRIANGLES_PER_ROW);
         // Fetch triangle coordinates from scene graph
         vec3 a = texelFetch(geometryTex, index, 0).xyz;
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
         vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
+
+        mat4 localTransform = identityMatrix;
+        int transformationIndex = int(texelFetch(geometryTex, index + ivec2(3, 0), 0).x);
+        if (transformationIndex >= 0) {
+            localTransform = inverse(transform[transformationIndex]);
+        }
+        vec3 transformedDir = (localTransform * vec4(ray.unitDirection, 0.0)).xyz;
+        vec3 transformedOrigin = (localTransform * vec4(ray.origin, 1.0)).xyz;
         // Three cases:
         // c is X 0 0        => is bounding volume: do AABB intersection test
         // c is 0 0 0        => end of list: stop loop
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
-        } else if(moellerTrumboreCull(minLen, ray, a, b, c)) {
-            return true;
+            if(!rayCuboid(minLen, 1.0 / transformedDir, transformedOrigin, a, b)) i += int(c.x);
+        } else {
+            Ray transformed = Ray(transformedDir, transformedDir, transformedOrigin);
+            if(moellerTrumboreCull(minLen, transformed, a, b, c)) return true;
         }
     }
     // Tested all triangles, but there is no intersection
