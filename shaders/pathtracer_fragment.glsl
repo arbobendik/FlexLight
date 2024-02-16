@@ -75,6 +75,13 @@ float originalRMEx = 0.0f;
 float originalTPOx = 0.0f;
 vec3 originalColor = vec3(1.0f);
 
+const mat4 identityMatrix = mat4(
+    vec4(1.0f, 0.0f, 0.0f, 0.0f),
+    vec4(0.0f, 1.0f, 0.0f, 0.0f),
+    vec4(0.0f, 0.0f, 1.0f, 0.0f),
+    vec4(0.0f, 0.0f, 0.0f, 1.0f)
+);
+
 float to4BitRepresentation(float a, float b) {
     uint aui = uint(a * 255.0f) & uint(240);
     uint bui = (uint(b * 255.0f) & uint(240)) >> 4;
@@ -158,7 +165,7 @@ bool raySphere(float l, Ray ray, vec3 c, float r2) {
     float d2 = dot(diff, diff) - cosa * cosa;
     if (d2 > r2) return false;
     float thc = sqrt(r2 - d2);
-    return true;//l > cosa + abs(thc);
+    return l > cosa - abs(thc);
 }
 
 bool rayCuboidS(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
@@ -186,7 +193,7 @@ mat2x4 rayTracer(Ray ray) {
     for(int i = 0; i < size; i++) {
         float fi = float(i);
         // Get position of current triangle/vertex in geometryTex
-        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 3.0f, fi * INV_TRIANGLES_PER_ROW);
+        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 4.0f, fi * INV_TRIANGLES_PER_ROW);
         // Fetch triangle coordinates from scene graph
         vec3 a = texelFetch(geometryTex, index, 0).xyz;
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
@@ -197,7 +204,7 @@ mat2x4 rayTracer(Ray ray) {
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboidS(minLen, invRay, ray.origin, a, b)) i += int(c.x);
+            if(!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
         } else {
             // Test if triangle intersects ray
             mat2x4 currentIntersection = moellerTrumbore(minLen, ray, a, b, c);
@@ -216,7 +223,7 @@ mat2x4 rayTracer(Ray ray) {
 // Simplified rayTracer to only test if ray intersects anything
 bool shadowTest(Ray ray) {
     // Precompute inverse of ray for AABB cuboid intersection test
-    vec3 invRay = 1.0 / ray.unitDirection;
+    vec3 invRay = 1.0f / ray.unitDirection;
     // Precomput max length
     float minLen = length(ray.direction);
     // Get texture size as max iteration value
@@ -226,18 +233,20 @@ bool shadowTest(Ray ray) {
     for (int i = 0; i < size; i++) {
         float fi = float(i);
         // Get position of current triangle/vertex in geometryTex
-        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 3.0, fi * INV_TRIANGLES_PER_ROW);
+        ivec2 index = ivec2(mod(fi, TRIANGLES_PER_ROW) * 4.0f, fi * INV_TRIANGLES_PER_ROW);
+        // ivec2 indexP1 = ivec2(mod(fiP1, TRIANGLES_PER_ROW) * 4.0f, fiP1 * INV_TRIANGLES_PER_ROW);
         // Fetch triangle coordinates from scene graph
         vec3 a = texelFetch(geometryTex, index, 0).xyz;
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
         vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
+        // vec3 d = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
         // Three cases:
         // c is X 0 0        => is bounding volume: do AABB intersection test
         // c is 0 0 0        => end of list: stop loop
         // otherwise         => is triangle: do triangle intersection test
         if (c.yz == vec2(0)) {
-        if (c.x == 0.0) break;
-        if (!rayCuboidS(minLen, invRay, ray.origin, a, b)) i += int(c.x);
+            if (c.x == 0.0f) break;
+            if (!rayCuboid(minLen, invRay, ray.origin, a, b)) i += int(c.x);
         } else if (moellerTrumboreCull(minLen, ray, a, b, c)) return true;
     }
     // Tested all triangles, but there is no intersection
@@ -298,12 +307,10 @@ vec3 forwardTrace(vec3 lightDir, vec3 N, vec3 V, Material material, float streng
 }
 
 
-vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 origin, vec3 V, Material material, bool dontFilter, int i) {
-
-
+vec3 reservoirSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 origin, vec3 V, Material material, bool dontFilter, int i) {
     vec3 localColor = vec3(0);
-    float reservoirLength = 0.0;
-    float totalWeight = 0.0;
+    float reservoirLength = 0.0f;
+    float totalWeight = 0.0f;
     int reservoirNum = 0;
     float reservoirWeight;
     vec3 reservoirLightDir;
@@ -386,9 +393,6 @@ vec3 lightTrace(vec3 origin, Ray firstRay, Material m, vec3 smoothNormal, vec3 g
         // Alter normal according to roughness value
         float roughnessBRDF = material.rme.x * BRDF;
         vec3 roughNormal = normalize(mix(smoothNormal, randomSpheareVec, roughnessBRDF));
-        // Invert roughNormal if it points under the surface.
-        // roughNormal = sign(dot(roughNormal, geometryNormal)) * roughNormal;
-
 
         vec3 H = normalize(V + roughNormal);
         float VdotH = max(dot(V, H), 0.0f);
@@ -411,27 +415,33 @@ vec3 lightTrace(vec3 origin, Ray firstRay, Material m, vec3 smoothNormal, vec3 g
 
         // Intersection of ray with triangle
         mat2x4 intersection;
+        float signDir = sign(dot(ray.unitDirection, smoothNormal));
+        // If ray reflects from inside or onto an transparent object,
+        // the surface faces in the opposite direction as usual
+        smoothNormal *= - signDir;
         // Handle translucency and skip rest of light calculation
         if(isSolid) {
             if(dontFilter && material.tpo.x > 0.5f) {
                 glassFilter += 1.0f;
                 dontFilter = false;
             }
-            // If ray reflects from inside an transparent object,
-            // the surface faces in the opposite direction as usual
-            smoothNormal *= -sign(dot(ray.unitDirection, smoothNormal));
-            
             // Calculate reflecting ray
-            ray.unitDirection = normalize(mix(reflect(ray.unitDirection, smoothNormal), randomSpheareVec, roughnessBRDF));
-            if(dot(ray.unitDirection, geometryNormal) <= BIAS) ray.unitDirection = normalize(ray.unitDirection + geometryNormal);
+            ray.unitDirection = normalize(mix(
+                reflect(ray.unitDirection, smoothNormal), 
+                randomSpheareVec, 
+                roughnessBRDF
+            ));
             // Determine local color considering PBR attributes and lighting
-            vec3 localColor = reservoirSample(lightTex, randomVec, roughNormal, smoothNormal, ray.origin, V, material, dontFilter, i);
+            vec3 localColor = reservoirSample(lightTex, randomVec, roughNormal, ray.origin, V, material, dontFilter, i);
             // Calculate primary light sources for this pass if ray hits non translucent object
             finalColor += localColor * importancyFactor;
         } else {
-            float signDir = sign(dot(ray.unitDirection, roughNormal));
             // Refract ray depending on IOR (material.tpo.z)
-            ray.unitDirection = normalize(ray.unitDirection + refract(ray.unitDirection, - signDir * roughNormal, mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f))));
+            ray.unitDirection = normalize(mix(
+                refract(ray.unitDirection, smoothNormal, mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f))),
+                randomSpheareVec,
+                roughnessBRDF
+            ));
         }
         // Calculate next intersection
         intersection = rayTracer(ray);
