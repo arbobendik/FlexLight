@@ -46,9 +46,11 @@ Object.assign(Math, {
   add: (a, b) => a.map((e, i) => e + b[i]),
   // Determines vector between 2 points
   diff: (a, b) => a.map((e, i) => e - b[i]),
+
+  length: (a) => Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0))),
   // Normalize vector
   normalize: (a) => {
-    const length = Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0)));
+    const length = Math.length(a);//Math.stabilize(Math.sqrt(a.reduce((p, c) => p + c ** 2, 0)));
     return a.map((e) => Math.stabilize(length) < Math.BIAS ? 0 : Math.stabilize(e / length));
   },
   // Give identity matrix

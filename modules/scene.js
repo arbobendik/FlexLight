@@ -354,7 +354,7 @@ export class Transform {
     this.#position = [x, y, z];
   }
 
-  rotate (normal, theta) {
+  rotateAxis (normal, theta) {
     let n = normal;
     let sT = Math.sin(theta);
     let cT = Math.cos(theta);
@@ -363,7 +363,28 @@ export class Transform {
       [ n[0] * n[1] * (1 - cT) + n[2] * sT,   n[1] * n[1] * (1 - cT) + cT,          n[1] * n[2] * (1 - cT) - n[0] * sT  ],
       [ n[0] * n[2] * (1 - cT) - n[1] * sT,   n[1] * n[2] * (1 - cT) + n[0] * sT,   n[2] * n[2] * (1- cT) + cT          ]  
     ];
-    this.#rotationMatrix = Math.mul(this.#rotationMatrix, currentRotation);
+    this.#rotationMatrix = currentRotation;
+  }
+
+  rotateSpherical (theta, psi) {
+    let sT = Math.sin(theta);
+    let cT = Math.cos(theta);
+    let sP = Math.sin(psi);
+    let cP = Math.cos(psi);
+    
+    /*
+    let viewMatrix = [
+      Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov,
+    - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov,
+    - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
+    ];
+    */
+    let currentRotation = [
+      [cT, 0, sT],
+      [-sT * sP, cP, cT * sP],
+      [-sT * cP, - sP, cT * cP]
+    ];
+    this.#rotationMatrix = currentRotation;
   }
 
   scale (s) {
@@ -399,8 +420,7 @@ export class Transform {
     Transform.count = Math.max(Transform.count, this.number + 1);
     // Set in transform list
     Transform.transformList[this.number] = this;
-
-    console.log(Transform.transformList);
+    // console.log(Transform.transformList);
   }
 }
 

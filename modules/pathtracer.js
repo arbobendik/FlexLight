@@ -33,7 +33,7 @@ export class PathTracer {
   firstPasses = 0;
   secondPasses = 0;
   temporal = true;
-  temporalSamples = 8;
+  temporalSamples = 4;
   filter = true;
   hdr = true;
   // Performance metric
@@ -72,8 +72,9 @@ export class PathTracer {
     this.camera = camera;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
+    this.gl = this.#gl;
 
-
+    this.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
     
     this.halt = () => {
       try {

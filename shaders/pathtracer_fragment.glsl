@@ -17,6 +17,12 @@ precision highp int;
 precision highp float;
 precision highp sampler2D;
 
+
+struct NormalizedRay {
+    vec3 unitDirection;
+    vec3 origin;
+};
+
 struct Ray {
     vec3 direction;
     vec3 unitDirection;
@@ -108,7 +114,7 @@ vec4 noise(vec2 n, float seed) {
     return fract(sin(dot(n.xy, vec2(12.9898f, 78.233f)) + vec4(53.0f, 59.0f, 61.0f, 67.0f) * (seed + randomSeed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
-mat3 moellerTrumbore(float l, Ray ray, vec3 a, vec3 b, vec3 c) {
+mat3 moellerTrumbore(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
     vec3 edge1 = b - a;
     vec3 edge2 = c - a;
     vec3 pvec = cross(ray.unitDirection, edge2);
@@ -134,7 +140,7 @@ mat3 moellerTrumbore(float l, Ray ray, vec3 a, vec3 b, vec3 c) {
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(float l, Ray ray, vec3 a, vec3 b, vec3 c) {
+bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
     vec3 edge1 = b - a;
     vec3 edge2 = c - a;
     vec3 pvec = cross(ray.unitDirection, edge2);
@@ -173,6 +179,11 @@ bool raySphere(float l, Ray ray, vec3 c, float r2) {
 // Test for closest ray triangle intersection
 // Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in geometryTex (rayTracer[1].w)
 mat3 rayTracer(Ray ray) {
+    // Cache transformed ray attributes
+    NormalizedRay tR = NormalizedRay(ray.unitDirection, ray.origin);
+    // Inverse of transformed normalized ray
+    vec3 invDir = 1.0 / ray.unitDirection;
+    int cachedTI = 0;
     // Latest intersection which is now closest to origin
     mat3 intersection = mat3(0, 0, 0, 0, 0, 0, 0, -1, 0);
     // Length to latest intersection
@@ -189,29 +200,33 @@ mat3 rayTracer(Ray ray) {
         vec3 a = texelFetch(geometryTex, index, 0).xyz;
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
         vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
-
-        int transformationIndex = int(texelFetch(geometryTex, index + ivec2(3, 0), 0).x);
-        vec3 transformedDir = (transform[transformationIndex * 2 + 1] * vec4(ray.unitDirection, 0.0)).xyz;
-        vec3 transformedOrigin = (transform[transformationIndex * 2 + 1] * vec4(ray.origin, 1.0)).xyz;
+        float fTI = texelFetch(geometryTex, index + ivec2(3, 0), 0).x;
+        int tI = int(fTI);
+        // Test if cached transformed variables are still valid
+        if (tI != cachedTI) {
+            mat4 iT = transform[tI * 2 + 1];
+            cachedTI = tI;
+            tR = NormalizedRay((iT * vec4(ray.unitDirection, 0.0)).xyz, (iT * vec4(ray.origin, 1.0)).xyz);
+            invDir = 1.0 / tR.unitDirection;
+        }
         // Three cases:
         // c is X 0 0        => is bounding volume: do AABB intersection test
         // c is 0 0 0        => end of list: stop loop
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, 1.0 / transformedDir, transformedOrigin, a, b)) i += int(c.x);
+            if(!rayCuboid(minLen, invDir, tR.origin, a, b)) i += int(c.x);
         } else {
-            Ray transformed = Ray(transformedDir, transformedDir, transformedOrigin);
             // Test if triangle intersects ray
-            mat3 currentIntersection = moellerTrumbore(minLen, transformed, a, b, c);
-            // Translate intersection point back to absolute space.
-            currentIntersection[0] = (transform[transformationIndex * 2] * vec4(currentIntersection[0], 1.0)).xyz;
+            mat3 currentIntersection = moellerTrumbore(minLen, tR, a, b, c);
             // Test if ray even intersects
             if(currentIntersection[2].x != 0.0f) {
+                // Translate intersection point back to absolute space.
+                currentIntersection[0] = (transform[tI * 2] * vec4(currentIntersection[0], 1.0)).xyz;
                 minLen = currentIntersection[2].x;
                 intersection = currentIntersection;
                 intersection[2].y = fi;
-                intersection[2].z = float(transformationIndex);
+                intersection[2].z = fTI;
             }
         }
     }
@@ -221,6 +236,11 @@ mat3 rayTracer(Ray ray) {
 
 // Simplified rayTracer to only test if ray intersects anything
 bool shadowTest(Ray ray) {
+    // Cache transformed ray attributes
+    NormalizedRay tR = NormalizedRay(ray.unitDirection, ray.origin);
+    // Inverse of transformed normalized ray
+    vec3 invDir = 1.0 / ray.unitDirection;
+    int cachedTI = 0;
     // Precomput max length
     float minLen = length(ray.direction);
     // Get texture size as max iteration value
@@ -235,20 +255,24 @@ bool shadowTest(Ray ray) {
         vec3 a = texelFetch(geometryTex, index, 0).xyz;
         vec3 b = texelFetch(geometryTex, index + ivec2(1, 0), 0).xyz;
         vec3 c = texelFetch(geometryTex, index + ivec2(2, 0), 0).xyz;
-        
-        int transformationIndex = int(texelFetch(geometryTex, index + ivec2(3, 0), 0).x);
-        vec3 transformedDir = (transform[transformationIndex * 2 + 1] * vec4(ray.unitDirection, 0.0)).xyz;
-        vec3 transformedOrigin = (transform[transformationIndex * 2 + 1] * vec4(ray.origin, 1.0)).xyz;
+        float fTI = texelFetch(geometryTex, index + ivec2(3, 0), 0).x;
+        int tI = int(fTI);
+        // Test if cached transformed variables are still valid
+        if (tI != cachedTI) {
+            mat4 iT = transform[tI * 2 + 1];
+            cachedTI = tI;
+            tR = NormalizedRay((iT * vec4(ray.unitDirection, 0.0)).xyz, (iT * vec4(ray.origin, 1.0)).xyz);
+            invDir = 1.0 / tR.unitDirection;
+        }
         // Three cases:
         // c is X 0 0        => is bounding volume: do AABB intersection test
         // c is 0 0 0        => end of list: stop loop
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, 1.0 / transformedDir, transformedOrigin, a, b)) i += int(c.x);
+            if(!rayCuboid(minLen, invDir, tR.origin, a, b)) i += int(c.x);
         } else {
-            Ray transformed = Ray(transformedDir, transformedDir, transformedOrigin);
-            if(moellerTrumboreCull(minLen, transformed, a, b, c)) return true;
+            if(moellerTrumboreCull(minLen, tR, a, b, c)) return true;
         }
     }
     // Tested all triangles, but there is no intersection
@@ -458,7 +482,7 @@ vec3 lightTrace(vec3 origin, Ray firstRay, Material m, vec3 smoothNormal, vec3 g
             texelFetch(sceneTex, index + ivec2(2, 0), 0).xyz
         );
 
-        smoothNormal = normals * intersection[1];
+        // smoothNormal = normals * intersection[1];
         smoothNormal = normalize((transform[int(intersection[2].z) * 2] * vec4(normals * intersection[1], 0.0)).xyz);
         geometryNormal = smoothNormal;
         // Read UVs of vertices
@@ -515,7 +539,6 @@ void main() {
     );
 
     mat4 localTransform = transform[transformationId * 2];
-    mat4 localInverseTransform = transform[transformationId * 2 + 1];
 
     vec3 absolutePosition = (localTransform * vec4(position, 1.0)).xyz;
     // Transform normal with local transform

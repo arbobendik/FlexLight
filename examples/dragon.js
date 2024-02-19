@@ -16,15 +16,16 @@ async function buildScene() {
 	let scene = engine.scene;
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [0, 3, 0];
-	[camera.fx, camera.fy] = [- Math.PI / 4, 0.1];
+	[camera.x, camera.y, camera.z] = [-10, 14, -10];
+	[camera.fx, camera.fy] = [- .9, .45];
 
 	scene.primaryLightSources = [[50, 70, 50]];
 	scene.primaryLightSources[0].intensity = 40000;
+	scene.primaryLightSources[0].variation = 5;
 	scene.ambientLight = [0.1, 0.1, 0.1];
 
 	// Generate plane.
-	let plane = scene.Plane([- 50, - 1, - 50], [50, - 1, - 50], [50, - 1, 50], [- 50, - 1, 50], [0, 1, 0]);
+	let plane = scene.Plane([- 500, - 1, - 500], [500, - 1, - 500], [500, - 1, 500], [- 500, - 1, 500], [0, 1, 0]);
 	plane.roughness = .8;
 	plane.metallicity = .7;
 	scene.queue.push(plane);
@@ -46,10 +47,15 @@ async function buildScene() {
 	// obj.staticPermanent = true;
 	scene.queue.push(obj);
 	
+	let monkeTransform = engine.scene.Transform();
+	monkeTransform.move(5, 1, 12);
+	monkeTransform.scale(2);
+
 	var monke = await scene.importObj('objects/monke_smooth.obj');
-	monke.scale(2);
-	await monke.move(5, 1, 12);
+	monke.transform = monkeTransform;
+	monke.roughness = .1;
 	monke.metallicity = 1;
+	monke.color = [255, 200, 100]
 	scene.queue.push(monke);
 
 	var sphere = await scene.importObj('objects/sphere.obj');
@@ -70,15 +76,31 @@ async function buildScene() {
 	scene.queue.push(sphere2);
 	*/
 
+	scene.generateBVH();
 	engine.renderer.updateScene();
 
 	let rotationAngle = 0;
 	setInterval(() => {
 		// dragonTransform.rotate([0, 0, 1], 0.0025);
 		///let pos = dragonTransform.position;
-		rotationAngle += 0.003;
+		rotationAngle += 0.002;
 		// dragonTransform.move(Math.sin(rotationAngle) * 20, 0, Math.cos(rotationAngle) * 20);
-		dragonTransform.rotate([0, 1, 0], 0.002);
+		// monkeTransform.move(Math.sin(rotationAngle) * 20, 1, Math.cos(rotationAngle) * 20);
+		dragonTransform.rotateSpherical(rotationAngle, 0);
+		
+		let diff = Math.diff([camera.x, camera.y, camera.z], monkeTransform.position);
+		let r = Math.length(diff);
+		let theta = Math.sign(diff[2]) * Math.acos(diff[0] / Math.sqrt(diff[0] * diff[0] + diff[2] * diff[2])) - Math.PI * 0.5;
+		let psi = Math.acos(diff[1] / r) - Math.PI * 0.5;
+		monkeTransform.rotateSpherical(theta, psi);
+		/*
+		diff = Math.diff([camera.x, camera.y, camera.z], dragonTransform.position);
+		r = Math.length(diff);
+		theta = Math.sign(diff[2]) * Math.acos(diff[0] / Math.sqrt(diff[0] * diff[0] + diff[2] * diff[2])) - Math.PI;
+		psi = Math.acos(diff[1] / r);
+		dragonTransform.rotateSpherical(theta, 0);
+		*/
+
 	}, 1000 / 330);
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
