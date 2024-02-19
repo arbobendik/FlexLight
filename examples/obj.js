@@ -24,7 +24,7 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [0, 3, 0];
+	[camera.x, camera.y, camera.z] = [0, 1, 0];
 	[camera.fx, camera.fy] = [- 2.38, 0.2];
 
 	// Generate plane.
@@ -52,14 +52,16 @@ async function buildScene() {
 	var mtl = await scene.importMtl(materialUrl);
 	var obj = await scene.importObj(modelUrl, mtl);
 	// obj.scale(5);
-	obj.move(20, 1, - 20);
-	obj.roughness = 0;
+	obj.move(5, 0, - 5);
+	obj.roughness = .1;
 	console.log(obj);
-	obj.metallicity = 1;
-	obj.translucency = 1;
-	obj.ior = 1.5;
-	obj.staticPermanent = true;
+	obj.metallicity = 0.1;
+	obj.translucency = 0.9;
+	obj.ior = 9.5;
+	obj.color = [255, 200, 90];
+	// obj.staticPermanent = true;
 	scene.queue.push(obj);
+	engine.renderer.updateScene();
 
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");

@@ -193,6 +193,9 @@ void main() {
         texelFetch(sceneTex, index + ivec2(1, 0), 0).xyz,
         texelFetch(sceneTex, index + ivec2(2, 0), 0).xyz
     );
+
+
+    vec3 absolutePosition = (transform[transformationId * 2] * vec4(position, 1.0)).xyz;
     // Transform normal with local transform
     vec3 smoothNormal = normalize((transform[transformationId * 2] * vec4(normals * vec3(uv, 1.0f - uv.x - uv.y), 0.0)).xyz);
     
@@ -238,9 +241,9 @@ void main() {
         if(strength <= 0.0f) continue;
 
         // Form light vector
-        vec3 dir = light - position;
-        Ray lightRay = Ray(dir, normalize(dir), position);
-        vec3 localColor = forwardTrace(dir, smoothNormal, normalize(camera - position), material, strength);
+        vec3 dir = light - absolutePosition;
+        Ray lightRay = Ray(dir, normalize(dir), absolutePosition);
+        vec3 localColor = forwardTrace(light - position, smoothNormal, normalize(camera - position), material, strength);
         // Add emissive and ambient light
         localColor += material.rme.z + ambient * 0.25;
         // Compute quick exit criterion to potentially skip expensive shadow test
