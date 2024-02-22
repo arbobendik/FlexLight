@@ -22,7 +22,7 @@ async function buildScene() {
 	scene.primaryLightSources = [[50, 70, 50]];
 	scene.primaryLightSources[0].intensity = 40000;
 	scene.primaryLightSources[0].variation = 5;
-	scene.ambientLight = [0.1, 0.1, 0.1];
+	scene.ambientLight = [0.05, 0.05, 0.05];
 
 	// Generate plane.
 	let plane = scene.Plane([- 500, - 1, - 500], [500, - 1, - 500], [500, - 1, 500], [- 500, - 1, 500], [0, 1, 0]);
@@ -64,7 +64,7 @@ async function buildScene() {
 	sphere.metallicity = 1;
 	sphere.roughness = 0;
 	sphere.translucency = 1;
-	sphere.ior = 1.3;
+	sphere.ior = 1.5;
 	scene.queue.push(sphere);
 
 	/*
@@ -83,10 +83,10 @@ async function buildScene() {
 	setInterval(() => {
 		// dragonTransform.rotate([0, 0, 1], 0.0025);
 		///let pos = dragonTransform.position;
-		rotationAngle += 0.002;
+		rotationAngle += 0.001;
 		// dragonTransform.move(Math.sin(rotationAngle) * 20, 0, Math.cos(rotationAngle) * 20);
 		// monkeTransform.move(Math.sin(rotationAngle) * 20, 1, Math.cos(rotationAngle) * 20);
-		dragonTransform.rotateSpherical(rotationAngle, 0);
+		// dragonTransform.rotateSpherical(rotationAngle, 0);
 		
 		let diff = Math.diff([camera.x, camera.y, camera.z], monkeTransform.position);
 		let r = Math.length(diff);

@@ -29,7 +29,7 @@ Object.assign(Math, {
       case 1: switch (dimB) {
         case 0: return a.map(e => Math.stabilize(e * b));
         case 1: return a.map((e, i) => Math.stabilize(e* b[i]));
-        case 2: return null;
+        case 2: return undefined;
       }
       case 2: switch (dimB) {
         case 0: return a.map((row) => row.map((e) => e * b));

@@ -170,127 +170,27 @@ export class Rasterizer {
   }
   
   async updateScene () {
-    // Track ids
-    let walkGraph = (item) => {
-      if (item.static) {
-        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
-        textureLength += item.textureLength;
-        this.#bufferLength += item.bufferLength;
-      } else if (Array.isArray(item) || item.indexable) {
-        // Item is dynamic and indexable, recursion continues
-        if (item.length === 0) return 0;
-        textureLength ++;
-        // Iterate over all sub elements
-        for (let i = 0; i < item.length; i++) walkGraph(item[i]);
-      } else {
-        // Give item new id property to identify vertex in fragment shader
-        textureLength += item.length;
-        this.#bufferLength += item.length;
-      }
-    }
-    
-    // Build simple AABB tree (Axis aligned bounding box)
-    let fillData = (item) => {
-      let minMax = [];
-      if (item.static) {
-        // Item is static and precaluculated values can just be used
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
-        // Update id buffer
-        for (let i = 0; i < item.bufferLength; i++) this.#triangleIdBufferArray[bufferPos + i] = texturePos + item.idBuffer[i];
-        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
-        texturePos += item.textureLength;
-        bufferPos += item.bufferLength;
-        minMax = item.minMax;
-      } else if (Array.isArray(item) || item.indexable) {
-        // Item is dynamic and indexable, recursion continues
-        if (item.length === 0) return [];
-        // Begin bounding volume array
-        let oldTexturePos = texturePos;
-        texturePos ++;
-        // Iterate over all sub elements
-        minMax = fillData (item[0]);
-        for (let i = 1; i < item.length; i++) {
-          // get updated bounding of lower element
-          let b = fillData(item[i]);
-          // update maximums and minimums
-          minMax[0] = Math.min(minMax[0], b[0]);
-          minMax[1] = Math.min(minMax[1], b[1]);
-          minMax[2] = Math.min(minMax[2], b[2]);
-          minMax[3] = Math.max(minMax[3], b[3]);
-          minMax[4] = Math.max(minMax[4], b[4]);
-          minMax[5] = Math.max(minMax[5], b[5]);
-        }
-        // Set now calculated vertices length of bounding box
-        // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
-        geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
-        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
-        // console.log(item.transformNum);
-      } else {
-        // Item is dynamic and non-indexable.
-        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
-        // Push texture positions of triangles into triangle id array
-        for (let i = 0; i < item.length; i ++) this.#triangleIdBufferArray[bufferPos ++] = texturePos ++;
-        // Declare bounding volume of object
-        let v = item.vertices;
-        minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
-        // get min and max values of veritces of object
-        for (let i = 3; i < v.length; i += 3) {
-          minMax[0] = Math.min(minMax[0], v[i]);
-          minMax[1] = Math.min(minMax[1], v[i + 1]);
-          minMax[2] = Math.min(minMax[2], v[i + 2]);
-          minMax[3] = Math.max(minMax[3], v[i]);
-          minMax[4] = Math.max(minMax[4], v[i + 1]);
-          minMax[5] = Math.max(minMax[5], v[i + 2]);
-        }
-      }
-      return minMax;
-    }
-
-    // Lengths that will be probed by the walkGraph method
-    let textureLength = 0;
-    this.#bufferLength = 0;
-
-    // Walk entire scene graph to receive array sizes and preallocate
-    walkGraph(this.scene.queue);
-    // Triangle id in texture
-    let texturePos = 0;
-    let bufferPos = 0;
-    // Preallocate arrays for scene graph as a texture
-    let geometryTexWidth = 4 * 3 * 256;
-    let sceneTexWidth = 9 * 3 * 256;
-    // Round up data to next higher multiple of (3 pixels * 3 values * 256 vertecies per line)
-    let geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / geometryTexWidth) * geometryTexWidth);
-    // Round up data to next higher multiple of (7 pixels * 3 values * 256 vertecies per line)
-    let sceneTextureArray = new Float32Array(Math.ceil(textureLength * 27 / sceneTexWidth) * sceneTexWidth);
-    // Create new id buffer array
-    this.#triangleIdBufferArray = new Int32Array(this.#bufferLength);
-    // Fill scene describing texture with data pixels
-    fillData(this.scene.queue);
-    // Calculate DataHeight by dividing value count through 2304 (3 pixels * 3 values * 256 vertecies per line)
-    var geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
+    // Generate texture arrays and buffers
+    let builtScene = await this.scene.generateArraysFromGraph();
+    // Set buffer parameters
+    this.#bufferLength = builtScene.bufferLength;
+    this.#triangleIdBufferArray = builtScene.idBuffer;
+    // Upload textures
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#geometryTexture);
     // Tell webgl to use 4 bytes per value for the 32 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, geometryTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 4 * 256, geometryTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(geometryTextureArray));
-
-    // Calculate DataHeight by dividing value count through (9 pixels * 3 values * 256 vertecies per line)
-    let sceneTextureArrayHeight = sceneTextureArray.length / sceneTexWidth;
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 3 * 256, builtScene.geometryTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.geometryTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA16F, 3 * 256, builtScene.geometryTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.HALF_FLOAT, new Float16Array(builtScene.geometryTextureArray));
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
     // Tell webgl to use 2 bytes per value for the 16 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
-    
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 9 * 256, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.FLOAT, sceneTextureArray);
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB16F, 1280, sceneTextureArrayHeight, 0, this.#gl.RGB, this.#gl.HALF_FLOAT, new Float16Array(sceneTextureArray));
-    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 1280, sceneDataHeight, 0, this.#gl.RGB, this.#gl.UNSIGNED_BYTE, new Uint8Array(sceneData));
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.sceneTextureArray);
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA16F, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.HALF_FLOAT, new Float16Array(builtScene.sceneTextureArray));
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(uiltScene.sceneTextureArray));
   }
 
   render() {
@@ -307,7 +207,7 @@ export class Rasterizer {
     // Internal GL objects
     let Program, CameraPosition, ViewMatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
     // Uniform variables
-    let UboBuffer, UboVariableOffsets;
+    let UboBuffer, UboVariableIndices, UboVariableOffsets;
     // Init Buffers
     let GeometryTex, SceneTex;
     // Framebuffer, other buffers and textures
@@ -421,15 +321,9 @@ export class Rasterizer {
       rt.#gl.uniform1i(LightTex, 5);
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
-      // Get transformation matrices
-      let UboBufferArray = Transform.buildUBOArray();
-      // Set matrices to buffer
-      this.#gl.bufferSubData(
-        this.#gl.UNIFORM_BUFFER,
-        UboVariableOffsets[0],
-        UboBufferArray,
-        0
-      );
+      // Get transformation matrices elements and set them in buffer
+      let buffers = Transform.buildUBOArrays();
+      buffers.forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
@@ -458,7 +352,6 @@ export class Rasterizer {
       // Clear depth and color buffers from last frame
       rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
       rasterizingPass();
-      // fillBuffers();
       // Apply antialiasing shader if enabled
       if (this.#AAObject != null) this.#AAObject.renderFrame();
     }
@@ -471,6 +364,12 @@ export class Rasterizer {
       // Compile shaders and link them into Program global
       let vertexShader = Network.fetchSync('shaders/rasterizer_vertex.glsl');
       let fragmentShader = Network.fetchSync('shaders/rasterizer_fragment.glsl');
+      // Calculate max possible transforms
+      const MAX_TRANSFORMS = Math.floor((Math.min(this.#gl.getParameter(this.#gl.MAX_VERTEX_UNIFORM_VECTORS), this.#gl.getParameter(this.#gl.MAX_FRAGMENT_UNIFORM_VECTORS)) - 16) * 0.25);
+      console.log('MAX_TRANSFORMS evaluated to', MAX_TRANSFORMS);
+      vertexShader = GLLib.addCompileTimeConstant(vertexShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
+      fragmentShader = GLLib.addCompileTimeConstant(fragmentShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
+
       Program = GLLib.compile (rt.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
       this.#gl.bindVertexArray(Vao);
@@ -483,17 +382,24 @@ export class Rasterizer {
       HdrLocation = this.#gl.getUniformLocation(Program, 'hdr');
       
       ViewMatrixLocation = this.#gl.getUniformLocation(Program, 'viewMatrix');
+
+      // Create UBO objects
       let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       // Get the size of the Uniform Block in bytes
       let BlockSize = this.#gl.getActiveUniformBlockParameter(Program, BlockIndex, this.#gl.UNIFORM_BLOCK_DATA_SIZE);
+      
       UboBuffer = this.#gl.createBuffer();
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       this.#gl.bufferData(this.#gl.UNIFORM_BUFFER, BlockSize, this.#gl.DYNAMIC_DRAW);
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
-      
-      let UboVariableIndices = this.#gl.getUniformIndices( Program, ['transform']);
-      UboVariableOffsets = this.#gl.getActiveUniforms(Program, UboVariableIndices, this.#gl.UNIFORM_OFFSET);
+
+      UboVariableIndices = this.#gl.getUniformIndices( Program, ['rotation', 'shift']);
+      UboVariableOffsets = this.#gl.getActiveUniforms(
+        Program,
+        UboVariableIndices,
+        this.#gl.UNIFORM_OFFSET
+      );
 
       let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       this.#gl.uniformBlockBinding(Program, index, 0);

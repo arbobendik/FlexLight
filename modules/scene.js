@@ -4,12 +4,13 @@ import { Math } from './math.js';
 import { Float16Array, Arrays } from './arrays.js';
 
 const MAX_TRANSFORMS = 65520;
+const BVH_MAX_LEAVES_PER_NODE = 4;
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
   defaultLightIntensity = 200;
   defaultLightVariation = 0.4;
-  ambientLight = [0.1, 0.1, 0.1];
+  ambientLight = [0.025, 0.025, 0.025];
   textures = [];
   pbrTextures = [];
   translucencyTextures = [];
@@ -69,7 +70,7 @@ export class Scene {
 
     let divideTree = (objs, depth = 0) => {
       // If there are only 4 or less objects in tree, there is no need to subdivide further
-      if (objs.length <= 4 || depth > maxTree) {
+      if (objs.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxTree) {
         polyCount += objs.length;
         // console.log("loaded", polyCount, "polygons so far.");
         return objs;
@@ -184,6 +185,134 @@ export class Scene {
     obj.bounding = minMax;
     // return current bounding box
     return minMax;
+  }
+
+  // Generate texture arrays
+  generateArraysFromGraph (obj = this.queue) {
+    // Elements of result object to return
+    let textureLength;
+    let bufferLength;
+
+    let geometryTexWidth;
+    let sceneTexWidth;
+    let geometryTextureArrayHeight;
+    let sceneTextureArrayHeight;
+    
+    let geometryTextureArray;
+    let sceneTextureArray;
+    let idBuffer;
+    
+    // Track ids
+    let walkGraph = (item) => {
+      if (item.static) {
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        textureLength += item.textureLength;
+        bufferLength += item.bufferLength;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return;
+        textureLength ++;
+        // Iterate over all sub elements
+        for (let i = 0; i < item.length; i++) walkGraph(item[i]);
+      } else {
+        // Give item new id property to identify vertex in fragment shader
+        textureLength += item.length;
+        bufferLength += item.length;
+      }
+    }
+    
+    // Build simple AABB tree (Axis aligned bounding box)
+    let fillData = (item) => {
+      if (item.static) {
+        // Item is static and precaluculated values can just be used
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 28);
+        // Update id buffer
+        for (let i = 0; i < item.bufferLength; i++) idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        texturePos += item.textureLength;
+        bufferPos += item.bufferLength;
+        return item.minMax;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return [];
+        // Begin bounding volume array
+        let oldTexturePos = texturePos;
+        texturePos ++;
+        // Iterate over all sub elements
+        let curMinMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // get updated bounding of lower element
+          let b = fillData(item[i]);
+          // update maximums and minimums
+          curMinMax[0] = Math.min(curMinMax[0], b[0]);
+          curMinMax[1] = Math.min(curMinMax[1], b[1]);
+          curMinMax[2] = Math.min(curMinMax[2], b[2]);
+          curMinMax[3] = Math.max(curMinMax[3], b[3]);
+          curMinMax[4] = Math.max(curMinMax[4], b[4]);
+          curMinMax[5] = Math.max(curMinMax[5], b[5]);
+        }
+        // Set now calculated vertices length of bounding box
+        // to skip if ray doesn't intersect with it
+        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = curMinMax[i];
+        geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
+        return curMinMax;
+      } else {
+        // Item is dynamic and non-indexable.
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
+        sceneTextureArray.set(item.sceneTextureArray, texturePos * 28);
+        // Push texture positions of triangles into triangle id array
+        for (let i = 0; i < item.length; i ++) idBuffer[bufferPos ++] = texturePos ++;
+        // Declare bounding volume of object
+        let v = item.vertices;
+        let curMinMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          curMinMax[0] = Math.min(curMinMax[0], v[i]);
+          curMinMax[1] = Math.min(curMinMax[1], v[i + 1]);
+          curMinMax[2] = Math.min(curMinMax[2], v[i + 2]);
+          curMinMax[3] = Math.max(curMinMax[3], v[i]);
+          curMinMax[4] = Math.max(curMinMax[4], v[i + 1]);
+          curMinMax[5] = Math.max(curMinMax[5], v[i + 2]);
+        }
+        return curMinMax;
+      }
+    }
+
+    // Lengths that will be probed by the walkGraph method
+    textureLength = 0;
+    bufferLength = 0;
+    // Walk entire scene graph of this object to receive array sizes and preallocate
+    walkGraph(obj);
+    // Triangle id in texture
+    let texturePos = 0;
+    let bufferPos = 0;
+    // Preallocate arrays for scene graph as a texture
+    // 3 pixels * 4 values * 256 vertecies per line
+    geometryTexWidth = 3 * 4 * 256;
+    // 7 pixels * 4 values * 256 vertecies per line
+    sceneTexWidth = 7 * 4 * 256;
+    // Round up data to next higher multiple of (3 pixels * 4 values * 256 vertecies per line)
+    geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / geometryTexWidth) * geometryTexWidth);
+    // Round up data to next higher multiple of (7 pixels * 4 values * 256 vertecies per line)
+    sceneTextureArray = new Float32Array(Math.ceil(textureLength * 28 / sceneTexWidth) * sceneTexWidth);
+    // Create new id buffer array
+    idBuffer = new Int32Array(bufferLength);
+    // Fill scene describing texture with data pixels
+    let minMax = fillData(obj);
+    // Calculate geometry-texture height by dividing array length through geometry-texture width
+    geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
+    // Calculate scene-texture height by dividing array length through scene-texture width
+    sceneTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
+    // Return filled arrays and variables
+    return { 
+      textureLength, bufferLength,
+      idBuffer, minMax,
+      geometryTextureArrayHeight, geometryTextureArray, 
+      sceneTextureArrayHeight, sceneTextureArray
+    };
   }
   
   // Pass some constructors
@@ -323,27 +452,33 @@ export class Transform {
   static count = 0;
   static transformList = new Array(MAX_TRANSFORMS);
 
-  static buildUBOArray = () => {
+  static buildUBOArrays = () => {
     // Create UBO buffer array
-    let buffer = new Float32Array(32 * Transform.count);
+    let rotationBuffer = new Float32Array(24 * Transform.count);
+    let shiftBuffer = new Float32Array(8 * Transform.count);
     // Iterate over set elements
     for (let i = 0; i < Transform.count; i++) {
       let matrix = this.transformList[i].matrix;
-      buffer.set(new Float32Array(matrix.flat()), i * 32);
-      buffer.set(new Float32Array((Math.moorePenrose(matrix)).flat()), i * 32 + 16);
+      let inverse = Math.moorePenrose(matrix);
+      let pos = this.transformList[i].position;
+      let invPos = Math.mul(- 1, this.transformList[i].position);
+      rotationBuffer.set(new Float32Array(matrix[0]), i * 24);
+      rotationBuffer.set(new Float32Array(matrix[1]), i * 24 + 4);
+      rotationBuffer.set(new Float32Array(matrix[2]), i * 24 + 8);
+      rotationBuffer.set(new Float32Array(inverse[0]), i * 24 + 12);
+      rotationBuffer.set(new Float32Array(inverse[1]), i * 24 + 16);
+      rotationBuffer.set(new Float32Array(inverse[2]), i * 24 + 20);
+      shiftBuffer.set(new Float32Array(pos), i * 8);
+      shiftBuffer.set(new Float32Array(invPos), i * 8 + 4);
     }
-    // console.log(Transform.count);
-    return buffer;
+
+    return [rotationBuffer, shiftBuffer];
   }
 
   get matrix () {
     let scaledRotation = Math.mul(this.#scale, this.#rotationMatrix);
-    return [
-      [scaledRotation[0][0],  scaledRotation[0][1],  scaledRotation[0][2],  0],
-      [scaledRotation[1][0],  scaledRotation[1][1],  scaledRotation[1][2],  0],
-      [scaledRotation[2][0],  scaledRotation[2][1],  scaledRotation[2][2],  0],
-      [this.#position[0],     this.#position[1],     this.#position[2],     1]
-    ];
+    // console.log(scaledRotation);
+    return scaledRotation;
   }
 
   get position () {
@@ -371,19 +506,13 @@ export class Transform {
     let cT = Math.cos(theta);
     let sP = Math.sin(psi);
     let cP = Math.cos(psi);
-    
-    /*
-    let viewMatrix = [
-      Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov,
-    - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov,
-    - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
-    ];
-    */
+
     let currentRotation = [
-      [cT, 0, sT],
-      [-sT * sP, cP, cT * sP],
+      [      cT,    0,      sT],
+      [-sT * sP,   cP, cT * sP],
       [-sT * cP, - sP, cT * cP]
     ];
+    
     this.#rotationMatrix = currentRotation;
   }
 
@@ -444,13 +573,13 @@ export class Primitive {
       let i12 = i * 12;
       this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
       this.geometryTextureArray[i12 + 9] = this.transformNum;
-      let i27 = i * 27;
-      this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i27);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i27 + 9);
-      this.sceneTextureArray.set(this.#textureNums, i27 + 15);
-      this.sceneTextureArray.set(this.#albedo, i27 + 18);
-      this.sceneTextureArray.set(this.#rme, i27 + 21);
-      this.sceneTextureArray.set(this.#tpo, i27 + 24);
+      let i28 = i * 28;
+      this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i28);
+      this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i28 + 9);
+      this.sceneTextureArray.set(this.#textureNums, i28 + 15);
+      this.sceneTextureArray.set(this.#albedo, i28 + 18);
+      this.sceneTextureArray.set(this.#rme, i28 + 21);
+      this.sceneTextureArray.set(this.#tpo, i28 + 24);
     }
   }
     
@@ -531,8 +660,8 @@ export class Primitive {
     this.#buildTextureArrays();
   }
 
-  set ior (i) {
-    this.#tpo[2] = 1.5;
+  set ior (o) {
+    this.#tpo[2] = o;
     this.#buildTextureArrays();
   }
 
@@ -551,7 +680,7 @@ export class Primitive {
     this.#uvs = new Float32Array(uvs);
     
     this.geometryTextureArray = new Float32Array(this.length * 12);
-    this.sceneTextureArray = new Float32Array(this.length * 27);
+    this.sceneTextureArray = new Float32Array(this.length * 28);
     this.#buildTextureArrays();
   }
 }
@@ -616,8 +745,8 @@ export class Object3D {
     for (let i = 0; i < this.length; i++) this[i].translucency = t;
   }
 
-  set ior (i) {
-    for (let i = 0; i < this.length; i++) this[i].ior = i;
+  set ior (o) {
+    for (let i = 0; i < this.length; i++) this[i].ior = o;
   }
   // move object by given vector
   move (x, y, z) {
@@ -652,97 +781,14 @@ export class Object3D {
 
   set static (isStatic) {
     if (isStatic) {
-      // Track ids
-      let walkGraph = (item) => {
-        if (item.static) {
-          // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
-          this.textureLength += item.textureLength;
-          this.bufferLength += item.bufferLength;
-        } else if (Array.isArray(item) || item.indexable) {
-          // Item is dynamic and indexable, recursion continues
-          if (item.length === 0) return 0;
-          this.textureLength ++;
-          // Iterate over all sub elements
-          for (let i = 0; i < item.length; i++) walkGraph(item[i]);
-        } else {
-          // Give item new id property to identify vertex in fragment shader
-          this.textureLength += item.length;
-          this.bufferLength += item.length;
-        }
-      }
-
-      // Build simple AABB tree (Axis aligned bounding box)
-      let fillData = (item) => {
-        let minMax = [];
-        if (item.static) {
-          // Item is static and precaluculated values can just be used
-          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
-          // Update id buffer
-          for (let i = 0; i < item.bufferLength; i++) this.idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
-          texturePos += item.textureLength;
-          bufferPos += item.bufferLength;
-
-          return item.minMax;
-        } else if (Array.isArray(item) || item.indexable) {
-          // Item is dynamic and indexable, recursion continues
-          if (item.length === 0) return [];
-          // Begin bounding volume array
-          let oldTexturePos = texturePos;
-          texturePos ++;
-          // Iterate over all sub elements
-          minMax = fillData (item[0]);
-          for (let i = 1; i < item.length; i++) {
-            // get updated bounding of lower element
-            let b = fillData(item[i]);
-            // update maximums and minimums
-            minMax[0] = Math.min(minMax[0], b[0]);
-            minMax[1] = Math.min(minMax[1], b[1]);
-            minMax[2] = Math.min(minMax[2], b[2]);
-            minMax[3] = Math.max(minMax[3], b[3]);
-            minMax[4] = Math.max(minMax[4], b[4]);
-            minMax[5] = Math.max(minMax[5], b[5]);
-          }
-          // Set now calculated vertices length of bounding box
-          // to skip if ray doesn't intersect with it
-          for (let i = 0; i < 6; i++) this.geometryTextureArray[oldTexturePos * 12 + i] = minMax[i];
-          this.geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
-          this.geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
-        } else {
-          // Item is dynamic and non-indexable.
-          // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-          this.geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-          this.sceneTextureArray.set(item.sceneTextureArray, texturePos * 27);
-          // Give item new id property to identify vertex in fragment shader
-          for (let i = 0; i < item.length; i ++) this.idBuffer[bufferPos ++] = texturePos ++;
-          // Declare bounding volume of object.
-          let v = item.vertices;
-          minMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
-          // get min and max values of veritces of object
-          for (let i = 3; i < v.length; i += 3) {
-            minMax[0] = Math.min(minMax[0], v[i]);
-            minMax[1] = Math.min(minMax[1], v[i + 1]);
-            minMax[2] = Math.min(minMax[2], v[i + 2]);
-            minMax[3] = Math.max(minMax[3], v[i]);
-            minMax[4] = Math.max(minMax[4], v[i + 1]);
-            minMax[5] = Math.max(minMax[5], v[i + 2]);
-          }
-        }
-        return minMax;
-      }
-      // Determine array lengths by walking the graph
-      this.textureLength = 0;
-      this.bufferLength = 0;
-      walkGraph(this);
-      // Create new texture and additional arrays
-      this.geometryTextureArray = new Float32Array(this.textureLength * 12);
-      this.sceneTextureArray = new Float32Array(this.textureLength * 27);
-      this.idBuffer = new Int32Array(this.bufferLength);
-
-      let texturePos = 0;
-      let bufferPos = 0;
-      // Set min and max x, y, z coordinates and start recursion
-      this.minMax = fillData(this);
+      // Get attributes by traversing graph
+      let attribs = generateArraysFromGraph(this);
+      this.textureLength = attribs.textureLength;
+      this.bufferLength = attribs.bufferLength;
+      this.idBuffer = attribs.idBuffer;
+      this.geometryTextureArray = attribs.geometryTextureArray;
+      this.sceneTextureArray = attribs.sceneTextureArray;
+      this.minMax = attribs.minMax;
       // Set static flag to true
       this.#static = true;
     } else {

@@ -10,8 +10,10 @@ precision highp sampler2D;
 in int triangleId;
 in int vertexId;
 
-layout (std140) uniform transformMatrix {
-    mat4 transform[65520];
+layout (std140) uniform transformMatrix
+{
+    mat3 rotation[MAX_TRANSFORMS];
+    vec3 shift[MAX_TRANSFORMS];
 };
 
 uniform vec3 cameraPosition;
@@ -37,14 +39,29 @@ const vec2 baseUVs[3] = vec2[3](
 void main() {
     // Calculate vertex position in texture
     int triangleColumn = triangleId >> TRIANGLES_PER_ROW_POWER;
-    ivec2 index = ivec2((triangleId - triangleColumn * TRIANGLES_PER_ROW) * 4, triangleColumn);
+    ivec2 index = ivec2((triangleId - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
 
-    // Read vertex position from texture
-    vec3 position3d = texelFetch(geometryTex, index + ivec2(vertexId, 0), 0).xyz;
-    transformationId = int(texelFetch(geometryTex, index + ivec2(3, 0), 0).x);
+    vec4 t0 = texelFetch(geometryTex, index, 0);
+    vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
+    vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
+    // Combine vertex position
+    vec3 position3d;
+    switch (vertexId) {
+        case 0:
+            position3d = t0.xyz;
+            break;
+        case 1:
+            position3d = vec3(t0.w, t1.xy);
+            break;
+        case 2:
+            position3d = vec3(t1.zw, t2.x);
+            break;
+    }
+    transformationId = int(t2.y);
     // Apply local geometry transform
-    vec4 localGeometry = transform[transformationId * 2] * vec4(position3d, 1.0);
-    vec3 move3d = localGeometry.xyz - cameraPosition;
+    int tI = transformationId << 1;
+    vec3 localGeometry = rotation[tI] * position3d + shift[tI];
+    vec3 move3d = localGeometry - cameraPosition;
     clipSpace = viewMatrix * move3d;
     // Set triangle position in clip space
     gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(move3d * INV_65536))), clipSpace.z);
