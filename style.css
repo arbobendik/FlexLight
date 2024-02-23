@@ -23,7 +23,8 @@ select {
 	background-color: #909090;
   font-size: inherit;
   font-weight: bolder;
-  padding: 1vh;
+  padding: .7vh;
+  margin: .3vh;
   border: 0 none;
   border-radius: 1vh;
 }

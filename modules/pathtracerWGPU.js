@@ -22,31 +22,21 @@ const PathtracingUniformFunctionTypes = [
   'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i'
 ];
 
-export class PathTracer {
+export class PathTracerWGPU {
   type = 'pathtracer';
   // Configurable runtime properties of the pathtracer (public attributes)
-  // Quality settings
-  samplesPerRay = 1;
-  renderQuality = 1;
-  maxReflections = 5;
-  minImportancy = 0.3;
-  firstPasses = 0;
-  secondPasses = 0;
-  temporal = true;
-  temporalSamples = 4;
-  filter = true;
-  hdr = true;
+  config;
   // Performance metric
   fps = 0;
   fpsLimit = Infinity;
-
-  #antialiasing = 'taa';
+  // Internal state of antialiasing
+  #antialiasing;
   #AAObject;
   // Make gl object inaccessible from outside the class
   #gl;
   #canvas;
 
-  #halt = false;
+  #halt = true;
 
   #geometryTexture;
   #sceneTexture;
@@ -67,14 +57,15 @@ export class PathTracer {
   // Shader source will be generated later
   #tempGlsl;
   // Create new PathTracer from canvas and setup movement
-  constructor (canvas, camera, scene) {
+  constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
     this.camera = camera;
     this.scene = scene;
+    this.config = config;
     this.#gl = canvas.getContext('webgl2');
     this.gl = this.#gl;
 
-    this.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
+    this.config.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
     
     this.halt = () => {
       try {
@@ -84,33 +75,11 @@ export class PathTracer {
       }
       this.#halt = true;
     }
-    this.#antialiasing = 'taa';
   }
   
   // Make canvas read only accessible
   get canvas () {
     return this.#canvas;
-  }
-
-  get antialiasing () {
-    if (this.#antialiasing === null) return 'none';
-    return this.#antialiasing;
-  }
-
-  set antialiasing (val) {
-    switch (val.toLowerCase()) {
-      case 'fxaa':
-        this.#antialiasing = val;
-        this.#AAObject = new FXAA(this.#gl);
-        break;
-      case 'taa':
-        this.#antialiasing = val;
-        this.#AAObject = new TAA(this.#gl);
-        break;
-      default:
-        this.#antialiasing = null;
-        this.#AAObject = null;
-    }
   }
 
   // Functions to update texture atlases to add more textures during runtime
@@ -221,10 +190,12 @@ export class PathTracer {
   }
 
   async render() {
-    // start rendering
-    let rt = this;
+    if (!this.#halt) {
+      console.warn('Renderer already up and running!');
+      return;
+    }
     // Allow frame rendering
-    rt.#halt = false;
+    this.#halt = false;
     // Internal GL objects
     let Program;
     let TempProgram, TempHdrLocation;
@@ -244,17 +215,17 @@ export class PathTracer {
     let OriginalRenderTexture = new Array(2);
     let IdRenderTexture = new Array(2);
 
-    let TempTexture = new Array(this.temporalSamples);
-    let TempIpTexture = new Array(this.temporalSamples);
-    let TempIdTexture = new Array(this.temporalSamples);
-    let TempOriginalIdTexture = new Array(this.temporalSamples);
+    let TempTexture = new Array(this.config.temporalSamples);
+    let TempIpTexture = new Array(this.config.temporalSamples);
+    let TempIdTexture = new Array(this.config.temporalSamples);
+    let TempOriginalIdTexture = new Array(this.config.temporalSamples);
     
-    let TempTex = new Array(this.temporalSamples);
-    let TempIpTex = new Array(this.temporalSamples);
-    let TempIdTex = new Array(this.temporalSamples);
-    let TempOriginalIdTex = new Array(this.temporalSamples);
+    let TempTex = new Array(this.config.temporalSamples);
+    let TempIpTex = new Array(this.config.temporalSamples);
+    let TempIdTex = new Array(this.config.temporalSamples);
+    let TempOriginalIdTex = new Array(this.config.temporalSamples);
 
-    for (let i = 0; i < this.temporalSamples; i++) {
+    for (let i = 0; i < this.config.temporalSamples; i++) {
       TempTexture[i] = this.#gl.createTexture();
       TempIpTexture[i] = this.#gl.createTexture();
       TempIdTexture[i] = this.#gl.createTexture();
@@ -283,60 +254,63 @@ export class PathTracer {
     let TempVao = this.#gl.createVertexArray();
 		// Generate enough Vaos for each denoise pass
     let PostVao = new Array(5).map(() => this.#gl.createVertexArray());
-    // Function to handle canvas resize
-    let resize = () => {
-			const canvas = rt.canvas;
-    	canvas.width = canvas.clientWidth * rt.renderQuality;
-    	canvas.height = canvas.clientHeight * rt.renderQuality;
-    	rt.#gl.viewport(0, 0, canvas.width, canvas.height);
-      // Rebuild textures with every resize
-      renderTextureBuilder();
-      if (rt.#AAObject != null) this.#AAObject.buildTexture();
-
-      rt.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
-      rt.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
-    }
-    // Init canvas parameters and textures with resize
-    resize();
-    // Handle canvas resize
-    window.addEventListener('resize', resize);
 
     // Internal render engine Functions
     let frameCycle = engineState => {
+      if (this.#halt) return;
       let timeStamp = performance.now();
       // Update Textures
-      rt.#updateTextureAtlas();
-      rt.#updatePbrAtlas();
-      rt.#updateTranslucencyAtlas();
+      this.#updateTextureAtlas();
+      this.#updatePbrAtlas();
+      this.#updateTranslucencyAtlas();
       // build bounding boxes for scene first
-      rt.updatePrimaryLightSources();
+      this.updatePrimaryLightSources();
       // Check if recompile is required
-      if (engineState.filter !== rt.filter || engineState.renderQuality !== rt.renderQuality) {
+      if (engineState.filter !== this.config.filter || engineState.renderQuality !== this.config.renderQuality) {
         resize();
         engineState = prepareEngine();
+      }
+      // Swap antialiasing programm if needed
+      if (engineState.antialiasing !== this.config.antialiasing) {
+        engineState.antialiasing = this.config.antialiasing;
+        // Use internal antialiasing variable for actual state of antialiasing.
+        let val = this.config.antialiasing.toLowerCase();
+        switch (val) {
+          case 'fxaa':
+            this.#antialiasing = val
+            this.#AAObject = new FXAA(this.#gl);
+            break;
+          case 'taa':
+            this.#antialiasing = val
+            this.#AAObject = new TAA(this.#gl);
+            break;
+          default:
+            this.#antialiasing = undefined
+            this.#AAObject = undefined;
+        }
       }
       // Render new Image, work through queue
       renderFrame(engineState);
       // Update frame counter
       engineState.intermediateFrames ++;
-      engineState.temporalFrame = (engineState.temporalFrame + 1) % this.temporalSamples;
+      engineState.temporalFrame = (engineState.temporalFrame + 1) % this.config.temporalSamples;
       // Calculate Fps
 			let timeDifference = timeStamp - engineState.lastTimeStamp;
       if (timeDifference > 500) {
-        rt.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
+        this.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
         engineState.lastTimeStamp = timeStamp;
         engineState.intermediateFrames = 0;
       }
       // Request browser to render frame with hardware acceleration
-      if (!rt.#halt) setTimeout(function () {
+      setTimeout(function () {
         requestAnimationFrame(() => frameCycle(engineState))
-      }, 1000 / rt.fpsLimit);
+      }, 1000 / this.fpsLimit);
     }
 
     let pathtracingPass = engineState => {
 
       let jitter = {x: 0, y: 0};
-      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
+      if (this.#antialiasing !== undefined && (this.#antialiasing === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
       // Calculate projection matrix
       let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
 
@@ -352,8 +326,8 @@ export class PathTracer {
       this.#gl.useProgram(Program);
 
       [this.#geometryTexture, this.#sceneTexture, this.#pbrAtlas, this.#translucencyAtlas, this.#textureAtlas, this.#lightTexture].forEach((texture, i) => {
-        this.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-        this.#gl.bindTexture(rt.#gl.TEXTURE_2D, texture);
+        this.#gl.activeTexture(this.#gl.TEXTURE0 + i);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, texture);
       });
       // Set uniforms for shaders
       // console.log(engineState.intermediateFrames);
@@ -363,19 +337,19 @@ export class PathTracer {
         // View rotation and TAA jitter
         [true, viewMatrix],
         // amount of samples per ray
-        [this.samplesPerRay],
+        [this.config.samplesPerRay],
         // max reflections of ray
-        [this.maxReflections],
+        [this.config.maxReflections],
         // min importancy of light ray
-        [this.minImportancy],
+        [this.config.minImportancy],
         // render for filter or not
-        [this.filter],
+        [this.config.filter],
         // render for temporal or not
-        [this.temporal],
+        [this.config.temporal],
         // ambient background color
         [this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2]],
         // random seed for monte carlo pathtracing
-        [this.temporal ? engineState.temporalFrame : 0],
+        [this.config.temporal ? engineState.temporalFrame : 0],
         // width of textures
         [Math.floor(2048 / this.scene.standardTextureSizes[0])],
         // whole triangle based geometry scene graph, triangle attributes for scene graph
@@ -395,213 +369,193 @@ export class PathTracer {
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, rt.#triangleIdBufferArray, rt.#gl.DYNAMIC_DRAW);
-      // console.log(rt.#triangleIdBufferArray);
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, this.#triangleIdBufferArray, this.#gl.DYNAMIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), this.#gl.STATIC_DRAW);
       // Actual drawcall
-      rt.#gl.drawArraysInstanced(rt.#gl.TRIANGLES, 0, 3, rt.#bufferLength);
+      this.#gl.drawArraysInstanced(this.#gl.TRIANGLES, 0, 3, this.#bufferLength);
     }
 
     let renderFrame = engineState => {
       // Configure where the final image should go
-      if (rt.temporal || rt.filter || rt.#antialiasing) {
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
-        rt.#gl.drawBuffers([
-          rt.#gl.COLOR_ATTACHMENT0,
-          rt.#gl.COLOR_ATTACHMENT1,
-          rt.#gl.COLOR_ATTACHMENT2,
-          rt.#gl.COLOR_ATTACHMENT3,
-          rt.#gl.COLOR_ATTACHMENT4,
-          rt.#gl.COLOR_ATTACHMENT5
+      if (this.config.temporal || this.config.filter || this.#antialiasing) {
+        this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, Framebuffer);
+        this.#gl.drawBuffers([
+          this.#gl.COLOR_ATTACHMENT0,
+          this.#gl.COLOR_ATTACHMENT1,
+          this.#gl.COLOR_ATTACHMENT2,
+          this.#gl.COLOR_ATTACHMENT3,
+          this.#gl.COLOR_ATTACHMENT4,
+          this.#gl.COLOR_ATTACHMENT5
         ]);
   
         // Configure framebuffer for color and depth
-        if (rt.temporal) {
+        if (this.config.temporal) {
           // Rotate textures for temporal filter
           TempTexture.unshift(TempTexture.pop());
           TempIpTexture.unshift(TempIpTexture.pop());
           TempIdTexture.unshift(TempIdTexture.pop());
           TempOriginalIdTexture.unshift(TempOriginalIdTexture.pop());
 
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, TempTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, TempIpTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, TempOriginalIdTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT5, rt.#gl.TEXTURE_2D, TempIdTexture[0], 0);
-
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, TempTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT1, this.#gl.TEXTURE_2D, TempIpTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT2, this.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT3, this.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT4, this.#gl.TEXTURE_2D, TempOriginalIdTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT5, this.#gl.TEXTURE_2D, TempIdTexture[0], 0);
           OriginalIdRenderTexture = TempOriginalIdTexture[0];
-        } else if (rt.filter) {
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT3, rt.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT4, rt.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
-        } else if (rt.#antialiasing) {
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        } else if (this.config.filter) {
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, RenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT1, this.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT2, this.#gl.TEXTURE_2D, OriginalRenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT3, this.#gl.TEXTURE_2D, IdRenderTexture[0], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT4, this.#gl.TEXTURE_2D, OriginalIdRenderTexture, 0);
+        } else if (this.#antialiasing) {
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
         }
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[0], 0);
+        this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.DEPTH_ATTACHMENT, this.#gl.TEXTURE_2D, DepthTexture[0], 0);
       }
 
       // Clear depth and color buffers from last frame
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+      this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
       pathtracingPass(engineState);
 
-      if (rt.temporal) {
-        if (rt.filter || rt.#antialiasing) {
+      if (this.config.temporal) {
+        if (this.config.filter || this.#antialiasing) {
             // Temporal sample averaging
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, TempFramebuffer);
+          this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, TempFramebuffer);
           // Set attachments to use for framebuffer
-          rt.#gl.drawBuffers([
-            rt.#gl.COLOR_ATTACHMENT0,
-            rt.#gl.COLOR_ATTACHMENT1
+          this.#gl.drawBuffers([
+            this.#gl.COLOR_ATTACHMENT0,
+            this.#gl.COLOR_ATTACHMENT1
           ]);
 
           // Configure framebuffer for color and depth
-          if (rt.filter) {
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[0], 0);
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
-          } else if (rt.#antialiasing) {
-            rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+          if (this.config.filter) {
+            this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, RenderTexture[0], 0);
+            this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT1, this.#gl.TEXTURE_2D, IpRenderTexture[0], 0);
+          } else if (this.#antialiasing) {
+            this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
           }
         } else {
           // Render to canvas now
           this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
         }
 
-        [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture].flat().forEach(function(item, i){
-          rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+        [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture].flat().forEach((item, i) => {
+          this.#gl.activeTexture(this.#gl.TEXTURE0 + i);
+          this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
         });
 
-        rt.#gl.bindVertexArray(TempVao);
-        rt.#gl.useProgram(TempProgram);
+        this.#gl.bindVertexArray(TempVao);
+        this.#gl.useProgram(TempProgram);
 
-        rt.#gl.uniform1i(TempHdrLocation, rt.hdr);
+        this.#gl.uniform1i(TempHdrLocation, this.config.hdr);
 
-        for (let i = 0; i < rt.temporalSamples; i++) {
-          rt.#gl.uniform1i(TempTex[i], i);
-          rt.#gl.uniform1i(TempIpTex[i], rt.temporalSamples + i);
-          rt.#gl.uniform1i(TempIdTex[i], 2 * rt.temporalSamples + i);
-          rt.#gl.uniform1i(TempOriginalIdTex[i], 3 * rt.temporalSamples + i);
+        for (let i = 0; i < this.config.temporalSamples; i++) {
+          this.#gl.uniform1i(TempTex[i], i);
+          this.#gl.uniform1i(TempIpTex[i], this.config.temporalSamples + i);
+          this.#gl.uniform1i(TempIdTex[i], 2 * this.config.temporalSamples + i);
+          this.#gl.uniform1i(TempOriginalIdTex[i], 3 * this.config.temporalSamples + i);
         }
         
         // PostTemporal averaging processing drawcall
-        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+        this.#gl.drawArrays(this.#gl.TRIANGLES, 0, 6);
       }
 
-      if (rt.filter) {
+      if (this.config.filter) {
         // Apply post processing filter
         let n = 0;
         let nId = 0;
         let nOriginal = 0;
-        for (let i = 0; i < rt.firstPasses + rt.secondPasses; i++) {
+        for (let i = 0; i < this.config.firstPasses + this.config.secondPasses; i++) {
           // Look for next free compatible program slot
           let np = (i % 2) ^ 1;
-          let npOriginal = ((i - rt.firstPasses) % 2) ^ 1;
-          if (rt.firstPasses <= i) np += 2;
+          let npOriginal = ((i - this.config.firstPasses) % 2) ^ 1;
+          if (this.config.firstPasses <= i) np += 2;
           // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[n]);
+          this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, PostFramebuffer[n]);
           // Set attachments to use for framebuffer
-          rt.#gl.drawBuffers([
-            rt.#gl.COLOR_ATTACHMENT0,
-            rt.#gl.COLOR_ATTACHMENT1,
-            rt.#gl.COLOR_ATTACHMENT2
+          this.#gl.drawBuffers([
+            this.#gl.COLOR_ATTACHMENT0,
+            this.#gl.COLOR_ATTACHMENT1,
+            this.#gl.COLOR_ATTACHMENT2
           ]);
           // Configure framebuffer for color and depth
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, RenderTexture[np], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT1, rt.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
-          if (rt.firstPasses <= i - 2) rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
-          else rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT2, rt.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture[np], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, RenderTexture[np], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT1, this.#gl.TEXTURE_2D, IpRenderTexture[np], 0);
+          if (this.config.firstPasses <= i - 2) this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT2, this.#gl.TEXTURE_2D, OriginalRenderTexture[npOriginal], 0);
+          else this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT2, this.#gl.TEXTURE_2D, IdRenderTexture[np], 0);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.DEPTH_ATTACHMENT, this.#gl.TEXTURE_2D, DepthTexture[np], 0);
           // Clear depth and color buffers from last frame
-          rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+          this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
           // Push pre rendered textures to next shader (post processing)
-          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach(function(item, i){
-            rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-            rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+          [RenderTexture[n], IpRenderTexture[n], OriginalRenderTexture[nOriginal], IdRenderTexture[nId], OriginalIdRenderTexture].forEach((item, i) => {
+            this.#gl.activeTexture(this.#gl.TEXTURE0 + i);
+            this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
           });
           // Switch program and Vao
-          rt.#gl.useProgram(PostProgram[n]);
-          rt.#gl.bindVertexArray(PostVao[n]);
+          this.#gl.useProgram(PostProgram[n]);
+          this.#gl.bindVertexArray(PostVao[n]);
           // Pass pre rendered texture to shader
-          rt.#gl.uniform1i(RenderTex[n], 0);
-          rt.#gl.uniform1i(IpRenderTex[n], 1);
+          this.#gl.uniform1i(RenderTex[n], 0);
+          this.#gl.uniform1i(IpRenderTex[n], 1);
           // Pass original color texture to GPU
-          rt.#gl.uniform1i(OriginalRenderTex[n], 2);
+          this.#gl.uniform1i(OriginalRenderTex[n], 2);
           // Pass vertex_id texture to GPU
-          rt.#gl.uniform1i(IdRenderTex[n], 3);
+          this.#gl.uniform1i(IdRenderTex[n], 3);
           // Pass vertex_id of original vertex as a texture to GPU
-          rt.#gl.uniform1i(OriginalIdRenderTex[n], 4);
+          this.#gl.uniform1i(OriginalIdRenderTex[n], 4);
           // Post processing drawcall
-          rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+          this.#gl.drawArrays(this.#gl.TRIANGLES, 0, 6);
           // Save current program slot in n for next pass
           n = np;
 
-          if (rt.firstPasses <= i) nOriginal = npOriginal;
+          if (this.config.firstPasses <= i) nOriginal = npOriginal;
           else nId = np;
         }
 
         // Last denoise pass
-        rt.#gl.drawBuffers([rt.#gl.COLOR_ATTACHMENT0, rt.#gl.COLOR_ATTACHMENT1]);
+        this.#gl.drawBuffers([this.#gl.COLOR_ATTACHMENT0, this.#gl.COLOR_ATTACHMENT1]);
         // Configure framebuffer for color and depth
-        if (rt.#antialiasing) {
+        if (this.#antialiasing) {
           // Configure where the final image should go
-          rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, PostFramebuffer[4]);
-          rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+          this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, PostFramebuffer[4]);
+          this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
         } else {
           // Render to canvas now
           this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
         }
 
-        let index = 2 + (rt.firstPasses + rt.secondPasses) % 2;
-        let indexId = rt.firstPasses % 2;
-        let indexOriginal = rt.secondPasses % 2;
+        let index = 2 + (this.config.firstPasses + this.config.secondPasses) % 2;
+        let indexId = this.config.firstPasses % 2;
+        let indexOriginal = this.config.secondPasses % 2;
         // Push pre rendered textures to next shader (post processing)
-        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach(function(item, i){
-          rt.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
+        [RenderTexture[index], IpRenderTexture[index], OriginalRenderTexture[indexOriginal], IdRenderTexture[indexId], OriginalIdRenderTexture].forEach((item, i) => {
+          this.#gl.activeTexture(this.#gl.TEXTURE0 + i);
+          this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
         });
         // Switch program and VAO
-        rt.#gl.useProgram(PostProgram[4]);
-        rt.#gl.bindVertexArray(PostVao[4]);
+        this.#gl.useProgram(PostProgram[4]);
+        this.#gl.bindVertexArray(PostVao[4]);
         // Pass pre rendered texture to shader
-        rt.#gl.uniform1i(RenderTex[4], 0);
-        rt.#gl.uniform1i(IpRenderTex[4], 1);
+        this.#gl.uniform1i(RenderTex[4], 0);
+        this.#gl.uniform1i(IpRenderTex[4], 1);
         // Pass original color texture to GPU
-        rt.#gl.uniform1i(OriginalRenderTex[4], 2);
+        this.#gl.uniform1i(OriginalRenderTex[4], 2);
         // Pass vertex_id texture to GPU
-        rt.#gl.uniform1i(IdRenderTex[4], 3);
+        this.#gl.uniform1i(IdRenderTex[4], 3);
         // Pass vertex_id of original vertex as a texture to GPU
-        rt.#gl.uniform1i(OriginalIdRenderTex[4], 4);
+        this.#gl.uniform1i(OriginalIdRenderTex[4], 4);
         // Pass hdr variable to last post processing shader
-        rt.#gl.uniform1i(HdrLocation, rt.hdr);
+        this.#gl.uniform1i(HdrLocation, this.config.hdr);
         // Post processing drawcall
-        rt.#gl.drawArrays(rt.#gl.TRIANGLES, 0, 6);
+        this.#gl.drawArrays(this.#gl.TRIANGLES, 0, 6);
       }
 
       // Apply antialiasing shader if enabled
-      if (rt.#antialiasing) this.#AAObject.renderFrame();
-    }
-
-
-    function renderTextureBuilder () {
-      // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach((parent) => {
-        parent.forEach(function(item){
-          rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-          rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.RGBA, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.RGBA, rt.#gl.UNSIGNED_BYTE, null);
-          GLLib.setTexParams(rt.#gl);
-        });
-      });
-      // Init single channel depth textures
-      DepthTexture.forEach((item) => {
-        rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, item);
-        rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.#gl.canvas.width, rt.#gl.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
-        GLLib.setTexParams(rt.#gl);
-      });
+      if (this.#antialiasing) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
@@ -612,8 +566,8 @@ export class PathTracer {
         // Count frames to match with temporal accumulation
         temporalFrame: 0,
         // Parameters to compare against current state of the engine and recompile shaders on change
-        filter: rt.filter,
-        renderQuality: rt.renderQuality
+        filter: this.config.filter,
+        renderQuality: this.config.renderQuality
       };
 
       let newLine = `
@@ -625,14 +579,14 @@ export class PathTracer {
       uniform int hdr;
       `;
 
-      for (let i = 0; i < rt.temporalSamples; i++) {
+      for (let i = 0; i < this.config.temporalSamples; i++) {
         this.#tempGlsl += 'uniform sampler2D cache' + i + ';' + newLine;
         this.#tempGlsl += 'uniform sampler2D cacheIp' + i + ';' + newLine;
         this.#tempGlsl += 'uniform sampler2D cacheId' + i + ';' + newLine;
         this.#tempGlsl += 'uniform sampler2D cacheOriginalId' + i + ';' + newLine;
       }
 
-      if (rt.filter) {
+      if (this.config.filter) {
         this.#tempGlsl += `
         layout(location = 0) out vec4 renderColor;
         layout(location = 1) out vec4 renderColorIp;
@@ -655,22 +609,22 @@ export class PathTracer {
         float glassFilter = texelFetch(cacheIp0, texel, 0).w;
       `;
 
-      for (let i = 1; i < rt.temporalSamples; i += 4) {
+      for (let i = 1; i < this.config.temporalSamples; i += 4) {
         this.#tempGlsl += 'mat4 c' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cache' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cache' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < this.config.temporalSamples ? 'texelFetch(cache' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < this.config.temporalSamples ? 'texelFetch(cache' + (i + 3) + ', texel, 0) ' + newLine + ' ); ' : 'vec4(0) ' + newLine + '); ') + newLine;
 
         this.#tempGlsl += 'mat4 ip' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < this.config.temporalSamples ? 'texelFetch(cacheIp' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < this.config.temporalSamples ? 'texelFetch(cacheIp' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
 
         this.#tempGlsl += 'mat4 id' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < this.config.temporalSamples ? 'texelFetch(cacheId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < this.config.temporalSamples ? 'texelFetch(cacheId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
 
         this.#tempGlsl += 'mat4 originalId' + i + ' = mat4(';
-        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < rt.temporalSamples ? 'texelFetch(cacheOriginalId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
-        this.#tempGlsl += (i + 3 < rt.temporalSamples ? 'texelFetch(cacheOriginalId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
+        for (let j = i; j < i + 3; j++) this.#tempGlsl += (j < this.config.temporalSamples ? 'texelFetch(cacheOriginalId' + j + ', texel, 0),' : 'vec4(0),') + newLine;
+        this.#tempGlsl += (i + 3 < this.config.temporalSamples ? 'texelFetch(cacheOriginalId' + (i + 3) + ', texel, 0) ' + newLine + '); ' : 'vec4(0) ' + newLine + '); ') + newLine;
 
         this.#tempGlsl += `
         for (int i = 0; i < 4; i++) if (id` + i + `[i].xyzw == id.xyzw) {
@@ -689,7 +643,7 @@ export class PathTracer {
       glassFilter /= glassCounter;
       `;
 
-      if (rt.filter) {
+      if (this.config.filter) {
         this.#tempGlsl += `
           renderColor = vec4(mod(color, 1.0), centerW);
           // 16 bit HDR for improved filtering
@@ -712,9 +666,9 @@ export class PathTracer {
         }`;
       }
       // Force update textures by resetting texture Lists
-      rt.#textureList = [];
-      rt.#pbrList = [];
-      rt.#translucencyList = [];
+      this.#textureList = [];
+      this.#pbrList = [];
+      this.#translucencyList = [];
       // Compile shaders and link them into Program global
       let vertexShader = Network.fetchSync('shaders/pathtracer_vertex.glsl');
       let fragmentShader = Network.fetchSync('shaders/pathtracer_fragment.glsl');
@@ -728,17 +682,17 @@ export class PathTracer {
       fragmentShader = GLLib.addCompileTimeConstant(fragmentShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
 
       Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
-      TempProgram = GLLib.compile (this.#gl, GLLib.postVertex, rt.#tempGlsl);
+      TempProgram = GLLib.compile (this.#gl, GLLib.postVertex, this.#tempGlsl);
       // Compile shaders and link them into PostProgram global
-      for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, firstFilterShader);
+      for (let i = 0; i < 2; i++) PostProgram[i] = GLLib.compile (this.#gl, GLLib.postVertex, firstFilterShader);
       // Compile shaders and link them into PostProgram global
-      for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (rt.#gl, GLLib.postVertex, secondFilterShader);
+      for (let i = 2; i < 4; i++) PostProgram[i] = GLLib.compile (this.#gl, GLLib.postVertex, secondFilterShader);
       // Compile shaders and link them into PostProgram global
-      PostProgram[4] = GLLib.compile (rt.#gl, GLLib.postVertex, finalFIlterShader);
+      PostProgram[4] = GLLib.compile (this.#gl, GLLib.postVertex, finalFIlterShader);
       // Create global vertex array object (Vao)
-      rt.#gl.bindVertexArray(Vao);
+      this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      initialState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => rt.#gl.getUniformLocation(Program, identifier));
+      initialState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => this.#gl.getUniformLocation(Program, identifier));
       // Create UBO objects
       let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       // Get the size of the Uniform Block in bytes
@@ -760,102 +714,126 @@ export class PathTracer {
       let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       this.#gl.uniformBlockBinding(Program, index, 0);
       // Enable depth buffer and therefore overlapping vertices
-      rt.#gl.disable(rt.#gl.BLEND);
-      rt.#gl.enable(rt.#gl.DEPTH_TEST);
-      rt.#gl.depthMask(true);
+      this.#gl.disable(this.#gl.BLEND);
+      this.#gl.enable(this.#gl.DEPTH_TEST);
+      this.#gl.depthMask(true);
       // Cull (exclude from rendering) hidden vertices at the other side of objects
-      rt.#gl.enable(rt.#gl.CULL_FACE);
+      this.#gl.enable(this.#gl.CULL_FACE);
       // Set clear color for framebuffer
-      rt.#gl.clearColor(0, 0, 0, 0);
+      this.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
-      rt.#gl.useProgram(Program);
-      rt.#pbrAtlas = rt.#gl.createTexture();
-      rt.#translucencyAtlas = rt.#gl.createTexture();
-      rt.#textureAtlas = rt.#gl.createTexture();
+      this.#gl.useProgram(Program);
+      this.#pbrAtlas = this.#gl.createTexture();
+      this.#translucencyAtlas = this.#gl.createTexture();
+      this.#textureAtlas = this.#gl.createTexture();
       // Create texture for all primary light sources in scene
-      rt.#lightTexture = rt.#gl.createTexture();
+      this.#lightTexture = this.#gl.createTexture();
       // Init textures containing all information about the scene to enable pathtracing
-      rt.#geometryTexture = rt.#gl.createTexture();
-      rt.#sceneTexture = rt.#gl.createTexture();
+      this.#geometryTexture = this.#gl.createTexture();
+      this.#sceneTexture = this.#gl.createTexture();
       // Create buffers
-      [triangleIdBuffer, vertexIdBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      [triangleIdBuffer, vertexIdBuffer] = [this.#gl.createBuffer(), this.#gl.createBuffer()];
       
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
-      rt.#gl.enableVertexAttribArray(0);
-      rt.#gl.vertexAttribIPointer(0, 1, rt.#gl.INT, false, 0, 0);
-      rt.#gl.vertexAttribDivisor(0, 1);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      this.#gl.enableVertexAttribArray(0);
+      this.#gl.vertexAttribIPointer(0, 1, this.#gl.INT, false, 0, 0);
+      this.#gl.vertexAttribDivisor(0, 1);
 
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
-      rt.#gl.enableVertexAttribArray(1);
-      rt.#gl.vertexAttribIPointer(1, 1, rt.#gl.INT, false, 0, 0);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      this.#gl.enableVertexAttribArray(1);
+      this.#gl.vertexAttribIPointer(1, 1, this.#gl.INT, false, 0, 0);
       // Create frame buffers and textures to be rendered to
-      [Framebuffer, OriginalIdRenderTexture] = [rt.#gl.createFramebuffer(), rt.#gl.createTexture()];
-
-      renderTextureBuilder();
-
-      rt.#gl.bindVertexArray(TempVao);
-      rt.#gl.useProgram(TempProgram);
-      TempHdrLocation = rt.#gl.getUniformLocation(TempProgram, 'hdr');
-
-      for (let i = 0; i < rt.temporalSamples; i++) {
-        TempTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cache' + i);
-        TempIpTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
-        TempIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
-        TempOriginalIdTex[i] = rt.#gl.getUniformLocation(TempProgram, 'cacheOriginalId' + i);
+      [Framebuffer, OriginalIdRenderTexture] = [this.#gl.createFramebuffer(), this.#gl.createTexture()];
+      this.#gl.bindVertexArray(TempVao);
+      this.#gl.useProgram(TempProgram);
+      TempHdrLocation = this.#gl.getUniformLocation(TempProgram, 'hdr');
+      
+      for (let i = 0; i < this.config.temporalSamples; i++) {
+        TempTex[i] = this.#gl.getUniformLocation(TempProgram, 'cache' + i);
+        TempIpTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
+        TempIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
+        TempOriginalIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheOriginalId' + i);
       }
       
-      let TempVertexBuffer = rt.#gl.createBuffer();
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, TempVertexBuffer);
-      rt.#gl.enableVertexAttribArray(0);
-      rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
+      let TempVertexBuffer = this.#gl.createBuffer();
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
+      this.#gl.enableVertexAttribArray(0);
+      this.#gl.vertexAttribPointer(0, 2, this.#gl.FLOAT, false, 0, 0);
       // Fill buffer with data for two verices
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, TempVertexBuffer);
-      rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
-      TempFramebuffer = rt.#gl.createFramebuffer();
-
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
+      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), this.#gl.DYNAMIC_DRAW);
+      TempFramebuffer = this.#gl.createFramebuffer();
+      
       for (let i = 0; i < 5; i++){
         // Create post program buffers and uniforms
-        rt.#gl.bindVertexArray(PostVao[i]);
-        rt.#gl.useProgram(PostProgram[i]);
+        this.#gl.bindVertexArray(PostVao[i]);
+        this.#gl.useProgram(PostProgram[i]);
         // Bind uniforms
-        RenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderColor');
-        IpRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderColorIp');
-        OriginalRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalColor');
-        IdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderId');
-        OriginalIdRenderTex[i] = rt.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalId');
-        if (i === 4) HdrLocation = rt.#gl.getUniformLocation(PostProgram[i], 'hdr');
-        PostVertexBuffer[i] = rt.#gl.createBuffer();
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
-        rt.#gl.enableVertexAttribArray(0);
-        rt.#gl.vertexAttribPointer(0, 2, rt.#gl.FLOAT, false, 0, 0);
+        RenderTex[i] = this.#gl.getUniformLocation(PostProgram[i], 'preRenderColor');
+        IpRenderTex[i] = this.#gl.getUniformLocation(PostProgram[i], 'preRenderColorIp');
+        OriginalRenderTex[i] = this.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalColor');
+        IdRenderTex[i] = this.#gl.getUniformLocation(PostProgram[i], 'preRenderId');
+        OriginalIdRenderTex[i] = this.#gl.getUniformLocation(PostProgram[i], 'preRenderOriginalId');
+        if (i === 4) HdrLocation = this.#gl.getUniformLocation(PostProgram[i], 'hdr');
+        PostVertexBuffer[i] = this.#gl.createBuffer();
+        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
+        this.#gl.enableVertexAttribArray(0);
+        this.#gl.vertexAttribPointer(0, 2, this.#gl.FLOAT, false, 0, 0);
         // Fill buffer with data for two verices
-        rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
-        rt.#gl.bufferData(rt.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), rt.#gl.DYNAMIC_DRAW);
-        PostFramebuffer[i] = rt.#gl.createFramebuffer();
+        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, PostVertexBuffer[i]);
+        this.#gl.bufferData(this.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), this.#gl.DYNAMIC_DRAW);
+        PostFramebuffer[i] = this.#gl.createFramebuffer();
       }
-
-      // Post processing (end of render pipeline)
-      if (rt.#antialiasing !== null) {
-        switch (this.#antialiasing.toLowerCase()) {
-          case "fxaa":
-            this.#AAObject = new FXAA(rt.#gl);
-            break;
-          case "taa":
-            this.#AAObject = new TAA(rt.#gl);
-            break;
-          default:
-            this.#AAObject = null;
-        }
-      } else {
-        this.#AAObject = null;
-      }
+      
+      renderTextureBuilder();
       // Reload / Rebuild scene graph after resize or page reload
       this.updateScene();
       // Return initialized objects for engine.
       return initialState;
     }
+
+    let renderTextureBuilder = () => {
+      // Init textures for denoiser
+      [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach(parent => {
+        parent.forEach(item => {
+          // console.log(this);
+          this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
+          this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
+          GLLib.setTexParams(this.#gl);
+        });
+      });
+      // Init single channel depth textures
+      DepthTexture.forEach((item) => {
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
+        this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.DEPTH_COMPONENT24, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.DEPTH_COMPONENT, this.#gl.UNSIGNED_INT, null);
+        GLLib.setTexParams(this.#gl);
+      });
+    }
+
+    // Function to handle canvas resize
+    let resize = () => {
+      this.canvas.width = this.canvas.clientWidth * this.config.renderQuality;
+      this.canvas.height = this.canvas.clientHeight * this.config.renderQuality;
+      this.#gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      // Rebuild textures with every resize
+      renderTextureBuilder();
+      // rt.updatePrimaryLightSources();
+      if (this.#AAObject !== undefined) this.#AAObject.buildTexture();
+
+      this.config.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
+      this.config.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
+    }
+    // Init canvas parameters and textures with resize
+    resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
+    // Init canvas parameters and textures with resize
+    // await resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
     // Prepare Renderengine
     let engineState = prepareEngine();
+    // resize();
     // Begin frame cycle
     requestAnimationFrame(() => frameCycle(engineState));
   }

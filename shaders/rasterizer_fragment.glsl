@@ -258,7 +258,7 @@ void main() {
         )
     );
 
-    vec3 finalColor = vec3(material.rme.z);
+    vec3 finalColor = vec3(material.rme.z + ambient);
     // Calculate primary light sources for this pass if ray hits non translucent object
     for(int j = 0; j < textureSize(lightTex, 0).y; j++) {
         // Read light position
@@ -272,8 +272,6 @@ void main() {
         vec3 dir = light - absolutePosition;
         Ray lightRay = Ray(light, absolutePosition, dir, normalize(dir));
         vec3 localColor = forwardTrace(light - position, smoothNormal, normalize(camera - position), material, strength);
-        // Add emissive and ambient light
-        localColor += material.rme.z + ambient;
         // Compute quick exit criterion to potentially skip expensive shadow test
         bool quickExitCriterion = length(localColor) == 0.0f || dot(lightRay.unitDirection, smoothNormal) <= BIAS;
         // Update pixel color if coordinate is not in shadow
