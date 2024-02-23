@@ -2,18 +2,23 @@
 
 
 import { Camera } from './modules/camera.js';
+import { Config } from './modules/config.js';
 import { Scene, Transform, Primitive, Triangle, Plane, Object3D, Cuboid, Bounding } from './modules/scene.js';
-import { PathTracer } from './modules/pathtracer.js';
-import { Rasterizer } from './modules/rasterizer.js';
+import { PathTracerWGL2 } from './modules/pathtracerWGL2.js';
+import { PathTracerWGPU } from './modules/pathtracerWGPU.js';
+import { RasterizerWGL2 } from './modules/rasterizerWGL2.js';
 import { WebIo } from './modules/io.js';
 import { UI } from './modules/ui.js';
 
 class FlexLight {
   #idRenderer;
   #idIo;
+
+  #api;
   #canvas;
 
   #camera;
+  #config;
   #scene;
   #renderer;
 
@@ -21,11 +26,13 @@ class FlexLight {
   #io;
 
   constructor (canvas) {
+    this.#api = 'webgl2';
     this.#canvas = canvas;
     this.#camera = new Camera ();
+    this.#config = new Config();
     this.#scene = new Scene ();
-    this.#renderer = new Rasterizer (canvas, this.#camera, this.#scene);
-    this.#io = new WebIo (canvas, this.#camera, this.#renderer);
+    this.#renderer = new RasterizerWGL2 (canvas, this.#scene, this.#camera, this.#config);
+    this.#io = new WebIo (canvas, this.#renderer, this.#camera);
     this.#ui = new UI (this.#scene, this.#camera);
   }
 
@@ -33,8 +40,16 @@ class FlexLight {
     return this.#canvas;
   }
 
+  get api () {
+    return this.#api;
+  }
+
   get camera () {
     return this.#camera;
+  }
+
+  get config () {
+    return this.#config;
   }
 
   get scene () {
@@ -50,9 +65,24 @@ class FlexLight {
   }
 
   set canvas (canvas) {
+    if (canvas == this.#canvas) return;
     this.#canvas = canvas;
-    this.renderer(this.#idRenderer);
-    this.io(this.#idIo);
+    // Reset renderer and io for canvas
+    this.renderer = this.#idRenderer;
+    this.io = this.#idIo;
+  }
+
+  set api (api) {
+    if (api == this.#api) return;
+    this.#api = api;
+    // Reset renderer and io for api
+    this.renderer = this.#idRenderer;
+    this.io = this.#idIo;
+  }
+
+  set config (config) {
+    this.#config = config;
+    this.#renderer.config = config;
   }
 
   set camera (camera) {
@@ -69,29 +99,35 @@ class FlexLight {
   }
 
   set renderer (renderer) {
-    this.#idRenderer = renderer ?? 'rasterizer';
+    this.#idRenderer = renderer;
     // if (this.#idRenderer == this.#renderer.type) return;
+    console.log(this.#idRenderer + this.#api);
     this.#renderer.halt();
-    switch (this.#idRenderer) {
-      case 'pathtracer':
-        this.#renderer = new PathTracer(this.#canvas, this.camera, this.#scene);
+    switch (this.#idRenderer + this.#api) {
+      case 'pathtracerwebgl2':
+        this.#renderer = new PathTracerWGL2(this.#canvas, this.#scene, this.camera, this.config);
         break;
-      case 'rasterizer':
-        this.#renderer = new Rasterizer(this.#canvas, this.camera, this.#scene);
+      case 'pathtracerwebgpu':
+        this.#renderer = new PathTracerWGPU(this.#canvas, this.#scene, this.camera, this.config);
+        break;
+      case 'rasterizerwebgl2':
+        this.#renderer = new RasterizerWGL2(this.#canvas, this.#scene, this.camera, this.config);
         break;
       default:
-        console.error("Renderer option " + this.#idRenderer + " doesn't exist.");
+        console.error('Renderer option', this.#idRenderer, 'on api', this.#api, 'doesn\'t exist.');
     }
+    // Reapply antialiasing to new renderer
+    this.#renderer.render();
   }
 
   set io (io) {
     this.#idIo = io ?? 'web';
     switch (this.#idIo) {
       case 'web':
-        this.#io = new WebIo(this.#canvas, this.camera);
+        this.#io = new WebIo(this.#canvas, this.#renderer, this.camera);
         break;
       default:
-        console.error("Io option " + this.#idIo + " doesn't exist.");
+        console.error('Io option', this.#idIo, 'doesn\'t exist.');
     }
     this.#io.renderer = this.#renderer;
   }
