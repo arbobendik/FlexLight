@@ -30,9 +30,6 @@ async function buildScene() {
 	plane.metallicity = .7;
 	scene.queue.push(plane);
 
-	// Start render engine.
-	engine.renderer.render();
-
 	let dragonTransform = engine.scene.Transform();
 	dragonTransform.move(15, 0, 15);
 	dragonTransform.scale(0.5);

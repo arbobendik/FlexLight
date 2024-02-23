@@ -7,17 +7,15 @@ import { TAA } from './taa.js';
 import { Transform } from './scene.js';
 import { Arrays } from './arrays.js';
 
-export class Rasterizer {
+export class RasterizerWGL2 {
   type = 'rasterizer';
   // Configurable runtime properties (public attributes)
-  // Quality settings
-  renderQuality = 1;
-  hdr = true;
+  config;
   // Performance metric
   fps = 0;
   fpsLimit = Infinity;
 
-  #antialiasing = 'taa';
+  #antialiasing;
   #AAObject;
   // Make gl object inaccessible from outside the class
   #gl;
@@ -41,9 +39,10 @@ export class Rasterizer {
 
   #lightTexture;
   // Create new raysterizer from canvas and setup movement
-  constructor (canvas, camera, scene) {
+  constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
     this.camera = camera;
+    this.config = config;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
     this.halt = () => {
@@ -54,33 +53,11 @@ export class Rasterizer {
       }
       this.#halt = true;
     }
-    this.#antialiasing = 'taa';
   }
 
   // Make canvas read only accessible
   get canvas () {
     return this.#canvas;
-  }
-
-  get antialiasing () {
-    if (this.#antialiasing === null) return 'none';
-    return this.#antialiasing;
-  }
-
-  set antialiasing (val) {
-    switch (val.toLowerCase()) {
-      case 'fxaa':
-        this.#antialiasing = val;
-        this.#AAObject = new FXAA(this.#gl);
-        break;
-      case 'taa':
-        this.#antialiasing = val;
-        this.#AAObject = new TAA(this.#gl, this);
-        break;
-      default:
-        this.#antialiasing = null;
-        this.#AAObject = null;
-    }
   }
 
   // Functions to update texture atlases to add more textures during runtime
@@ -216,68 +193,69 @@ export class Rasterizer {
     // Create different Vaos for different rendering/filtering steps in pipeline
     let Vao = this.#gl.createVertexArray();
 
-    // Check if recompile is needed
-    let State = this.renderQuality;
-
-    // Function to handle canvas resize
-    let resize = () => {
-    	rt.canvas.width = rt.canvas.clientWidth * rt.renderQuality;
-    	rt.canvas.height = rt.canvas.clientHeight * rt.renderQuality;
-    	rt.#gl.viewport(0, 0, rt.canvas.width, rt.canvas.height);
-      // Rebuild textures with every resize
-      renderTextureBuilder();
-      // rt.updatePrimaryLightSources();
-      if (this.#AAObject != null) this.#AAObject.buildTexture();
-    }
-    // Init canvas parameters and textures with resize
-    resize();
-    // Handle canvas resize
-    window.addEventListener('resize', resize);
-
-    function renderTextureBuilder() {
+    let renderTextureBuilder = () => {
       // Init single channel depth texture
-      rt.#gl.bindTexture(rt.#gl.TEXTURE_2D, DepthTexture);
-      rt.#gl.texImage2D(rt.#gl.TEXTURE_2D, 0, rt.#gl.DEPTH_COMPONENT24, rt.canvas.width, rt.canvas.height, 0, rt.#gl.DEPTH_COMPONENT, rt.#gl.UNSIGNED_INT, null);
-      GLLib.setTexParams(rt.#gl);
+      this.#gl.bindTexture(this.#gl.TEXTURE_2D, DepthTexture);
+      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.DEPTH_COMPONENT24, rt.canvas.width, rt.canvas.height, 0, this.#gl.DEPTH_COMPONENT, this.#gl.UNSIGNED_INT, null);
+      GLLib.setTexParams(this.#gl);
     }
 
     // Internal render engine Functions
-    function frameCycle () {
+    let frameCycle = engineState => {
+      if (this.#halt) return;
       let timeStamp = performance.now();
-      // Request the browser to render frame with hardware acceleration
-      if (!rt.#halt) setTimeout(function () {
-        requestAnimationFrame(frameCycle)
-      }, 1000 / rt.fpsLimit);
       // Update Textures
-      rt.#updateTextureAtlas();
-      rt.#updatePbrAtlas();
-      rt.#updateTranslucencyAtlas();
-      // Set scene graph
-      // rt.updateScene();
+      this.#updateTextureAtlas();
+      this.#updatePbrAtlas();
+      this.#updateTranslucencyAtlas();
       // build bounding boxes for scene first
-      rt.updatePrimaryLightSources();
+      this.updatePrimaryLightSources();
       // Check if recompile is required
-      if (State !== rt.renderQuality) {
+      if (engineState.renderQuality !== this.config.renderQuality) {
         resize();
-        prepareEngine();
-        State = rt.renderQuality;
+        engineState = prepareEngine();
       }
 
-      // Update frame counter
-      Frames ++;
-      // Render new Image, work through queue
-      renderFrame();
-      // Calculate Fps
-			const timeDifference = timeStamp - LastTimeStamp;
-      if (timeDifference > 500) {
-        rt.fps = (1000 * Frames / timeDifference).toFixed(0);
-        [LastTimeStamp, Frames] = [timeStamp, 0];
+      // Swap antialiasing programm if needed
+      if (engineState.antialiasing !== this.config.antialiasing) {
+        engineState.antialiasing = this.config.antialiasing;
+        // Use internal antialiasing variable for actual state of antialiasing.
+        let val = this.config.antialiasing.toLowerCase();
+        switch (val) {
+          case 'fxaa':
+            this.#antialiasing = val
+            this.#AAObject = new FXAA(this.#gl);
+            break;
+          case 'taa':
+            this.#antialiasing = val
+            this.#AAObject = new TAA(this.#gl);
+            break;
+          default:
+            this.#antialiasing = undefined
+            this.#AAObject = undefined;
+        }
       }
+      // Render new Image, work through queue
+      renderFrame(engineState);
+      // Update frame counter
+      engineState.intermediateFrames ++;
+      engineState.temporalFrame = (engineState.temporalFrame + 1) % this.config.temporalSamples;
+      // Calculate Fps
+			let timeDifference = timeStamp - engineState.lastTimeStamp;
+      if (timeDifference > 500) {
+        this.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
+        engineState.lastTimeStamp = timeStamp;
+        engineState.intermediateFrames = 0;
+      }
+      // Request browser to render frame with hardware acceleration
+      setTimeout(function () {
+        requestAnimationFrame(() => frameCycle(engineState))
+      }, 1000 / this.fpsLimit);
     }
 
     let rasterizingPass = () => {
       let jitter = {x: 0, y: 0};
-      if (this.#antialiasing !== null && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
+      if (this.#antialiasing !== undefined && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
       // Calculate projection matrix
       let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
 
@@ -289,36 +267,36 @@ export class Rasterizer {
       - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
       ];
 
-      rt.#gl.bindVertexArray(Vao);
-      rt.#gl.useProgram(Program);
+      this.#gl.bindVertexArray(Vao);
+      this.#gl.useProgram(Program);
 
       [this.#geometryTexture, this.#sceneTexture, this.#pbrAtlas, this.#translucencyAtlas, this.#textureAtlas, this.#lightTexture].forEach((texture, i) => {
-        this.#gl.activeTexture(rt.#gl.TEXTURE0 + i);
-        this.#gl.bindTexture(rt.#gl.TEXTURE_2D, texture);
+        this.#gl.activeTexture(this.#gl.TEXTURE0 + i);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, texture);
       });
       // Set uniforms for shaders
       // Set 3d camera position
-      rt.#gl.uniform3f(CameraPosition, rt.camera.x, rt.camera.y, rt.camera.z);
+      this.#gl.uniform3f(CameraPosition, this.camera.x, this.camera.y, this.camera.z);
       // Set projection matrix
-      rt.#gl.uniformMatrix3fv(ViewMatrixLocation, true, viewMatrix);
+      this.#gl.uniformMatrix3fv(ViewMatrixLocation, true, viewMatrix);
       // Set global illumination
-      rt.#gl.uniform3f(AmbientLocation, rt.scene.ambientLight[0], rt.scene.ambientLight[1], rt.scene.ambientLight[2]);
+      this.#gl.uniform3f(AmbientLocation, this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2]);
       // Set width of height and normal texture
-      rt.#gl.uniform1i(TextureWidth, Math.floor(2048 / rt.scene.standardTextureSizes[0]));
+      this.#gl.uniform1i(TextureWidth, Math.floor(2048 / this.scene.standardTextureSizes[0]));
       // Enable or disable hdr
-      rt.#gl.uniform1i(HdrLocation, rt.hdr);
+      this.#gl.uniform1i(HdrLocation, this.config.hdr);
       // Pass current scene graph to GPU
-      rt.#gl.uniform1i(GeometryTex, 0);
+      this.#gl.uniform1i(GeometryTex, 0);
       // Pass additional datapoints for scene graph
-      rt.#gl.uniform1i(SceneTex, 1);
+      this.#gl.uniform1i(SceneTex, 1);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(PbrTex, 2);
+      this.#gl.uniform1i(PbrTex, 2);
       // Pass pbr texture to GPU
-      rt.#gl.uniform1i(TranslucencyTex, 3);
+      this.#gl.uniform1i(TranslucencyTex, 3);
       // Pass texture to GPU
-      rt.#gl.uniform1i(Tex, 4);
+      this.#gl.uniform1i(Tex, 4);
       // Pass texture with all primary light sources in the scene
-      rt.#gl.uniform1i(LightTex, 5);
+      this.#gl.uniform1i(LightTex, 5);
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       // Get transformation matrices elements and set them in buffer
@@ -330,33 +308,41 @@ export class Rasterizer {
       this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
       this.#gl.bufferData(this.#gl.ARRAY_BUFFER, this.#triangleIdBufferArray, this.#gl.DYNAMIC_DRAW);
       // console.log(rt.#triangleIdBufferArray);
-      this.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
-      this.#gl.bufferData(rt.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), rt.#gl.STATIC_DRAW);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, new Int32Array([0, 1, 2]), this.#gl.STATIC_DRAW);
       // Actual drawcall
       this.#gl.drawArraysInstanced(this.#gl.TRIANGLES, 0, 3, this.#bufferLength);
     }
 
-    let renderFrame = () => {
+    let renderFrame = engineState => {
       // Configure where the final image should go
-      if (this.#antialiasing !== null) {
+      if (this.#antialiasing !== undefined) {
         // Configure framebuffer for color and depth
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, Framebuffer);
-        rt.#gl.drawBuffers([
-          rt.#gl.COLOR_ATTACHMENT0
+        this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, Framebuffer);
+        this.#gl.drawBuffers([
+          this.#gl.COLOR_ATTACHMENT0
         ]);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.COLOR_ATTACHMENT0, rt.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
-        rt.#gl.framebufferTexture2D(rt.#gl.FRAMEBUFFER, rt.#gl.DEPTH_ATTACHMENT, rt.#gl.TEXTURE_2D, DepthTexture, 0);
+        this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.COLOR_ATTACHMENT0, this.#gl.TEXTURE_2D, this.#AAObject.textureIn, 0);
+        this.#gl.framebufferTexture2D(this.#gl.FRAMEBUFFER, this.#gl.DEPTH_ATTACHMENT, this.#gl.TEXTURE_2D, DepthTexture, 0);
       } else {
-        rt.#gl.bindFramebuffer(rt.#gl.FRAMEBUFFER, null);
+        this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
       }
       // Clear depth and color buffers from last frame
-      rt.#gl.clear(rt.#gl.COLOR_BUFFER_BIT | rt.#gl.DEPTH_BUFFER_BIT);
+      this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
       rasterizingPass();
       // Apply antialiasing shader if enabled
-      if (this.#AAObject != null) this.#AAObject.renderFrame();
+      if (this.#AAObject !== undefined) this.#AAObject.renderFrame();
     }
 
     let prepareEngine = () => {
+      let initialState = {
+        // Attributes to meassure frames per second
+        intermediateFrames: 0,
+        lastTimeStamp: performance.now(),
+        // Parameters to compare against current state of the engine and recompile shaders on change
+        filter: this.config.filter,
+        renderQuality: this.config.renderQuality
+      };
       // Force update textures by resetting texture Lists
       this.#textureList = [];
       this.#pbrList = [];
@@ -370,7 +356,7 @@ export class Rasterizer {
       vertexShader = GLLib.addCompileTimeConstant(vertexShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
       fragmentShader = GLLib.addCompileTimeConstant(fragmentShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
 
-      Program = GLLib.compile (rt.#gl, vertexShader, fragmentShader);
+      Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
       this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
@@ -415,53 +401,53 @@ export class Rasterizer {
       this.#gl.blendFuncSeparate(this.#gl.ONE, this.#gl.ONE_MINUS_SRC_ALPHA, this.#gl.ONE, this.#gl.ONE);
       this.#gl.depthMask(true);
       // Set clear color for framebuffer
-      rt.#gl.clearColor(0, 0, 0, 0);
+      this.#gl.clearColor(0, 0, 0, 0);
       // Define Program with its currently bound shaders as the program to use for the webgl2 context
-      rt.#gl.useProgram(Program);
+      this.#gl.useProgram(Program);
       // Create Textures for primary render
-      rt.#pbrAtlas = rt.#gl.createTexture();
-      rt.#translucencyAtlas = rt.#gl.createTexture();
-      rt.#textureAtlas = rt.#gl.createTexture();
+      rt.#pbrAtlas = this.#gl.createTexture();
+      rt.#translucencyAtlas = this.#gl.createTexture();
+      rt.#textureAtlas = this.#gl.createTexture();
       // Create texture for all primary light sources in scene
-      rt.#lightTexture = rt.#gl.createTexture();
+      rt.#lightTexture = this.#gl.createTexture();
       // Init a world texture containing all information about world space
       this.#geometryTexture = this.#gl.createTexture();
       this.#sceneTexture = this.#gl.createTexture();
       // Create buffers
-      [triangleIdBuffer, vertexIdBuffer] = [rt.#gl.createBuffer(), rt.#gl.createBuffer()];
+      [triangleIdBuffer, vertexIdBuffer] = [this.#gl.createBuffer(), this.#gl.createBuffer()];
       
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, triangleIdBuffer);
-      rt.#gl.enableVertexAttribArray(0);
-      rt.#gl.vertexAttribIPointer(0, 1, rt.#gl.INT, false, 0, 0);
-      rt.#gl.vertexAttribDivisor(0, 1);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
+      this.#gl.enableVertexAttribArray(0);
+      this.#gl.vertexAttribIPointer(0, 1, this.#gl.INT, false, 0, 0);
+      this.#gl.vertexAttribDivisor(0, 1);
 
-      rt.#gl.bindBuffer(rt.#gl.ARRAY_BUFFER, vertexIdBuffer);
-      rt.#gl.enableVertexAttribArray(1);
-      rt.#gl.vertexAttribIPointer(1, 1, rt.#gl.INT, false, 0, 0);
+      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, vertexIdBuffer);
+      this.#gl.enableVertexAttribArray(1);
+      this.#gl.vertexAttribIPointer(1, 1, this.#gl.INT, false, 0, 0);
 
       // Create frame buffers and textures to be rendered to
-      Framebuffer = rt.#gl.createFramebuffer();
+      Framebuffer = this.#gl.createFramebuffer();
       renderTextureBuilder();
-
-      // Post processing (end of render pipeline)
-      if (rt.#antialiasing !== null) {
-        switch (this.#antialiasing.toLowerCase()) {
-          case "fxaa":
-            this.#AAObject = new FXAA(rt.#gl);
-            break;
-          case "taa":
-            this.#AAObject = new TAA(rt.#gl, rt);
-            break;
-          default:
-            this.#AAObject = null;
-        }
-      } else {
-        this.#AAObject = null;
-      }
-      
       // Reload / Rebuild scene graph after resize or page reload
       this.updateScene();
+      // Return initialized objects for engine.
+      return initialState;
     }
+
+    // Function to handle canvas resize
+    let resize = () => {
+      this.canvas.width = this.canvas.clientWidth * this.config.renderQuality;
+      this.canvas.height = this.canvas.clientHeight * this.config.renderQuality;
+      this.#gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      // Rebuild textures with every resize
+      renderTextureBuilder();
+      // rt.updatePrimaryLightSources();
+      if (this.#AAObject !== undefined) this.#AAObject.buildTexture();
+    }
+    // Init canvas parameters and textures with resize
+    resize();
+    // Handle canvas resize
+    window.addEventListener('resize', resize);
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle

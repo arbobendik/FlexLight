@@ -433,12 +433,14 @@ export class Scene {
           materials[currentMaterialName] = {};
           break;
         case 'Ni':
+          console.log(words);
           // materials[currentMaterialName].metalicity = 
       }
     };
     // fetch file and iterate over its lines
     let text = await (await fetch(path)).text();
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
+    // return filled materials array
   }
 }
 
