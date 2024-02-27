@@ -65,7 +65,7 @@ void main() {
     clipSpace = viewMatrix * move3d;
     // Set triangle position in clip space
     gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(move3d * INV_65536))), clipSpace.z);
-    position = position3d;
+    position = localGeometry;
 
     uv = baseUVs[vertexId];
     camera = cameraPosition;

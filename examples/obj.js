@@ -26,16 +26,16 @@ async function buildScene() {
 	// Set camera perspective and position.
 	[camera.x, camera.y, camera.z] = [0, 1, 0];
 	[camera.fx, camera.fy] = [- 2.38, 0.2];
-
-	// Generate plane.
-	let plane = scene.Plane([- 50, - 1, - 50], [50, - 1, - 50], [50, - 1, 50], [- 50, - 1, 50], [0, 1, 0]);
-
-	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 20000;
-
-	scene.ambientLight = [0.1, 0.1, 0.1];
 	
-	scene.queue.push(plane);
+	
+	scene.primaryLightSources = [[50, 80, 0]];
+	scene.primaryLightSources[0].intensity = 50000;
+	scene.primaryLightSources[0].variation = 10;
+	
+	
+	scene.ambientLight = [.01, .01, .01];
+	
+	// scene.queue.push(plane);
 
 	// Start render engine.
 	engine.renderer.render();
@@ -53,13 +53,14 @@ async function buildScene() {
 	var obj = await scene.importObj(modelUrl, mtl);
 	// obj.scale(5);
 	obj.move(5, 0, - 5);
+	/*
 	obj.roughness = .1;
 	console.log(obj);
 	obj.metallicity = 0.1;
 	obj.translucency = 0.9;
 	obj.ior = 9.5;
 	obj.color = [255, 200, 90];
-	// obj.staticPermanent = true;
+	*/
 	scene.queue.push(obj);
 	engine.renderer.updateScene();
 
@@ -69,6 +70,22 @@ async function buildScene() {
 	document.body.appendChild(fpsCounter);
 	// setTimeout(() => engine.renderer.freeze = true, 1000);
 	
+	/*
+	// init iterator variable for simple animations
+	let iterator = 0;
+
+	setInterval(() => {
+		// increase iterator
+		iterator += 0.01;
+		// precalculate sin and cos
+		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
+		// animate light sources
+		scene.primaryLightSources[0] = [50*sin, 50, 50*cos];
+		scene.primaryLightSources[0].variation = 10;
+		scene.primaryLightSources[0].intensity = 10000;
+		engine.renderer.updatePrimaryLightSources();
+	}, 100/6);
+	*/
 	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
