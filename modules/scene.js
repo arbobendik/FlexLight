@@ -257,6 +257,7 @@ export class Scene {
         for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = curMinMax[i];
         geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
         geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
+        geometryTextureArray[oldTexturePos * 12 + 10] = 1;
         return curMinMax;
       } else {
         // Item is dynamic and non-indexable.
@@ -327,7 +328,7 @@ export class Scene {
   Bounding = array => new Bounding (array);
   // generate object from array
   // Create object from .obj file
-  importObj = async path => {
+  importObj = async (path, materials = []) => {
     // get scene for reference inside object
     let scene = this;
     // final object variable 
@@ -336,6 +337,8 @@ export class Scene {
     let v = [];
     let vt = [];
     let vn = [];
+    // track current material
+    let curMaterialName;
     // line interpreter
     let interpreteLine = line => {
       let words = [];
@@ -364,53 +367,69 @@ export class Scene {
             if (num < 0) num = v.length + num + 1;
             return num;
           }));
+
+          let primitive;
           // test if new part should be a triangle or plane
           if (data.length === 4) {
             // generate plane with vertecies
-            let plane = new Plane (
+            primitive = new Plane (
               v[data[3][0] - 1],
               v[data[2][0] - 1],
               v[data[1][0] - 1],
               v[data[0][0] - 1],           
               scene
             );
-            // set uvs according to .obj file
-            // plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
-            // set normals according to .obj file
             [3, 2, 1, 1, 0, 3].forEach((index, i) => {
-              if (vt[data[index][1] - 1] !== undefined) plane.uvs.set(vt[data[index][1] - 1], i * 2);
-              if (vn[data[index][2] - 1] !== undefined) plane.normals.set(vn[data[index][2] - 1], i * 3);
+              // set uvs according to .obj file
+              if (vt[data[index][1] - 1] !== undefined) primitive.uvs.set(vt[data[index][1] - 1], i * 2);
+              // set normals according to .obj file
+              if (vn[data[index][2] - 1] !== undefined) primitive.normals.set(vn[data[index][2] - 1], i * 3);
             });
-            // push new plane in object array
-            obj.push(plane);
           } else {
             // generate triangle with vertecies
-            let triangle = new Triangle (
-              v[data[2][0] - 1],
-              v[data[1][0] - 1],
-              v[data[0][0] - 1],
-              scene
+            primitive = new Triangle (
+            v[data[2][0] - 1],
+            v[data[1][0] - 1],
+            v[data[0][0] - 1],
+            scene
             );
-            // set uvs according to .obj file
-            // triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
-            // set normals according to .obj file
             [2, 1, 0].forEach((index, i) => {
-              if (vt[data[index][1] - 1] !== undefined) triangle.uvs.set(vt[data[index][1] - 1], i * 2);
-              if (vn[data[index][2] - 1] !== undefined) triangle.normals.set(vn[data[index][2] - 1], i * 3);
+              // set uvs according to .obj file
+              if (vt[data[index][1] - 1] !== undefined) primitive.uvs.set(vt[data[index][1] - 1], i * 2);
+              // set normals according to .obj file
+              if (vn[data[index][2] - 1] !== undefined) primitive.normals.set(vn[data[index][2] - 1], i * 3);
             });
-            // console.log([2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat());
-            // triangle.setColor(triangle.normals[0] * 1000);
-            obj.push(triangle);
           }
+          // Try applying material if one is currently set
+          if (curMaterialName) {
+            let material = materials[curMaterialName];
+            // console.log(material);
+            primitive.color = material.color ?? [255, 255, 255];
+            primitive.emissiveness = material.emissiveness ?? 0;
+            primitive.metallicity = material.metallicity ?? 0;
+            primitive.roughness = material.roughness ?? 1;
+            primitive.translucency = material.translucency ?? 0;
+            primitive.ior = material.ior ?? 1;
+          }
+          // push new plane in object array
+          obj.push(primitive);
           break;
-        case 'g':
+        case 'usemtl':
+          // Use material name for next vertices
+          if (materials[words[1]]) {
+            curMaterialName = words[1];
+          } else {
+            console.warn('Couldn\'t resolve material', curMaterialName);
+          }
           break;
       }
     };
     // fetch file and iterate over its lines
     let text = await (await fetch(path)).text();
+    console.log('Parsing vertices ...');
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
+    console.log('Generating BVH ...');
     obj = scene.generateBVH(obj);
     scene.updateBoundings(obj);
     // return built object
@@ -426,21 +445,46 @@ export class Scene {
       let words = [];
       // get array of words
       line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
+
       // interpret current line
       switch (words[0]) {
         case 'newmtl':
           currentMaterialName = words[1];
           materials[currentMaterialName] = {};
           break;
+        case 'Ka':
+          materials[currentMaterialName].color = Math.mul(255, [Number(words[1]), Number(words[2]), Number(words[3])]);
+          //console.log(materials[currentMaterialName].color);
+          break;
+        case 'Ke':
+          let emissiveness = Math.max(Number(words[1]), Number(words[2]), Number(words[3]));
+          // Replace color if emissiveness is not 0
+          if (emissiveness > 0) {
+            materials[currentMaterialName].emissiveness = emissiveness * 4;
+            materials[currentMaterialName].color = Math.mul(255 / emissiveness, [Number(words[1]), Number(words[2]), Number(words[3])]);
+            //console.log(materials[currentMaterialName].color);
+          }
+          break;
+        case 'Ns':
+          materials[currentMaterialName].metallicity = Number(words[1] / 1000);
+          break;
+        case 'd':
+          // materials[currentMaterialName].translucency = Number(words[1]);
+          // materials[currentMaterialName].roughness = 0;
+          break;
         case 'Ni':
-          console.log(words);
-          // materials[currentMaterialName].metalicity = 
+          materials[currentMaterialName].ior = Number(words[1]);
+          break;
       }
     };
     // fetch file and iterate over its lines
     let text = await (await fetch(path)).text();
+    console.log('Parsing materials ...');
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
+
+    console.log(materials);
     // return filled materials array
+    return materials;
   }
 }
 
@@ -575,6 +619,7 @@ export class Primitive {
       let i12 = i * 12;
       this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
       this.geometryTextureArray[i12 + 9] = this.transformNum;
+      this.geometryTextureArray[i12 + 10] = 2;
       let i28 = i * 28;
       this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i28);
       this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i28 + 9);

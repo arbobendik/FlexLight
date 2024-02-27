@@ -16,7 +16,7 @@ precision highp float;
 precision highp sampler2D;
 
 struct NormalizedRay {
-    vec3 target;
+    vec3 origin;
     vec3 unitDirection;
 };
 
@@ -81,7 +81,7 @@ bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
     float det = dot(edge1, pvec);
     float invDet = 1.0f / det;
     if(det < BIAS) return false;
-    vec3 tvec = ray.target - a;
+    vec3 tvec = ray.origin - a;
     float u = dot(tvec, pvec) * invDet;
     if(u < BIAS || u > 1.0f) return false;
     vec3 qvec = cross(tvec, edge1);
@@ -103,7 +103,7 @@ bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
 // Simplified rayTracer to only test if ray intersects anything
 bool shadowTest(Ray ray) {
     // Cache transformed ray attributes
-    NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
+    NormalizedRay tR = NormalizedRay(ray.origin, ray.unitDirection);
     // Inverse of transformed normalized ray
     vec3 invDir = 1.0 / ray.unitDirection;
     int cachedTI = 0;
@@ -132,8 +132,8 @@ bool shadowTest(Ray ray) {
             int iI = tI + 1;
             cachedTI = tI;
             tR = NormalizedRay(
-                rotation[iI] * (ray.target + shift[iI]),
-                rotation[iI] * ray.unitDirection
+                rotation[iI] * (ray.origin + shift[iI]),
+                normalize(rotation[iI] * ray.unitDirection)
             );
             invDir = 1.0 / tR.unitDirection;
         }
@@ -143,7 +143,7 @@ bool shadowTest(Ray ray) {
         // otherwise         => is triangle: do triangle intersection test
         if(c.yz == vec2(0)) {
             if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, invDir, tR.target, a, b)) i += int(c.x);
+            if(!rayCuboid(minLen, invDir, tR.origin, a, b)) i += int(c.x);
         } else if(moellerTrumboreCull(minLen, tR, a, b, c)) {
             return true;
         }
@@ -174,6 +174,7 @@ vec3 fresnel(vec3 F0, float VdotH) {
     return F0 + (1.0f - F0) * pow(1.0f - VdotH, 5.0f);
 }
 
+/*
 vec3 forwardTrace(vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
     float lenP1 = 1.0f + length(lightDir);
     // Apply inverse square law
@@ -202,7 +203,40 @@ vec3 forwardTrace(vec3 lightDir, vec3 N, vec3 V, Material material, float streng
     vec3 BRDF = Kd * lambert + cookTorrance;
 
     // Outgoing light to camera
-    return BRDF * NdotL * brightness;
+    return BRDF * brightness;
+}
+*/
+
+vec3 forwardTrace(Material material, vec3 lightDir, float strength, vec3 N, vec3 V) {
+    float lenP1 = 1.0f + length(lightDir);
+    // Apply inverse square law
+    float brightness = strength / (lenP1 * lenP1);
+
+    vec3 L = normalize(lightDir);
+    vec3 H = normalize(V + L);
+
+    float VdotH = max(dot(V, H), 0.0f);
+    float NdotL = max(dot(N, L), 0.0f);
+    float NdotH = max(dot(N, H), 0.0f);
+    float NdotV = max(dot(N, V), 0.0f);
+
+    float alpha = material.rme.x * material.rme.x;
+    float BRDF = mix(1.0f, NdotV, material.rme.y);
+    vec3 F0 = material.albedo * BRDF;
+
+    vec3 Ks = fresnel(F0, VdotH);
+    vec3 Kd = (1.0f - Ks) * (1.0f - material.rme.y);
+    vec3 lambert = material.albedo * INV_PI;
+
+    vec3 cookTorranceNumerator = Ks * trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL);
+    float cookTorranceDenominator = 4.0f * NdotV * NdotL;
+    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
+
+    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+    vec3 radiance = Kd * lambert + cookTorrance;
+
+    // Outgoing light to camera
+    return radiance * NdotL * brightness;
 }
 
 void main() {
@@ -221,6 +255,7 @@ void main() {
     vec4 t4 = texelFetch(sceneTex, index + ivec2(4, 0), 0);
     vec4 t5 = texelFetch(sceneTex, index + ivec2(5, 0), 0);
     vec4 t6 = texelFetch(sceneTex, index + ivec2(6, 0), 0);
+
     // Calculate barycentric coordinates to map textures
     // Assemble 3 vertex normals
     mat3 normals = mat3 (
@@ -228,6 +263,7 @@ void main() {
         vec3(t0.w, t1.xy),
         vec3(t1.zw, t2.x)
     );
+    vec3 geometryNormal = normalize(normals[0] + normals[1] + normals[2]);
     // Transform normal according to object transform
     int tI = transformationId << 1;
     vec3 absolutePosition = rotation[tI] * position + shift[tI];
@@ -270,12 +306,14 @@ void main() {
 
         // Form light vector
         vec3 dir = light - absolutePosition;
-        Ray lightRay = Ray(light, absolutePosition, dir, normalize(dir));
-        vec3 localColor = forwardTrace(light - position, smoothNormal, normalize(camera - position), material, strength);
+        Ray lightRay = Ray(absolutePosition, light, dir, normalize(dir));
+        vec3 localColor = forwardTrace(material, light - position, strength, smoothNormal, normalize(camera - position));
         // Compute quick exit criterion to potentially skip expensive shadow test
-        bool quickExitCriterion = length(localColor) == 0.0f || dot(lightRay.unitDirection, smoothNormal) <= BIAS;
+        bool showColor = length(localColor) == 0.0f;
+
+        // lightRay.origin += sin(acos(dot(smoothNormal, geometryNormal))) * smoothNormal;
         // Update pixel color if coordinate is not in shadow
-        if(!quickExitCriterion && !shadowTest(lightRay)) finalColor += localColor;
+        if(showColor || !shadowTest(lightRay)) finalColor += localColor;
     }
 
     finalColor *= material.albedo;
