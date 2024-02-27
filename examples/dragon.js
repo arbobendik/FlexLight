@@ -25,9 +25,9 @@ async function buildScene() {
 	scene.ambientLight = [0.05, 0.05, 0.05];
 
 	// Generate plane.
-	let plane = scene.Plane([- 500, - 1, - 500], [500, - 1, - 500], [500, - 1, 500], [- 500, - 1, 500], [0, 1, 0]);
-	plane.roughness = .8;
-	plane.metallicity = .7;
+	let plane = scene.Plane([- 500, - 1, - 500], [500, - 1, - 500], [500, - 1, 500], [- 500, - 1, 500]);
+	plane.roughness = 1;
+	plane.metallicity = 0.8;
 	scene.queue.push(plane);
 
 	let dragonTransform = engine.scene.Transform();
@@ -63,6 +63,20 @@ async function buildScene() {
 	sphere.translucency = 1;
 	sphere.ior = 1.5;
 	scene.queue.push(sphere);
+
+	var mirror = scene.Bounding([scene.Plane([-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0])]);
+	mirror.scale(15);
+	await mirror.move(10, 0, 22);
+	mirror.metallicity = 1;
+	mirror.roughness = 0;
+	scene.queue.push(mirror);
+
+	var mirror2 = scene.Bounding([scene.Plane([-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0])]);
+	mirror2.scale(15);
+	await mirror2.move(10, 0, -10);
+	mirror2.metallicity = 1;
+	mirror2.roughness = 0;
+	scene.queue.push(mirror2);
 
 	/*
 	var sphere2 = await scene.importObj('objects/sphere.obj');
