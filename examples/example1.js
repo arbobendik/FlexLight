@@ -43,7 +43,7 @@ scene.primaryLightSources[0].intensity = 400;
 scene.primaryLightSources[0].variation = 0.2;
 scene.primaryLightSources[1].intensity = 300;
 // Set ambient illumination
-scene.ambientLight = [0.00125, 0.00125, 0.00125];
+scene.ambientLight = [0.125, 0.125, 0.125];
 
 // Set texture Sizes
 scene.standardTextureSizes = [16, 16];
@@ -71,7 +71,7 @@ let cuboidColors = [
 // Color all cuboid in center
 cuboids.forEach((cuboid, i) => {
 	cuboid.roughness = 0;
-	cuboid.metallicity = 0;
+	cuboid.metallicity = .5;
 	cuboid.translucency = 1;
 	cuboid.ior = 1.3;
 	cuboid.color = cuboidColors[i];
