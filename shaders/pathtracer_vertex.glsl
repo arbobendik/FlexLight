@@ -30,6 +30,8 @@ flat out vec3 camera;
 flat out int fragmentTriangleId;
 flat out int transformationId;
 
+flat out mat3 firstTriangle;
+
 const vec2 baseUVs[3] = vec2[3](
     vec2(1, 0), 
     vec2(0, 1), 
@@ -44,22 +46,25 @@ void main() {
     vec4 t0 = texelFetch(geometryTex, index, 0);
     vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
     vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
+
+    mat3 triangle = mat3(t0, t1, t2.x);
     // Combine vertex position
     vec3 position3d;
     switch (vertexId) {
         case 0:
-            position3d = t0.xyz;
+            position3d = triangle[0];
             break;
         case 1:
-            position3d = vec3(t0.w, t1.xy);
+            position3d = triangle[1];
             break;
         case 2:
-            position3d = vec3(t1.zw, t2.x);
+            position3d = triangle[2];
             break;
     }
     transformationId = int(t2.y);
     // Apply local geometry transform
     int tI = transformationId << 1;
+    // Transform position
     vec3 localGeometry = rotation[tI] * position3d + shift[tI];
     vec3 move3d = localGeometry - cameraPosition;
     clipSpace = viewMatrix * move3d;
@@ -70,4 +75,6 @@ void main() {
     uv = baseUVs[vertexId];
     camera = cameraPosition;
     fragmentTriangleId = triangleId;
+    // Transform triangle
+    firstTriangle = rotation[tI] * triangle + mat3(shift[tI], shift[tI], shift[tI]);
 }

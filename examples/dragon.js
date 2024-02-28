@@ -21,7 +21,7 @@ async function buildScene() {
 
 	scene.primaryLightSources = [[50, 70, 50]];
 	scene.primaryLightSources[0].intensity = 80000;
-	scene.primaryLightSources[0].variation = 5;
+	scene.primaryLightSources[0].variation = 0;
 	scene.ambientLight = [0.05, 0.05, 0.05];
 
 	// Generate plane.
