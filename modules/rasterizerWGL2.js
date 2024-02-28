@@ -45,14 +45,15 @@ export class RasterizerWGL2 {
     this.config = config;
     this.scene = scene;
     this.#gl = canvas.getContext('webgl2');
-    this.halt = () => {
-      try {
-        this.#gl.loseContext();
-      } catch (e) {
-        console.warn("Unable to lose previous context, reload page in case of performance issue");
-      }
-      this.#halt = true;
+  }
+
+  halt = () => {
+    try {
+      this.#gl.loseContext();
+    } catch (e) {
+      console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
+    this.#halt = true;
   }
 
   // Make canvas read only accessible
