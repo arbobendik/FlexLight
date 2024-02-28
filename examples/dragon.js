@@ -20,7 +20,7 @@ async function buildScene() {
 	[camera.fx, camera.fy] = [- .9, .45];
 
 	scene.primaryLightSources = [[50, 70, 50]];
-	scene.primaryLightSources[0].intensity = 40000;
+	scene.primaryLightSources[0].intensity = 80000;
 	scene.primaryLightSources[0].variation = 5;
 	scene.ambientLight = [0.05, 0.05, 0.05];
 
@@ -69,14 +69,14 @@ async function buildScene() {
 	await mirror.move(10, 0, 22);
 	mirror.metallicity = 1;
 	mirror.roughness = 0;
-	scene.queue.push(mirror);
+	// scene.queue.push(mirror);
 
 	var mirror2 = scene.Bounding([scene.Plane([-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0])]);
 	mirror2.scale(15);
 	await mirror2.move(10, 0, -10);
 	mirror2.metallicity = 1;
 	mirror2.roughness = 0;
-	scene.queue.push(mirror2);
+	// scene.queue.push(mirror2);
 
 	/*
 	var sphere2 = await scene.importObj('objects/sphere.obj');
