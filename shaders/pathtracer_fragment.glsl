@@ -113,7 +113,7 @@ vec3 originalColor = vec3(1.0f);
 float to4BitRepresentation(float a, float b) {
     uint aui = uint(a * 255.0f) & uint(240);
     uint bui = (uint(b * 255.0f) & uint(240)) >> 4;
-    return float(aui + bui) * INV_255;
+    return float(aui | bui) * INV_255;
 }
 
 float normalToSphearical4BitRepresentation(vec3 n) {
@@ -199,7 +199,8 @@ bool raySphere(float l, Ray ray, vec3 c, float r2) {
 */
 
 // Test for closest ray triangle intersection
-// Return intersection position in world space (rayTracer[0].xyz) and index of target triangle in geometryTex (rayTracer[1].w)
+// return intersection position in world space and index of target triangle in geometryTex
+// plus triangle vertices and transformation Id
 Hit rayTracer(NormalizedRay ray, int triangleId) {
     // Cache transformed ray attributes
     NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
@@ -449,7 +450,8 @@ vec3 referenceSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 target, v
     return localColor + material.rme.z + ambient * material.rme.y;
 }
 
-vec3 randomSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 target, vec3 V, Material material, bool dontFilter, int triangleId, int i) {
+
+vec3 randomSample (vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target,  vec3 V, Material material, bool dontFilter, int triangleId, int i) {
     int lights = textureSize(lightTex, 0).y;
 
     int randIndex = int(floor(abs(randomVec.y) * float(lights)));
@@ -464,20 +466,22 @@ vec3 randomSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 target, vec3
     // Alter light source position according to variation.
     light = randomVec.xyz * strengthVariation.y + light;
     vec3 lightDir = light - target;
-    vec3 lightColor = forwardTrace(lightDir, N, V, material, strengthVariation.x);
+    vec3 lightColor = forwardTrace(material, lightDir, strengthVariation.x, N, V);
     // Compute quick exit criterion to potentially skip expensive shadow test
     bool quickExitCriterion = dot(lightDir, N) <= BIAS;
-    Ray lightRay = Ray(light, target, lightDir, normalize(lightDir));
+    // Ray lightRay = Ray(light, target, lightDir, normalize(lightDir));
+    Ray lightRay = Ray(target, light, lightDir, normalize(lightDir));
     // Test if in shadow
     if (quickExitCriterion || shadowTest(lightRay, triangleId)) {
         if (dontFilter || i == 0) renderId.w = float(((randIndex % 128) << 1) + 1) * INV_255;
-        return material.rme.z + ambient * material.rme.y;
+        return vec3(material.rme.z);
     } else {
         if (dontFilter || i == 0) renderId.w = float((randIndex % 128) << 1) * INV_255;
-        return lightColor * float(lights) + material.rme.z + ambient * material.rme.y;
+        return lightColor * float(lights) + material.rme.z;
     }
 }
 */
+
 vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target, vec3 V, Material material, bool dontFilter, int triangleId, int i) {
     vec3 localColor = vec3(0);
     float reservoirLength = 0.0f;
@@ -537,13 +541,13 @@ vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoo
     geometryNormal *= sign(dot(smoothNormal, geometryNormal));
 
 
-    vec3 normalDots = geometryNormal * shadow.normals;
+    vec3 normalDots = sin(acos(geometryNormal * shadow.normals));
 
     vec3 diffs = max(vec3(
-        distance(target, shadow.triangle[0]) * sin(acos(dot(shadow.normals[0], geometryNormal))),
-        distance(target, shadow.triangle[1]) * sin(acos(dot(shadow.normals[1], geometryNormal))),
-        distance(target, shadow.triangle[2]) * sin(acos(dot(shadow.normals[2], geometryNormal)))
-    ), 0.0);
+        distance(target, shadow.triangle[0]),
+        distance(target, shadow.triangle[1]),
+        distance(target, shadow.triangle[2])
+    ) * normalDots, 0.0);
     // diffs = max(diffs, 0.0);
     float geometryOffset = dot(diffs, vec3(uv, 1.0f - uv.x - uv.y));
     vec3 offsetTarget = target + geometryOffset * smoothNormal;
@@ -635,9 +639,10 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
                 roughnessBRDF
             ));
         } else {
+            float eta = mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f));
             // Refract ray depending on IOR (material.tpo.z)
             ray.unitDirection = normalize(mix(
-                refract(ray.unitDirection, smoothNormal, mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f))),
+                refract(ray.unitDirection, smoothNormal, eta),
                 - randomSpheareVec,
                 roughnessBRDF
             ));
@@ -805,6 +810,6 @@ void main() {
     // render material (last in transparency)
     renderOriginalId = vec4(combineNormalRME(smoothNormal, material.rme), originalTPOx + INV_255);
     // render modulus of absolute position (last in transparency)
-    float div = 2.0f * length(position - camera);
+    float div = 2.0f * distance(position, camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z + INV_255);
 }

@@ -34,7 +34,7 @@ async function buildScene() {
 	// Set primary light source.
 	scene.primaryLightSources = [[0, 4, 0]];
 	// Modify brightness.
-	scene.primaryLightSources[0].intensity = 80;
+	scene.primaryLightSources[0].intensity = 160;
 	// Generate side planes of box.
 	let bottom_plane = scene.Plane([-5,-5,-21],[5,-5,-21],[5,-5,5],[-5,-5,5]);
   	let top_plane = scene.Plane([-5,5,-21],[-5,5,5],[5,5,5],[5,5,-21]);

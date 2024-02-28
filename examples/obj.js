@@ -28,9 +28,9 @@ async function buildScene() {
 	[camera.fx, camera.fy] = [- 2.38, 0.2];
 	
 	
-	scene.primaryLightSources = [[50, 80, 0]];
-	scene.primaryLightSources[0].intensity = 50000;
-	scene.primaryLightSources[0].variation = 10;
+	scene.primaryLightSources = [[5, 2.9, -5]];
+	scene.primaryLightSources[0].intensity = 50;
+	scene.primaryLightSources[0].variation = 0.2;
 	
 	
 	scene.ambientLight = [.01, .01, .01];
@@ -51,6 +51,7 @@ async function buildScene() {
 	let materialUrl = 'objects/' + model + '.mtl';
 	var mtl = await scene.importMtl(materialUrl);
 	var obj = await scene.importObj(modelUrl, mtl);
+	// obj.emissiveness = 0;
 	// obj.scale(5);
 	obj.move(5, 0, - 5);
 	/*
