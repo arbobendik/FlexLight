@@ -62,6 +62,8 @@ flat in vec3 camera;
 flat in int fragmentTriangleId;
 flat in int transformationId;
 
+flat in mat3 firstTriangle;
+
 layout (std140) uniform transformMatrix
 {
     mat3 rotation[MAX_TRANSFORMS];
@@ -536,20 +538,19 @@ vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoo
     }
     
     // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-    vec3 geometryNormal = normalize(cross(shadow.triangle[1] - shadow.triangle[0], shadow.triangle[2] - shadow.triangle[0]));
+    vec3 geometryNormal = normalize(cross(shadow.triangle[0] - shadow.triangle[1], shadow.triangle[0] - shadow.triangle[2]));
     // geometryNormal = faceforward(geometryNormal, smoothNormal, geometryNormal);
     geometryNormal *= sign(dot(smoothNormal, geometryNormal));
 
-
-    vec3 normalDots = sin(acos(geometryNormal * shadow.normals));
-
-    vec3 diffs = max(vec3(
+    vec3 angles = acos(abs(geometryNormal * shadow.normals));
+    vec3 angleTan = clamp(tan(angles), 0.0, 1.0);
+    vec3 diffs = vec3(
         distance(target, shadow.triangle[0]),
         distance(target, shadow.triangle[1]),
         distance(target, shadow.triangle[2])
-    ) * normalDots, 0.0);
+    );
     // diffs = max(diffs, 0.0);
-    float geometryOffset = dot(diffs, vec3(uv, 1.0f - uv.x - uv.y));
+    float geometryOffset = dot(diffs * angleTan, vec3(uv, 1.0f - uv.x - uv.y));
     vec3 offsetTarget = target + geometryOffset * smoothNormal;
     
     Ray lightRay = Ray(offsetTarget, reservoirLight, reservoirLightDir, unitLightDir);
@@ -595,7 +596,7 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
 
         // Generate pseudo random vector
         vec4 randomVec = noise(clipSpace.xy / clipSpace.z, fi + cosSampleN);
-        vec3 randomSpheareVec = (smoothNormal + randomVec.xyz) * 0.5;
+        vec3 randomSpheareVec = (smoothNormal + normalize(randomVec.xyz)) * 0.5;
 
         // Obtain normalized viewing direction
         vec3 V = normalize(ray.origin - ray.target);
@@ -638,12 +639,13 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
                 randomSpheareVec, 
                 roughnessBRDF
             ));
+            // finalColor += vec3(1, 0,0 );
         } else {
             float eta = mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f));
             // Refract ray depending on IOR (material.tpo.z)
             ray.unitDirection = normalize(mix(
                 refract(ray.unitDirection, smoothNormal, eta),
-                - randomSpheareVec,
+                randomSpheareVec,
                 roughnessBRDF
             ));
         }
@@ -722,14 +724,7 @@ void main() {
 
     // Calculate vertex position in texture
     int triangleColumn = fragmentTriangleId >> 8;
-    ivec2 indexGeometry = ivec2((fragmentTriangleId - triangleColumn * TRIANGLES_PER_ROW) * 7, triangleColumn);
     ivec2 indexScene = ivec2((fragmentTriangleId - triangleColumn * TRIANGLES_PER_ROW) * 7, triangleColumn);
-    // Fetch texture data
-    vec4 g0 = texelFetch(sceneTex, indexScene, 0);
-    vec4 g1 = texelFetch(sceneTex, indexScene + ivec2(1, 0), 0);
-    vec4 g2 = texelFetch(sceneTex, indexScene + ivec2(2, 0), 0);
-
-    mat3 triangle = rotation[tI] * mat3(g0, g1, g2.x) + mat3(shift[tI], shift[tI], shift[tI]);
     // Scene texture
     vec4 t0 = texelFetch(sceneTex, indexScene, 0);
     vec4 t1 = texelFetch(sceneTex, indexScene + ivec2(1, 0), 0);
@@ -741,7 +736,7 @@ void main() {
     // Assemble 3 vertex normals
     mat3 normals = rotation[tI] * mat3(t0, t1, t2.x);
     // Create shadow terminator instance for later shading
-    ShadowTerminator shadow = ShadowTerminator(triangle, normals, vec3(uv, 1.0f - uv.x - uv.y));
+    ShadowTerminator shadow = ShadowTerminator(firstTriangle, normals, vec3(uv, 1.0f - uv.x - uv.y));
     // Transform normal with local transform
     vec3 smoothNormal = normalize(rotation[tI] * (normals * vec3(uv, 1.0f - uv.x - uv.y)));
     // Create 3 2-component vectors for the UV's of the respective vertex
@@ -778,8 +773,6 @@ void main() {
     Ray ray = Ray(camera, position, dir, normDir);
     // vec3 finalColor = material.rme;
     vec3 finalColor = vec3(0);
-
-    // finalColor = fract(absolutePosition);//fract(smoothNormal);
     // Generate multiple samples
     for(int i = 0; i < samples; i++) finalColor += lightTrace(ray, material, shadow, smoothNormal, fragmentTriangleId, i, maxReflections);
     // Average ray colors over samples.

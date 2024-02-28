@@ -821,10 +821,7 @@ export class PathTracerWGL2 {
     // Init canvas parameters and textures with resize
     resize();
     // Handle canvas resize
-    window.addEventListener('resize', resize);
     // Init canvas parameters and textures with resize
-    // await resize();
-    // Handle canvas resize
     window.addEventListener('resize', resize);
     // Prepare Renderengine
     let engineState = prepareEngine();
