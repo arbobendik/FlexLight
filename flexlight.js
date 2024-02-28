@@ -75,6 +75,11 @@ class FlexLight {
   set api (api) {
     if (api == this.#api) return;
     this.#api = api;
+    // Replace canvas element
+    let newCanvas = document.createElement('canvas');
+    console.log(this.#canvas.parentElement);
+    this.#canvas.parentElement.replaceChild(newCanvas, this.#canvas);
+    this.#canvas = newCanvas;
     // Reset renderer and io for api
     this.renderer = this.#idRenderer;
     this.io = this.#idIo;

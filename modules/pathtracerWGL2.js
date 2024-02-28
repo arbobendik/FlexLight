@@ -63,18 +63,17 @@ export class PathTracerWGL2 {
     this.scene = scene;
     this.config = config;
     this.#gl = canvas.getContext('webgl2');
-    this.gl = this.#gl;
 
     this.config.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
-    
-    this.halt = () => {
-      try {
-        this.#gl.loseContext();
-      } catch (e) {
-        console.warn("Unable to lose previous context, reload page in case of performance issue");
-      }
-      this.#halt = true;
+  }
+
+  halt = () => {
+    try {
+      this.#gl.loseContext();
+    } catch (e) {
+      console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
+    this.#halt = true;
   }
   
   // Make canvas read only accessible
