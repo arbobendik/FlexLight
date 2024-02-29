@@ -16,15 +16,14 @@ precision highp int;
 precision highp float;
 precision highp sampler2D;
 
-struct NormalizedRay {
-    vec3 target;
-    vec3 unitDirection;
-};
-
 struct Ray {
     vec3 origin;
     vec3 target;
     vec3 direction;
+    vec3 unitDirection;
+};
+struct NormalizedRay {
+    vec3 target;
     vec3 unitDirection;
 };
 
@@ -40,12 +39,17 @@ struct Intersection {
     float dist;
 };
 
+struct Transform {
+    mat3 rotation;
+    vec3 shift;
+};
+
 struct Hit {
     mat3 triangle;
     vec3 uvw;
     vec3 point;
     int triangleId;
-    int transformationId;
+    int tI;
 };
 
 struct ShadowTerminator {
@@ -103,7 +107,6 @@ layout(location = 5) out vec4 renderLocationId;
 const Intersection NO_INTERSECT = Intersection(vec3(0.0), vec3(0.0), 0.0);
 const Hit NO_HIT = Hit(mat3(0.0), vec3(0.0), vec3(0.0), - 1, 0);
 
-float invTextureWidth = 1.0f;
 // Prevent blur over shadow border or over (close to) perfect reflections
 float firstRayLength = 1.0f;
 // Accumulate color of mirror reflections
@@ -129,9 +132,13 @@ vec3 combineNormalRME(vec3 n, vec3 rme) {
 }
 
 // Lookup values for texture atlases
-vec3 lookup(sampler2D atlas, vec3 coords) {
-    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
-    vec2 atlasCoords = vec2((coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth, (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor);
+vec3 fetchTexVal(sampler2D atlas, vec2 uv, float texNum, vec3 defaultVal) {
+    if (texNum == - 1.0) return defaultVal;
+    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y);
+    vec2 atlasCoords = vec2(
+        (uv.x + mod(texNum, float(textureWidth))), 
+        (uv.y + floor(texNum / float(textureWidth))) * atlasHeightFactor
+    ) / float(textureWidth);
     // Return texel on requested location
     return texture(atlas, atlasCoords).xyz;
 }
@@ -180,34 +187,21 @@ bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
 }
 
 // Don't return intersection point, because we're looking for a specific triangle not bounding box
-bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
-    vec3 v0 = (minCorner - p) * invRay;
-    vec3 v1 = (maxCorner - p) * invRay;
+bool rayCuboid(float l, NormalizedRay ray, vec3 minCorner, vec3 maxCorner) {
+    
+    vec3 v0 = (minCorner - ray.target) / ray.unitDirection;
+    vec3 v1 = (maxCorner - ray.target) / ray.unitDirection;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
 }
 
-/*
-bool raySphere(float l, Ray ray, vec3 c, float r2) {
-    vec3 diff = c - ray.target;
-    float cosa = dot(diff, ray.unitDirection);
-    // if (cosa < 0.0f) return false;
-    float d2 = dot(diff, diff) - cosa * cosa;
-    if (d2 > r2) return false;
-    float thc = sqrt(r2 - d2);
-    return l > cosa - abs(thc);
-}
-*/
-
 // Test for closest ray triangle intersection
 // return intersection position in world space and index of target triangle in geometryTex
 // plus triangle vertices and transformation Id
-Hit rayTracer(NormalizedRay ray, int triangleId) {
+Hit rayTracer(NormalizedRay ray) {
     // Cache transformed ray attributes
     NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
-    // Inverse of transformed normalized ray
-    vec3 invDir = 1.0 / ray.unitDirection;
     int cachedTI = 0;
     // Latest intersection which is now closest to origin
     Hit hit = NO_HIT;
@@ -218,7 +212,6 @@ Hit rayTracer(NormalizedRay ray, int triangleId) {
     int size = geometryTexSize.y * TRIANGLES_PER_ROW;
     // Iterate through lines of texture
     for(int i = 0; i < size; i++) {
-        if (triangleId == i) continue;
         // Get position of current triangle/vertex in geometryTex
         int triangleColumn = i >> TRIANGLES_PER_ROW_POWER;
         ivec2 index = ivec2((i - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
@@ -231,21 +224,21 @@ Hit rayTracer(NormalizedRay ray, int triangleId) {
         // Test if cached transformed variables are still valid
         if (tI != cachedTI) {
             int iI = tI + 1;
+            mat3 rotationII = rotation[iI];
             cachedTI = tI;
             tR = NormalizedRay(
-                rotation[iI] * (ray.target + shift[iI]),
-                rotation[iI] * ray.unitDirection
+                rotationII * (ray.target + shift[iI]),
+                rotationII * ray.unitDirection
             );
-            invDir = 1.0 / tR.unitDirection;
         }
         // Three cases:
         // t2.z = 0        => end of list: stop loop
         // t2.z = 1        => is bounding volume: do AABB intersection test
         // t2.z = 2        => is triangle: do triangle intersection test
-        if (t2.z == 0.0) break;
+        if (t2.z == 0.0) return hit;
 
         if (t2.z == 1.0) {
-            if (!rayCuboid(minLen, invDir, tR.target, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
+            if (!rayCuboid(minLen, tR, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
         } else {
             mat3 triangle = mat3 (t0, t1, t2.x);
             // Test if triangle intersects ray
@@ -256,37 +249,32 @@ Hit rayTracer(NormalizedRay ray, int triangleId) {
                 // Translate intersection point back to absolute space
                 hit.point = intersection.point;
                 hit.triangle = triangle;
-                hit.transformationId = int(t2.y);
+                hit.tI = tI;
                 hit.triangleId = i;
                 // Update maximum object distance for future rays
                 minLen = intersection.dist;
             }
         }
     }
-    
-    int tI = hit.transformationId << 1;
-    hit.point = rotation[tI] * hit.point + shift[tI];
-    hit.triangle = rotation[tI] * hit.triangle + mat3(shift[tI], shift[tI], shift[tI]);
+    int tI = hit.tI;
+    // hit.point = rotation[tI] * hit.point + shift[tI];
+    // hit.triangle = rotation[tI] * hit.triangle + mat3(shift[tI], shift[tI], shift[tI]);
     // Return ray hit with all required information
     return hit;
 }
 
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTest(Ray ray, int triangleId) {
+bool shadowTest(float l, NormalizedRay ray) {
     // Cache transformed ray attributes
-    NormalizedRay tR = NormalizedRay(ray.origin, ray.unitDirection);
-    // Inverse of transformed normalized ray
-    vec3 invDir = 1.0 / ray.unitDirection;
+    NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
     int cachedTI = 0;
     // Precompute max length
-    float minLen = length(ray.direction);
+    float minLen = l;
     // Get texture size as max iteration value
-    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
-    int size = geometryTexSize.y * TRIANGLES_PER_ROW;
+    int size = textureSize(geometryTex, 0).y * TRIANGLES_PER_ROW;
     // Iterate through lines of texture
     for(int i = 0; i < size; i++) {
-        if (triangleId == i) continue;
         // Get position of current triangle/vertex in geometryTex
         int triangleColumn = i >> TRIANGLES_PER_ROW_POWER;
         ivec2 index = ivec2((i - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
@@ -303,19 +291,19 @@ bool shadowTest(Ray ray, int triangleId) {
         // Test if cached transformed variables are still valid
         if (tI != cachedTI) {
             int iI = tI + 1;
+            mat3 rotationII = rotation[iI];
             cachedTI = tI;
             tR = NormalizedRay(
-                rotation[iI] * (ray.origin + shift[iI]),
-                normalize(rotation[iI] * ray.unitDirection)
+                rotationII * (ray.target + shift[iI]),
+                normalize(rotationII * ray.unitDirection)
             );
-            invDir = 1.0 / tR.unitDirection;
         }
         // Three cases:
         // t2.z = 0        => end of list: stop loop
         // t2.z = 1        => is bounding volume: do AABB intersection test
         // t2.z = 2        => is triangle: do triangle intersection test
-        if (t2.z == 0.0) break;
-        else if (t2.z == 1.0 && !rayCuboid(minLen, invDir, tR.target, a, b)) i += int(c.x);
+        if (t2.z == 0.0) return false;
+        else if (t2.z == 1.0 && !rayCuboid(minLen, tR, a, b)) i += int(c.x);
         else if(t2.z == 2.0 && moellerTrumboreCull(minLen, tR, a, b, c)) return true;
     }
     // Tested all triangles, but there is no intersection
@@ -343,50 +331,6 @@ vec3 fresnel(vec3 F0, float theta) {
     // Use Schlick approximation
     return F0 + (1.0f - F0) * pow(1.0f - theta, 5.0f);
 }
-
-/*
-float fresnelFloat (float F0, float theta) {
-    // Use Schlick approximation
-    return F0 + (1.0f - F0) * pow(1.0f - theta, 5.0f);
-}
-
-vec3 altForward (Material material, vec3 lightDir, float strength, vec3 N, vec3 V) {
-    float lenP1 = 1.0f + length(lightDir);
-    // Apply inverse square law
-    float brightness = strength / (lenP1 * lenP1);
-    //float F0 = material.rme.y;
-    vec3 L = normalize(lightDir);
-    float NdotL = max(0.0, dot(N, L));
-	vec3 Rs = vec3(0.0);
-	if (NdotL > 0.9) 
-	{
-		vec3 H = normalize(L + V);
-		float NdotH = max(0.0, dot(N, H));
-		float NdotV = max(0.0, dot(N, V));
-		float VdotH = max(0.0, dot(L, H));
-
-		// Fresnel reflectance
-        float BRDF = mix(1.0f, NdotV, material.rme.y);
-        vec3 F0 = material.albedo * BRDF;
-		vec3 F = fresnel(F0, VdotH);
-
-		// Microfacet distribution by Beckmann
-		float m_squared = material.rme.x * material.rme.x;
-		float r1 = 1.0 / (4.0 * m_squared * pow(NdotH, 4.0));
-		float r2 = (NdotH * NdotH - 1.0) / (m_squared * NdotH * NdotH);
-		float D = r1 * exp(r2);
-
-		// Geometric shadowing
-		float two_NdotH = 2.0 * NdotH;
-		float g1 = (two_NdotH * NdotV) / VdotH;
-		float g2 = (two_NdotH * NdotL) / VdotH;
-		float G = min(1.0, min(g1, g2));
-
-		Rs = (F * D * G) / (PI * NdotL * NdotV);
-	}
-	return material.albedo * brightness * (NdotL + max(Rs, 0.0));
-}
-*/
 
 vec3 forwardTrace(Material material, vec3 lightDir, float strength, vec3 N, vec3 V) {
     float lenP1 = 1.0f + length(lightDir);
@@ -484,7 +428,7 @@ vec3 randomSample (vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target,  vec3
 }
 */
 
-vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target, vec3 V, Material material, bool dontFilter, int triangleId, int i) {
+vec3 reservoirSample (ShadowTerminator shadow, NormalizedRay ray, vec4 randomVec, vec3 N, vec3 smoothNormal, Material material, bool dontFilter, int i) {
     vec3 localColor = vec3(0);
     float reservoirLength = 0.0f;
     float totalWeight = 0.0f;
@@ -504,9 +448,9 @@ vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoo
       reservoirLength ++;
       // Alter light source position according to variation.
       light = randomVec.xyz * strengthVariation.y + light;
-      vec3 dir = light - target;
+      vec3 dir = light - ray.target;
     
-      vec3 colorForLight = forwardTrace(material, dir, strengthVariation.x, N, V);
+      vec3 colorForLight = forwardTrace(material, dir, strengthVariation.x, N, - ray.unitDirection);
       localColor += colorForLight;
       float weight = length(colorForLight);
       totalWeight += weight;
@@ -536,7 +480,7 @@ vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoo
         if (dontFilter || i == 0) renderId.w = float(((reservoirNum % 128) << 1) + 1) * INV_255;
         return baseLuminance;
     }
-    
+
     // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
     vec3 geometryNormal = normalize(cross(shadow.triangle[0] - shadow.triangle[1], shadow.triangle[0] - shadow.triangle[2]));
     // geometryNormal = faceforward(geometryNormal, smoothNormal, geometryNormal);
@@ -545,17 +489,17 @@ vec3 reservoirSample (ShadowTerminator shadow, vec4 randomVec, vec3 N, vec3 smoo
     vec3 angles = acos(abs(geometryNormal * shadow.normals));
     vec3 angleTan = clamp(tan(angles), 0.0, 1.0);
     vec3 diffs = vec3(
-        distance(target, shadow.triangle[0]),
-        distance(target, shadow.triangle[1]),
-        distance(target, shadow.triangle[2])
+        distance(ray.target, shadow.triangle[0]),
+        distance(ray.target, shadow.triangle[1]),
+        distance(ray.target, shadow.triangle[2])
     );
     // diffs = max(diffs, 0.0);
-    float geometryOffset = dot(diffs * angleTan, vec3(uv, 1.0f - uv.x - uv.y));
-    vec3 offsetTarget = target + geometryOffset * smoothNormal;
+    float geometryOffset = dot(diffs * angleTan, shadow.uvw);
+    vec3 offsetTarget = ray.target + geometryOffset * smoothNormal;
     
-    Ray lightRay = Ray(offsetTarget, reservoirLight, reservoirLightDir, unitLightDir);
+    NormalizedRay lightRay = NormalizedRay(offsetTarget, unitLightDir);
 
-    if (shadowTest(lightRay, triangleId)) {
+    if (shadowTest(length(reservoirLightDir), lightRay)) {
         if (dontFilter || i == 0) renderId.w = float(((reservoirNum % 128) << 1) + 1) * INV_255;
         return baseLuminance;
     } else {
@@ -573,7 +517,7 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
     vec3 finalColor = vec3(0);
     vec3 importancyFactor = vec3(1);
     // Ray currently traced
-    Ray ray = firstRay;
+    NormalizedRay ray = NormalizedRay(firstRay.target, firstRay.unitDirection);
     // Bundles all attributes of the current surface
     Material material = m;
     // Use cosine as noise in random coordinate picker
@@ -596,19 +540,15 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
 
         // Generate pseudo random vector
         vec4 randomVec = noise(clipSpace.xy / clipSpace.z, fi + cosSampleN);
-        vec3 randomSpheareVec = (smoothNormal + normalize(randomVec.xyz)) * 0.5;
-
-        // Obtain normalized viewing direction
-        vec3 V = normalize(ray.origin - ray.target);
-
-        float BRDF = mix(1.0f, abs(dot(smoothNormal, V)), material.rme.y);
+        vec3 randomSpheareVec = normalize(smoothNormal + normalize(randomVec.xyz));
+        float BRDF = mix(1.0f, abs(dot(smoothNormal, - ray.unitDirection)), material.rme.y);
 
         // Alter normal according to roughness value
         float roughnessBRDF = material.rme.x * BRDF;
         vec3 roughNormal = normalize(mix(smoothNormal, randomSpheareVec, roughnessBRDF));
 
-        vec3 H = normalize(V + roughNormal);
-        float VdotH = max(dot(V, H), 0.0f);
+        vec3 H = normalize(roughNormal - ray.unitDirection);
+        float VdotH = max(dot(- ray.unitDirection, H), 0.0f);
         // vec3(pow(signDir * (1.0 - material.tpo.z) / (1.0 + material.tpo.z), 2.0)) * 
         vec3 F0 = material.albedo * BRDF;
         vec3 f = fresnel(F0, VdotH);
@@ -625,6 +565,11 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
             renderId += pow(2.0f, -fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
             originalTPOx++;
         }
+
+        // Determine local color considering PBR attributes and lighting
+        vec3 localColor = reservoirSample(shadow, ray, randomVec, - signDir * roughNormal, - signDir * smoothNormal, material, dontFilter, i);
+        // Calculate primary light sources for this pass if ray hits non translucent object
+        finalColor += localColor * importancyFactor;
         // Update dontFilter variable
         dontFilter = dontFilter && ((material.rme.x < 0.01f && isSolid) || !isSolid);
         // Handle translucency and skip rest of light calculation
@@ -634,27 +579,14 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
                 dontFilter = false;
             }
             // Calculate reflecting ray
-            ray.unitDirection = normalize(mix(
-                reflect(ray.unitDirection, smoothNormal), 
-                randomSpheareVec, 
-                roughnessBRDF
-            ));
-            // finalColor += vec3(1, 0,0 );
+            ray.unitDirection = normalize(mix(reflect(ray.unitDirection, smoothNormal), randomSpheareVec, roughnessBRDF));
         } else {
             float eta = mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f));
             // Refract ray depending on IOR (material.tpo.z)
-            ray.unitDirection = normalize(mix(
-                refract(ray.unitDirection, smoothNormal, eta),
-                randomSpheareVec,
-                roughnessBRDF
-            ));
+            ray.unitDirection = normalize(mix(refract(ray.unitDirection, smoothNormal, eta),randomSpheareVec, roughnessBRDF));
         }
-        // Determine local color considering PBR attributes and lighting
-        vec3 localColor = reservoirSample(shadow, randomVec, - signDir * roughNormal, - signDir * smoothNormal, ray.target, V, material, dontFilter, triangleId, i);
-        // Calculate primary light sources for this pass if ray hits non translucent object
-        finalColor += localColor * importancyFactor;
         // Calculate next intersection
-        Hit hit = rayTracer(NormalizedRay(ray.target, ray.unitDirection), triangleId);
+        Hit hit = rayTracer(ray);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.triangleId == - 1) break;
         // Update last used tpo.x value
@@ -672,56 +604,36 @@ vec3 lightTrace(Ray firstRay, Material m, ShadowTerminator shadow, vec3 smoothNo
         vec4 t5 = texelFetch(sceneTex, indexScene + ivec2(5, 0), 0);
         vec4 t6 = texelFetch(sceneTex, indexScene + ivec2(6, 0), 0);
         // Assemble 3 vertex normals
-        int tI = hit.transformationId << 1;
-        mat3 normals = rotation[tI] * mat3 (t0, t1, t2.x);
-        //mat3 rotatedNormals = 
+        int tI = hit.tI;
+        // Transform t = Transform(rotation[tI], shift[tI]);
         // Update shadow terminator instance for considering smooth normals in shading through a geometry offset
-        shadow.triangle = hit.triangle;
-        shadow.normals = normals;
+        shadow.normals = rotation[tI] * mat3 (t0, t1, t2.x);
+        shadow.triangle = rotation[tI] * hit.triangle + mat3(shift[tI], shift[tI], shift[tI]);
         shadow.uvw = hit.uvw;
+        ray.target = rotation[tI] * hit.point + shift[tI];
         // Transform normal according to object transform
-        smoothNormal = normalize(normals * hit.uvw);
-        // Create 3 2-component vectors for the UV's of the respective vertex
-        mat3x2 vertexUVs = mat3x2(t2.yzw, t3.xyz);
-        // Interpolate final barycentric texture coordinates
-        vec2 barycentric = vertexUVs * hit.uvw;
-        // Read texture id's used as material
-        vec3 texNums = vec3(t3.w, t4.xy);
+        smoothNormal = normalize(shadow.normals * hit.uvw);
+        // Interpolate final barycentric texture coordinates between UV's of the respective vertices
+        vec2 barycentric = mat3x2(t2.yzw, t3.xyz) * hit.uvw;
         // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
         material = Material(
-            mix(
-                vec3(t4.zw, t5.x), 
-                lookup(tex, vec3(barycentric, texNums.x)).xyz, 
-                max(sign(texNums.x + 0.5f), 0.0f)
-            ),
-            mix(
-                t5.yzw, 
-                lookup(pbrTex, vec3(barycentric, texNums.y)).xyz, 
-                max(sign(texNums.y + 0.5f), 0.0f)
-            ),
-            mix(
-                t6.xyz, 
-                lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, 
-                max(sign(texNums.z + 0.5f), 0.0f)
-            )
+            fetchTexVal(tex, barycentric, t3.w, vec3(t4.zw, t5.x)),
+            fetchTexVal(pbrTex, barycentric, t4.x, t5.yzw),
+            fetchTexVal(translucencyTex, barycentric, t4.y, t6.xyz)
         );
         // Update other parameters
-        ray.origin = ray.target;
-        ray.target = hit.point;
         // Preserve original roughness for filter pass
         lastFilterRoughness = material.rme.x;
-        if (i == 0) firstRayLength = min(length(ray.target - ray.origin) / length(firstRay.target - firstRay.origin), firstRayLength);
+        if (i == 0) firstRayLength = min(length(ray.target - firstRay.target) / length(firstRay.target - firstRay.origin), firstRayLength);
     }
     // Return final pixel color
     return finalColor + importancyFactor * ambient;
 }
 
 void main() {
-    // Calculate constant for this pass
-    invTextureWidth = 1.0f / float(textureWidth);
     // Transform normal according to object transform
     int tI = transformationId << 1;
-
+    vec3 uvw = vec3(uv, 1.0f - uv.x - uv.y);
     // Calculate vertex position in texture
     int triangleColumn = fragmentTriangleId >> 8;
     ivec2 indexScene = ivec2((fragmentTriangleId - triangleColumn * TRIANGLES_PER_ROW) * 7, triangleColumn);
@@ -736,32 +648,16 @@ void main() {
     // Assemble 3 vertex normals
     mat3 normals = rotation[tI] * mat3(t0, t1, t2.x);
     // Create shadow terminator instance for later shading
-    ShadowTerminator shadow = ShadowTerminator(firstTriangle, normals, vec3(uv, 1.0f - uv.x - uv.y));
+    ShadowTerminator shadow = ShadowTerminator(firstTriangle, normals, uvw);
     // Transform normal with local transform
-    vec3 smoothNormal = normalize(rotation[tI] * (normals * vec3(uv, 1.0f - uv.x - uv.y)));
-    // Create 3 2-component vectors for the UV's of the respective vertex
-    mat3x2 vertexUVs = mat3x2(t2.yzw, t3.xyz);
-    // Interpolate final barycentric texture coordinates
-    vec2 barycentric = vertexUVs * vec3(uv, 1.0f - uv.x - uv.y);
-    // Read texture id's used as material
-    vec3 texNums = vec3(t3.w, t4.xy);
+    vec3 smoothNormal = normalize(rotation[tI] * (normals * uvw));
+    // Interpolate final barycentric texture coordinates between UV's of the respective vertices
+    vec2 barycentric = mat3x2(t2.yzw, t3.xyz) * uvw;
     // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
     Material material = Material(
-        mix(
-            vec3(t4.zw, t5.x), 
-            lookup(tex, vec3(barycentric, texNums.x)).xyz, 
-            max(sign(texNums.x + 0.5f), 0.0f)
-        ),
-        mix(
-            t5.yzw, 
-            lookup(pbrTex, vec3(barycentric, texNums.y)).xyz, 
-            max(sign(texNums.y + 0.5f), 0.0f)
-        ),
-        mix(
-            t6.xyz, 
-            lookup(translucencyTex, vec3(barycentric, texNums.z)).xyz, 
-            max(sign(texNums.z + 0.5f), 0.0f)
-        )
+        fetchTexVal(tex, barycentric, t3.w, vec3(t4.zw, t5.x)),
+        fetchTexVal(pbrTex, barycentric, t4.x, t5.yzw),
+        fetchTexVal(translucencyTex, barycentric, t4.y, t6.xyz)
     );
 
     originalTPOx = material.tpo.x;
@@ -805,4 +701,7 @@ void main() {
     // render modulus of absolute position (last in transparency)
     float div = 2.0f * distance(position, camera);
     renderLocationId = vec4(mod(position, div) / div, material.rme.z + INV_255);
+
+    // renderColor = vec4(smoothNormal, 1.0);
+    // renderColorIp = vec4(0.0);
 }
