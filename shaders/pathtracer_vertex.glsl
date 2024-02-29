@@ -48,29 +48,28 @@ void main() {
     vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
 
     mat3 triangle = mat3(t0, t1, t2.x);
-    // Combine vertex position
-    vec3 position3d;
-    switch (vertexId) {
-        case 0:
-            position3d = triangle[0];
-            break;
-        case 1:
-            position3d = triangle[1];
-            break;
-        case 2:
-            position3d = triangle[2];
-            break;
-    }
+
     transformationId = int(t2.y);
     // Apply local geometry transform
     int tI = transformationId << 1;
+    // Combine vertex position
+    switch (vertexId) {
+        case 0:
+            position = rotation[tI] * triangle[0] + shift[tI];
+            break;
+        case 1:
+            position = rotation[tI] * triangle[1] + shift[tI];
+            break;
+        case 2:
+            position = rotation[tI] * triangle[2] + shift[tI];
+            break;
+    }
     // Transform position
-    vec3 localGeometry = rotation[tI] * position3d + shift[tI];
-    vec3 move3d = localGeometry - cameraPosition;
+    vec3 move3d = position - cameraPosition;
     clipSpace = viewMatrix * move3d;
     // Set triangle position in clip space
     gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(move3d * INV_65536))), clipSpace.z);
-    position = localGeometry;
+    position = position;
 
     uv = baseUVs[vertexId];
     camera = cameraPosition;
