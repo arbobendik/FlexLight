@@ -43,7 +43,7 @@ scene.primaryLightSources[0].intensity = 400;
 scene.primaryLightSources[0].variation = 0.2;
 scene.primaryLightSources[1].intensity = 300;
 // Set ambient illumination
-scene.ambientLight = [0.125, 0.125, 0.125];
+scene.ambientLight = [0.1, 0.1, 0.1];
 
 // Set texture Sizes
 scene.standardTextureSizes = [16, 16];
@@ -62,6 +62,7 @@ let cuboids = [
 ];
 
 let cuboidColors = [
+	// [255, 255, 255],
 	[230, 170, 0],
 	[0, 150, 150],
 	[150, 0, 100],
@@ -85,21 +86,11 @@ let grassCubes = [
 	scene.Cuboid(-3, -2, -1, 0, -5.2, -4.2)
 ];
 
-let transform = scene.Transform([
-	1, 0, 0, 0,
-	0, 1, 0, 0,
-	0, 0, 1, 0,
-	0, 0, 0, 1
-]);
-
-console.log(transform);
-
 
 grassCubes.forEach(cube => {
 	cube.textureNums = [0, -1, -1];
 	cube.top.textureNums = [1, -1, -1];
 	cube.bottom.textureNums = [2, -1, -1];
-	cube.transform = transform;
 	scene.queue.push(cube);
 });
 
@@ -107,7 +98,6 @@ grassCubes.forEach(cube => {
 scene.queue.push(scene.Cuboid(2.5, 7.5, -1, 1.5, 5, 7));
 // Spawn red cube on top of "wall"
 let redCube = scene.Cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
-redCube.transform = transform;
 redCube.textureNums = [3, 0, -1];
 scene.queue.push(redCube);
 // Spawn lantern on the floor
