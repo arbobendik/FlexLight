@@ -22,15 +22,14 @@ uniform mat3 viewMatrix;
 // Texture with vertex information about all triangles in scene
 uniform sampler2D geometryTex;
 
-out vec3 position;
+out vec3 relativePosition;
+out vec3 absolutePosition;
 out vec2 uv;
 out vec3 clipSpace;
 
 flat out vec3 camera;
-flat out int fragmentTriangleId;
+flat out int initTriangleId;
 flat out int transformationId;
-
-flat out mat3 firstTriangle;
 
 const vec2 baseUVs[3] = vec2[3](
     vec2(1, 0), 
@@ -47,33 +46,28 @@ void main() {
     vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
     vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
 
-    mat3 triangle = mat3(t0, t1, t2.x);
-
     transformationId = int(t2.y);
     // Apply local geometry transform
     int tI = transformationId << 1;
     // Combine vertex position
     switch (vertexId) {
         case 0:
-            position = rotation[tI] * triangle[0] + shift[tI];
+            relativePosition = t0.xyz;
             break;
         case 1:
-            position = rotation[tI] * triangle[1] + shift[tI];
+            relativePosition = vec3(t0.w, t1.xy);
             break;
         case 2:
-            position = rotation[tI] * triangle[2] + shift[tI];
+            relativePosition = vec3(t1.zw, t2.x);
             break;
     }
     // Transform position
-    vec3 move3d = position - cameraPosition;
-    clipSpace = viewMatrix * move3d;
+    absolutePosition = rotation[tI] * relativePosition + shift[tI];
+    clipSpace = viewMatrix * (absolutePosition - cameraPosition);
     // Set triangle position in clip space
-    gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(move3d * INV_65536))), clipSpace.z);
-    position = position;
+    gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(absolutePosition * INV_65536))), clipSpace.z);
 
     uv = baseUVs[vertexId];
     camera = cameraPosition;
-    fragmentTriangleId = triangleId;
-    // Transform triangle
-    firstTriangle = rotation[tI] * triangle + mat3(shift[tI], shift[tI], shift[tI]);
+    initTriangleId = triangleId;
 }
