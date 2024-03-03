@@ -64,6 +64,13 @@ export class PathTracerWGPU {
     return this.#canvas;
   }
 
+
+  async updateScene () {
+    // Generate texture arrays and buffers
+    let builtScene = await this.scene.generateArraysFromGraph();
+    // Set buffer parameters
+  }
+
   async updateScene () {
   }
 

@@ -10,7 +10,7 @@ export class Config {
   secondPasses = 3;
   temporal = true;
   temporalSamples = 4;
-  filter = true;
+  filter = false;
   hdr = true;
-  antialiasing = 'taa';
+  antialiasing = 'fxaa';
 }

@@ -51,7 +51,7 @@ async function buildScene() {
 
 	var monke = await scene.importObj('objects/monke_smooth.obj');
 	monke.transform = monkeTransform;
-	monke.roughness = .1;
+	monke.roughness = 0.1;
 	monke.metallicity = 1;
 	monke.color = [255, 200, 100]
 	scene.queue.push(monke);
@@ -65,6 +65,7 @@ async function buildScene() {
 	sphere.ior = 1.5;
 	scene.queue.push(sphere);
 
+	/*
 	var mirror = scene.Bounding([scene.Plane([-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0])]);
 	mirror.scale(15);
 	await mirror.move(10, 0, 22);
@@ -79,7 +80,6 @@ async function buildScene() {
 	mirror2.roughness = 0;
 	scene.queue.push(mirror2);
 
-	/*
 	var sphere2 = await scene.importObj('objects/sphere.obj');
 	sphere2.scale(3);
 	await sphere2.move(15, 3, -15);
