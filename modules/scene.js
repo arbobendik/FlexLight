@@ -256,7 +256,7 @@ export class Scene {
         // to skip if ray doesn't intersect with it
         for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = curMinMax[i];
         geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
-        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum;
+        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum ?? 0;
         geometryTextureArray[oldTexturePos * 12 + 10] = 1;
         return curMinMax;
       } else {
@@ -751,10 +751,10 @@ export class Object3D {
   #transform;
 
   get transformNum () {
-    if (this.#transform === undefined) {
-      return -1;
-    } else {
+    if (this.#transform) {
       return this.#transform.number;
+    } else {
+      return 0;
     }
   }
   get transform () { return this.#transform };
