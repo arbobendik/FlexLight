@@ -140,14 +140,14 @@ vec3 moellerTrumbore(mat3 t, NormalizedRay ray, float l) {
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
-    vec3 edge1 = b - a;
-    vec3 edge2 = c - a;
+bool moellerTrumboreCull(mat3 t, NormalizedRay ray, float l) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
     vec3 pvec = cross(ray.unitDirection, edge2);
     float det = dot(edge1, pvec);
     float invDet = 1.0f / det;
     if(det < BIAS) return false;
-    vec3 tvec = ray.target - a;
+    vec3 tvec = ray.target - t[0];
     float u = dot(tvec, pvec) * invDet;
     if(u < BIAS || u > 1.0f) return false;
     vec3 qvec = cross(tvec, edge1);
@@ -267,8 +267,14 @@ bool shadowTest(float l, NormalizedRay ray) {
         // t2.z = 1        => is bounding volume: do AABB intersection test
         // t2.z = 2        => is triangle: do triangle intersection test
         if (t2.z == 0.0) return false;
-        else if (t2.z == 1.0 && !rayCuboid(minLen, tR, a, b)) i += int(c.x);
-        else if(t2.z == 2.0 && moellerTrumboreCull(minLen, tR, a, b, c)) return true;
+
+        if (t2.z == 1.0) {
+            if (!rayCuboid(minLen, tR, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
+        } else {
+            mat3 triangle = mat3 (t0, t1, t2.x);
+            // Test for triangle intersection in positive light ray direction
+            if (moellerTrumboreCull(triangle, tR, minLen)) return true;
+        }
     }
     // Tested all triangles, but there is no intersection
     return false;
