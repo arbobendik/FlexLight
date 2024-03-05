@@ -30,7 +30,7 @@ export class PathTracerWGPU {
     this.camera = camera;
     this.scene = scene;
     this.config = config;
-    console.log(this.config);
+    // console.log(this.config);
     // Check for WebGPU support first by seeing if navigator.gpu exists
     if (!navigator.gpu) return undefined;
     // Request webgpu context
@@ -45,7 +45,7 @@ export class PathTracerWGPU {
   }
 
   async resize () {
-    console.log(this.config);
+    // console.log(this.config);
     this.canvas.width = this.canvas.clientWidth * this.config.renderQuality;
     this.canvas.height = this.canvas.clientHeight * this.config.renderQuality;
     // this.#gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -68,10 +68,27 @@ export class PathTracerWGPU {
   async updateScene () {
     // Generate texture arrays and buffers
     let builtScene = await this.scene.generateArraysFromGraph();
-    // Set buffer parameters
-  }
+    console.log(builtScene);
 
-  async updateScene () {
+    this.#engineState.bufferLength = builtScene.bufferLength;
+
+    this.#engineState.idBuffer = this.#device.createBuffer({ size: builtScene.idBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+    this.#device.queue.writeBuffer(this.#engineState.idBuffer, 0, builtScene.idBuffer);
+
+    // Set buffer parameters
+    this.#engineState.geometryBuffer = this.#device.createBuffer({ size: builtScene.geometryTextureArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+    this.#device.queue.writeBuffer(this.#engineState.geometryBuffer, 0, builtScene.geometryTextureArray);
+
+    // console.log(builtScene.idBuffer);
+
+    this.#engineState.bindGroup = this.#device.createBindGroup({
+      layout: this.#engineState.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.#engineState.uniformBuffer }},
+        { binding: 1, resource: { buffer: this.#engineState.idBuffer }},
+        { binding: 2, resource: { buffer: this.#engineState.geometryBuffer }}
+      ],
+    });
   }
 
   async render() {
@@ -92,12 +109,12 @@ export class PathTracerWGPU {
       format: navigator.gpu.getPreferredCanvasFormat()
     });
 
-    this.#prepareEngine();
+    await this.#prepareEngine();
     // Begin frame cycle
     requestAnimationFrame(() => this.#frameCycle());
   }
 
-  #prepareEngine () {
+  async #prepareEngine () {
     this.#engineState = {
       // Attributes to meassure frames per second
       intermediateFrames: 0,
@@ -106,42 +123,29 @@ export class PathTracerWGPU {
       temporalFrame: 0,
       // Parameters to compare against current state of the engine and recompile shaders on change
       filter: this.config.filter,
-      renderQuality: this.config.renderQuality
+      renderQuality: this.config.renderQuality,
+      // Internal Webgpu parameters
+      bufferLength: 0
     };
 
 
     let shader = Network.fetchSync('shaders/pathtracer.wgsl');
     // Shaders are written in a language called WGSL.
-    const shaderModule = this.#device.createShaderModule({
+    let shaderModule = this.#device.createShaderModule({
       code: shader
     });
 
     // Pipelines bundle most of the render state (like primitive types, blend
     // modes, etc) and shader entry points into one big object.
     this.#engineState.pipeline = this.#device.createRenderPipeline({
-      // All pipelines need a layout, but if you don't need to share data between
-      // pipelines you can use the 'auto' layout to have it generate one for you!
       layout: 'auto',
       vertex: {
         module: shaderModule,
-        entryPoint: 'vertexMain',
-        // `buffers` describes the layout of the attributes in the vertex buffers.
-        buffers: [{
-          arrayStride: 28, // Bytes per vertex (3 floats + 4 floats)
-          attributes: [{
-            shaderLocation: 0, // VertexIn.pos in the shader
-            offset: 0, // Starts at the beginning of the buffer
-            format: 'float32x3' // Data is 3 floats
-          }, {
-            shaderLocation: 1, // VertexIn.color in the shader
-            offset: 12, // Starts 12 bytes (3 floats) in to the buffer
-            format: 'float32x4' // Data is 4 floats
-          }]
-        }],
+        entryPoint: 'vs',
       },
       fragment: {
         module: shaderModule,
-        entryPoint: 'fragmentMain',
+        entryPoint: 'fs',
         // `targets` indicates the format of each render target this pipeline
         // outputs to. It must match the colorAttachments of any renderPass it's
         // used with.
@@ -151,27 +155,10 @@ export class PathTracerWGPU {
       },
     });
 
-    // It's easiest to specify vertex data with TypedArrays, like a Float32Array
-    // You are responsible for making sure the layout of the data matches the
-    // layout that you describe in the pipeline `buffers`.
-    const vertexData = new Float32Array([
-    // X,  Y, Z   R, G, B, A,
-      0,  1, 1,  1, 0, 0, 1,
-      -1, -1, 1,  0, 1, 0, 1,
-      1, -1, 1,  0, 0, 1, 1,
-    ]);
-
-    this.#engineState.vertexBuffer = this.#device.createBuffer({
-      // Buffers are given a size in bytes at creation that can't be changed.
-      size: vertexData.byteLength,
-      // Usage defines what this buffer can be used for
-      // VERTEX = Can be passed to setVertexBuffer()
-      // COPY_DST = You can write or copy data into it after creation
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-
-    // writeBuffer is the easiest way to TypedArray data into a buffer.
-    this.#device.queue.writeBuffer(this.#engineState.vertexBuffer, 0, vertexData);
+    // vec3 + mat3x3 = 12x 32-bit floats = 48 byte
+    this.#engineState.uniformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    // Reload / Rebuild scene graph after resize or page reload
+    await this.updateScene();
   }
 
   // Internal render engine Functions
@@ -216,10 +203,34 @@ export class PathTracerWGPU {
   }
 
   async #renderFrame () {
+
+    // Calculate camera offset and projection matrix
+    let dir = {x: this.camera.fx, y: this.camera.fy};
+    let invFov = 1 / this.camera.fov;
+    let heightInvWidthFov = this.canvas.height * invFov / this.canvas.width;
+
+    let viewMatrix = [
+      [   Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov         ],
+      [ - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov  ],
+      [ - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)           ]
+    ];
+
+    // Transpose view matrix in buffer
+    let uniformValues = new Float32Array([
+      viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0], 0,
+      viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1], 0,
+      viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2], 0,
+      this.camera.x, this.camera.y, this.camera.z, 0
+    ]);
+    // console.log(uniformValues);
+    // Update uniform values on GPU
+    this.#device.queue.writeBuffer(this.#engineState.uniformBuffer, 0, uniformValues);
     // Sumbit command buffer to device queue
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = this.#device.createCommandEncoder();
-
+    
+    
+    
     // All rendering commands happen in a render pass.
     let passEncoder = commandEncoder.beginRenderPass({
       // Render passes are given attachments to write into.
@@ -241,10 +252,11 @@ export class PathTracerWGPU {
     passEncoder.setPipeline(this.#engineState.pipeline);
     // Set the vertex buffer to use when drawing.
     // The `0` corresponds to the index of the `buffers` array in the pipeline.
-    passEncoder.setVertexBuffer(0, this.#engineState.vertexBuffer);
-    // Draw 3 vertices using the previously set pipeline and vertex buffer.
-    passEncoder.draw(3);
-
+    // passEncoder.setVertexBuffer(0, this.#engineState.geometryBuffer);
+    passEncoder.setBindGroup(0, this.#engineState.bindGroup);
+    // Draw vertices using the previously set pipeline and vertex buffer.
+    // console.log(this.#engineState.bufferLength)
+    passEncoder.draw(this.#engineState.bufferLength, this.#engineState.bufferLength * 3);
     // End the render pass.
     passEncoder.end();
 
