@@ -89,6 +89,9 @@ async function buildScene() {
 	*/
 
 	scene.generateBVH();
+
+	console.log(scene.queue);
+
 	engine.renderer.updateScene();
 
 	let rotationAngle = 0;

@@ -1,32 +1,40 @@
-// Every vertex attribute input is identified by a @location, which
-// matches up with the shaderLocation specified during pipeline creation.
-struct VertexIn {
-    @location(0) pos: vec3f,
-    @location(1) color: vec4f,
+
+struct Uniforms {
+    viewMatrix: mat3x3<f32>,
+    cameraPosition: vec3f,
 }
 
-struct VertexOut {
-    // Every vertex shader must output a value with @builtin(position)
-    @builtin(position) pos: vec4f,
 
-    // Other outputs are given a @location so that they can map to the
-    // fragment shader inputs.
+struct VertexOut {
+    @builtin(position) pos: vec4f,
     @location(0) color: vec4f,
 }
 
-// Shader entry points can be named whatever you want, and you can have
-// as many as you want in a single shader module.
-@vertex
-fn vertexMain(in: VertexIn) -> VertexOut {
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> indexBuffer: array<i32>;
+@group(0) @binding(2) var<storage, read> geometryBuffer: array<f32>;
+
+@vertex fn vs(
+    @builtin(vertex_index) vertexIndex : u32,
+    @builtin(instance_index) instanceIndex: u32
+) -> VertexOut {
     var out: VertexOut;
-    out.pos = vec4f(in.pos, 1);
-    out.color = in.color;
+
+    let triangleIndex = indexBuffer[instanceIndex];
+    let geometryIndex = triangleIndex * 12 + i32(vertexIndex % 3) * 3;
+    // Transform position
+    let absolutePosition = vec3(geometryBuffer[geometryIndex], geometryBuffer[geometryIndex + 1], geometryBuffer[geometryIndex + 2]);
+    let clipSpace = (absolutePosition - uniforms.cameraPosition);
+    // Set triangle position in clip space
+    out.pos = vec4f(clipSpace.xy, 2.0 - 1.0f / (1.0f + exp(- length(absolutePosition / 65536.0))), clipSpace.z);
+
+    let index = f32(triangleIndex);
+    let indexCol = vec3f(index, index % 10.0, index % 100.0) * 0.1;
+
+    out.color = vec4f(indexCol, 1);
     return out;
 }
 
-// Every fragment shader has to output one vector per pipeline target.
-// The @location corresponds to the target index in the array.
-@fragment
-fn fragmentMain(@location(0) color: vec4f) -> @location(0) vec4f {
-    return color;
+@fragment fn fs(@location(0) color: vec4f) -> @location(0) vec4f {
+    return max(color, vec4f(0.1));
 }
