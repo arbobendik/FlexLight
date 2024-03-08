@@ -193,13 +193,13 @@ export class Scene {
     let textureLength;
     let bufferLength;
 
-    let geometryTexWidth;
-    let sceneTexWidth;
-    let geometryTextureArrayHeight;
-    let sceneTextureArrayHeight;
+    let geometryBufferWidth;
+    let sceneBufferWidth;
+    let geometryBufferHeight;
+    let sceneBufferHeight;
     
-    let geometryTextureArray;
-    let sceneTextureArray;
+    let geometryBuffer;
+    let sceneBuffer;
     let idBuffer;
     
     // Track ids
@@ -225,8 +225,8 @@ export class Scene {
     let fillData = (item) => {
       if (item.static) {
         // Item is static and precaluculated values can just be used
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 28);
+        geometryBuffer.set(item.geometryBuffer, texturePos * 12);
+        sceneBuffer.set(item.sceneBuffer, texturePos * 28);
         // Update id buffer
         for (let i = 0; i < item.bufferLength; i++) idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
         // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
@@ -254,16 +254,16 @@ export class Scene {
         }
         // Set now calculated vertices length of bounding box
         // to skip if ray doesn't intersect with it
-        for (let i = 0; i < 6; i++) geometryTextureArray[oldTexturePos * 12 + i] = curMinMax[i];
-        geometryTextureArray[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
-        geometryTextureArray[oldTexturePos * 12 + 9] = item.transformNum ?? 0;
-        geometryTextureArray[oldTexturePos * 12 + 10] = 1;
+        for (let i = 0; i < 6; i++) geometryBuffer[oldTexturePos * 12 + i] = curMinMax[i];
+        geometryBuffer[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+        geometryBuffer[oldTexturePos * 12 + 9] = item.transformNum ?? 0;
+        geometryBuffer[oldTexturePos * 12 + 10] = 1;
         return curMinMax;
       } else {
         // Item is dynamic and non-indexable.
         // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
-        geometryTextureArray.set(item.geometryTextureArray, texturePos * 12);
-        sceneTextureArray.set(item.sceneTextureArray, texturePos * 28);
+        geometryBuffer.set(item.geometryBuffer, texturePos * 12);
+        sceneBuffer.set(item.sceneBuffer, texturePos * 28);
         // Push texture positions of triangles into triangle id array
         for (let i = 0; i < item.length; i ++) idBuffer[bufferPos ++] = texturePos ++;
         // Declare bounding volume of object
@@ -292,27 +292,27 @@ export class Scene {
     let bufferPos = 0;
     // Preallocate arrays for scene graph as a texture
     // 3 pixels * 4 values * 256 vertecies per line
-    geometryTexWidth = 3 * 4 * 256;
+    geometryBufferWidth = 3 * 4 * 256;
     // 7 pixels * 4 values * 256 vertecies per line
-    sceneTexWidth = 7 * 4 * 256;
+    sceneBufferWidth = 7 * 4 * 256;
     // Round up data to next higher multiple of (3 pixels * 4 values * 256 vertecies per line)
-    geometryTextureArray = new Float32Array(Math.ceil(textureLength * 12 / geometryTexWidth) * geometryTexWidth);
+    geometryBuffer = new Float32Array(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth);
     // Round up data to next higher multiple of (7 pixels * 4 values * 256 vertecies per line)
-    sceneTextureArray = new Float32Array(Math.ceil(textureLength * 28 / sceneTexWidth) * sceneTexWidth);
+    sceneBuffer = new Float32Array(Math.ceil(textureLength * 28 / sceneBufferWidth) * sceneBufferWidth);
     // Create new id buffer array
     idBuffer = new Int32Array(bufferLength);
     // Fill scene describing texture with data pixels
     let minMax = fillData(obj);
     // Calculate geometry-texture height by dividing array length through geometry-texture width
-    geometryTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
+    geometryBufferHeight = geometryBuffer.length / geometryBufferWidth;
     // Calculate scene-texture height by dividing array length through scene-texture width
-    sceneTextureArrayHeight = geometryTextureArray.length / geometryTexWidth;
+    sceneBufferHeight = geometryBuffer.length / geometryBufferWidth;
     // Return filled arrays and variables
     return { 
       textureLength, bufferLength,
       idBuffer, minMax,
-      geometryTextureArrayHeight, geometryTextureArray, 
-      sceneTextureArrayHeight, sceneTextureArray
+      geometryBufferHeight, geometryBuffer, 
+      sceneBufferHeight, sceneBuffer
     };
   }
   
@@ -610,23 +610,23 @@ export class Primitive {
   #rme = new Float32Array([1, 0, 0]);
   #tpo = new Float32Array([0, 0, 1]);
 
-  geometryTextureArray;
-  sceneTextureArray;
+  geometryBuffer;
+  sceneBuffer;
 
   #buildTextureArrays = () => {
     // a, b, c, na, nb, nc, uv01, uv12, tn, albedo, rme, tpo
     for (let i = 0; i < this.length; i ++) {
       let i12 = i * 12;
-      this.geometryTextureArray.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
-      this.geometryTextureArray[i12 + 9] = this.transformNum;
-      this.geometryTextureArray[i12 + 10] = 2;
+      this.geometryBuffer.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
+      this.geometryBuffer[i12 + 9] = this.transformNum;
+      this.geometryBuffer[i12 + 10] = 2;
       let i28 = i * 28;
-      this.sceneTextureArray.set(this.#normals.slice(i * 9, i * 9 + 9), i28);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 6, i * 6 + 6), i28 + 9);
-      this.sceneTextureArray.set(this.#textureNums, i28 + 15);
-      this.sceneTextureArray.set(this.#albedo, i28 + 18);
-      this.sceneTextureArray.set(this.#rme, i28 + 21);
-      this.sceneTextureArray.set(this.#tpo, i28 + 24);
+      this.sceneBuffer.set(this.#normals.slice(i * 9, i * 9 + 9), i28);
+      this.sceneBuffer.set(this.#uvs.slice(i * 6, i * 6 + 6), i28 + 9);
+      this.sceneBuffer.set(this.#textureNums, i28 + 15);
+      this.sceneBuffer.set(this.#albedo, i28 + 18);
+      this.sceneBuffer.set(this.#rme, i28 + 21);
+      this.sceneBuffer.set(this.#tpo, i28 + 24);
     }
   }
     
@@ -726,8 +726,8 @@ export class Primitive {
     this.#normals = new Float32Array(new Array(this.length * 3).fill(normal).flat());
     this.#uvs = new Float32Array(uvs);
     
-    this.geometryTextureArray = new Float32Array(this.length * 12);
-    this.sceneTextureArray = new Float32Array(this.length * 28);
+    this.geometryBuffer = new Float32Array(this.length * 12);
+    this.sceneBuffer = new Float32Array(this.length * 28);
     this.#buildTextureArrays();
   }
 }
@@ -833,8 +833,8 @@ export class Object3D {
       this.textureLength = attribs.textureLength;
       this.bufferLength = attribs.bufferLength;
       this.idBuffer = attribs.idBuffer;
-      this.geometryTextureArray = attribs.geometryTextureArray;
-      this.sceneTextureArray = attribs.sceneTextureArray;
+      this.geometryBuffer = attribs.geometryBuffer;
+      this.sceneBuffer = attribs.sceneBuffer;
       this.minMax = attribs.minMax;
       // Set static flag to true
       this.#static = true;
@@ -845,8 +845,8 @@ export class Object3D {
       this.textureLength = 0;
       this.bufferLength = 0;
       // Precalculate arrays and values
-      this.geometryTextureArray = null;
-      this.sceneTextureArray = null;
+      this.geometryBuffer = null;
+      this.sceneBuffer = null;
       this.minMax = null;
     }
   }

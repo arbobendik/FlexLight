@@ -1,7 +1,7 @@
 #version 300 es
 #define TRIANGLES_PER_ROW_POWER 8
 #define TRIANGLES_PER_ROW 256
-#define INV_65536 0.00001525879
+#define INV_65535 0.000015259021896696422
 
 precision highp int;
 precision highp float;
@@ -65,7 +65,7 @@ void main() {
     absolutePosition = rotation[tI] * relativePosition + shift[tI];
     clipSpace = viewMatrix * (absolutePosition - cameraPosition);
     // Set triangle position in clip space
-    gl_Position = vec4(clipSpace.xy, -1.0f / (1.0f + exp(- length(absolutePosition * INV_65536))), clipSpace.z);
+    gl_Position = vec4(clipSpace.xy, - 1.0f / (1.0f + exp(clipSpace.z * INV_65535)), clipSpace.z);
 
     uv = baseUVs[vertexId];
     camera = cameraPosition;
