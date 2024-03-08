@@ -118,6 +118,9 @@ class FlexLight {
       case 'rasterizerwebgl2':
         this.#renderer = new RasterizerWGL2(this.#canvas, this.#scene, this.#camera, this.#config);
         break;
+      case 'rasterizerwebgpu':
+        this.#renderer = new PathTracerWGPU(this.#canvas, this.#scene, this.#camera, this.#config);
+        break;
       default:
         console.error('Renderer option', this.#idRenderer, 'on api', this.#api, 'doesn\'t exist.');
     }
