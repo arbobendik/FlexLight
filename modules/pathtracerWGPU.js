@@ -122,15 +122,10 @@ export class PathTracerWGPU {
     
     // Get prefered canvas format
     this.#preferedCanvasFormat = await navigator.gpu.getPreferredCanvasFormat();
-    
-    this.#prepareEngine();
-  }
 
-  #prepareEngine () {
     this.#context.configure({
       device: this.#device,
       format: this.#preferedCanvasFormat,
-      // alpha: 'opaque',
     });
 
     this.#engineState.intermediateFrames = 0;
@@ -139,19 +134,22 @@ export class PathTracerWGPU {
     this.#engineState.lastTimeStamp = performance.now();
     // Count frames to match with temporal accumulation
     this.#engineState.temporalFrame = 0;
-    // Parameters to compare against current state of the engine and recompile shaders on change
-    this.#engineState.filter = this.config.filter;
-    this.#engineState.renderQuality = this.config.renderQuality;
-    // Internal Webgpu parameters
-    this.#engineState.bufferLength = 0;
-
-
+    
+    this.#prepareEngine();
+  }
+  
+  #prepareEngine () {
     let shader = Network.fetchSync('shaders/pathtracer.wgsl');
     // Shaders are written in a language called WGSL.
     let shaderModule = this.#device.createShaderModule({
       code: shader
     });
-
+    
+    // Parameters to compare against current state of the engine and recompile shaders on change
+    this.#engineState.filter = this.config.filter;
+    this.#engineState.renderQuality = this.config.renderQuality;
+    // Internal Webgpu parameters
+    this.#engineState.bufferLength = 0;
     // Pipelines bundle most of the render state (like primitive types, blend
     // modes, etc) and shader entry points into one big object.
     this.#engineState.pipeline = this.#device.createRenderPipeline({
@@ -218,12 +216,13 @@ export class PathTracerWGPU {
     // console.log(this.#halt);
     if (this.#halt) return;
     let timeStamp = performance.now();
-    
-    // Update Textures
     // Check if recompile is required
     if (this.#engineState.filter !== this.config.filter || this.#engineState.renderQuality !== this.config.renderQuality) {
-      this.#prepareEngine();
+      // Update Textures
+      requestAnimationFrame(() => this.#prepareEngine());
+      return;
     }
+    
     // Swap antialiasing programm if needed
     if (this.#engineState.antialiasing !== this.config.antialiasing) {
       this.#engineState.antialiasing = this.config.antialiasing;
