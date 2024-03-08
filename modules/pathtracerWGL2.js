@@ -176,14 +176,14 @@ export class PathTracerWGL2 {
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 3 * 256, builtScene.geometryTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.geometryTextureArray);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 3 * 256, builtScene.geometryBufferHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.geometryBuffer);
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA16F, 3 * 256, builtScene.geometryTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.HALF_FLOAT, new Float16Array(builtScene.geometryTextureArray));
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#sceneTexture);
     GLLib.setTexParams(this.#gl);
     // Tell webgl to use 2 bytes per value for the 16 bit floats
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 4);
     // Set data texture details and tell webgl, that no mip maps are required
-    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.sceneTextureArray);
+    this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 7 * 256, builtScene.sceneBufferHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.sceneBuffer);
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA16F, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.HALF_FLOAT, new Float16Array(builtScene.sceneTextureArray));
     // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.SRGB8, 7 * 256, builtScene.sceneTextureArrayHeight, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(uiltScene.sceneTextureArray));
   }

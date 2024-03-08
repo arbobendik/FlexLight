@@ -19,24 +19,23 @@ export class PathTracerWGPU {
   #adapter;
   #device;
   #canvas;
+  #preferedCanvasFormat
 
-  #engineState;
+  #engineState = {};
+  #renderPassDescriptor;
   #resizeEvent;
 
   #halt = true;
   // Create new PathTracer from canvas and setup movement
   constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
+    console.log(this.#canvas);
     this.camera = camera;
     this.scene = scene;
     this.config = config;
     // console.log(this.config);
     // Check for WebGPU support first by seeing if navigator.gpu exists
     if (!navigator.gpu) return undefined;
-    // Request webgpu context
-    this.#context = canvas.getContext('webgpu');
-    // Init canvas parameters and textures with resize
-    this.#resizeEvent = window.addEventListener('resize', () => this.resize());
   }
 
   halt = () => {
@@ -44,54 +43,70 @@ export class PathTracerWGPU {
     window.removeEventListener('resize',this.#resizeEvent);
   }
 
-  async resize () {
+  resize () {
     // console.log(this.config);
-    this.canvas.width = this.canvas.clientWidth * this.config.renderQuality;
-    this.canvas.height = this.canvas.clientHeight * this.config.renderQuality;
+    this.#canvas.width = this.#canvas.clientWidth * this.config.renderQuality;
+    this.#canvas.height = this.#canvas.clientHeight * this.config.renderQuality;
+
+    let canvasTexture = this.#context.getCurrentTexture();
+    
+    if (this.#engineState.depthTexture) {
+      this.#engineState.depthTexture.destroy();
+    }
+    
+    this.#engineState.depthTexture = this.#device.createTexture({
+      size: [canvasTexture.width, canvasTexture.height],
+      format: 'depth24plus',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+ 
     // this.#gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     // Rebuild textures with every resize
-    // renderTextureBuilder();
+    // this.renderTextureBuilder();
     // rt.updatePrimaryLightSources();
     // if (this.#AAObject !== undefined) this.#AAObject.buildTexture();
 
     this.config.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
     this.config.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
-    this.render();
+    // this.render();
   }
   
   // Make canvas read only accessible
   get canvas () {
     return this.#canvas;
   }
-
-
-  async updateScene () {
+  
+  
+  updateScene () {
     // Generate texture arrays and buffers
-    let builtScene = await this.scene.generateArraysFromGraph();
+    let builtScene = this.scene.generateArraysFromGraph();
     console.log(builtScene);
-
+    
     this.#engineState.bufferLength = builtScene.bufferLength;
-
     this.#engineState.idBuffer = this.#device.createBuffer({ size: builtScene.idBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
     this.#device.queue.writeBuffer(this.#engineState.idBuffer, 0, builtScene.idBuffer);
-
-    // Set buffer parameters
-    this.#engineState.geometryBuffer = this.#device.createBuffer({ size: builtScene.geometryTextureArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-    this.#device.queue.writeBuffer(this.#engineState.geometryBuffer, 0, builtScene.geometryTextureArray);
-
-    // console.log(builtScene.idBuffer);
-
+    
+    // Set geometry buffer in VRAM
+    this.#engineState.geometryBuffer = this.#device.createBuffer({ size: builtScene.geometryBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+    this.#device.queue.writeBuffer(this.#engineState.geometryBuffer, 0, builtScene.geometryBuffer);
+    
+    // Send scene buffer to GPU
+    this.#engineState.sceneBuffer = this.#device.createBuffer({ size: builtScene.sceneBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+    this.#device.queue.writeBuffer(this.#engineState.sceneBuffer, 0, builtScene.sceneBuffer);
+    
     this.#engineState.bindGroup = this.#device.createBindGroup({
       layout: this.#engineState.pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.#engineState.uniformBuffer }},
         { binding: 1, resource: { buffer: this.#engineState.idBuffer }},
-        { binding: 2, resource: { buffer: this.#engineState.geometryBuffer }}
+        { binding: 2, resource: { buffer: this.#engineState.geometryBuffer }},
+        { binding: 3, resource: { buffer: this.#engineState.sceneBuffer }}
       ],
     });
   }
-
+  
   async render() {
+    
     if (!this.#halt) {
       console.warn('Renderer already up and running!');
       return;
@@ -99,34 +114,36 @@ export class PathTracerWGPU {
     // Allow frame rendering
     this.#halt = false;
 
-    this.resize();
-
+    // Request webgpu context
+    this.#context = this.#canvas.getContext('webgpu');
     // Setup webgpu internal components
     this.#adapter = await navigator.gpu.requestAdapter();
     this.#device = await this.#adapter.requestDevice();
-    this.#context.configure({
-      device: this.#device,
-      format: navigator.gpu.getPreferredCanvasFormat()
-    });
-
-    await this.#prepareEngine();
-    // Begin frame cycle
-    requestAnimationFrame(() => this.#frameCycle());
+    
+    // Get prefered canvas format
+    this.#preferedCanvasFormat = await navigator.gpu.getPreferredCanvasFormat();
+    
+    this.#prepareEngine();
   }
 
-  async #prepareEngine () {
-    this.#engineState = {
-      // Attributes to meassure frames per second
-      intermediateFrames: 0,
-      lastTimeStamp: performance.now(),
-      // Count frames to match with temporal accumulation
-      temporalFrame: 0,
-      // Parameters to compare against current state of the engine and recompile shaders on change
-      filter: this.config.filter,
-      renderQuality: this.config.renderQuality,
-      // Internal Webgpu parameters
-      bufferLength: 0
-    };
+  #prepareEngine () {
+    this.#context.configure({
+      device: this.#device,
+      format: this.#preferedCanvasFormat,
+      // alpha: 'opaque',
+    });
+
+    this.#engineState.intermediateFrames = 0;
+    // Attributes to meassure frames per second
+    
+    this.#engineState.lastTimeStamp = performance.now();
+    // Count frames to match with temporal accumulation
+    this.#engineState.temporalFrame = 0;
+    // Parameters to compare against current state of the engine and recompile shaders on change
+    this.#engineState.filter = this.config.filter;
+    this.#engineState.renderQuality = this.config.renderQuality;
+    // Internal Webgpu parameters
+    this.#engineState.bufferLength = 0;
 
 
     let shader = Network.fetchSync('shaders/pathtracer.wgsl');
@@ -139,36 +156,72 @@ export class PathTracerWGPU {
     // modes, etc) and shader entry points into one big object.
     this.#engineState.pipeline = this.#device.createRenderPipeline({
       layout: 'auto',
+      // Vertex shader
       vertex: {
         module: shaderModule,
-        entryPoint: 'vs',
+        entryPoint: 'vsMain',
       },
+      // Fragment shader
       fragment: {
         module: shaderModule,
-        entryPoint: 'fs',
-        // `targets` indicates the format of each render target this pipeline
-        // outputs to. It must match the colorAttachments of any renderPass it's
-        // used with.
+        entryPoint: 'fsMain',
         targets: [{
-          format: navigator.gpu.getPreferredCanvasFormat(),
+          format: this.#preferedCanvasFormat,
         }],
       },
+      // Culling config
+      primitive: {
+        topology: 'triangle-list',
+        cullMode: 'back',
+      },
+      
+      // Depth buffer
+      depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: 'greater',
+        format: 'depth24plus',
+      }
     });
 
-    // vec3 + mat3x3 = 12x 32-bit floats = 48 byte
+    // Initialize render pass decriptor
+    this.#renderPassDescriptor = {
+      // Render passes are given attachments to write into.
+      colorAttachments: [{
+        // The color the attachment will be cleared to.
+        clearValue: [0, 0, 0, 0],
+        // Clear the attachment when the render pass starts.
+        loadOp: 'clear',
+        // When the pass is done, save the results in the attachment texture.
+        storeOp: 'store',
+      }],
+      
+      depthStencilAttachment: {
+        depthClearValue: 0,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store'
+      }
+    };
+    // Create uniform buffer for shader uniforms
     this.#engineState.uniformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    // Reload / Rebuild scene graph after resize or page reload
-    await this.updateScene();
+    // Build / Rebuild scene graph for GPU into storage buffer
+    this.updateScene();
+    // Init canvas parameters and textures with resize
+    this.resize();
+    // this.#renderFrame();
+    this.#resizeEvent = window.addEventListener('resize', () => this.resize());
+    // Begin frame cycle
+    requestAnimationFrame(() => this.#frameCycle());
   }
 
   // Internal render engine Functions
   #frameCycle () {
+    // console.log(this.#halt);
     if (this.#halt) return;
     let timeStamp = performance.now();
+    
     // Update Textures
     // Check if recompile is required
     if (this.#engineState.filter !== this.config.filter || this.#engineState.renderQuality !== this.config.renderQuality) {
-      this.resize();
       this.#prepareEngine();
     }
     // Swap antialiasing programm if needed
@@ -203,11 +256,10 @@ export class PathTracerWGPU {
   }
 
   async #renderFrame () {
-
     // Calculate camera offset and projection matrix
     let dir = {x: this.camera.fx, y: this.camera.fy};
     let invFov = 1 / this.camera.fov;
-    let heightInvWidthFov = this.canvas.height * invFov / this.canvas.width;
+    let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
 
     let viewMatrix = [
       [   Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov         ],
@@ -222,41 +274,25 @@ export class PathTracerWGPU {
       viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2], 0,
       this.camera.x, this.camera.y, this.camera.z, 0
     ]);
-    // console.log(uniformValues);
     // Update uniform values on GPU
     this.#device.queue.writeBuffer(this.#engineState.uniformBuffer, 0, uniformValues);
     // Sumbit command buffer to device queue
+    // console.log([this.#context.getCurrentTexture().width, this.#context.getCurrentTexture().height]);
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = this.#device.createCommandEncoder();
-    
-    
-    
+
+    this.#renderPassDescriptor.colorAttachments[0].view = this.#context.getCurrentTexture().createView();
+    this.#renderPassDescriptor.depthStencilAttachment.view = this.#engineState.depthTexture.createView();
     // All rendering commands happen in a render pass.
-    let passEncoder = commandEncoder.beginRenderPass({
-      // Render passes are given attachments to write into.
-      colorAttachments: [{
-        // By using a texture from the canvas context configured above as the
-        // attachment, anything drawn in the pass will display in the canvas.
-        view: this.#context.getCurrentTexture().createView(),
-        // Clear the attachment when the render pass starts.
-        loadOp: 'clear',
-        // The color the attachment will be cleared to.
-        clearValue: [0, 0, 0, 0],
-        // When the pass is done, save the results in the attachment texture.
-        storeOp: 'store',
-      }]
-    });
-    
-    passEncoder.setViewport(0, 0, this.canvas.width, this.canvas.height, 0, 0);
+    let passEncoder = commandEncoder.beginRenderPass(this.#renderPassDescriptor);
     // Set the pipeline to use when drawing.
     passEncoder.setPipeline(this.#engineState.pipeline);
     // Set the vertex buffer to use when drawing.
-    // The `0` corresponds to the index of the `buffers` array in the pipeline.
     // passEncoder.setVertexBuffer(0, this.#engineState.geometryBuffer);
     passEncoder.setBindGroup(0, this.#engineState.bindGroup);
     // Draw vertices using the previously set pipeline and vertex buffer.
     // console.log(this.#engineState.bufferLength)
-    passEncoder.draw(this.#engineState.bufferLength, this.#engineState.bufferLength * 3);
+    passEncoder.draw(3, this.#engineState.bufferLength);
     // End the render pass.
     passEncoder.end();
 
