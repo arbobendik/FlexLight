@@ -16,8 +16,8 @@ precision highp int;
 precision highp float;
 precision highp sampler2D;
 
-struct NormalizedRay {
-    vec3 target;
+struct Ray {
+    vec3 origin;
     vec3 unitDirection;
 };
 
@@ -120,14 +120,14 @@ vec4 noise(vec2 n, float seed) {
     return fract(sin(dot(n.xy, vec2(12.9898f, 78.233f)) + vec4(53.0f, 59.0f, 61.0f, 67.0f) * (seed + randomSeed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
-vec3 moellerTrumbore(mat3 t, NormalizedRay ray, float l) {
+vec3 moellerTrumbore(mat3 t, Ray ray, float l) {
     vec3 edge1 = t[1] - t[0];
     vec3 edge2 = t[2] - t[0];
     vec3 pvec = cross(ray.unitDirection, edge2);
     float det = dot(edge1, pvec);
     if(abs(det) < BIAS) return vec3(0.0f);
     float inv_det = 1.0f / det;
-    vec3 tvec = ray.target - t[0];
+    vec3 tvec = ray.origin - t[0];
     float u = dot(tvec, pvec) * inv_det;
     if(u < BIAS || u > 1.0f) return vec3(0.0f);
     vec3 qvec = cross(tvec, edge1);
@@ -140,14 +140,14 @@ vec3 moellerTrumbore(mat3 t, NormalizedRay ray, float l) {
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(mat3 t, NormalizedRay ray, float l) {
+bool moellerTrumboreCull(mat3 t, Ray ray, float l) {
     vec3 edge1 = t[1] - t[0];
     vec3 edge2 = t[2] - t[0];
     vec3 pvec = cross(ray.unitDirection, edge2);
     float det = dot(edge1, pvec);
     float invDet = 1.0f / det;
     if(det < BIAS) return false;
-    vec3 tvec = ray.target - t[0];
+    vec3 tvec = ray.origin - t[0];
     float u = dot(tvec, pvec) * invDet;
     if(u < BIAS || u > 1.0f) return false;
     vec3 qvec = cross(tvec, edge1);
@@ -158,10 +158,9 @@ bool moellerTrumboreCull(mat3 t, NormalizedRay ray, float l) {
 }
 
 // Don't return intersection point, because we're looking for a specific triangle not bounding box
-bool rayCuboid(float l, NormalizedRay ray, vec3 minCorner, vec3 maxCorner) {
-    
-    vec3 v0 = (minCorner - ray.target) / ray.unitDirection;
-    vec3 v1 = (maxCorner - ray.target) / ray.unitDirection;
+bool rayCuboid(float l, Ray ray, vec3 minCorner, vec3 maxCorner) {
+    vec3 v0 = (minCorner - ray.origin) / ray.unitDirection;
+    vec3 v1 = (maxCorner - ray.origin) / ray.unitDirection;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
@@ -170,9 +169,9 @@ bool rayCuboid(float l, NormalizedRay ray, vec3 minCorner, vec3 maxCorner) {
 // Test for closest ray triangle intersection
 // return intersection position in world space and index of target triangle in geometryTex
 // plus triangle vertices and transformation Id
-Hit rayTracer(NormalizedRay ray) {
+Hit rayTracer(Ray ray) {
     // Cache transformed ray attributes
-    NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
+    Ray tR = Ray(ray.origin, ray.unitDirection);
     int cachedTI = 0;
     // Latest intersection which is now closest to origin
     Hit hit = NO_HIT;
@@ -197,8 +196,8 @@ Hit rayTracer(NormalizedRay ray) {
             int iI = tI + 1;
             mat3 rotationII = rotation[iI];
             cachedTI = tI;
-            tR = NormalizedRay(
-                rotationII * (ray.target + shift[iI]),
+            tR = Ray(
+                rotationII * (ray.origin + shift[iI]),
                 rotationII * ray.unitDirection
             );
         }
@@ -229,9 +228,9 @@ Hit rayTracer(NormalizedRay ray) {
 
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTest(float l, NormalizedRay ray) {
+bool shadowTest(Ray ray, float l) {
     // Cache transformed ray attributes
-    NormalizedRay tR = NormalizedRay(ray.target, ray.unitDirection);
+    Ray tR = Ray(ray.origin, ray.unitDirection);
     int cachedTI = 0;
     // Precompute max length
     float minLen = l;
@@ -257,8 +256,8 @@ bool shadowTest(float l, NormalizedRay ray) {
             int iI = tI + 1;
             mat3 rotationII = rotation[iI];
             cachedTI = tI;
-            tR = NormalizedRay(
-                rotationII * (ray.target + shift[iI]),
+            tR = Ray(
+                rotationII * (ray.origin + shift[iI]),
                 normalize(rotationII * ray.unitDirection)
             );
         }
@@ -398,7 +397,7 @@ vec3 randomSample (vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target,  vec3
 }
 */
 
-vec3 reservoirSample (Material material, NormalizedRay ray, vec4 randomVec, vec3 N, vec3 smoothNormal, float geometryOffset, bool dontFilter, int i) {
+vec3 reservoirSample (Material material, Ray ray, vec4 randomVec, vec3 N, vec3 smoothNormal, float geometryOffset, bool dontFilter, int i) {
     vec3 localColor = vec3(0);
     float reservoirLength = 0.0f;
     float totalWeight = 0.0f;
@@ -418,7 +417,7 @@ vec3 reservoirSample (Material material, NormalizedRay ray, vec4 randomVec, vec3
       reservoirLength ++;
       // Alter light source position according to variation.
       vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz + randomVec.xyz * strengthVariation.y;
-      vec3 dir = light - ray.target;
+      vec3 dir = light - ray.origin;
     
       vec3 colorForLight = forwardTrace(material, dir, strengthVariation.x, N, - ray.unitDirection);
       localColor += colorForLight;
@@ -450,10 +449,10 @@ vec3 reservoirSample (Material material, NormalizedRay ray, vec4 randomVec, vec3
         return baseLuminance;
     }
     // Apply geometry offset
-    vec3 offsetTarget = ray.target + geometryOffset * smoothNormal;
-    NormalizedRay lightRay = NormalizedRay(offsetTarget, unitLightDir);
+    vec3 offsetTarget = ray.origin + geometryOffset * smoothNormal;
+    Ray lightRay = Ray(offsetTarget, unitLightDir);
 
-    if (shadowTest(length(reservoirLightDir), lightRay)) {
+    if (shadowTest(lightRay, length(reservoirLightDir))) {
         if (dontFilter || i == 0) renderId.w += INV_255;
         return baseLuminance;
     } else {
@@ -470,7 +469,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
     vec3 importancyFactor = vec3(1);
     originalColor = vec3(1);
 
-    NormalizedRay ray = NormalizedRay(camera, normalize(target - camera));
+    Ray ray = Ray(camera, normalize(target - camera));
     vec3 lastHitPoint = camera;
     // Iterate over each bounce and modify color accordingly
     for (int i = 0; i < bounces && length(importancyFactor * originalColor) >= minImportancy * SQRT3; i++) {
@@ -478,7 +477,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         mat3 rTI = rotation[hit.transformId];
         vec3 sTI = shift[hit.transformId];
         // Transform hit point
-        ray.target = hit.suv.x * ray.unitDirection + ray.target;
+        ray.origin = hit.suv.x * ray.unitDirection + ray.origin;
         // Calculate barycentric coordinates
         vec3 uvw = vec3(1.0 - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
 
@@ -491,7 +490,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         vec4 g2 = texelFetch(geometryTex, indexGeometry + ivec2(2, 0), 0);
 
         mat3 triangle = rTI * mat3(g0, g1, g2.x);
-        vec3 offsetRayTarget = ray.target - sTI;
+        vec3 offsetRayTarget = ray.origin - sTI;
 
         vec3 geometryNormal = normalize(cross(triangle[0] - triangle[1], triangle[0] - triangle[2]));
         vec3 diffs = vec3(
@@ -526,7 +525,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
             fetchTexVal(translucencyTex, barycentric, t4.y, t6.xyz)
         );
         
-        ray = NormalizedRay(ray.target, normalize(ray.target - lastHitPoint));
+        ray = Ray(ray.origin, normalize(ray.origin - lastHitPoint));
         // If ray reflects from inside or onto an transparent object,
         // the surface faces in the opposite direction as usual
         float signDir = sign(dot(ray.unitDirection, smoothNormal));
@@ -574,7 +573,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         }
 
         // Test if filter is already necessary
-        if (i == 1) firstRayLength = min(length(ray.target - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
+        if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
         // Determine local color considering PBR attributes and lighting
         vec3 localColor = reservoirSample(material, ray, randomVec, - signDir * roughNormal, - signDir * smoothNormal, geometryOffset, dontFilter, i);
         // Calculate primary light sources for this pass if ray hits non translucent object
@@ -593,7 +592,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.triangleId == - 1) break;
         // Update other parameters
-        lastHitPoint = ray.target;
+        lastHitPoint = ray.origin;
     }
     // Return final pixel color
     return finalColor + importancyFactor * ambient;

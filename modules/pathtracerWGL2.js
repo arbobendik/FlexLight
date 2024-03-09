@@ -360,7 +360,7 @@ export class PathTracerWGL2 {
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       // Get transformation matrices elements and set them in buffer
-      Transform.buildUBOArrays().forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
+      Transform.buildWGL2Arrays().forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
