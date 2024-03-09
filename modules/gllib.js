@@ -21,6 +21,15 @@ export class GLLib {
     gl_Position = position;
   }`;
 
+  static addCompileTimeConstant = (shaderSrc, name, value) => {
+    // Remove version header
+    let newSrc = shaderSrc.slice(15);
+    // Add version header with new constant.
+    return `#version 300 es
+    #define ` + name + ` ` + value + `
+    ` + newSrc;
+  }
+
   static compile = (gl, vertex, fragment) => {
     var shaders = [
       { source: vertex, type: gl.VERTEX_SHADER },

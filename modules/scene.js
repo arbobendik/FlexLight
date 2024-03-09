@@ -1,12 +1,15 @@
 'use strict';
 
 import { Math } from './math.js';
+import { Float16Array, Arrays } from './arrays.js';
+
+const BVH_MAX_LEAVES_PER_NODE = 4;
 export class Scene {
   // light sources and textures
   primaryLightSources = [[0, 10, 0]];
   defaultLightIntensity = 200;
   defaultLightVariation = 0.4;
-  ambientLight = [0.1, 0.1, 0.1];
+  ambientLight = [0.025, 0.025, 0.025];
   textures = [];
   pbrTextures = [];
   translucencyTextures = [];
@@ -57,16 +60,6 @@ export class Scene {
 
   // Autogenerate oct-tree for imported structures or structures without BVH-tree
   generateBVH (objects = this.queue) {
-    const minBoundingWidth = 1 / 128;
-    // get scene for reference inside object
-    let scene = this;
-
-    let topTree = new Bounding(objects);
-    // Determine bounding for each object
-    this.updateBoundings(topTree);
-
-    let polyCount = 0;
-
     // Test how many triangles can be sorted into neiter bounding.
     let testOnEdge = (objs, bounding0, bounding1) => {
       let onEdge = 0;
@@ -75,10 +68,10 @@ export class Scene {
     }
 
     let divideTree = (objs, depth = 0) => {
-      // If there are only 4 or less objects in tree, there is no need to subdivide
-      if (objs.length <= 4) {
+      // If there are only 4 or less objects in tree, there is no need to subdivide further
+      if (objs.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxTree) {
         polyCount += objs.length;
-        console.log("loaded", polyCount, "polygons so far.");
+        // console.log("loaded", polyCount, "polygons so far.");
         return objs;
       } else {
         // Find center
@@ -91,15 +84,18 @@ export class Scene {
         let idealSplit = 0;
         let leastOnEdge = Infinity;
 
+        let onEdges = [];
+
         for (let i = 0; i < 3; i++) {
-          let bounding0 = [... objs.bounding];
-          let bounding1 = [... objs.bounding];
+          let bounding0 = objs.bounding.concat();
+          let bounding1 = objs.bounding.concat();
 
           bounding0[i * 2] = center[i];
           bounding1[i * 2 + 1] = center[i];
 
           let minDiff = Math.min(bounding0[i * 2 + 1] - center[i], center[i] - bounding1[i * 2]);
           let onEdge = testOnEdge(objs, bounding0, bounding1);
+          onEdges.push(onEdge);
 
           if (leastOnEdge >= onEdge && minDiff > minBoundingWidth) {
             idealSplit = i;
@@ -108,13 +104,14 @@ export class Scene {
         }
 
         if (leastOnEdge === Infinity) {
-          console.error("OPTIMIZATION failed for subtree!");
+          console.error("OPTIMIZATION failed for subtree!", objs.length);
+          console.log(onEdges);
           return objs;
         }
         // Sort into ideal buckets
         // The third bucket is for the objects in the cut
         let buckets = [[], [], []];
-        let bounds = [[... objs.bounding], [... objs.bounding], objs.bounding];
+        let bounds = [objs.bounding, objs.bounding.concat(), objs.bounding.concat()];
         bounds[0][idealSplit * 2] = center[idealSplit];
         bounds[1][idealSplit * 2 + 1] = center[idealSplit];
 
@@ -126,22 +123,33 @@ export class Scene {
         // Iterate over all filled buckets and return 
         let finalObjArray = [];
 
-        for (let i = 0; i < 2; i++) if (buckets[i].length !== 0) {
+        for (let i = 0; i < 3; i++) if (buckets[i].length !== 0) {
           // Tighten bounding
           let b = new Bounding(buckets[i], scene);
           scene.updateBoundings(b);
           finalObjArray.push(divideTree(b, depth + 1));
         }
-        finalObjArray.push(...buckets[2]);
+        // finalObjArray.push(...buckets[2]);
         // Return sorted object array as bounding volume.
         let commonBounding = new Bounding(finalObjArray, scene);
         commonBounding.bounding = objs.bounding;
         return commonBounding;
       }
     }
-    
+
+    const minBoundingWidth = 1 / 256;
+    // get scene for reference inside object
+    let scene = this;
+    let topTree = new Bounding(objects);
+    // Determine bounding for each object
+    this.updateBoundings(topTree);
+
+    let polyCount = 0;
+
+    let maxTree = Math.log2(topTree.length) + 8;
     topTree = divideTree(topTree);
     console.log("done building BVH-Tree");
+    console.log(maxTree);
     return topTree;
   }
   
@@ -177,19 +185,149 @@ export class Scene {
     // return current bounding box
     return minMax;
   }
+
+  // Generate texture arrays
+  generateArraysFromGraph (obj = this.queue) {
+    // Elements of result object to return
+    let textureLength;
+    let bufferLength;
+
+    let geometryBufferWidth;
+    let sceneBufferWidth;
+    let geometryBufferHeight;
+    let sceneBufferHeight;
+    
+    let geometryBuffer;
+    let sceneBuffer;
+    let idBuffer;
+    
+    // Track ids
+    let walkGraph = (item) => {
+      if (item.static) {
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        textureLength += item.textureLength;
+        bufferLength += item.bufferLength;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return;
+        textureLength ++;
+        // Iterate over all sub elements
+        for (let i = 0; i < item.length; i++) walkGraph(item[i]);
+      } else {
+        // Give item new id property to identify vertex in fragment shader
+        textureLength += item.length;
+        bufferLength += item.length;
+      }
+    }
+    
+    // Build simple AABB tree (Axis aligned bounding box)
+    let fillData = (item) => {
+      if (item.static) {
+        // Item is static and precaluculated values can just be used
+        geometryBuffer.set(item.geometryBuffer, texturePos * 12);
+        sceneBuffer.set(item.sceneBuffer, texturePos * 28);
+        // Update id buffer
+        for (let i = 0; i < item.bufferLength; i++) idBuffer[bufferPos + i] = texturePos + item.idBuffer[i];
+        // Adjust id that wasn't increased so far due to bounding boxes missing in the objectLength array
+        texturePos += item.textureLength;
+        bufferPos += item.bufferLength;
+        return item.minMax;
+      } else if (Array.isArray(item) || item.indexable) {
+        // Item is dynamic and indexable, recursion continues
+        if (item.length === 0) return [];
+        // Begin bounding volume array
+        let oldTexturePos = texturePos;
+        texturePos ++;
+        // Iterate over all sub elements
+        let curMinMax = fillData (item[0]);
+        for (let i = 1; i < item.length; i++) {
+          // get updated bounding of lower element
+          let b = fillData(item[i]);
+          // update maximums and minimums
+          curMinMax[0] = Math.min(curMinMax[0], b[0]);
+          curMinMax[1] = Math.min(curMinMax[1], b[1]);
+          curMinMax[2] = Math.min(curMinMax[2], b[2]);
+          curMinMax[3] = Math.max(curMinMax[3], b[3]);
+          curMinMax[4] = Math.max(curMinMax[4], b[4]);
+          curMinMax[5] = Math.max(curMinMax[5], b[5]);
+        }
+        // Set now calculated vertices length of bounding box
+        // to skip if ray doesn't intersect with it
+        for (let i = 0; i < 6; i++) geometryBuffer[oldTexturePos * 12 + i] = curMinMax[i];
+        geometryBuffer[oldTexturePos * 12 + 6] = texturePos - oldTexturePos - 1;
+        geometryBuffer[oldTexturePos * 12 + 9] = item.transformNum ?? 0;
+        geometryBuffer[oldTexturePos * 12 + 10] = 1;
+        return curMinMax;
+      } else {
+        // Item is dynamic and non-indexable.
+        // a, b, c, color, normal, texture_nums, UVs1, UVs2 per triangle in item
+        geometryBuffer.set(item.geometryBuffer, texturePos * 12);
+        sceneBuffer.set(item.sceneBuffer, texturePos * 28);
+        // Push texture positions of triangles into triangle id array
+        for (let i = 0; i < item.length; i ++) idBuffer[bufferPos ++] = texturePos ++;
+        // Declare bounding volume of object
+        let v = item.vertices;
+        let curMinMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // get min and max values of veritces of object
+        for (let i = 3; i < v.length; i += 3) {
+          curMinMax[0] = Math.min(curMinMax[0], v[i]);
+          curMinMax[1] = Math.min(curMinMax[1], v[i + 1]);
+          curMinMax[2] = Math.min(curMinMax[2], v[i + 2]);
+          curMinMax[3] = Math.max(curMinMax[3], v[i]);
+          curMinMax[4] = Math.max(curMinMax[4], v[i + 1]);
+          curMinMax[5] = Math.max(curMinMax[5], v[i + 2]);
+        }
+        return curMinMax;
+      }
+    }
+
+    // Lengths that will be probed by the walkGraph method
+    textureLength = 0;
+    bufferLength = 0;
+    // Walk entire scene graph of this object to receive array sizes and preallocate
+    walkGraph(obj);
+    // Triangle id in texture
+    let texturePos = 0;
+    let bufferPos = 0;
+    // Preallocate arrays for scene graph as a texture
+    // 3 pixels * 4 values * 256 vertecies per line
+    geometryBufferWidth = 3 * 4 * 256;
+    // 7 pixels * 4 values * 256 vertecies per line
+    sceneBufferWidth = 7 * 4 * 256;
+    // Round up data to next higher multiple of (3 pixels * 4 values * 256 vertecies per line)
+    geometryBuffer = new Float32Array(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth);
+    // Round up data to next higher multiple of (7 pixels * 4 values * 256 vertecies per line)
+    sceneBuffer = new Float32Array(Math.ceil(textureLength * 28 / sceneBufferWidth) * sceneBufferWidth);
+    // Create new id buffer array
+    idBuffer = new Int32Array(bufferLength);
+    // Fill scene describing texture with data pixels
+    let minMax = fillData(obj);
+    // Calculate geometry-texture height by dividing array length through geometry-texture width
+    geometryBufferHeight = geometryBuffer.length / geometryBufferWidth;
+    // Calculate scene-texture height by dividing array length through scene-texture width
+    sceneBufferHeight = geometryBuffer.length / geometryBufferWidth;
+    // Return filled arrays and variables
+    return { 
+      textureLength, bufferLength,
+      idBuffer, minMax,
+      geometryBufferHeight, geometryBuffer, 
+      sceneBufferHeight, sceneBuffer
+    };
+  }
   
-  // object constructors
+  // Pass some constructors
+  Transform = matrix => new Transform (matrix);
   // axis aligned cuboid element prototype
-  Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2, this);
+  Cuboid = (x, x2, y, y2, z, z2) => new Cuboid (x, x2, y, y2, z, z2);
   // surface element prototype
-  Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3, this);
+  Plane = (c0, c1, c2, c3) => new Plane (c0, c1, c2, c3);
   // triangle element prototype
-  Triangle = (a, b, c) => new Triangle (a, b, c, this);
+  Triangle = (a, b, c) => new Triangle (a, b, c);
   // bounding element
-  Bounding = (array) => new Bounding (array, this);
+  Bounding = array => new Bounding (array);
   // generate object from array
-  // create object from .obj file
-  fetchObjFile = async (path) => {
+  // Create object from .obj file
+  importObj = async (path, materials = []) => {
     // get scene for reference inside object
     let scene = this;
     // final object variable 
@@ -198,11 +336,13 @@ export class Scene {
     let v = [];
     let vt = [];
     let vn = [];
+    // track current material
+    let curMaterialName;
     // line interpreter
     let interpreteLine = line => {
       let words = [];
       // get array of words
-      line.split(' ').forEach(word => { if (word !== '') words.push(word) });
+      line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
       // interpret current line
       switch (words[0]) {
         case 'v':
@@ -218,84 +358,308 @@ export class Scene {
           vn.push([Number(words[1]), Number(words[2]), Number(words[3])]);
           break;
         case 'f':
+          // "-" or space is sperating different vertices while "/" seperates different properties
+          let dataString = words.slice(1, words.length).join(' ');
           // extract array indecies form string
-          let data = words.slice(1, words.length).map(word => word.split('/').map(numStr => Number(numStr)));
+          let data = dataString.split(/[ ]/g).filter(vertex => vertex.length).map(vertex => vertex.split(/[/]/g).map(numStr => {
+            let num = Number(numStr);
+            if (num < 0) num = v.length + num + 1;
+            return num;
+          }));
+
+          let primitive;
           // test if new part should be a triangle or plane
-          if (words.length === 5) {
+          if (data.length === 4) {
             // generate plane with vertecies
-            let plane = new Plane (
+            primitive = new Plane (
               v[data[3][0] - 1],
               v[data[2][0] - 1],
               v[data[1][0] - 1],
               v[data[0][0] - 1],           
               scene
             );
-            // set uvs according to .obj file
-            plane.uvs = [3, 2, 1, 1, 0, 3].map(i => (vt[data[i][1] - 1] ?? plane.uvs.slice(i * 2, i * 2 + 2))).flat();
-            // set normals according to .obj file
-            plane.normals = [3, 2, 1, 1, 0, 3].map(i => (vn[data[i][2] - 1] ?? plane.normals.slice(i * 3, i * 3 + 2))).flat();
-            // push new plane in object array
-            obj.push(plane);
+            [3, 2, 1, 1, 0, 3].forEach((index, i) => {
+              // set uvs according to .obj file
+              if (vt[data[index][1] - 1] !== undefined) primitive.uvs.set(vt[data[index][1] - 1], i * 2);
+              // set normals according to .obj file
+              if (vn[data[index][2] - 1] !== undefined) primitive.normals.set(vn[data[index][2] - 1], i * 3);
+            });
           } else {
             // generate triangle with vertecies
-            let triangle = new Triangle (
-              v[data[2][0] - 1],
-              v[data[1][0] - 1],
-              v[data[0][0] - 1],
-              scene
+            primitive = new Triangle (
+            v[data[2][0] - 1],
+            v[data[1][0] - 1],
+            v[data[0][0] - 1],
+            scene
             );
-            // set uvs according to .obj file
-            triangle.uvs = [2, 1, 0].map(i => (vt[data[i][1] - 1] ?? triangle.uvs.slice(i * 2, i * 2 + 2))).flat();
-            // set normals according to .obj file
-            triangle.normals = [2, 1, 0].map(i => (vn[data[0][2] - 1] ?? triangle.normals.slice(i * 3, i * 3 + 3))).flat();
-            // triangle.setColor(triangle.normals[0] * 1000);
-            obj.push(triangle);
+            [2, 1, 0].forEach((index, i) => {
+              // set uvs according to .obj file
+              if (vt[data[index][1] - 1] !== undefined) primitive.uvs.set(vt[data[index][1] - 1], i * 2);
+              // set normals according to .obj file
+              if (vn[data[index][2] - 1] !== undefined) primitive.normals.set(vn[data[index][2] - 1], i * 3);
+            });
+          }
+          // Try applying material if one is currently set
+          if (curMaterialName) {
+            let material = materials[curMaterialName];
+            // console.log(material);
+            primitive.color = material.color ?? [255, 255, 255];
+            primitive.emissiveness = material.emissiveness ?? 0;
+            primitive.metallicity = material.metallicity ?? 0;
+            primitive.roughness = material.roughness ?? 1;
+            primitive.translucency = material.translucency ?? 0;
+            primitive.ior = material.ior ?? 1;
+          }
+          // push new plane in object array
+          obj.push(primitive);
+          break;
+        case 'usemtl':
+          // Use material name for next vertices
+          if (materials[words[1]]) {
+            curMaterialName = words[1];
+          } else {
+            console.warn('Couldn\'t resolve material', curMaterialName);
           }
           break;
       }
     };
     // fetch file and iterate over its lines
     let text = await (await fetch(path)).text();
+    console.log('Parsing vertices ...');
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
-    obj = await scene.generateBVH(obj);
-    await scene.updateBoundings(obj);
+    console.log('Generating BVH ...');
+    obj = scene.generateBVH(obj);
+    scene.updateBoundings(obj);
     // return built object
     return obj;
   }
+
+  importMtl = async path => {
+    // Accumulate information
+    let materials = [];
+    let currentMaterialName;
+    // line interpreter
+    let interpreteLine = line => {
+      let words = [];
+      // get array of words
+      line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
+
+      // interpret current line
+      switch (words[0]) {
+        case 'newmtl':
+          currentMaterialName = words[1];
+          materials[currentMaterialName] = {};
+          break;
+        case 'Ka':
+          materials[currentMaterialName].color = Math.mul(255, [Number(words[1]), Number(words[2]), Number(words[3])]);
+          //console.log(materials[currentMaterialName].color);
+          break;
+        case 'Ke':
+          let emissiveness = Math.max(Number(words[1]), Number(words[2]), Number(words[3]));
+          // Replace color if emissiveness is not 0
+          if (emissiveness > 0) {
+            materials[currentMaterialName].emissiveness = emissiveness * 4;
+            materials[currentMaterialName].color = Math.mul(255 / emissiveness, [Number(words[1]), Number(words[2]), Number(words[3])]);
+            //console.log(materials[currentMaterialName].color);
+          }
+          break;
+        case 'Ns':
+          materials[currentMaterialName].metallicity = Number(words[1] / 1000);
+          break;
+        case 'd':
+          // materials[currentMaterialName].translucency = Number(words[1]);
+          // materials[currentMaterialName].roughness = 0;
+          break;
+        case 'Ni':
+          materials[currentMaterialName].ior = Number(words[1]);
+          break;
+      }
+    };
+    // fetch file and iterate over its lines
+    let text = await (await fetch(path)).text();
+    console.log('Parsing materials ...');
+    text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
+
+    console.log(materials);
+    // return filled materials array
+    return materials;
+  }
 }
 
-class Primitive {
-  #vertices;
-  #normals;
-  #normal;
-  #textureNums;
-  #colors;
-  #color;
-  #uvs;
+export class Transform {
+  number = 0;
+  #rotationMatrix;
+  #position;
+  #scale = 1;
 
-  geometryTextureArray;
-  sceneTextureArray;
+  static used = [];
+  static count = 0;
+  static transformList = [];
+
+  static buildWGL2Arrays = () => {
+    // Create UBO buffer array
+    let rotationBuffer = new Float32Array(24 * Transform.count);
+    let shiftBuffer = new Float32Array(8 * Transform.count);
+    // Iterate over set elements
+    for (let i = 0; i < Transform.count; i++) {
+      let matrix = this.transformList[i].matrix;
+      let inverse = Math.moorePenrose(matrix);
+      let pos = this.transformList[i].position;
+      let invPos = Math.mul(- 1, this.transformList[i].position);
+      rotationBuffer.set(new Float32Array(matrix[0]), i * 24);
+      rotationBuffer.set(new Float32Array(matrix[1]), i * 24 + 4);
+      rotationBuffer.set(new Float32Array(matrix[2]), i * 24 + 8);
+      rotationBuffer.set(new Float32Array(inverse[0]), i * 24 + 12);
+      rotationBuffer.set(new Float32Array(inverse[1]), i * 24 + 16);
+      rotationBuffer.set(new Float32Array(inverse[2]), i * 24 + 20);
+      shiftBuffer.set(new Float32Array(pos), i * 8);
+      shiftBuffer.set(new Float32Array(invPos), i * 8 + 4);
+    }
+
+    return [rotationBuffer, shiftBuffer];
+  }
+
+  static buildWGPUArray = () => {
+    // Create UBO buffer array
+    let transfromBuffer = new Float32Array(32 * Transform.count);
+    // Iterate over set elements
+    for (let i = 0; i < Transform.count; i++) {
+      let matrix = this.transformList[i].matrix;
+      let inverse = Math.moorePenrose(matrix);
+      let pos = this.transformList[i].position;
+      let invPos = Math.mul(- 1, this.transformList[i].position);
+      transfromBuffer.set(new Float32Array(matrix[0]), i * 32);
+      transfromBuffer.set(new Float32Array(matrix[1]), i * 32 + 4);
+      transfromBuffer.set(new Float32Array(matrix[2]), i * 32 + 8);
+      transfromBuffer.set(new Float32Array(pos), i * 32 + 12);
+      transfromBuffer.set(new Float32Array(inverse[0]), i * 32 + 16);
+      transfromBuffer.set(new Float32Array(inverse[1]), i * 32 + 20);
+      transfromBuffer.set(new Float32Array(inverse[2]), i * 32 + 24);
+      transfromBuffer.set(new Float32Array(invPos), i * 32 + 28);
+    }
+
+    return transfromBuffer;
+  }
+
+  get matrix () {
+    let scaledRotation = Math.mul(this.#scale, this.#rotationMatrix);
+    // console.log(scaledRotation);
+    return scaledRotation;
+  }
+
+  get position () {
+    return this.#position;
+  }
+
+  move (x, y, z) {
+    this.#position = [x, y, z];
+  }
+
+  rotateAxis (normal, theta) {
+    let n = normal;
+    let sT = Math.sin(theta);
+    let cT = Math.cos(theta);
+    let currentRotation = [
+      [ n[0] * n[0] * (1 - cT) + cT,          n[0] * n[1] * (1 - cT) - n[2] * sT,   n[0] * n[2] * (1 - cT) + n[1] * sT  ],
+      [ n[0] * n[1] * (1 - cT) + n[2] * sT,   n[1] * n[1] * (1 - cT) + cT,          n[1] * n[2] * (1 - cT) - n[0] * sT  ],
+      [ n[0] * n[2] * (1 - cT) - n[1] * sT,   n[1] * n[2] * (1 - cT) + n[0] * sT,   n[2] * n[2] * (1- cT) + cT          ]  
+    ];
+    this.#rotationMatrix = currentRotation;
+  }
+
+  rotateSpherical (theta, psi) {
+    let sT = Math.sin(theta);
+    let cT = Math.cos(theta);
+    let sP = Math.sin(psi);
+    let cP = Math.cos(psi);
+
+    let currentRotation = [
+      [      cT,    0,      sT],
+      [-sT * sP,   cP, cT * sP],
+      [-sT * cP, - sP, cT * cP]
+    ];
+    
+    this.#rotationMatrix = currentRotation;
+  }
+
+  scale (s) {
+    this.#scale = s;
+  }
+
+  static classConstructor = (function() {
+    // Add one identity matrix transform at position 0 to default to.
+    new Transform();
+  })();
+
+  constructor () {
+    // Default to identity matrix
+    this.#rotationMatrix = Math.identity(3);
+    this.#position = [0, 0, 0];
+    // Assign next larger available number
+    for (let i = 0; i < Infinity; i++) {
+      if (Transform.used[i]) continue;
+      Transform.used[i] = true;
+      this.number = i;
+      break;
+    }
+    // Update max index
+    Transform.count = Math.max(Transform.count, this.number + 1);
+    // Set in transform list
+    Transform.transformList[this.number] = this;
+    // console.log(Transform.transformList);
+  }
+}
+
+export class Primitive {
+  #vertices;
+  #normal;
+  #normals;
+  #uvs;
+  #transform;
+  #textureNums = new Float32Array([-1, -1, -1]);
+  #albedo = new Float32Array([1, 1, 1]);
+  #rme = new Float32Array([1, 0, 0]);
+  #tpo = new Float32Array([0, 0, 1]);
+
+  geometryBuffer;
+  sceneBuffer;
 
   #buildTextureArrays = () => {
-    for (let i = 0; i < this.length; i += 3) {
-      let i12 = i * 4;
-      this.geometryTextureArray.set(this.#vertices.slice(i * 3, i * 3 + 9), i12);
-      this.geometryTextureArray.set(this.#normal, i12 + 9);
-      let i21 = i * 7;
-      this.sceneTextureArray.set(this.#normals.slice(i * 3, i * 3 + 9), i21);
-      this.sceneTextureArray.set(this.#uvs.slice(i * 2, i * 2 + 6), i21 + 9);
-      this.sceneTextureArray.set(this.#textureNums.slice(0, 3), i21 + 15);
-      this.sceneTextureArray.set(this.#color, i21 + 18);
+    // a, b, c, na, nb, nc, uv01, uv12, tn, albedo, rme, tpo
+    for (let i = 0; i < this.length; i ++) {
+      let i12 = i * 12;
+      this.geometryBuffer.set(this.#vertices.slice(i * 9, i * 9 + 9), i12);
+      this.geometryBuffer[i12 + 9] = this.transformNum;
+      this.geometryBuffer[i12 + 10] = 2;
+      let i28 = i * 28;
+      this.sceneBuffer.set(this.#normals.slice(i * 9, i * 9 + 9), i28);
+      this.sceneBuffer.set(this.#uvs.slice(i * 6, i * 6 + 6), i28 + 9);
+      this.sceneBuffer.set(this.#textureNums, i28 + 15);
+      this.sceneBuffer.set(this.#albedo, i28 + 18);
+      this.sceneBuffer.set(this.#rme, i28 + 21);
+      this.sceneBuffer.set(this.#tpo, i28 + 24);
     }
   }
     
   get vertices () { return this.#vertices };
   get normals () { return this.#normals };
   get normal () { return this.#normal };
+
+  get transformNum () {
+    if (this.#transform === undefined) return 0;
+    else return this.#transform.number;
+  }
+  get transform () { return this.#transform };
+  
   get textureNums () { return this.#textureNums };
-  get color () { return this.#color };
-  get colors () { return this.#colors };
+  get color () { return this.#albedo };
+  get albedo () { return this.#albedo };
+  get roughness () { return this.#rme[0] };
+  get metallicity () { return this.#rme[1] };
+  get emissiveness () { return this.#rme[2] };
+  get translucency () { return this.#tpo[0] };
+  get ior () { return this.#tpo[2] };
   get uvs () { return this.#uvs };
 
   set vertices (v) {
@@ -310,20 +674,53 @@ class Primitive {
   }
 
   set normal (n) {
+    this.#normals = new Float32Array(new Array(this.length * 3).fill(n).flat());
     this.#normal = new Float32Array(n);
-    this.#normals = new Float32Array(new Array(this.length).fill(n).flat());
+    this.#buildTextureArrays();
+  }
+
+  set transform (t) {
+    this.#transform = t;
     this.#buildTextureArrays();
   }
 
   set textureNums (tn) {
-    this.#textureNums = new Float32Array(new Array(this.length).fill(tn).flat());
+    this.#textureNums = tn;
     this.#buildTextureArrays();
   }
 
   set color (c) {
     let color = c.map(val => val / 255);
-    this.#color = new Float32Array(color);
-    this.#colors = new Float32Array(new Array(this.length).fill(color).flat());
+    this.#albedo = new Float32Array(color);
+    this.#buildTextureArrays();
+  }
+
+  set albedo (a) {
+    this.color = a;
+  }
+
+  set roughness (r) {
+    this.#rme[0] = r;
+    this.#buildTextureArrays();
+  }
+
+  set metallicity (m) {
+    this.#rme[1] = m;
+    this.#buildTextureArrays();
+  }
+
+  set emissiveness (e) {
+    this.#rme[2] = e;
+    this.#buildTextureArrays();
+  }
+
+  set translucency (t) {
+    this.#tpo[0] = t;
+    this.#buildTextureArrays();
+  }
+
+  set ior (o) {
+    this.#tpo[2] = o;
     this.#buildTextureArrays();
   }
 
@@ -337,26 +734,78 @@ class Primitive {
     this.length = length;
     
     this.#vertices = new Float32Array(vertices);
-    this.#normals = new Float32Array(new Array(this.length).fill(normal).flat());
     this.#normal = new Float32Array(normal);
-    this.#textureNums = new Float32Array(new Array(this.length * 3).fill(- 1).flat());
-    this.#color = new Float32Array([1, 1, 1]);
-    this.#colors = new Float32Array(new Array(this.length * 3).fill(1));
+    this.#normals = new Float32Array(new Array(this.length * 3).fill(normal).flat());
     this.#uvs = new Float32Array(uvs);
     
-    this.geometryTextureArray = new Float32Array(this.length * 4);
-    this.sceneTextureArray = new Float32Array(this.length * 7);
+    this.geometryBuffer = new Float32Array(this.length * 12);
+    this.sceneBuffer = new Float32Array(this.length * 28);
     this.#buildTextureArrays();
   }
 }
 
-class Object3D {
-  set color (color) {
-    for (let i = 0; i < this.length; i++) this[i].color = color;
+export class Plane extends Primitive {
+  constructor (c0, c1, c2, c3) {
+    super(2, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
+  }
+}
+
+export class Triangle extends Primitive {
+  constructor (a, b, c) {
+    super(1, [a, b, c].flat(), Math.normalize(Math.cross(Math.diff(a, c), Math.diff(a, b))), [0, 0, 0, 1, 1, 1]);
+  }
+}
+
+export class Object3D {
+  #static = false;
+  #staticPermanent = false;
+
+  #transform;
+
+  get transformNum () {
+    if (this.#transform) {
+      return this.#transform.number;
+    } else {
+      return 0;
+    }
+  }
+  get transform () { return this.#transform };
+
+  set transform (t) {
+    this.#transform = t;
+    for (let i = 0; i < this.length; i++) this[i].transform = t;
   }
 
-  set textureNums (nums) {
-    for (let i = 0; i < this.length; i++) this[i].textureNums = nums;
+  set textureNums (tn) {
+    for (let i = 0; i < this.length; i++) this[i].textureNums = tn;
+  }
+
+  set color (c) {
+    for (let i = 0; i < this.length; i++) this[i].color = c;
+  }
+
+  set albedo (a) {
+    for (let i = 0; i < this.length; i++) this[i].albedo = a;
+  }
+
+  set roughness (r) {
+    for (let i = 0; i < this.length; i++) this[i].roughness = r;
+  }
+
+  set metallicity (m) {
+    for (let i = 0; i < this.length; i++) this[i].metallicity = m;
+  }
+
+  set emissiveness (e) {
+    for (let i = 0; i < this.length; i++) this[i].emissiveness = e;
+  }
+
+  set translucency (t) {
+    for (let i = 0; i < this.length; i++) this[i].translucency = t;
+  }
+
+  set ior (o) {
+    for (let i = 0; i < this.length; i++) this[i].ior = o;
   }
   // move object by given vector
   move (x, y, z) {
@@ -388,51 +837,85 @@ class Object3D {
       }
     }
   }
+
+  set static (isStatic) {
+    if (isStatic) {
+      // Get attributes by traversing graph
+      let attribs = generateArraysFromGraph(this);
+      this.textureLength = attribs.textureLength;
+      this.bufferLength = attribs.bufferLength;
+      this.idBuffer = attribs.idBuffer;
+      this.geometryBuffer = attribs.geometryBuffer;
+      this.sceneBuffer = attribs.sceneBuffer;
+      this.minMax = attribs.minMax;
+      // Set static flag to true
+      this.#static = true;
+    } else {
+      // Make objects dynamic again
+      this.#static = false;
+      // Object ids to keep track of
+      this.textureLength = 0;
+      this.bufferLength = 0;
+      // Precalculate arrays and values
+      this.geometryBuffer = null;
+      this.sceneBuffer = null;
+      this.minMax = null;
+    }
+  }
+
+  get static () {
+    return this.#static;
+  }
+
+  set staticPermanent (staticPermanent) {
+    if (this.#staticPermanent && !staticPermanent) {
+      console.error('Can\'t unset static permanent, tree is permanently lost');
+    }
+
+    if (staticPermanent) {
+      this.#staticPermanent = staticPermanent;
+      // Make object static
+      this.static = true;
+      // Dereference subtree children and give them to the garbage collector
+      for (let i = 0; i < this.length; i++) this[i] = undefined;
+    }
+  }
+
+  get staticPermanent () {
+    return this.#staticPermanent;
+  }
+
   
-  constructor (length, indexable, scene) {
+  constructor (length) {
     this.relativePosition = [0, 0, 0];
     this.length = length;
-    this.indexable = indexable;
-    this.scene = scene;
+    this.indexable = true;
   }
 }
 
-
-class Bounding extends Object3D {
-  constructor (array, scene) { 
-    super(array.length, true, scene);
+export class Bounding extends Object3D {
+  constructor (array) { 
+    super(array.length);
     array.forEach((item, i) => this[i] = item);
   }
 }
 
-class Cuboid extends Object3D {
-  constructor (x, x2, y, y2, z, z2, scene) {
-    super(6, true, scene);
+export class Cuboid extends Object3D {
+  constructor (x, x2, y, y2, z, z2) {
+    super(6);
     // Add bias of 2^(-16)
     const bias = 0.00152587890625;
     [x, y, z] = [x + bias, y + bias, z + bias];
     [x2, y2, z2] = [x2 - bias, y2 - bias, z2 - bias];
     // Create surface elements for cuboid
     this.bounding = [x, x2, y, y2, z, z2];
-    this.top = new Plane([x, y2, z], [x2, y2, z], [x2, y2, z2], [x, y2, z2], scene);
-    this.right = new Plane([x2, y2, z], [x2, y, z], [x2, y, z2], [x2, y2, z2], scene);
-    this.front = new Plane([x2, y2, z2], [x2, y, z2], [x, y, z2], [x, y2, z2], scene);
-    this.bottom = new Plane([x, y, z2], [x2, y, z2], [x2, y, z], [x, y, z], scene);
-    this.left = new Plane([x, y2, z2], [x, y, z2], [x, y, z], [x, y2, z], scene);
-    this.back = new Plane([x, y2, z], [x, y, z], [x2, y, z], [x2, y2, z], scene);
+    this.top = new Plane([x, y2, z], [x2, y2, z], [x2, y2, z2], [x, y2, z2]);
+    this.right = new Plane([x2, y2, z], [x2, y, z], [x2, y, z2], [x2, y2, z2]);
+    this.front = new Plane([x2, y2, z2], [x2, y, z2], [x, y, z2], [x, y2, z2]);
+    this.bottom = new Plane([x, y, z2], [x2, y, z2], [x2, y, z], [x, y, z]);
+    this.left = new Plane([x, y2, z2], [x, y, z2], [x, y, z], [x, y2, z]);
+    this.back = new Plane([x, y2, z], [x, y, z], [x2, y, z], [x2, y2, z]);
 
     [this.top, this.right, this.front, this.bottom, this.left, this.back].forEach((item, i) => this[i] = item);
-  }
-}
-
-class Plane extends Primitive {
-  constructor (c0, c1, c2, c3) {
-    super(6, [c0, c1, c2, c2, c3, c0].flat(), Math.normalize(Math.cross(Math.diff(c0, c2), Math.diff(c0, c1))), [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
-  }
-}
-
-class Triangle extends Primitive {
-  constructor (a, b, c) {
-    super(3, [a, b, c].flat(), Math.cross(Math.diff(a, c), Math.diff(a, b)), [0, 0, 0, 1, 1, 1]);
   }
 }
