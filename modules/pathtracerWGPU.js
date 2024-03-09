@@ -23,6 +23,17 @@ export class PathTracerWGPU {
 
   #engineState = {};
   #renderPassDescriptor;
+
+  #staticBuffers;
+  #dynamicBuffers;
+
+  #uniformBuffer;
+  #lightBuffer;
+  #transformBuffer;
+
+  #staticBindGroup;
+  #dynamicBindGroup;
+
   #resizeEvent;
 
   #halt = true;
@@ -66,8 +77,8 @@ export class PathTracerWGPU {
     // rt.updatePrimaryLightSources();
     // if (this.#AAObject !== undefined) this.#AAObject.buildTexture();
 
-    this.config.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
-    this.config.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
+    // this.config.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
+    // this.config.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
     // this.render();
   }
   
@@ -76,33 +87,57 @@ export class PathTracerWGPU {
     return this.#canvas;
   }
   
-  
   updateScene () {
     // Generate texture arrays and buffers
     let builtScene = this.scene.generateArraysFromGraph();
-    console.log(builtScene);
     
     this.#engineState.bufferLength = builtScene.bufferLength;
-    this.#engineState.idBuffer = this.#device.createBuffer({ size: builtScene.idBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-    this.#device.queue.writeBuffer(this.#engineState.idBuffer, 0, builtScene.idBuffer);
-    
-    // Set geometry buffer in VRAM
-    this.#engineState.geometryBuffer = this.#device.createBuffer({ size: builtScene.geometryBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-    this.#device.queue.writeBuffer(this.#engineState.geometryBuffer, 0, builtScene.geometryBuffer);
-    
-    // Send scene buffer to GPU
-    this.#engineState.sceneBuffer = this.#device.createBuffer({ size: builtScene.sceneBuffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-    this.#device.queue.writeBuffer(this.#engineState.sceneBuffer, 0, builtScene.sceneBuffer);
-    
-    this.#engineState.bindGroup = this.#device.createBindGroup({
-      layout: this.#engineState.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.#engineState.uniformBuffer }},
-        { binding: 1, resource: { buffer: this.#engineState.idBuffer }},
-        { binding: 2, resource: { buffer: this.#engineState.geometryBuffer }},
-        { binding: 3, resource: { buffer: this.#engineState.sceneBuffer }}
-      ],
+
+    let staticBufferArrays = [
+      builtScene.idBuffer,
+      builtScene.geometryBuffer,
+      builtScene.sceneBuffer,
+    ];
+
+    this.#staticBuffers = staticBufferArrays.map(array => {
+      let buffer = this.#device.createBuffer({ size: array.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+      this.#device.queue.writeBuffer(buffer, 0, array);
+      return buffer;
     });
+    
+    this.#staticBindGroup = this.#device.createBindGroup({
+      label: 'static binding group',
+      layout: this.#engineState.pipeline.getBindGroupLayout(0),
+      entries: this.#staticBuffers.map((buffer, i) => ({ binding: i, resource: { buffer }})),
+    });
+  }
+
+  // Functions to update vertex and light source data textures
+  #updatePrimaryLightSources () {
+    var lightTexArray = [];
+		// Don't update light sources if there is none
+		if (this.scene.primaryLightSources.length === 0) {
+			lightTexArray = [0, 0, 0, 0, 0, 0, 0, 0];
+		} else {
+      // Iterate over light sources
+      this.scene.primaryLightSources.forEach(lightSource => {
+        // Set intensity to lightSource intensity or default if not specified
+        const intensity = Object.is(lightSource.intensity)? this.scene.defaultLightIntensity : lightSource.intensity;
+        const variation = Object.is(lightSource.variation)? this.scene.defaultLightVariation : lightSource.variation;
+        // push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
+        lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], 0, intensity, variation, 0, 0);
+      });
+    }
+
+
+    let lightArray = new Float32Array(lightTexArray);
+    // Reallocate buffer if size changed
+    if (this.#engineState.lightSourceLength !== lightArray.length) {
+      this.#engineState.lightSourceLength = lightArray.length;
+      this.#lightBuffer = this.#device.createBuffer({ size: lightArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST})
+    }
+    // Write data into buffer
+    this.#device.queue.writeBuffer(this.#lightBuffer, 0, lightArray);
   }
   
   async render() {
@@ -200,7 +235,9 @@ export class PathTracerWGPU {
       }
     };
     // Create uniform buffer for shader uniforms
-    this.#engineState.uniformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    // Create uniform buffer for transforms in shader
+    // this.#engineState.transformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Build / Rebuild scene graph for GPU into storage buffer
     this.updateScene();
     // Init canvas parameters and textures with resize
@@ -274,7 +311,28 @@ export class PathTracerWGPU {
       this.camera.x, this.camera.y, this.camera.z, 0
     ]);
     // Update uniform values on GPU
-    this.#device.queue.writeBuffer(this.#engineState.uniformBuffer, 0, uniformValues);
+    this.#device.queue.writeBuffer(this.#uniformBuffer, 0, uniformValues);
+    // Update primary light source buffer
+    this.#updatePrimaryLightSources();
+    // Update transform matrices on GPU
+    let transformArray = Transform.buildWGPUArray();
+    this.#transformBuffer = this.#device.createBuffer({ size: transformArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST})
+    this.#device.queue.writeBuffer(this.#transformBuffer, 0, transformArray);
+
+
+    this.#dynamicBuffers = [
+      this.#uniformBuffer,
+      this.#lightBuffer,
+      this.#transformBuffer,
+    ];
+
+    // Assemble dynamic bind group
+    this.#dynamicBindGroup = this.#device.createBindGroup({
+      label: 'dynamic binding group',
+      layout: this.#engineState.pipeline.getBindGroupLayout(1),
+      entries: this.#dynamicBuffers.map((buffer, i) => ({ binding: i, resource: { buffer }})),
+    });
+
     // Sumbit command buffer to device queue
     // console.log([this.#context.getCurrentTexture().width, this.#context.getCurrentTexture().height]);
     // Command encoders record commands for the GPU to execute.
@@ -287,8 +345,8 @@ export class PathTracerWGPU {
     // Set the pipeline to use when drawing.
     passEncoder.setPipeline(this.#engineState.pipeline);
     // Set the vertex buffer to use when drawing.
-    // passEncoder.setVertexBuffer(0, this.#engineState.geometryBuffer);
-    passEncoder.setBindGroup(0, this.#engineState.bindGroup);
+    passEncoder.setBindGroup(0, this.#staticBindGroup);
+    passEncoder.setBindGroup(1, this.#dynamicBindGroup);
     // Draw vertices using the previously set pipeline and vertex buffer.
     // console.log(this.#engineState.bufferLength)
     passEncoder.draw(3, this.#engineState.bufferLength);

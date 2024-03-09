@@ -15,15 +15,8 @@
 precision highp float;
 precision highp sampler2D;
 
-struct NormalizedRay {
-    vec3 origin;
-    vec3 unitDirection;
-};
-
 struct Ray {
     vec3 origin;
-    vec3 target;
-    vec3 direction;
     vec3 unitDirection;
 };
 
@@ -74,14 +67,14 @@ vec3 lookup(sampler2D atlas, vec3 coords) {
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
-    vec3 edge1 = b - a;
-    vec3 edge2 = c - a;
+bool moellerTrumboreCull(mat3 t, Ray ray, float l) {
+    vec3 edge1 = t[1] - t[0];
+    vec3 edge2 = t[2] - t[0];
     vec3 pvec = cross(ray.unitDirection, edge2);
     float det = dot(edge1, pvec);
     float invDet = 1.0f / det;
     if(det < BIAS) return false;
-    vec3 tvec = ray.origin - a;
+    vec3 tvec = ray.origin - t[0];
     float u = dot(tvec, pvec) * invDet;
     if(u < BIAS || u > 1.0f) return false;
     vec3 qvec = cross(tvec, edge1);
@@ -91,27 +84,24 @@ bool moellerTrumboreCull(float l, NormalizedRay ray, vec3 a, vec3 b, vec3 c) {
     return (s <= l && s > BIAS);
 }
 
-// Don't return intersection point, because we're looking for a specific triangle
-bool rayCuboid(float l, vec3 invRay, vec3 p, vec3 minCorner, vec3 maxCorner) {
-    vec3 v0 = (minCorner - p) * invRay;
-    vec3 v1 = (maxCorner - p) * invRay;
+// Don't return intersection point, because we're looking for a specific triangle not bounding box
+bool rayCuboid(float l, Ray ray, vec3 minCorner, vec3 maxCorner) {
+    vec3 v0 = (minCorner - ray.origin) / ray.unitDirection;
+    vec3 v1 = (maxCorner - ray.origin) / ray.unitDirection;
     float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTest(Ray ray) {
+bool shadowTest(Ray ray, float l) {
     // Cache transformed ray attributes
-    NormalizedRay tR = NormalizedRay(ray.origin, ray.unitDirection);
-    // Inverse of transformed normalized ray
-    vec3 invDir = 1.0 / ray.unitDirection;
+    Ray tR = Ray(ray.origin, ray.unitDirection);
     int cachedTI = 0;
-    // Precomput max length
-    float minLen = length(ray.direction);
+    // Precompute max length
+    float minLen = l;
     // Get texture size as max iteration value
-    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
-    int size = geometryTexSize.y * TRIANGLES_PER_ROW;
+    int size = textureSize(geometryTex, 0).y * TRIANGLES_PER_ROW;
     // Iterate through lines of texture
     for(int i = 0; i < size; i++) {
         // Get position of current triangle/vertex in geometryTex
@@ -130,22 +120,25 @@ bool shadowTest(Ray ray) {
         // Test if cached transformed variables are still valid
         if (tI != cachedTI) {
             int iI = tI + 1;
+            mat3 rotationII = rotation[iI];
             cachedTI = tI;
-            tR = NormalizedRay(
-                rotation[iI] * (ray.origin + shift[iI]),
-                normalize(rotation[iI] * ray.unitDirection)
+            tR = Ray(
+                rotationII * (ray.origin + shift[iI]),
+                normalize(rotationII * ray.unitDirection)
             );
-            invDir = 1.0 / tR.unitDirection;
         }
         // Three cases:
-        // c is X 0 0        => is bounding volume: do AABB intersection test
-        // c is 0 0 0        => end of list: stop loop
-        // otherwise         => is triangle: do triangle intersection test
-        if(c.yz == vec2(0)) {
-            if(c.x == 0.0f) break;
-            if(!rayCuboid(minLen, invDir, tR.origin, a, b)) i += int(c.x);
-        } else if(moellerTrumboreCull(minLen, tR, a, b, c)) {
-            return true;
+        // t2.z = 0        => end of list: stop loop
+        // t2.z = 1        => is bounding volume: do AABB intersection test
+        // t2.z = 2        => is triangle: do triangle intersection test
+        if (t2.z == 0.0) return false;
+
+        if (t2.z == 1.0) {
+            if (!rayCuboid(minLen, tR, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
+        } else {
+            mat3 triangle = mat3 (t0, t1, t2.x);
+            // Test for triangle intersection in positive light ray direction
+            if (moellerTrumboreCull(triangle, tR, minLen)) return true;
         }
     }
     // Tested all triangles, but there is no intersection
@@ -154,7 +147,7 @@ bool shadowTest(Ray ray) {
 
 float trowbridgeReitz(float alpha, float NdotH) {
     float numerator = alpha * alpha;
-    float denom = NdotH * NdotH * (alpha * alpha - 1.0f) + 1.0f;
+    float denom = NdotH * NdotH * (numerator - 1.0f) + 1.0f;
     return numerator / max(PI * denom * denom, BIAS);
 }
 
@@ -169,43 +162,10 @@ float smith(float alpha, float NdotV, float NdotL) {
     return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
 }
 
-vec3 fresnel(vec3 F0, float VdotH) {
+vec3 fresnel(vec3 F0, float theta) {
     // Use Schlick approximation
-    return F0 + (1.0f - F0) * pow(1.0f - VdotH, 5.0f);
+    return F0 + (1.0f - F0) * pow(1.0f - theta, 5.0f);
 }
-
-/*
-vec3 forwardTrace(vec3 lightDir, vec3 N, vec3 V, Material material, float strength) {
-    float lenP1 = 1.0f + length(lightDir);
-    // Apply inverse square law
-    float brightness = strength / (lenP1 * lenP1);
-
-    float alpha = material.rme.x * material.rme.x;
-    vec3 F0 = material.albedo * material.rme.y;
-    vec3 L = normalize(lightDir);
-    vec3 H = normalize(V + L);
-
-    float VdotH = max(dot(V, H), 0.0f);
-    float NdotL = max(dot(N, L), 0.0f);
-    float NdotH = max(dot(N, H), 0.0f);
-    float NdotV = max(dot(N, V), 0.0f);
-
-    vec3 fresnelFactor = fresnel(F0, VdotH);
-    vec3 Ks = fresnelFactor;
-    vec3 Kd = (1.0f - Ks) * (1.0f - material.rme.y);
-    vec3 lambert = material.albedo * INV_PI;
-
-    vec3 cookTorranceNumerator = trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL) * fresnelFactor;
-    float cookTorranceDenominator = 4.0f * NdotV * NdotL;
-    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
-
-    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
-    vec3 BRDF = Kd * lambert + cookTorrance;
-
-    // Outgoing light to camera
-    return BRDF * brightness;
-}
-*/
 
 vec3 forwardTrace(Material material, vec3 lightDir, float strength, vec3 N, vec3 V) {
     float lenP1 = 1.0f + length(lightDir);
@@ -263,7 +223,6 @@ void main() {
         vec3(t0.w, t1.xy),
         vec3(t1.zw, t2.x)
     );
-    vec3 geometryNormal = normalize(normals[0] + normals[1] + normals[2]);
     // Transform normal according to object transform
     int tI = transformationId << 1;
     vec3 absolutePosition = rotation[tI] * position + shift[tI];
@@ -306,14 +265,14 @@ void main() {
 
         // Form light vector
         vec3 dir = light - absolutePosition;
-        Ray lightRay = Ray(absolutePosition, light, dir, normalize(dir));
+        Ray lightRay = Ray(absolutePosition, normalize(dir));
         vec3 localColor = forwardTrace(material, light - position, strength, smoothNormal, normalize(camera - position));
         // Compute quick exit criterion to potentially skip expensive shadow test
         bool showColor = length(localColor) == 0.0f;
 
         // lightRay.origin += sin(acos(dot(smoothNormal, geometryNormal))) * smoothNormal;
         // Update pixel color if coordinate is not in shadow
-        if(showColor || !shadowTest(lightRay)) finalColor += localColor;
+        if(showColor || !shadowTest(lightRay, length(dir))) finalColor += localColor;
     }
 
     finalColor *= material.albedo;
