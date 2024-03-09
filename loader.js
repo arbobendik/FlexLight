@@ -1,75 +1,95 @@
 'use strict';
 
-load(new URLSearchParams(location.search));
 
-function load(search) {
+load();
 
-	if(document.currentScript !== null) document.currentScript.remove();
-
-	if (search.has('v')) {
-		const script = document.createElement('script');
-		script.src = 'examples/' + search.get('v') + '.js';
-		document.head.appendChild(script);
-	}
+function load() {
+  
+  if(document.currentScript !== null) document.currentScript.remove();
+  
+  const urlParams = new URLSearchParams(location.search);
+  const script = document.createElement('script');
+  let sceneName = urlParams.get('v') ?? 'wave';
+  script.src = 'examples/' + sceneName + '.js';
+  document.head.appendChild(script);
 
 	window.addEventListener('load', function() {
-
-    let renderer = engine.renderer;
+    let config = engine.config;
     // Get form elements
-		const scriptForm = document.getElementById('scriptForm');
+    const scriptForm = document.getElementById('scriptForm');
     const parameterForm = document.getElementById('parameterForm');
+    const selectors = ['antialiasing'];
     const tickBoxes = ['filter', 'temporal', 'hdr'];
-    const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy', 'antialiasing'];
+    const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy'];
 
-    document.getElementById('pathtracing').checked = (localStorage.getItem('pathtracing') ?? 'true') === 'true';
-    engine.renderer = document.getElementById('pathtracing').checked ? 'pathtracer' : 'rasterizer';
-    renderer = engine.renderer;
-    renderer.render();
+    parameterForm.children['pathtracing'].checked = (localStorage.getItem('pathtracing') ?? 'true') === 'true';
+    parameterForm.children['api'].value = localStorage.getItem('api') ?? 'webgl2';
+    // Set renderer and api
+    engine.api = parameterForm.children['api'].value;
+    engine.renderer = parameterForm.children['pathtracing'].checked ? 'pathtracer' : 'rasterizer';
+
+    selectors.forEach((item) => {
+      config[item] = localStorage.getItem(item) ?? config[item];
+      parameterForm.children[item].value = config[item];
+    });
     // Restore values in pathtracer
     tickBoxes.forEach((item) => {
-      renderer[item] = (localStorage.getItem(item) ?? 'true') === 'true';
-      parameterForm.children[item].checked = renderer[item];
+      config[item] = (localStorage.getItem(item) ?? 'true') === 'true';
+      parameterForm.children[item].checked = config[item];
     });
 
     sliders.forEach((item) => {
-      renderer[item] = (item === 'antialiasing') ? localStorage.getItem(item) ?? renderer[item] : Number(localStorage.getItem(item) ?? renderer[item]);
-      parameterForm.children[item].value = renderer[item];
+      config[item] = Number(localStorage.getItem(item) ?? config[item]);
+      parameterForm.children[item].value = config[item];
     });
     // Load slider variables
     document.querySelectorAll('output').forEach((item, i) => {
-      item.value = renderer[sliders[i]];
+      item.value = config[sliders[i]];
       // Define silder
       var slider = document.getElementById(sliders[i]);
       // Live update slider variables
       slider.addEventListener('input', () => item.value = slider.value);
     });
 
-		if (search.has('v')) {
-			scriptForm[0].value = search.get('v');
+		if (urlParams.has('v')) {
+			scriptForm[0].value = urlParams.get('v');
 		} else {
 			scriptForm.submit();
 		}
     // Reload if scene changes
-    scriptForm.addEventListener('change', () => location.search = '?v=' + scriptForm[0].value);
+    scriptForm.addEventListener('change', () => {
+      urlParams.set('v', scriptForm[0].value);
+      location.search = urlParams.toString();
+    });
     // Update gl quality params on form change
     parameterForm.addEventListener('change', () => {
-      if ((localStorage.getItem('pathtracing') === 'true') !== document.getElementById('pathtracing').checked) {
-        localStorage.setItem('pathtracing', document.getElementById('pathtracing').checked);
-        engine.renderer = document.getElementById('pathtracing').checked ? 'pathtracer' : 'rasterizer';
-        renderer = engine.renderer;
-        renderer.render();
+      let pathtracing = document.getElementById('pathtracing').checked;
+      let api = document.getElementById('api').value;
+
+      if ((localStorage.getItem('pathtracing') === 'true') !== pathtracing) {
+        localStorage.setItem('pathtracing', pathtracing);
+        engine.renderer = pathtracing ? 'pathtracer' : 'rasterizer';
       }
 
+      if (localStorage.getItem('api') !== api) {
+        localStorage.setItem('api', api);
+        engine.api = api;
+      }
+
+      selectors.forEach((item) => {
+        config[item] = parameterForm.children[item].value;
+        localStorage.setItem(item, config[item]);
+      });
+
       tickBoxes.forEach((item) => {
-        renderer[item] = parameterForm.children[item].checked;
-        localStorage.setItem(item, renderer[item]);
+        config[item] = parameterForm.children[item].checked;
+        localStorage.setItem(item, config[item]);
       });
 
       sliders.forEach((item) => {
-        renderer[item] = (item === 'antialiasing') ? parameterForm.children[item].value : Number(parameterForm.children[item].value);
-        localStorage.setItem(item, renderer[item]);
+        config[item] = Number(parameterForm.children[item].value);
+        localStorage.setItem(item, config[item]);
       });
     });
-
 	}, {once: true});
 }

@@ -22,7 +22,7 @@ async function buildScene() {
 	let translucencyTex = await scene.textureFromTPO([0, 0, 1.3 / 4], 1, 1);
 	scene.translucencyTextures.push(translucencyTex);
 	// Set light source.
-	scene.primaryLightSources = [[0, 10, 0]];
+	scene.primaryLightSources = [[-1, 10, -1]];
 	// Modify brightness.
 	scene.primaryLightSources[0].intensity = 1000;
 	// Generate plane.
@@ -31,55 +31,45 @@ async function buildScene() {
 	// Push both objects to render queue.
 	scene.queue.push(this_plane);
 	// Set power of 2 square length.
-	let power = 2;
-	let sideLength = 2 ** power;
+	let sideLength = 2;
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [4 + sideLength, 3 + power, 4 + sideLength];
+	[camera.x, camera.y, camera.z] = [4 + sideLength, sideLength + 2, 4 + sideLength];
 	[camera.fx, camera.fy] = [0.75 * Math.PI, 0.6];
-	// Colors.
-	let colors = [];
+	// transforms and cuboid arrays
+	let transforms = [];
+	let cuboids = [];
 	// assign each pillar a color.
 	for (let i = 0; i < sideLength; i++) {
-		let row = [];
-		for (let j = 0; j < sideLength; j++) row.push([Math.random(), Math.random(), Math.random()].map(item => item * 255));
-		colors.push(row);
+		let rowCuboids = [];
+		let rowTransforms = [];
+		for (let j = 0; j < sideLength; j++) {
+			let transform = scene.Transform();
+			let cuboid = scene.Cuboid(i, i + 1, 0, 3.1, j, j + 1);
+			rowTransforms.push(transform);
+			rowCuboids.push(cuboid);
+			cuboid.transform = transform;
+			cuboid.color = [Math.random(), Math.random(), Math.random()].map(item => item * 255);
+			cuboid.roughness = 0.5;
+			// Add to render queue
+			scene.queue.push(cuboid);
+		}
+		cuboids.push(rowCuboids);
+		transforms.push(rowTransforms);
 	}
 
-	// Declare recursive function to build recursive structure for maximal bounding box performance increase.
-	var drawMap = (pot, x, y, notSquare) => {
-		// Base case.
-		if (pot === 0) {
-			let cuboid = scene.Cuboid(x, x + 1 , -1, 0.1 + Math.sin(t + x * 0.5 + y), y, y + 1);
-			// Set PBR properties and colors for blocks.
-      		cuboid.textureNums = [-1, 1, 0];
-      		cuboid.color = colors[x][y];
-			return cuboid;
-		}
-		// Decide to split vertically or horizontally.
-		if (notSquare) {
-			// Get side length of next smaller square.
-			let sideLength = 2 ** ((pot - 1) * 0.5);
-			// Create object.
-			return [
-				drawMap(pot - 1, x, y, false),
-				drawMap(pot - 1, x, y + sideLength, false)
-			];
-		} else {
-			let sideLength = 2 ** (pot * 0.5);
-			return [
-				drawMap(pot - 1, x, y, true),
-				drawMap(pot - 1, x + sideLength * 0.5, y, true)
-			];
-		}
-	};
+	// scene.generateBVH();
 
 	// Init iterator variable for simple animations.
 	let t = 0;
 	setInterval(() => {
 		// Increase iterator.
-		t += 0.02;
+		t += 0.015;
 		// Package cuboids together in a shared bounding volume.
-		engine.scene.queue[1] = drawMap(2 * power, 0, 0, false);
+		for (let i = 0; i < sideLength; i++) {
+			for (let j = 0; j < sideLength; j++) {
+				transforms[i][j].move(0, 0.1 + Math.sin(t + i * 0.5 + j), 0);
+			}
+		}
 	}, 100 / 6);
 
 	// Start render engine.
