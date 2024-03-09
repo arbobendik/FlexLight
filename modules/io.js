@@ -25,7 +25,7 @@ export class WebIo {
 	camera;
 	renderer;
 
-	constructor (canvas, camera, renderer) {
+	constructor (canvas, renderer, camera) {
 		this.registerKey('KeyW', 'forward');
 		this.registerKey('KeyA', 'left');
 		this.registerKey('KeyS', 'backward');

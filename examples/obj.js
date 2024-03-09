@@ -5,8 +5,6 @@ var engine;
 buildScene();
 // Build example scene
 async function buildScene() {
-
-
 	// Create new canvas.
 	var canvas = document.createElement("canvas");
   	// Append it to body.
@@ -25,83 +23,72 @@ async function buildScene() {
 	  	scene.textures.push(img);
 	});
 
-	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
-	let clearTex = await scene.textureFromRME([0, 1, 0], 1, 1);
-	scene.pbrTextures.push(normalTex, clearTex);
-
-	let translucencyTex = await scene.textureFromTPO([1, 0, 2.42 / 4], 1, 1);
-	scene.translucencyTextures.push(translucencyTex); // 0
-
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [0, 3, 0];
+	[camera.x, camera.y, camera.z] = [0, 1, 0];
 	[camera.fx, camera.fy] = [- 2.38, 0.2];
-
-	// Generate plane.
-	let plane = scene.Plane([- 50, - 1, - 50], [50, - 1, - 50], [50, - 1, 50], [- 50, - 1, 50], [0, 1, 0]);
-	plane.textureNums = [- 1, 0, - 1];
-
-	scene.primaryLightSources = [[40, 50, 40]];
-	scene.primaryLightSources[0].intensity = 20000;
-
-	scene.ambientLight = [0.1, 0.1, 0.1];
 	
-	scene.queue.push(plane);
+	
+	scene.primaryLightSources = [[50, 50.9, -10]];
+	scene.primaryLightSources[0].intensity = 50000;
+	scene.primaryLightSources[0].variation = 0;
+	
+	
+	scene.ambientLight = [.01, .01, .01];
+	
+	// scene.queue.push(plane);
 
 	// Start render engine.
 	engine.renderer.render();
 
-	let model = "grass";
-	
-	switch (model) {
-		case "bike":
-			var obj = await scene.fetchObjFile('objects/bike.obj');
-			// obj.scale(5);
-			obj.move(20, 0, - 20);
-			scene.queue.push(obj);
-			break;
-		case "grass":
-			let grass = await scene.fetchObjFile('objects/erde.obj');
-			grass.move(8, -2, - 8)
-			grass.scale(2);
-			grass.textureNums = [0, - 1, - 1];
-			scene.queue.push(grass);
-			break;
-		case "monkey":
-			var obj = await scene.fetchObjFile('objects/monke.obj');
-			obj.move(3, 2.1, - 3);
-			scene.queue.push(obj);
-			break;
-		case "prim":
-			var obj = await scene.fetchObjFile('objects/uv_sphere_tri.obj');
-			obj.move(3, 2.1, - 3);
-			scene.queue.push(obj);
-			break;
-		case "monkeys":
-			scene.primaryLightSources[0].intensity = 10000;
-			let monkeyBound = [];
-			for (let i = 0; i < 3; i++) {
-				let obj = await scene.fetchObjFile('objects/monke.obj');
-				obj.scale(i * 0.2 + 1);
-				obj.move(10 + 2.5 * i , 0.5, - 11 - 1.3 * i);
-				obj.textureNums = [- 1, 1, 0]
-				let color = [150, 150, 150];
-				color[i] += 100;
-				obj.color = color;
-				monkeyBound.push(obj);
-			}
-			scene.queue.push(scene.Bounding(monkeyBound));
-			break;
-		default:
-			console.log("model does not exist");
-	}
+	// const search = new URLSearchParams(location.search);
+	let urlParams = new URL(document.location).searchParams;
+
+	// console.log(search.getAll());
+	let model = urlParams.get('model') ?? 'sphere';
+	console.log('loading ' + model);
+
+	let modelUrl = 'objects/' + model + '.obj';
+	let materialUrl = 'objects/' + model + '.mtl';
+	var mtl = await scene.importMtl(materialUrl);
+	var obj = await scene.importObj(modelUrl, mtl);
+	// obj.emissiveness = 0;
+	// obj.scale(5);
+	obj.move(5, 0, - 5);
+	/*
+	obj.roughness = .1;
+	console.log(obj);
+	obj.metallicity = 0.1;
+	obj.translucency = 0.9;
+	obj.ior = 9.5;
+	obj.color = [255, 200, 90];
+	*/
+	scene.queue.push(obj);
+	engine.renderer.updateScene();
 
 	// Add FPS counter to top-right corner
 	var fpsCounter = document.createElement("div");
 	// Append it to body.
 	document.body.appendChild(fpsCounter);
-  	// Update Counter periodically.
+	// setTimeout(() => engine.renderer.freeze = true, 1000);
+	
+	/*
+	// init iterator variable for simple animations
+	let iterator = 0;
+
+	setInterval(() => {
+		// increase iterator
+		iterator += 0.01;
+		// precalculate sin and cos
+		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
+		// animate light sources
+		scene.primaryLightSources[0] = [50*sin, 50, 50*cos];
+		scene.primaryLightSources[0].variation = 10;
+		scene.primaryLightSources[0].intensity = 10000;
+		engine.renderer.updatePrimaryLightSources();
+	}, 100/6);
+	*/
+	// Update Counter periodically.
 	setInterval(() => {
 		fpsCounter.textContent = engine.renderer.fps;
-	}, 100);
+	}, 1000);
 }
