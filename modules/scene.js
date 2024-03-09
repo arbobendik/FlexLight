@@ -3,7 +3,6 @@
 import { Math } from './math.js';
 import { Float16Array, Arrays } from './arrays.js';
 
-const MAX_TRANSFORMS = 65520;
 const BVH_MAX_LEAVES_PER_NODE = 4;
 export class Scene {
   // light sources and textures
@@ -494,11 +493,11 @@ export class Transform {
   #position;
   #scale = 1;
 
-  static used = new Array(MAX_TRANSFORMS);
+  static used = [];
   static count = 0;
-  static transformList = new Array(MAX_TRANSFORMS);
+  static transformList = [];
 
-  static buildUBOArrays = () => {
+  static buildWGL2Arrays = () => {
     // Create UBO buffer array
     let rotationBuffer = new Float32Array(24 * Transform.count);
     let shiftBuffer = new Float32Array(8 * Transform.count);
@@ -519,6 +518,28 @@ export class Transform {
     }
 
     return [rotationBuffer, shiftBuffer];
+  }
+
+  static buildWGPUArray = () => {
+    // Create UBO buffer array
+    let transfromBuffer = new Float32Array(32 * Transform.count);
+    // Iterate over set elements
+    for (let i = 0; i < Transform.count; i++) {
+      let matrix = this.transformList[i].matrix;
+      let inverse = Math.moorePenrose(matrix);
+      let pos = this.transformList[i].position;
+      let invPos = Math.mul(- 1, this.transformList[i].position);
+      transfromBuffer.set(new Float32Array(matrix[0]), i * 32);
+      transfromBuffer.set(new Float32Array(matrix[1]), i * 32 + 4);
+      transfromBuffer.set(new Float32Array(matrix[2]), i * 32 + 8);
+      transfromBuffer.set(new Float32Array(pos), i * 32 + 12);
+      transfromBuffer.set(new Float32Array(inverse[0]), i * 32 + 16);
+      transfromBuffer.set(new Float32Array(inverse[1]), i * 32 + 20);
+      transfromBuffer.set(new Float32Array(inverse[2]), i * 32 + 24);
+      transfromBuffer.set(new Float32Array(invPos), i * 32 + 28);
+    }
+
+    return transfromBuffer;
   }
 
   get matrix () {
@@ -576,20 +597,11 @@ export class Transform {
     this.#rotationMatrix = Math.identity(3);
     this.#position = [0, 0, 0];
     // Assign next larger available number
-    for (let i = 0; i < MAX_TRANSFORMS; i++) {
+    for (let i = 0; i < Infinity; i++) {
       if (Transform.used[i]) continue;
       Transform.used[i] = true;
       this.number = i;
       break;
-    }
-    // All transformation matricies slots in UBO are blocked
-    if (this.number === -1) {
-      console.error(
-        'Exceeded limit of', 
-        MAX_TRANSFORMS,
-        'transformation matrices! Try altering your matrices instead of generating them.'
-      );
-      return;
     }
     // Update max index
     Transform.count = Math.max(Transform.count, this.number + 1);

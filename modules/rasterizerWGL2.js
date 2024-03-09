@@ -297,7 +297,7 @@ export class RasterizerWGL2 {
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       // Get transformation matrices elements and set them in buffer
-      let buffers = Transform.buildUBOArrays();
+      let buffers = Transform.buildWGL2Arrays();
       buffers.forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
