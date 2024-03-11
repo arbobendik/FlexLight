@@ -55,11 +55,12 @@ uniform float minImportancy;
 uniform int useFilter;
 uniform int isTemporal;
 
-uniform float randomSeed;
 // Get global illumination color, intensity
 uniform vec3 ambient;
+
+uniform float randomSeed;
 // Textures in parallel for texture atlas
-uniform int textureWidth;
+uniform vec2 textureDims;
 
 // Texture with information about all triangles in scene
 uniform sampler2D geometryTex;
@@ -107,11 +108,13 @@ vec3 combineNormalRME(vec3 n, vec3 rme) {
 // Lookup values for texture atlases
 vec3 fetchTexVal(sampler2D atlas, vec2 uv, float texNum, vec3 defaultVal) {
     if (texNum == - 1.0) return defaultVal;
-    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y);
-    vec2 atlasCoords = vec2(
-        (uv.x + mod(texNum, float(textureWidth))), 
-        (uv.y + floor(texNum / float(textureWidth))) * atlasHeightFactor
-    ) / float(textureWidth);
+
+    vec2 atlasSize = vec2(textureSize(atlas, 0));
+    vec2 offset = vec2(
+        mod((textureDims.x * texNum), atlasSize.x),
+        floor((textureDims.x * texNum) / atlasSize.x) * textureDims.y
+    );
+    vec2 atlasCoords = (offset + uv * textureDims) / atlasSize;
     // Return texel on requested location
     return texture(atlas, atlasCoords).xyz;
 }

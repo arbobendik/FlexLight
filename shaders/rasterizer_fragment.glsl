@@ -42,7 +42,7 @@ layout (std140) uniform transformMatrix
 // Get global illumination color, intensity
 uniform vec3 ambient;
 // Textures in parallel for texture atlas
-uniform int textureWidth;
+uniform vec2 textureDims;
 uniform int hdr;
 // Texture with information about all triangles in scene
 uniform sampler2D geometryTex;
@@ -55,13 +55,16 @@ uniform sampler2D tex;
 uniform sampler2D lightTex;
 
 layout(location = 0) out vec4 renderColor;
-float invTextureWidth = 1.0f;
 
 
 // Lookup values for texture atlases
 vec3 lookup(sampler2D atlas, vec3 coords) {
-    float atlasHeightFactor = float(textureSize(atlas, 0).x) / float(textureSize(atlas, 0).y) * invTextureWidth;
-    vec2 atlasCoords = vec2((coords.x + mod(coords.z, float(textureWidth))) * invTextureWidth, (coords.y + floor(coords.z * invTextureWidth)) * atlasHeightFactor);
+    vec2 atlasSize = vec2(textureSize(atlas, 0));
+    vec2 offset = vec2(
+        mod((textureDims.x * coords.z), atlasSize.x),
+        floor((textureDims.x * coords.z) / atlasSize.x) * textureDims.y
+    );
+    vec2 atlasCoords = (offset + coords.xy * textureDims) / atlasSize;
     // Return texel on requested location
     return texture(atlas, atlasCoords).xyz;
 }
@@ -200,8 +203,6 @@ vec3 forwardTrace(Material material, vec3 lightDir, float strength, vec3 N, vec3
 }
 
 void main() {
-    // Calculate constant for this pass
-    invTextureWidth = 1.0f / float(textureWidth);
 
     // Calculate vertex position in texture
     int triangleColumn = fragmentTriangleId >> 8;

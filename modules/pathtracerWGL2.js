@@ -11,14 +11,14 @@ import { Arrays, Float16Array } from './arrays.js';
 const PathtracingUniformLocationIdentifiers = [
   'cameraPosition', 'viewMatrix',
   'samples', 'maxReflections', 'minImportancy', 'useFilter', 'isTemporal',
-  'ambient', 'randomSeed', 'textureWidth',
+  'ambient', 'randomSeed', 'textureDims',
   'geometryTex', 'sceneTex', 'pbrTex', 'translucencyTex', 'tex', 'lightTex'
 ];
 
 const PathtracingUniformFunctionTypes = [
   'uniform3f', 'uniformMatrix3fv',
   'uniform1i', 'uniform1i', 'uniform1f', 'uniform1i', 'uniform1i',
-  'uniform3f', 'uniform1f', 'uniform1i',
+  'uniform3f', 'uniform1f', 'uniform2f',
   'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i', 'uniform1i'
 ];
 
@@ -94,9 +94,10 @@ export class PathTracerWGL2 {
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
-		canvas.width = width * textureWidth;
-		canvas.height = height * list.length;
-		ctx.imageSmoothingEnabled = false;
+		canvas.width = Math.min(width * list.length, 2048);
+    canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
+    console.log(canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
     // TextureWidth for third argument was 3 for regular textures
 		list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
 
@@ -342,11 +343,11 @@ export class PathTracerWGL2 {
         // render for temporal or not
         [this.config.temporal],
         // ambient background color
-        [this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2]],
+        this.scene.ambientLight,
         // random seed for monte carlo pathtracing
         [this.config.temporal ? engineState.temporalFrame : 0],
         // width of textures
-        [Math.floor(2048 / this.scene.standardTextureSizes[0])],
+        this.scene.standardTextureSizes,
         // whole triangle based geometry scene graph, triangle attributes for scene graph
         [0], [1],
         // pbr texture, translucency texture, texture
