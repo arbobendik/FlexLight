@@ -19,7 +19,8 @@ export class PathTracerWGPU {
   #adapter;
   #device;
   #canvas;
-  #preferedCanvasFormat
+  #preferedCanvasFormat;
+  #pipeline;
 
   #engineState = {};
   #renderPassDescriptor;
@@ -31,8 +32,17 @@ export class PathTracerWGPU {
   #lightBuffer;
   #transformBuffer;
 
+  #textureAtlas;
+  #pbrAtlas;
+  #translucencyAtlas;
+
+  #textureList = [];
+  #pbrList = [];
+  #translucencyList = [];
+
   #staticBindGroup;
   #dynamicBindGroup;
+  #textureBindGroup;
 
   #resizeEvent;
 
@@ -86,6 +96,105 @@ export class PathTracerWGPU {
   get canvas () {
     return this.#canvas;
   }
+
+  async #generateAtlasView (list) {
+    const [width, height] = this.scene.standardTextureSizes;
+    const textureWidth = Math.floor(2048 / width);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+		// Test if there is even a texture
+		if (list.length === 0) {
+			canvas.width = width;
+      canvas.height = height;
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillRect(0, 0, width, height);
+		} else {
+      canvas.width = Math.min(width * list.length, 2048);
+      canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
+      console.log(canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = false;
+      // TextureWidth for third argument was 3 for regular textures
+      list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
+    }
+    
+    // this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
+    let bitMap = await createImageBitmap(canvas);
+
+    console.log(await canvas.toDataURL());
+
+    console.log(bitMap);
+
+    let atlasTexture = await this.#device.createTexture({
+      format: 'rgba8unorm',
+      size: [canvas.width, canvas.height],
+      usage: GPUTextureUsage.TEXTURE_BINDING |
+             GPUTextureUsage.COPY_DST |
+             GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+
+    console.log(
+      { bitMap, flipY: true },
+      { atlasTexture },
+      { width: canvas.width, height: canvas.height }
+    );
+
+    this.#device.queue.copyExternalImageToTexture(
+      { source: bitMap, flipY: true },
+      { texture: atlasTexture },
+      { width: canvas.width, height: canvas.height },
+    );
+
+    return atlasTexture.createView();
+	}
+
+  async #updateTextureBindGroup () {
+    // Wait till all textures have finished updating
+    let objects = [
+      this.#textureAtlas,
+      this.#pbrAtlas,
+      this.#translucencyAtlas
+    ];
+
+    this.#textureBindGroup = this.#device.createBindGroup({
+      label: 'texture binding group',
+      layout: this.#pipeline.getBindGroupLayout(2),
+      entries: objects.map((object, i) => ({ binding: i, resource: object }))
+    });
+  }
+
+  async #updateTextureAtlas (forceUpload = false) {
+    // Don't build texture atlas if there are no changes.
+    if (
+      !forceUpload
+      && this.scene.textures.length === this.#textureList.length
+      && this.scene.textures.every((e, i) => e === this.#textureList[i])
+    ) return;
+
+    this.#textureList = this.scene.textures;
+		this.#textureAtlas = await this.#generateAtlasView(this.scene.textures);
+  }
+
+  async #updatePbrAtlas (forceUpload = false) {
+    // Don't build texture atlas if there are no changes.
+    if (
+      !forceUpload
+      && this.scene.pbrTextures.length === this.#pbrList.length
+      && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])
+    ) return;
+    this.#pbrList = this.scene.pbrTextures;
+		this.#pbrAtlas = await this.#generateAtlasView(this.scene.pbrTextures);
+  }
+
+  async #updateTranslucencyAtlas (forceUpload = false) {
+    // Don't build texture atlas if there are no changes.
+    if (
+      !forceUpload
+      && this.scene.translucencyTextures.length === this.#translucencyList.length
+      && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])
+    ) return;
+    this.#translucencyList = this.scene.translucencyTextures;
+    this.#translucencyAtlas = await this.#generateAtlasView(this.scene.translucencyTextures);
+  }
   
   updateScene () {
     // Generate texture arrays and buffers
@@ -107,7 +216,7 @@ export class PathTracerWGPU {
     
     this.#staticBindGroup = this.#device.createBindGroup({
       label: 'static binding group',
-      layout: this.#engineState.pipeline.getBindGroupLayout(0),
+      layout: this.#pipeline.getBindGroupLayout(0),
       entries: this.#staticBuffers.map((buffer, i) => ({ binding: i, resource: { buffer }})),
     });
   }
@@ -169,6 +278,11 @@ export class PathTracerWGPU {
     this.#engineState.lastTimeStamp = performance.now();
     // Count frames to match with temporal accumulation
     this.#engineState.temporalFrame = 0;
+
+    // Init all texture atlases
+    await this.#updateTextureAtlas(true);
+    await this.#updatePbrAtlas(true);
+    await this.#updateTranslucencyAtlas(true);
     
     this.#prepareEngine();
   }
@@ -187,7 +301,7 @@ export class PathTracerWGPU {
     this.#engineState.bufferLength = 0;
     // Pipelines bundle most of the render state (like primitive types, blend
     // modes, etc) and shader entry points into one big object.
-    this.#engineState.pipeline = this.#device.createRenderPipeline({
+    this.#pipeline = this.#device.createRenderPipeline({
       layout: 'auto',
       // Vertex shader
       vertex: {
@@ -235,9 +349,8 @@ export class PathTracerWGPU {
       }
     };
     // Create uniform buffer for shader uniforms
-    this.#uniformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniformBuffer = this.#device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Create uniform buffer for transforms in shader
-    // this.#engineState.transformBuffer = this.#device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Build / Rebuild scene graph for GPU into storage buffer
     this.updateScene();
     // Init canvas parameters and textures with resize
@@ -252,6 +365,7 @@ export class PathTracerWGPU {
   #frameCycle () {
     // console.log(this.#halt);
     if (this.#halt) return;
+    // this.#halt = true;
     let timeStamp = performance.now();
     // Check if recompile is required
     if (this.#engineState.filter !== this.config.filter || this.#engineState.renderQuality !== this.config.renderQuality) {
@@ -259,6 +373,13 @@ export class PathTracerWGPU {
       requestAnimationFrame(() => this.#prepareEngine());
       return;
     }
+    // update Textures
+    this.#updateTextureAtlas();
+    this.#updatePbrAtlas();
+    this.#updateTranslucencyAtlas();
+    this.#updateTextureBindGroup();
+    // update light sources
+    this.#updatePrimaryLightSources();
     
     // Swap antialiasing programm if needed
     if (this.#engineState.antialiasing !== this.config.antialiasing) {
@@ -305,15 +426,21 @@ export class PathTracerWGPU {
 
     // Transpose view matrix in buffer
     let uniformValues = new Float32Array([
+      // View matrix
       viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0], 0,
       viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1], 0,
       viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2], 0,
-      this.camera.x, this.camera.y, this.camera.z, 0
+      // Camera
+      this.camera.x, this.camera.y, this.camera.z, 0,
+      // Ambient light
+      this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2], 1,
+      // Random seed (1 for now)
+      // 1, 0, 0, 0,
+      // Texture size
+      this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1], 0, 0,
     ]);
     // Update uniform values on GPU
     this.#device.queue.writeBuffer(this.#uniformBuffer, 0, uniformValues);
-    // Update primary light source buffer
-    this.#updatePrimaryLightSources();
     // Update transform matrices on GPU
     let transformArray = Transform.buildWGPUArray();
     this.#transformBuffer = this.#device.createBuffer({ size: transformArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST})
@@ -329,12 +456,10 @@ export class PathTracerWGPU {
     // Assemble dynamic bind group
     this.#dynamicBindGroup = this.#device.createBindGroup({
       label: 'dynamic binding group',
-      layout: this.#engineState.pipeline.getBindGroupLayout(1),
+      layout: this.#pipeline.getBindGroupLayout(1),
       entries: this.#dynamicBuffers.map((buffer, i) => ({ binding: i, resource: { buffer }})),
     });
 
-    // Sumbit command buffer to device queue
-    // console.log([this.#context.getCurrentTexture().width, this.#context.getCurrentTexture().height]);
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = this.#device.createCommandEncoder();
 
@@ -343,12 +468,13 @@ export class PathTracerWGPU {
     // All rendering commands happen in a render pass.
     let passEncoder = commandEncoder.beginRenderPass(this.#renderPassDescriptor);
     // Set the pipeline to use when drawing.
-    passEncoder.setPipeline(this.#engineState.pipeline);
+    passEncoder.setPipeline(this.#pipeline);
     // Set the vertex buffer to use when drawing.
     passEncoder.setBindGroup(0, this.#staticBindGroup);
     passEncoder.setBindGroup(1, this.#dynamicBindGroup);
+    passEncoder.setBindGroup(2, this.#textureBindGroup);
+
     // Draw vertices using the previously set pipeline and vertex buffer.
-    // console.log(this.#engineState.bufferLength)
     passEncoder.draw(3, this.#engineState.bufferLength);
     // End the render pass.
     passEncoder.end();
