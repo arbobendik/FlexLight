@@ -74,14 +74,12 @@ export class RasterizerWGL2 {
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
-		canvas.width = width * textureWidth;
-		canvas.height = height * list.length;
-		ctx.imageSmoothingEnabled = false;
-		list.forEach(async (texture, i) => {
-			// textureWidth for third argument was 3 for regular textures
-			ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height);
-		});
-
+		canvas.width = Math.min(width * list.length, 2048);
+    canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
+    console.log(canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    // TextureWidth for third argument was 3 for regular textures
+		list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
 	}
 
@@ -179,7 +177,7 @@ export class RasterizerWGL2 {
     // Init Buffers
     let triangleIdBuffer, vertexIdBuffer;
     // Internal GL objects
-    let Program, CameraPosition, ViewMatrixLocation, AmbientLocation, TextureWidth, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
+    let Program, CameraPosition, ViewMatrixLocation, AmbientLocation, TextureDims, HdrLocation, PbrTex, TranslucencyTex, Tex, LightTex;
     // Uniform variables
     let UboBuffer, UboVariableIndices, UboVariableOffsets;
     // Init Buffers
@@ -279,7 +277,7 @@ export class RasterizerWGL2 {
       // Set global illumination
       this.#gl.uniform3f(AmbientLocation, this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2]);
       // Set width of height and normal texture
-      this.#gl.uniform1i(TextureWidth, Math.floor(2048 / this.scene.standardTextureSizes[0]));
+      this.#gl.uniform2f(TextureDims, this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1]);
       // Enable or disable hdr
       this.#gl.uniform1i(HdrLocation, this.config.hdr);
       // Pass current scene graph to GPU
@@ -361,7 +359,7 @@ export class RasterizerWGL2 {
       AmbientLocation = this.#gl.getUniformLocation(Program, 'ambient');
       GeometryTex = this.#gl.getUniformLocation(Program, 'geometryTex');
       SceneTex = this.#gl.getUniformLocation(Program, 'sceneTex');
-      TextureWidth = this.#gl.getUniformLocation(Program, 'textureWidth');
+      TextureDims = this.#gl.getUniformLocation(Program, 'textureDims');
       HdrLocation = this.#gl.getUniformLocation(Program, 'hdr');
       
       ViewMatrixLocation = this.#gl.getUniformLocation(Program, 'viewMatrix');
