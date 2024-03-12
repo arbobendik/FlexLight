@@ -115,10 +115,6 @@ bool shadowTest(Ray ray, float l) {
         vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
         vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
 
-        vec3 a = t0.xyz;
-        vec3 b = vec3(t0.w, t1.xy);
-        vec3 c = vec3(t1.zw, t2.x);
-
         int tI = int(t2.y) << 1;
         // Test if cached transformed variables are still valid
         if (tI != cachedTI) {
