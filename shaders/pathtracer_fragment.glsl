@@ -171,7 +171,7 @@ bool rayCuboid(float l, Ray ray, vec3 minCorner, vec3 maxCorner) {
 
 // Test for closest ray triangle intersection
 // return intersection position in world space and index of target triangle in geometryTex
-// plus triangle vertices and transformation Id
+// plus triangle and transformation Id
 Hit rayTracer(Ray ray) {
     // Cache transformed ray attributes
     Ray tR = Ray(ray.origin, ray.unitDirection);
@@ -248,10 +248,6 @@ bool shadowTest(Ray ray, float l) {
         vec4 t0 = texelFetch(geometryTex, index, 0);
         vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
         vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
-
-        vec3 a = t0.xyz;
-        vec3 b = vec3(t0.w, t1.xy);
-        vec3 c = vec3(t1.zw, t2.x);
 
         int tI = int(t2.y) << 1;
         // Test if cached transformed variables are still valid

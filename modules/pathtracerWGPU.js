@@ -430,14 +430,26 @@ export class PathTracerWGPU {
       viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0], 0,
       viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1], 0,
       viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2], 0,
+      // 12
       // Camera
       this.camera.x, this.camera.y, this.camera.z, 0,
       // Ambient light
-      this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2], 1,
+      this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2],
+      // 16
+      // amount of samples per ray
+      this.config.samplesPerRay,
+      // max reflections of ray
+      this.config.maxReflections,
+      // min importancy of light ray
+      this.config.minImportancy,
+      // render for filter or not
+      this.config.filter,
+      // render for temporal or not
+      this.config.temporal,
       // Random seed (1 for now)
-      // 1, 0, 0, 0,
+      1, 0,
       // Texture size
-      this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1], 0, 0,
+      this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1],
     ]);
     // Update uniform values on GPU
     this.#device.queue.writeBuffer(this.#uniformBuffer, 0, uniformValues);

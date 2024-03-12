@@ -1,5 +1,7 @@
 const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
+const SQRT3: f32 = 1.7320508075688772;
+const POW32: f32 = 4294967296.0;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
 const INV_65535: f32 = 0.000015259021896696422;
@@ -16,10 +18,18 @@ struct Light {
 
 struct Uniforms {
     view_matrix: mat3x3<f32>,
-    camera_position: vec3f,
-    ambient: vec3f,
+
+    camera_position: vec3<f32>,
+    ambient: vec3<f32>,
+
+    samples: f32,
+    max_reflections: f32,
+    min_importancy: f32,
+    use_filter: f32,
+
+    is_temporal: f32,
     random_seed: f32,
-    texture_size: vec2f,
+    texture_size: vec2<f32>,
 };
 
 struct VertexOut {
@@ -28,7 +38,8 @@ struct VertexOut {
     @location(1) absolute_position: vec3f,
     @location(2) uv: vec2f,
     @location(3) clip_space: vec3f,
-    @location(4) @interpolate(flat) triangle_index: i32,
+    @location(4) @interpolate(flat) t_i: i32,
+    @location(5) @interpolate(flat) triangle_index: i32,
 };
 
 @group(0) @binding(0) var<storage, read> indices: array<i32>;
@@ -60,10 +71,10 @@ fn vsMain(
     // Transform position
     out.relative_position = vec3f(geometry[v_i], geometry[v_i + 1], geometry[v_i + 2]);
     // Get transformation ID
-    let t_i: i32 = i32(geometry[geometry_index + 9]) << 1;
+    out.t_i = i32(geometry[geometry_index + 9]) << 1;
 
     // Trasform position
-    let transform: Transform = transforms[t_i];
+    let transform: Transform = transforms[out.t_i];
     out.absolute_position = (transform.rotation * out.relative_position) + transform.shift;
     // Set uv to vertex uv and let the vertex interpolation generate the values in between
     out.uv = base_uvs[vertex_num];
@@ -76,7 +87,6 @@ fn vsMain(
 
 // FRAGMENT SHADER ------------------------------------------------------------------------------------------------------------------------
 
-//@group(2) @binding(0) var unfiltered: sampler;
 @group(2) @binding(0) var texture_atlas: texture_2d<f32>;
 @group(2) @binding(1) var pbr_atlas: texture_2d<f32>;
 @group(2) @binding(2) var translucency_atlas: texture_2d<f32>;
@@ -90,6 +100,12 @@ struct Material {
     albedo: vec3f,
     rme: vec3f,
     tpo: vec3f
+};
+
+struct Hit {
+    suv: vec3f,
+    transform_id: i32,
+    triangle_id: i32
 };
 
 // Lookup values for texture atlases
@@ -116,6 +132,32 @@ fn noise(n: vec2f, seed: f32) -> vec4f {
     return fract(sin(dot(n.xy, vec2f(12.9898f, 78.233f)) + vec4f(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.random_seed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
+fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3f {
+    let edge1: vec3f = t[1] - t[0];
+    let edge2: vec3f = t[2] - t[0];
+    let pvec: vec3f = cross(ray.unit_direction, edge2);
+    let det: f32 = dot(edge1, pvec);
+    if(abs(det) < BIAS) {
+        return vec3f(0.0f);
+    }
+    let inv_det: f32 = 1.0f / det;
+    let tvec: vec3f = ray.origin - t[0];
+    let u: f32 = dot(tvec, pvec) * inv_det;
+    if(u < BIAS || u > 1.0f) {
+        return vec3f(0.0f);
+    }
+    let qvec: vec3f = cross(tvec, edge1);
+    let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
+    let uv_sum: f32 = u + v;
+    if(v < BIAS || uv_sum > 1.0f) {
+        return vec3f(0.0f);
+    }
+    let s: f32 = dot(edge2, qvec) * inv_det;
+    if(s > l || s <= BIAS) {
+        return vec3f(0.0f);
+    }
+    return vec3f(s, u, v);
+}
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(t: mat3x3<f32>, ray: Ray, l: f32) -> bool {
@@ -148,6 +190,74 @@ fn rayCuboid(min_corner: vec3f, max_corner: vec3f, ray: Ray, l: f32) -> bool {
     let tmin: f32 = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     let tmax: f32 = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
+}
+
+// Test for closest ray triangle intersection
+// return intersection position in world space and index of target triangle in geometryTex
+// plus triangle and transformation Id
+fn rayTracer(ray: Ray) -> Hit {
+    // Cache transformed ray attributes
+    var t_ray: Ray = Ray(ray.origin, ray.unit_direction);
+    // Inverse of transformed normalized ray
+    var cached_t_i: i32 = 0;
+    // Latest intersection which is now closest to origin
+    var hit: Hit = Hit(vec3(0.0f), 0, - 1);
+    // Precomput max length
+    var min_len: f32 = POW32;
+    // Get texture size as max iteration value
+    let size: i32 = i32(arrayLength(&geometry)) / 12;
+    // Iterate through lines of texture
+    for (var i: i32 = 0; i < size; i++) {
+        // Get position of current triangle/vertex in geometryTex
+        let index: i32 = i * 12;
+        // Fetch triangle coordinates from scene graph
+        let a = vec3f(geometry[index    ], geometry[index + 1], geometry[index + 2]);
+        let b = vec3f(geometry[index + 3], geometry[index + 4], geometry[index + 5]);
+        let c = vec3f(geometry[index + 6], geometry[index + 7], geometry[index + 8]);
+
+        let t_i: i32 = i32(geometry[index + 9]) << 1;
+        // Test if cached transformed variables are still valid
+        if (t_i != cached_t_i) {
+            let i_i: i32 = t_i + 1;
+            cached_t_i = t_i;
+            let i_transform = transforms[i_i];
+            t_ray = Ray(
+                i_transform.rotation * (ray.origin + i_transform.shift),
+                i_transform.rotation * ray.unit_direction
+            );
+        }
+        // Three cases:
+        // indicator = 0        => end of list: stop loop
+        // indicator = 1        => is bounding volume: do AABB intersection test
+        // indicator = 2        => is triangle: do triangle intersection test
+        switch i32(geometry[index + 10]) {
+            case 0 {
+                return hit;
+            }
+            case 1: {
+                if(!rayCuboid(a, b, t_ray, min_len)) {
+                    i += i32(c.x);
+                }
+            }
+            case 2: {
+                let triangle: mat3x3<f32> = mat3x3<f32>(a, b, c);
+                 // Test if triangle intersects ray
+                let intersection: vec3f = moellerTrumbore(triangle, t_ray, min_len);
+                // Test if ray even intersects
+                if(intersection.x != 0.0) {
+                    // Calculate intersection point
+                    hit = Hit(intersection, t_i, i);
+                    // Update maximum object distance for future rays
+                    min_len = intersection.x;
+                }
+            }
+            default: {
+                continue;
+            }
+        }
+    }
+    // Tested all triangles, but there is no intersection
+    return hit;
 }
 
 // Simplified rayTracer to only test if ray intersects anything
@@ -208,6 +318,7 @@ fn shadowTest(ray: Ray, l: f32) -> bool {
     // Tested all triangles, but there is no intersection
     return false;
 }
+
 fn trowbridgeReitz(alpha: f32, n_dot_h: f32) -> f32 {
     let numerator: f32 = alpha * alpha;
     let denom: f32 = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
@@ -301,12 +412,12 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
         last_random = noise(last_random, BIAS).zw;
     }
 
-    let unit_light_dir: vec3f = normalize(reservoir_light_dir);
+    let unit_light_dir: vec3<f32> = normalize(reservoir_light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
     let show_color: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f;
     let show_shadow: bool = dot(smooth_n, unit_light_dir) <= BIAS;
     // Apply emissive texture and ambient light
-    let base_luminance: vec3f = vec3f(material.rme.z);
+    let base_luminance: vec3<f32> = vec3f(material.rme.z);
     // Update filter
     // if (dont_filter || i == 0) renderId.w = float((reservoirNum % 128) << 1) * INV_255;
     // Test if in shadow
@@ -319,7 +430,7 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
         return base_luminance;
     }
     // Apply geometry offset
-    let offset_target: vec3f = ray.origin + geometry_offset * smooth_n;
+    let offset_target: vec3<f32> = ray.origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
 
     if (shadowTest(light_ray, length(reservoir_light_dir))) {
@@ -330,44 +441,204 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
     }
 }
 
+fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec3<f32>, cos_sample_n: f32, bounces: i32) -> vec3<f32> {
+    // Set bool to false when filter becomes necessary
+    var dont_filter: bool = false;
+    // Use additive color mixing technique, so start with black
+    var final_color: vec3<f32> = vec3f(0.0f);
+    var importancy_factor: vec3<f32> = vec3(1.0f);
+    // originalColor = vec3(1.0f);
+    var hit: Hit = init_hit;
+    var ray: Ray = Ray(camera, normalize(origin - camera));
+    var last_hit_point: vec3<f32> = camera;
+    // Iterate over each bounce and modify color accordingly
+    for (var i: i32 = 0; i < bounces && length(importancy_factor/* * originalColor*/) >= uniforms.min_importancy * SQRT3; i++) {
+        let fi: f32 = f32(i);
+
+        let transform: Transform = transforms[hit.transform_id];
+        // Transform hit point
+        ray.origin = hit.suv.x * ray.unit_direction + ray.origin;
+        // Calculate barycentric coordinates
+        let uvw: vec3<f32> = vec3(1.0 - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
+
+        // Fetch triangle coordinates from scene graph texture
+        let index_g: i32 = hit.triangle_id * 12;
+
+        let a: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g    ], geometry[index_g + 1], geometry[index_g + 2]);
+        let b: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g + 3], geometry[index_g + 4], geometry[index_g + 5]);
+        let c: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g + 6], geometry[index_g + 7], geometry[index_g + 8]);
+
+        let offset_ray_target: vec3<f32> = ray.origin - transform.shift;
+
+        let geometry_n: vec3<f32> = normalize(cross(a - b, a - c));
+        let diffs: vec3<f32> = vec3<f32>(
+            distance(offset_ray_target, a),
+            distance(offset_ray_target, b),
+            distance(offset_ray_target, c)
+        );
+        // Fetch scene texture data
+        let index_s: i32 = hit.triangle_id * 28;
+        // Pull normals
+        let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(
+            scene[index_s    ], scene[index_s + 1], scene[index_s + 2],
+            scene[index_s + 3], scene[index_s + 4], scene[index_s + 5],
+            scene[index_s + 6], scene[index_s + 7], scene[index_s + 8]
+        );
+        // Interpolate smooth normal
+        var smooth_n: vec3<f32> = normalize(normals * uvw);
+        // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
+        let angles: vec3<f32> = acos(abs(geometry_n * normals));
+        let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
+        let geometry_offset: f32 = dot(diffs * angle_tan, uvw);
+        // Interpolate final barycentric texture coordinates between UV's of the respective vertices
+        let barycentric: vec2<f32> = mat3x2<f32>(
+            scene[index_s + 9 ], scene[index_s + 10], scene[index_s + 11],
+            scene[index_s + 12], scene[index_s + 13], scene[index_s + 14]
+        ) * uvw;
+        // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
+        let tex_num: vec3<f32>          = vec3<f32>(scene[index_s + 15], scene[index_s + 16], scene[index_s + 17]);
+
+        let albedo_default: vec3<f32>   = vec3<f32>(scene[index_s + 18], scene[index_s + 19], scene[index_s + 20]);
+        let rme_default: vec3<f32>      = vec3<f32>(scene[index_s + 21], scene[index_s + 22], scene[index_s + 23]);
+        let tpo_default: vec3<f32>      = vec3<f32>(scene[index_s + 24], scene[index_s + 25], scene[index_s + 26]);
+
+        let material: Material = Material (
+            fetchTexVal(texture_atlas, barycentric, tex_num.x, albedo_default),
+            fetchTexVal(pbr_atlas, barycentric, tex_num.y, rme_default),
+            fetchTexVal(translucency_atlas, barycentric, tex_num.z, tpo_default),
+        );
+        
+        ray = Ray(ray.origin, normalize(ray.origin - last_hit_point));
+        // If ray reflects from inside or onto an transparent object,
+        // the surface faces in the opposite direction as usual
+        var sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
+        smooth_n *= - sign_dir;
+
+        // Generate pseudo random vector
+        let random_vec: vec4<f32> = noise(clip_space.xy / clip_space.z, fi + cos_sample_n);
+        let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
+        let brdf: f32 = mix(1.0f, abs(dot(smooth_n, ray.unit_direction)), material.rme.y);
+
+        // Alter normal according to roughness value
+        let roughness_brdf: f32 = material.rme.x * brdf;
+        let rough_n: vec3<f32> = normalize(mix(smooth_n, random_spheare_vec, roughness_brdf));
+
+        let h: vec3<f32> = normalize(rough_n - ray.unit_direction);
+        let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
+        let f0: vec3<f32> = material.albedo * brdf;
+        let f: vec3<f32> = fresnel(f0, v_dot_h);
+
+        let fresnel_reflect: f32 = max(f.x, max(f.y, f.z));
+        // object is solid or translucent by chance because of the fresnel effect
+        let is_solid: bool = material.tpo.x * fresnel_reflect <= abs(random_vec.w);
+
+        // Multiply albedo with either absorption value or filter color
+        /*if (dont_filter) {
+            // Update last used tpo.x value
+            originalTPOx = material.tpo.x;
+            originalColor *= material.albedo;
+            // Add filtering intensity for respective surface
+            originalRMEx += material.rme.x;
+            // Update render id
+            vec4 renderIdUpdate = pow(2.0f, - fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
+
+            renderId += renderIdUpdate;
+            if (i == 0) renderOriginalId += renderIdUpdate;
+            // Update dontFilter variable
+            dontFilter = (material.rme.x < 0.01f && isSolid) || !isSolid;
+
+            if(isSolid && material.tpo.x > 0.01f) {
+                glassFilter += 1.0f;
+                dontFilter = false;
+            }
+        } else {
+            */
+        importancy_factor = importancy_factor * material.albedo;
+            /*
+        }
+        */
+
+        // Test if filter is already necessary
+        // if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
+        // Determine local color considering PBR attributes and lighting
+        let local_color: vec3f = reservoirSample(material, ray, random_vec, - sign_dir * rough_n, - sign_dir * smooth_n, geometry_offset, dont_filter, i);
+        // Calculate primary light sources for this pass if ray hits non translucent object
+        final_color += local_color * importancy_factor;
+        // Handle translucency and skip rest of light calculation
+        if(is_solid) {
+            // Calculate reflecting ray
+            ray.unit_direction = normalize(mix(reflect(ray.unit_direction, smooth_n), random_spheare_vec, roughness_brdf));
+        } else {
+            let eta: f32 = mix(1.0f / material.tpo.z, material.tpo.z, max(sign_dir, 0.0f));
+            // Refract ray depending on IOR (material.tpo.z)
+            ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), random_spheare_vec, roughness_brdf));
+        }
+        // Calculate next intersection
+        hit = rayTracer(ray);
+        // Stop loop if there is no intersection and ray goes in the void
+        if (hit.triangle_id == - 1) {
+            break;
+            // return final_color + importancy_factor * uniforms.ambient;
+        }
+        // Update other parameters
+        last_hit_point = ray.origin;
+    }
+    // Return final pixel color
+    return final_color + importancy_factor * uniforms.ambient;
+}
+
 @fragment
 fn fsMain(
-    @location(1) absolute_position: vec3f,
-    @location(2) uv: vec2f,
-    @location(3) clip_space: vec3f,
-    @location(4) @interpolate(flat) triangle_index: i32
+    @location(0) relative_position: vec3<f32>,
+    @location(1) absolute_position: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) clip_space: vec3<f32>,
+    @location(4) @interpolate(flat) t_i: i32,
+    @location(5) @interpolate(flat) triangle_index: i32
 ) -> @location(0) vec4f {
-    let scene_index: i32 = triangle_index * 28;
-    let normal: vec3f = vec3f(scene[scene_index], scene[scene_index + 1], scene[scene_index + 2]);
+    let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
+    // Generate hit struct for pathtracer
+    let init_hit: Hit = Hit(vec3<f32>(distance(absolute_position, uniforms.camera_position), uvw.yz), t_i, triangle_index);
 
-    let uvw: vec3f = vec3f(uv, 1.0f - uv.x - uv.y);
-    let barycentric = mat3x2<f32>(
-        scene[scene_index + 9], scene[scene_index + 10], scene[scene_index + 11],
-        scene[scene_index + 12], scene[scene_index + 13], scene[scene_index + 14]
-    ) * uvw;
+    var final_color = vec3<f32>(0.0f);
 
-    let tex_num: vec3f = vec3f(scene[scene_index + 15], scene[scene_index + 16], scene[scene_index + 17]);
+    // lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec3<f32>, cos_sample_n: f32, bounces: i32)
+    // Generate multiple samples
+    for(var i: i32 = 0; i < i32(uniforms.samples); i++) {
+        // Use cosine as noise in random coordinate picker
+        let cos_sample_n = cos(f32(i));
+        final_color += lightTrace(init_hit, absolute_position, uniforms.camera_position, clip_space, cos_sample_n, i32(uniforms.max_reflections));
+    }
+    // Average ray colors over samples.
+    let inv_samples: f32 = 1.0f / uniforms.samples;
+    final_color *= inv_samples;
 
-    let albedo_default: vec3f = vec3f(scene[scene_index + 18], scene[scene_index + 19], scene[scene_index + 20]);
-    let rme_default: vec3f = vec3f(scene[scene_index + 21], scene[scene_index + 22], scene[scene_index + 23]);
-    let tpo_default: vec3f = vec3f(scene[scene_index + 24], scene[scene_index + 25], scene[scene_index + 26]);
+    return vec4<f32>(final_color, 1.0f);
 
-    let material: Material = Material (
-        fetchTexVal(texture_atlas, barycentric, tex_num.x, albedo_default),
-        fetchTexVal(pbr_atlas, barycentric, tex_num.y, rme_default),
-        fetchTexVal(translucency_atlas, barycentric, tex_num.z, tpo_default),
-    );
+    /*
+    if(use_filter == 1) {
+        // Render all relevant information to 4 textures for the post processing shader
+        render_color = vec4(fract(finalColor), 1.0f);
+        // 16 bit HDR for improved filtering
+        renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
+    } else {
+        finalColor *= originalColor;
+        if(isTemporal == 1) {
+            renderColor = vec4(fract(finalColor), 1.0f);
+            // 16 bit HDR for improved filtering
+            // renderColorIp = vec4(floor(finalColor) * INV_256, 1.0f);
+        } else {
+            renderColor = vec4(finalColor, 1.0f);
+        }
+    }
 
-
-    var final_color: vec3f = uniforms.ambient;
-
-    let camera_ray: Ray = Ray(absolute_position, normalize(absolute_position - uniforms.camera_position));
-
-    let random_vec: vec4f = noise(clip_space.xy / clip_space.z, 1);
-    // vec3 randomSpheareVec = normalize(smoothNormal + normalize(randomVec.xyz));
-    final_color += reservoirSample(material, camera_ray, random_vec, normal, normal, 0.0f, false, 1);
-    final_color *= material.albedo;
-
-    return vec4f(final_color, 1.0f);
-
+    renderOriginalColor = vec4(originalColor, min(originalRMEx, firstRayLength) + INV_255);
+    // render normal (last in transparency)
+    renderId += vec4(0.0f, 0.0f, 0.0f, INV_255);
+    // render material (last in transparency)
+    renderOriginalId = vec4(0.0f, 0.0f, 0.0f, originalTPOx + INV_255);
+    // render modulus of absolute position (last in transparency)
+    float div = 2.0f * distance(relativePosition, camera);
+    renderLocationId = vec4(mod(relativePosition, div) / div, INV_255);
+    */
 }
