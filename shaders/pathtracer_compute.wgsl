@@ -8,12 +8,12 @@ const INV_65535: f32 = 0.000015259021896696422;
 
 struct Transform {
     rotation: mat3x3<f32>,
-    shift: vec3f,
+    shift: vec3<f32>,
 };
 
 struct Light {
-    position: vec3f,
-    strength_variation: vec2f,
+    position: vec3<f32>,
+    strength_variation: vec2<f32>,
 }
 
 struct Uniforms {
@@ -32,131 +32,88 @@ struct Uniforms {
     texture_size: vec2<f32>,
 };
 
-struct VertexOut {
-    @builtin(position) pos: vec4f,
-    @location(0) relative_position: vec3f,
-    @location(1) absolute_position: vec3f,
-    @location(2) uv: vec2f,
-    @location(3) clip_space: vec3f,
-    @location(4) @interpolate(flat) t_i: i32,
-    @location(5) @interpolate(flat) triangle_index: i32,
-};
+@group(0) @binding(0) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
+@group(0) @binding(1) var texture_uv: texture_storage_2d<rg32float, read>;
+@group(0) @binding(2) var texture_triangle_id: texture_storage_2d<r32sint, read>;
+@group(0) @binding(3) var texture_out: texture_storage_2d<rgba8unorm, write>;
 
-@group(0) @binding(0) var<storage, read> indices: array<i32>;
-@group(0) @binding(1) var<storage, read> geometry: array<f32>;
-@group(0) @binding(2) var<storage, read> scene: array<f32>;
+@group(1) @binding(0) var texture_atlas: texture_2d<f32>;
+@group(1) @binding(1) var pbr_atlas: texture_2d<f32>;
+@group(1) @binding(2) var translucency_atlas: texture_2d<f32>;
 
-@group(1) @binding(0) var<uniform> uniforms: Uniforms;
-@group(1) @binding(1) var<storage, read> lights: array<Light>;
-@group(1) @binding(2) var<storage, read> transforms: array<Transform>;
+@group(2) @binding(0) var<storage, read> indices: array<i32>;
+@group(2) @binding(1) var<storage, read> geometry: array<f32>;
+@group(2) @binding(2) var<storage, read> scene: array<f32>;
 
-
-const base_uvs = array(
-    vec2f(1, 0),
-    vec2f(0, 1),
-    vec2f(0, 0)
-);
-
-@vertex
-fn vsMain(
-    @builtin(vertex_index) vertex_index : u32,
-    @builtin(instance_index) instance_index: u32
-) -> VertexOut {
-    var out: VertexOut;
-
-    let vertex_num: i32 = i32(vertex_index % 3);
-    out.triangle_index = indices[instance_index];
-    let geometry_index: i32 = out.triangle_index * 12;
-    let v_i: i32 = geometry_index + vertex_num * 3;
-    // Transform position
-    out.relative_position = vec3f(geometry[v_i], geometry[v_i + 1], geometry[v_i + 2]);
-    // Get transformation ID
-    out.t_i = i32(geometry[geometry_index + 9]) << 1;
-
-    // Trasform position
-    let transform: Transform = transforms[out.t_i];
-    out.absolute_position = (transform.rotation * out.relative_position) + transform.shift;
-    // Set uv to vertex uv and let the vertex interpolation generate the values in between
-    out.uv = base_uvs[vertex_num];
-
-    out.clip_space = uniforms.view_matrix * (out.absolute_position - uniforms.camera_position);
-    // Set triangle position in clip space
-    out.pos = vec4f(out.clip_space.xy, 1.0f / (1.0f + exp(out.clip_space.z * INV_65535)), out.clip_space.z);
-    return out;
-}
-
-// FRAGMENT SHADER ------------------------------------------------------------------------------------------------------------------------
-
-@group(2) @binding(0) var texture_atlas: texture_2d<f32>;
-@group(2) @binding(1) var pbr_atlas: texture_2d<f32>;
-@group(2) @binding(2) var translucency_atlas: texture_2d<f32>;
+@group(3) @binding(0) var<uniform> uniforms: Uniforms;
+@group(3) @binding(1) var<storage, read> transforms: array<Transform>;
+@group(3) @binding(2) var<storage, read> lights: array<Light>;
 
 struct Ray {
-    origin: vec3f,
-    unit_direction: vec3f,
+    origin: vec3<f32>,
+    unit_direction: vec3<f32>,
 };
 
 struct Material {
-    albedo: vec3f,
-    rme: vec3f,
-    tpo: vec3f
+    albedo: vec3<f32>,
+    rme: vec3<f32>,
+    tpo: vec3<f32>
 };
 
 struct Hit {
-    suv: vec3f,
-    transform_id: i32,
+    suv: vec3<f32>,
     triangle_id: i32
 };
 
 // Lookup values for texture atlases
-fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2f, tex_num: f32, default_val: vec3f) -> vec3f {
+fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val: vec3<f32>) -> vec3<f32> {
     // Return default value if no texture is set
-    if (tex_num == - 1.0) {
+    if (tex_num == - 1.0f) {
         return default_val;
     }
     // Get dimensions of texture atlas
-    let atlas_size: vec2f = vec2f(textureDimensions(atlas));
+    let atlas_size: vec2<f32> = vec2<f32>(textureDimensions(atlas));
     let width: f32 = tex_num * uniforms.texture_size.x;
-    let offset: vec2f = vec2f(
+    let offset: vec2<f32> = vec2<f32>(
         width % atlas_size.x,
         atlas_size.y - floor(width / atlas_size.x) * uniforms.texture_size.y
     );
     // WebGPU quirk of having upsidedown height for textures
-    let atlas_texel: vec2<i32> = vec2<i32>(offset + uv * uniforms.texture_size * vec2f(1, -1));
+    let atlas_texel: vec2<i32> = vec2<i32>(offset + uv * uniforms.texture_size * vec2<f32>(1.0f, -1.0f));
     // Fetch texel on requested coordinate
-    let tex_val: vec3f = textureLoad(atlas, atlas_texel, 0).xyz;
+    let tex_val: vec3<f32> = textureLoad(atlas, atlas_texel, 0).xyz;
     return tex_val;
 }
 
-fn noise(n: vec2f, seed: f32) -> vec4f {
-    return fract(sin(dot(n.xy, vec2f(12.9898f, 78.233f)) + vec4f(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.random_seed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
+fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
+    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.random_seed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
-fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3f {
-    let edge1: vec3f = t[1] - t[0];
-    let edge2: vec3f = t[2] - t[0];
-    let pvec: vec3f = cross(ray.unit_direction, edge2);
+fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3<f32> {
+    let edge1: vec3<f32> = t[1] - t[0];
+    let edge2: vec3<f32> = t[2] - t[0];
+    let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
     let det: f32 = dot(edge1, pvec);
     if(abs(det) < BIAS) {
-        return vec3f(0.0f);
+        return vec3<f32>(0.0f);
     }
     let inv_det: f32 = 1.0f / det;
-    let tvec: vec3f = ray.origin - t[0];
+    let tvec: vec3<f32> = ray.origin - t[0];
     let u: f32 = dot(tvec, pvec) * inv_det;
     if(u < BIAS || u > 1.0f) {
-        return vec3f(0.0f);
+        return vec3<f32>(0.0f);
     }
-    let qvec: vec3f = cross(tvec, edge1);
+    let qvec: vec3<f32> = cross(tvec, edge1);
     let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
     let uv_sum: f32 = u + v;
     if(v < BIAS || uv_sum > 1.0f) {
-        return vec3f(0.0f);
+        return vec3<f32>(0.0f);
     }
     let s: f32 = dot(edge2, qvec) * inv_det;
     if(s > l || s <= BIAS) {
-        return vec3f(0.0f);
+        return vec3<f32>(0.0f);
     }
-    return vec3f(s, u, v);
+    return vec3<f32>(s, u, v);
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
@@ -174,7 +131,7 @@ fn moellerTrumboreCull(t: mat3x3<f32>, ray: Ray, l: f32) -> bool {
     if(u < BIAS || u > 1.0f) {
         return false;
     }
-    let qvec: vec3f = cross(tvec, edge1);
+    let qvec: vec3<f32> = cross(tvec, edge1);
     let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
     if(v < BIAS || u + v > 1.0f) {
         return false;
@@ -184,9 +141,9 @@ fn moellerTrumboreCull(t: mat3x3<f32>, ray: Ray, l: f32) -> bool {
 }
 
 // Don't return intersection point, because we're looking for a specific triangle
-fn rayCuboid(min_corner: vec3f, max_corner: vec3f, ray: Ray, l: f32) -> bool {
-    let v0: vec3f = (min_corner - ray.origin) / ray.unit_direction;
-    let v1: vec3f = (max_corner - ray.origin) / ray.unit_direction;
+fn rayCuboid(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, l: f32) -> bool {
+    let v0: vec3<f32> = (min_corner - ray.origin) / ray.unit_direction;
+    let v1: vec3<f32> = (max_corner - ray.origin) / ray.unit_direction;
     let tmin: f32 = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     let tmax: f32 = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
     return tmax >= max(tmin, BIAS) && tmin < l;
@@ -201,7 +158,7 @@ fn rayTracer(ray: Ray) -> Hit {
     // Inverse of transformed normalized ray
     var cached_t_i: i32 = 0;
     // Latest intersection which is now closest to origin
-    var hit: Hit = Hit(vec3(0.0f), 0, - 1);
+    var hit: Hit = Hit(vec3(0.0f), - 1);
     // Precomput max length
     var min_len: f32 = POW32;
     // Get texture size as max iteration value
@@ -211,11 +168,11 @@ fn rayTracer(ray: Ray) -> Hit {
         // Get position of current triangle/vertex in geometryTex
         let index: i32 = i * 12;
         // Fetch triangle coordinates from scene graph
-        let a = vec3f(geometry[index    ], geometry[index + 1], geometry[index + 2]);
-        let b = vec3f(geometry[index + 3], geometry[index + 4], geometry[index + 5]);
-        let c = vec3f(geometry[index + 6], geometry[index + 7], geometry[index + 8]);
+        let a = vec3<f32>(geometry[index    ], geometry[index + 1], geometry[index + 2]);
+        let b = vec3<f32>(geometry[index + 3], geometry[index + 4], geometry[index + 5]);
+        let c = vec3<f32>(geometry[index + 6], geometry[index + 7], geometry[index + 8]);
 
-        let t_i: i32 = i32(geometry[index + 9]) << 1;
+        let t_i: i32 = i32(geometry[index + 9]) << 1u;
         // Test if cached transformed variables are still valid
         if (t_i != cached_t_i) {
             let i_i: i32 = t_i + 1;
@@ -242,11 +199,11 @@ fn rayTracer(ray: Ray) -> Hit {
             case 2: {
                 let triangle: mat3x3<f32> = mat3x3<f32>(a, b, c);
                  // Test if triangle intersects ray
-                let intersection: vec3f = moellerTrumbore(triangle, t_ray, min_len);
+                let intersection: vec3<f32> = moellerTrumbore(triangle, t_ray, min_len);
                 // Test if ray even intersects
                 if(intersection.x != 0.0) {
                     // Calculate intersection point
-                    hit = Hit(intersection, t_i, i);
+                    hit = Hit(intersection, i);
                     // Update maximum object distance for future rays
                     min_len = intersection.x;
                 }
@@ -275,11 +232,11 @@ fn shadowTest(ray: Ray, l: f32) -> bool {
         // Get position of current triangle/vertex in geometryTex
         let index: i32 = i * 12;
         // Fetch triangle coordinates from scene graph
-        let a = vec3f(geometry[index    ], geometry[index + 1], geometry[index + 2]);
-        let b = vec3f(geometry[index + 3], geometry[index + 4], geometry[index + 5]);
-        let c = vec3f(geometry[index + 6], geometry[index + 7], geometry[index + 8]);
+        let a = vec3<f32>(geometry[index    ], geometry[index + 1], geometry[index + 2]);
+        let b = vec3<f32>(geometry[index + 3], geometry[index + 4], geometry[index + 5]);
+        let c = vec3<f32>(geometry[index + 6], geometry[index + 7], geometry[index + 8]);
 
-        let t_i: i32 = i32(geometry[index + 9]) << 1;
+        let t_i: i32 = i32(geometry[index + 9]) << 1u;
         // Test if cached transformed variables are still valid
         if (t_i != cached_t_i) {
             let i_i: i32 = t_i + 1;
@@ -335,19 +292,19 @@ fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
 }
 
-fn fresnel(f0: vec3f, theta: f32) -> vec3f {
+fn fresnel(f0: vec3<f32>, theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - theta, 5.0f);
 }
 
 
-fn forwardTrace(material: Material, light_dir: vec3f, strength: f32, n: vec3f, v: vec3f) -> vec3f {
+fn forwardTrace(material: Material, light_dir: vec3<f32>, strength: f32, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
     let len_p1: f32 = 1.0f + length(light_dir);
     // Apply inverse square law
     let brightness: f32 = strength / (len_p1 * len_p1);
 
-    let l: vec3f = normalize(light_dir);
-    let h: vec3f = normalize(v + l);
+    let l: vec3<f32> = normalize(light_dir);
+    let h: vec3<f32> = normalize(v + l);
 
     let v_dot_h: f32 = max(dot(v, h), 0.0f);
     let n_dot_l: f32 = max(dot(n, l), 0.0f);
@@ -356,31 +313,31 @@ fn forwardTrace(material: Material, light_dir: vec3f, strength: f32, n: vec3f, v
 
     let alpha: f32 = material.rme.x * material.rme.x;
     let brdf: f32 = mix(1.0f, n_dot_v, material.rme.y);
-    let f0: vec3f = material.albedo * brdf;
+    let f0: vec3<f32> = material.albedo * brdf;
 
-    let ks: vec3f = fresnel(f0, v_dot_h);
-    let kd: vec3f = (1.0f - ks) * (1.0f - material.rme.y);
-    let lambert: vec3f = material.albedo * INV_PI;
+    let ks: vec3<f32> = fresnel(f0, v_dot_h);
+    let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.rme.y);
+    let lambert: vec3<f32> = material.albedo * INV_PI;
 
-    let cook_torrance_numerator: vec3f = ks * trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
+    let cook_torrance_numerator: vec3<f32> = ks * trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
     let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
 
-    let cook_torrance: vec3f = cook_torrance_numerator / cook_torrance_denominator;
-    let radiance: vec3f = kd * lambert + cook_torrance;
+    let cook_torrance: vec3<f32> = cook_torrance_numerator / cook_torrance_denominator;
+    let radiance: vec3<f32> = kd * lambert + cook_torrance;
 
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
 }
 
-fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec3f, smooth_n: vec3f, geometry_offset: f32, dont_filter: bool, i: i32) -> vec3f {
-    var local_color: vec3f = vec3f(0.0f);
+fn reservoirSample(material: Material, ray: Ray, random_vec: vec4<f32>, rough_n: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, dont_filter: bool, i: i32) -> vec3<f32> {
+    var local_color: vec3<f32> = vec3<f32>(0.0f);
     var reservoir_length: f32 = 0.0f;
     var total_weight: f32 = 0.0f;
     var reservoir_num: i32 = 0;
     var reservoir_weight: f32 = 0.0f;
-    var reservoir_light_pos: vec3f;
-    var reservoir_light_dir: vec3f;
-    var last_random: vec2f = noise(random_vec.zw, BIAS).xy;
+    var reservoir_light_pos: vec3<f32>;
+    var reservoir_light_dir: vec3<f32>;
+    var last_random: vec2<f32> = noise(random_vec.zw, BIAS).xy;
 
     let size: i32 = i32(arrayLength(&lights));
     for (var j: i32 = 0; j < size; j++) {
@@ -394,9 +351,9 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
         reservoir_length += 1.0f;
         // Alter light source position according to variation.
         light.position += random_vec.xyz * light.strength_variation.y;
-        let dir: vec3f = light.position - ray.origin;
+        let dir: vec3<f32> = light.position - ray.origin;
 
-        let color_for_light: vec3f = forwardTrace(material, dir, light.strength_variation.x, rough_n, - ray.unit_direction);
+        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.strength_variation.x, rough_n, - ray.unit_direction);
 
         local_color += color_for_light;
         let weight: f32 = length(color_for_light);
@@ -417,7 +374,7 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
     let show_color: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f;
     let show_shadow: bool = dot(smooth_n, unit_light_dir) <= BIAS;
     // Apply emissive texture and ambient light
-    let base_luminance: vec3<f32> = vec3f(material.rme.z);
+    let base_luminance: vec3<f32> = vec3<f32>(material.rme.z);
     // Update filter
     // if (dont_filter || i == 0) renderId.w = float((reservoirNum % 128) << 1) * INV_255;
     // Test if in shadow
@@ -441,11 +398,11 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4f, rough_n: vec
     }
 }
 
-fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec3<f32>, cos_sample_n: f32, bounces: i32) -> vec3<f32> {
+fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, cos_sample_n: f32, bounces: i32) -> vec3<f32> {
     // Set bool to false when filter becomes necessary
     var dont_filter: bool = false;
     // Use additive color mixing technique, so start with black
-    var final_color: vec3<f32> = vec3f(0.0f);
+    var final_color: vec3<f32> = vec3<f32>(0.0f);
     var importancy_factor: vec3<f32> = vec3(1.0f);
     // originalColor = vec3(1.0f);
     var hit: Hit = init_hit;
@@ -453,28 +410,26 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     var last_hit_point: vec3<f32> = camera;
     // Iterate over each bounce and modify color accordingly
     for (var i: i32 = 0; i < bounces && length(importancy_factor/* * originalColor*/) >= uniforms.min_importancy * SQRT3; i++) {
-        let fi: f32 = f32(i);
+        let index_g: i32 = hit.triangle_id * 12;
+        // Fetch triangle coordinates from scene graph texture
+        let relative_t: mat3x3<f32> = mat3x3<f32>(
+            geometry[index_g    ], geometry[index_g + 1], geometry[index_g + 2],
+            geometry[index_g + 3], geometry[index_g + 4], geometry[index_g + 5],
+            geometry[index_g + 6], geometry[index_g + 7], geometry[index_g + 8]
+        );
 
-        let transform: Transform = transforms[hit.transform_id];
+        let transform: Transform = transforms[i32(geometry[index_g + 9]) << 1];
+        // Transform triangle
+        let t: mat3x3<f32> = transform.rotation * relative_t;
         // Transform hit point
         ray.origin = hit.suv.x * ray.unit_direction + ray.origin;
-        // Calculate barycentric coordinates
-        let uvw: vec3<f32> = vec3(1.0 - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
-
-        // Fetch triangle coordinates from scene graph texture
-        let index_g: i32 = hit.triangle_id * 12;
-
-        let a: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g    ], geometry[index_g + 1], geometry[index_g + 2]);
-        let b: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g + 3], geometry[index_g + 4], geometry[index_g + 5]);
-        let c: vec3<f32> = transform.rotation * vec3<f32>(geometry[index_g + 6], geometry[index_g + 7], geometry[index_g + 8]);
-
         let offset_ray_target: vec3<f32> = ray.origin - transform.shift;
 
-        let geometry_n: vec3<f32> = normalize(cross(a - b, a - c));
+        let geometry_n: vec3<f32> = normalize(cross(t[0] - t[1], t[0] - t[2]));
         let diffs: vec3<f32> = vec3<f32>(
-            distance(offset_ray_target, a),
-            distance(offset_ray_target, b),
-            distance(offset_ray_target, c)
+            distance(offset_ray_target, t[0]),
+            distance(offset_ray_target, t[1]),
+            distance(offset_ray_target, t[2])
         );
         // Fetch scene texture data
         let index_s: i32 = hit.triangle_id * 28;
@@ -484,6 +439,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             scene[index_s + 3], scene[index_s + 4], scene[index_s + 5],
             scene[index_s + 6], scene[index_s + 7], scene[index_s + 8]
         );
+        // Calculate barycentric coordinates
+        let uvw: vec3<f32> = vec3(1.0 - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
         // Interpolate smooth normal
         var smooth_n: vec3<f32> = normalize(normals * uvw);
         // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
@@ -515,7 +472,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         smooth_n *= - sign_dir;
 
         // Generate pseudo random vector
-        let random_vec: vec4<f32> = noise(clip_space.xy / clip_space.z, fi + cos_sample_n);
+        let fi: f32 = f32(i);
+        let random_vec: vec4<f32> = noise(clip_space.xy, fi + cos_sample_n);
         let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
         let brdf: f32 = mix(1.0f, abs(dot(smooth_n, ray.unit_direction)), material.rme.y);
 
@@ -561,7 +519,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         // Test if filter is already necessary
         // if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
         // Determine local color considering PBR attributes and lighting
-        let local_color: vec3f = reservoirSample(material, ray, random_vec, - sign_dir * rough_n, - sign_dir * smooth_n, geometry_offset, dont_filter, i);
+        let local_color: vec3<f32> = reservoirSample(material, ray, random_vec, - sign_dir * rough_n, - sign_dir * smooth_n, geometry_offset, dont_filter, i);
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_color * importancy_factor;
         // Handle translucency and skip rest of light calculation
@@ -587,18 +545,31 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     return final_color + importancy_factor * uniforms.ambient;
 }
 
-@fragment
-fn fsMain(
-    @location(0) relative_position: vec3<f32>,
-    @location(1) absolute_position: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-    @location(3) clip_space: vec3<f32>,
-    @location(4) @interpolate(flat) t_i: i32,
-    @location(5) @interpolate(flat) triangle_index: i32
-) -> @location(0) vec4f {
+@compute
+@workgroup_size(8, 8)
+fn compute(
+    @builtin(workgroup_id) workgroup_id : vec3<u32>,
+    @builtin(local_invocation_id) local_invocation_id : vec3<u32>,
+    @builtin(global_invocation_id) global_invocation_id : vec3<u32>,
+    @builtin(local_invocation_index) local_invocation_index: u32,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+    // Get texel position of screen
+    let screen_pos: vec2<u32> = global_invocation_id.xy;//local_invocation_id.xy + (workgroup_id.xy * 16u);
+    // Get based clip space coordinates (with 0.0 at upper left corner)
+    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 16u);
+    // Load attributes from fragment shader out of
+    let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos).xyz;
+    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos).xy;
+    let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos).x;
+
+    if (triangle_id == 0) {
+        return;
+    }
+    
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
-    let init_hit: Hit = Hit(vec3<f32>(distance(absolute_position, uniforms.camera_position), uvw.yz), t_i, triangle_index);
+    let init_hit: Hit = Hit(vec3<f32>(distance(absolute_position, uniforms.camera_position), uvw.yz), triangle_id);
 
     var final_color = vec3<f32>(0.0f);
 
@@ -613,32 +584,8 @@ fn fsMain(
     let inv_samples: f32 = 1.0f / uniforms.samples;
     final_color *= inv_samples;
 
-    return vec4<f32>(final_color, 1.0f);
-
-    /*
-    if(use_filter == 1) {
-        // Render all relevant information to 4 textures for the post processing shader
-        render_color = vec4(fract(finalColor), 1.0f);
-        // 16 bit HDR for improved filtering
-        renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
-    } else {
-        finalColor *= originalColor;
-        if(isTemporal == 1) {
-            renderColor = vec4(fract(finalColor), 1.0f);
-            // 16 bit HDR for improved filtering
-            // renderColorIp = vec4(floor(finalColor) * INV_256, 1.0f);
-        } else {
-            renderColor = vec4(finalColor, 1.0f);
-        }
-    }
-
-    renderOriginalColor = vec4(originalColor, min(originalRMEx, firstRayLength) + INV_255);
-    // render normal (last in transparency)
-    renderId += vec4(0.0f, 0.0f, 0.0f, INV_255);
-    // render material (last in transparency)
-    renderOriginalId = vec4(0.0f, 0.0f, 0.0f, originalTPOx + INV_255);
-    // render modulus of absolute position (last in transparency)
-    float div = 2.0f * distance(relativePosition, camera);
-    renderLocationId = vec4(mod(relativePosition, div) / div, INV_255);
-    */
+    // return vec4<f32>(final_color, 1.0f);
+    
+    // Render to canvas
+    textureStore(texture_out, screen_pos, vec4<f32>(final_color, 1.0f));
 }
