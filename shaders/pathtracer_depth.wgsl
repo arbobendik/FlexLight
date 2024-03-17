@@ -37,11 +37,7 @@ struct VertexOut {
     @location(3) @interpolate(flat) triangle_id: i32,
 };
 
-
-@group(0) @binding(0) var<storage, read> depth_buffer: array<u32>;
-@group(0) @binding(1) var texture_absolute_position: texture_storage_2d<rgba32float, write>;
-@group(0) @binding(2) var texture_uv: texture_storage_2d<rg32float, write>;
-@group(0) @binding(3) var texture_triangle_id: texture_storage_2d<r32sint, write>;
+@group(0) @binding(0) var<storage, read_write> depth_buffer: array<atomic<u32>>;
 
 @group(1) @binding(0) var<storage, read> indices: array<i32>;
 @group(1) @binding(1) var<storage, read> geometry: array<f32>;
@@ -103,13 +99,7 @@ fn fragment(
     let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
     // Only save if texel is closer to camera then previously
     let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_65535)));
-
-    if (current_depth == depth_buffer[buffer_index]) {
-        // Save values for compute pass
-        textureStore(texture_absolute_position, coord, vec4<f32>(absolute_position, 0.0f));
-        textureStore(texture_uv, coord, vec4<f32>(uv, 0.0f, 0.0f));
-        textureStore(texture_triangle_id, coord, vec4<i32>(i32(triangle_id), 0, 0, 0));
-    }
-
+    // Store in texture
+    atomicMin(&depth_buffer[buffer_index], current_depth);
     return vec4<f32>(1.0f);
 }

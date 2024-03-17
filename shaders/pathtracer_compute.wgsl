@@ -32,10 +32,10 @@ struct Uniforms {
     texture_size: vec2<f32>,
 };
 
-@group(0) @binding(0) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
-@group(0) @binding(1) var texture_uv: texture_storage_2d<rg32float, read>;
-@group(0) @binding(2) var texture_triangle_id: texture_storage_2d<r32sint, read>;
-@group(0) @binding(3) var texture_out: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(0) var texture_out: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(1) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
+@group(0) @binding(2) var texture_uv: texture_storage_2d<rg32float, read>;
+@group(0) @binding(3) var texture_triangle_id: texture_storage_2d<r32sint, read>;
 
 @group(1) @binding(0) var texture_atlas: texture_2d<f32>;
 @group(1) @binding(1) var pbr_atlas: texture_2d<f32>;
