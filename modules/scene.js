@@ -16,8 +16,6 @@ export class Scene {
   standardTextureSizes = [1024, 1024];
   // The queue object contains all data of all vertices in the scene
   queue = [];
-  // texture constructors
-  textureFromRGB = async (array, width, height) => await Scene.textureFromRGB (array, width, height);
   // Generate texture from rgb array in static function to have function precompiled
   static async textureFromRGB (array, width, height) {
     const canvas = document.createElement('canvas');
@@ -37,8 +35,6 @@ export class Scene {
     image.src = canvas.toDataURL();
     return image;
   }
-  // Make static function callable from object
-  textureFromRME = async (array, width, height) => await Scene.textureFromRME (array, width, height);
   // Generate pbr texture (roughness, metallicity, emissiveness)
   static async textureFromRME(array, width, height) {
     // Create new array
@@ -48,22 +44,17 @@ export class Scene {
     // From here on rgb images are generated the same way
     return await this.textureFromRGB(texelArray, width, height);
   }
-  // Generate translucency texture (translucency, particle density, optical density)
-  // Pbr images are generated the same way
-  textureFromTPO = async (array, width, height) => await Scene.textureFromRME (array, width, height);
 
-
-  fitsInBound (bound, obj) {
+  static fitsInBound (bound, obj) {
     return bound[0] <= obj.bounding[0] && bound[2] <= obj.bounding[2] && bound[4] <= obj.bounding[4]
     && bound[1] >= obj.bounding[1] && bound[3] >= obj.bounding[3] && bound[5] >= obj.bounding[5];
   }
-
   // Autogenerate oct-tree for imported structures or structures without BVH-tree
-  generateBVH (objects = this.queue) {
+  static generateBVH (objects) {
     // Test how many triangles can be sorted into neiter bounding.
     let testOnEdge = (objs, bounding0, bounding1) => {
       let onEdge = 0;
-      for (let i = 0; i < objs.length; i++) if ((! scene.fitsInBound(bounding0, objs[i])) && (! scene.fitsInBound(bounding1, objs[i]))) onEdge++;
+      for (let i = 0; i < objs.length; i++) if ((! Scene.fitsInBound(bounding0, objs[i])) && (! Scene.fitsInBound(bounding1, objs[i]))) onEdge++;
       return onEdge;
     }
 
@@ -71,7 +62,6 @@ export class Scene {
       // If there are only 4 or less objects in tree, there is no need to subdivide further
       if (objs.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxTree) {
         polyCount += objs.length;
-        // console.log("loaded", polyCount, "polygons so far.");
         return objs;
       } else {
         // Find center
@@ -116,8 +106,8 @@ export class Scene {
         bounds[1][idealSplit * 2 + 1] = center[idealSplit];
 
         for (let i = 0; i < objs.length; i++) {
-          if (scene.fitsInBound(bounds[0], objs[i])) buckets[0].push(objs[i]);
-          else if (scene.fitsInBound(bounds[1], objs[i])) buckets[1].push(objs[i]);
+          if (Scene.fitsInBound(bounds[0], objs[i])) buckets[0].push(objs[i]);
+          else if (Scene.fitsInBound(bounds[1], objs[i])) buckets[1].push(objs[i]);
           else buckets[2].push(objs[i]);
         }
         // Iterate over all filled buckets and return 
@@ -125,24 +115,22 @@ export class Scene {
 
         for (let i = 0; i < 3; i++) if (buckets[i].length !== 0) {
           // Tighten bounding
-          let b = new Bounding(buckets[i], scene);
-          scene.updateBoundings(b);
+          let b = new Bounding(buckets[i]);
+          Scene.updateBoundings(b);
           finalObjArray.push(divideTree(b, depth + 1));
         }
         // finalObjArray.push(...buckets[2]);
         // Return sorted object array as bounding volume.
-        let commonBounding = new Bounding(finalObjArray, scene);
+        let commonBounding = new Bounding(finalObjArray);
         commonBounding.bounding = objs.bounding;
         return commonBounding;
       }
     }
 
     const minBoundingWidth = 1 / 256;
-    // get scene for reference inside object
-    let scene = this;
     let topTree = new Bounding(objects);
     // Determine bounding for each object
-    this.updateBoundings(topTree);
+    Scene.updateBoundings(topTree);
 
     let polyCount = 0;
 
@@ -152,9 +140,8 @@ export class Scene {
     console.log(maxTree);
     return topTree;
   }
-  
   // Update all bounding volumes in scene
-  updateBoundings (obj = this.queue) {
+  static updateBoundings (obj) {
     // subtract bias of 2^(-16)
     const bias = 0.00152587890625;
     let minMax = new Array(6);
@@ -163,10 +150,10 @@ export class Scene {
         console.error('problematic object structure', 'isArray:', Array.isArray(obj), 'indexable:', obj.indexable, 'object:', obj);
         obj.blockError = true;
       } else {
-        minMax = this.updateBoundings (obj[0]);
+        minMax = Scene.updateBoundings (obj[0]);
         for (let i = 1; i < obj.length; i++) {
           // get updated bounding of lower element
-          let b = this.updateBoundings (obj[i]);
+          let b = Scene.updateBoundings (obj[i]);
           // update maximums and minimums
           minMax = minMax.map((item, i) => (i % 2 === 0) ? Math.min(item, b[i] - bias) : Math.max(item, b[i] + bias));
         }
@@ -185,9 +172,8 @@ export class Scene {
     // return current bounding box
     return minMax;
   }
-
   // Generate texture arrays
-  generateArraysFromGraph (obj = this.queue) {
+  static generateArraysFromGraph (obj) {
     // Elements of result object to return
     let textureLength;
     let bufferLength;
@@ -224,6 +210,7 @@ export class Scene {
     let fillData = (item) => {
       if (item.static) {
         // Item is static and precaluculated values can just be used
+        console.log(geometryBuffer, texturePos * 12, item.geometryBuffer);
         geometryBuffer.set(item.geometryBuffer, texturePos * 12);
         sceneBuffer.set(item.sceneBuffer, texturePos * 28);
         // Update id buffer
@@ -294,6 +281,8 @@ export class Scene {
     geometryBufferWidth = 3 * 4 * 256;
     // 7 pixels * 4 values * 256 vertecies per line
     sceneBufferWidth = 7 * 4 * 256;
+    console.log(textureLength, bufferLength);
+    console.log(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth)
     // Round up data to next higher multiple of (3 pixels * 4 values * 256 vertecies per line)
     geometryBuffer = new Float32Array(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth);
     // Round up data to next higher multiple of (7 pixels * 4 values * 256 vertecies per line)
@@ -314,6 +303,24 @@ export class Scene {
       sceneBufferHeight, sceneBuffer
     };
   }
+
+  // texture constructors
+  textureFromRGB = async (array, width, height) => await Scene.textureFromRGB (array, width, height);
+  // Make static function callable from object
+  textureFromRME = async (array, width, height) => await Scene.textureFromRME (array, width, height);
+  // Generate translucency texture (translucency, particle density, optical density)
+  // Pbr images are generated the same way
+  textureFromTPO = async (array, width, height) => await Scene.textureFromRME (array, width, height);
+
+  generateBVH () {
+    return Scene.generateBVH(this.queue);
+  }
+  updateBoundings () {
+    return Scene.updateBoundings(this.queue);
+  }
+  generateArraysFromGraph () {
+    return Scene.generateArraysFromGraph(this.queue);
+  }
   
   // Pass some constructors
   Transform = matrix => new Transform (matrix);
@@ -328,8 +335,6 @@ export class Scene {
   // generate object from array
   // Create object from .obj file
   importObj = async (path, materials = []) => {
-    // get scene for reference inside object
-    let scene = this;
     // final object variable 
     let obj = [];
     // collect parts of object
@@ -375,8 +380,7 @@ export class Scene {
               v[data[3][0] - 1],
               v[data[2][0] - 1],
               v[data[1][0] - 1],
-              v[data[0][0] - 1],           
-              scene
+              v[data[0][0] - 1]
             );
             [3, 2, 1, 1, 0, 3].forEach((index, i) => {
               // set uvs according to .obj file
@@ -389,8 +393,7 @@ export class Scene {
             primitive = new Triangle (
             v[data[2][0] - 1],
             v[data[1][0] - 1],
-            v[data[0][0] - 1],
-            scene
+            v[data[0][0] - 1]
             );
             [2, 1, 0].forEach((index, i) => {
               // set uvs according to .obj file
@@ -429,8 +432,11 @@ export class Scene {
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
     console.log('Generating BVH ...');
-    obj = scene.generateBVH(obj);
-    scene.updateBoundings(obj);
+    console.log(obj);
+    obj = Scene.generateBVH(obj);
+    console.log(obj);
+    Scene.updateBoundings(obj);
+    console.log(obj);
     // return built object
     return obj;
   }
@@ -453,7 +459,6 @@ export class Scene {
           break;
         case 'Ka':
           materials[currentMaterialName].color = Math.mul(255, [Number(words[1]), Number(words[2]), Number(words[3])]);
-          //console.log(materials[currentMaterialName].color);
           break;
         case 'Ke':
           let emissiveness = Math.max(Number(words[1]), Number(words[2]), Number(words[3]));
@@ -461,7 +466,6 @@ export class Scene {
           if (emissiveness > 0) {
             materials[currentMaterialName].emissiveness = emissiveness * 4;
             materials[currentMaterialName].color = Math.mul(255 / emissiveness, [Number(words[1]), Number(words[2]), Number(words[3])]);
-            //console.log(materials[currentMaterialName].color);
           }
           break;
         case 'Ns':
@@ -480,7 +484,7 @@ export class Scene {
     let text = await (await fetch(path)).text();
     console.log('Parsing materials ...');
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
-
+    // Log materials
     console.log(materials);
     // return filled materials array
     return materials;
@@ -544,7 +548,6 @@ export class Transform {
 
   get matrix () {
     let scaledRotation = Math.mul(this.#scale, this.#rotationMatrix);
-    // console.log(scaledRotation);
     return scaledRotation;
   }
 
@@ -607,7 +610,6 @@ export class Transform {
     Transform.count = Math.max(Transform.count, this.number + 1);
     // Set in transform list
     Transform.transformList[this.number] = this;
-    // console.log(Transform.transformList);
   }
 }
 
@@ -841,7 +843,7 @@ export class Object3D {
   set static (isStatic) {
     if (isStatic) {
       // Get attributes by traversing graph
-      let attribs = generateArraysFromGraph(this);
+      let attribs = Scene.generateArraysFromGraph(this);
       this.textureLength = attribs.textureLength;
       this.bufferLength = attribs.bufferLength;
       this.idBuffer = attribs.idBuffer;
