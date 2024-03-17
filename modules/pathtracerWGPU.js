@@ -7,7 +7,7 @@ import { TAA } from './taa.js';
 import { Transform } from './scene.js';
 import { Arrays, Float16Array } from './arrays.js';
 
-const rasterRenderFormats = [
+let rasterRenderFormats = [
   'rgba32float', 'rg32float', 'r32sint'
 ];
 
@@ -18,12 +18,16 @@ export class PathTracerWGPU {
   // Performance metric
   fps = 0;
   fpsLimit = Infinity;
-  // Make gl object inaccessible from outside the class
+  // Make context object accessible for all functions
+  #canvas;
   #context;
+
   #adapter;
   #device;
-  #canvas;
   #preferedCanvasFormat;
+
+  #clearPipeline;
+  #depthPipeline
   #rasterPipeline;
   #computePipeline;
 
@@ -46,9 +50,12 @@ export class PathTracerWGPU {
   #pbrList = [];
   #translucencyList = [];
   
-  #depthTexture;
+  #depthBuffer;
+  #offScreenTexture;
   #rasterRenderTextures = [];
 
+  #clearGroupLayout;
+  #depthGroupLayout;
   #rasterRenderGroupLayout;
   #computeRenderGroupLayout;
   #rasterDynamicGroupLayout;
@@ -57,6 +64,8 @@ export class PathTracerWGPU {
   #computeStaticGroupLayout;
   #textureGroupLayout;
 
+  #clearGroup;
+  #depthGroup;
   #rasterRenderGroup;
   #computeRenderGroup;
   #rasterDynamicGroup;
@@ -85,35 +94,33 @@ export class PathTracerWGPU {
   }
 
   resize () {
-    this.#canvas.width = this.#canvas.clientWidth * this.config.renderQuality;
-    this.#canvas.height = this.#canvas.clientHeight * this.config.renderQuality;
+    let width = this.#canvas.clientWidth * this.config.renderQuality;
+    let height = this.#canvas.clientHeight * this.config.renderQuality;
 
-    let canvasTexture = this.#context.getCurrentTexture();
+    this.#canvas.width = width;
+    this.#canvas.height = height;
     
-    if (this.#depthTexture) {
-      this.#depthTexture.destroy();
-    }
-    
-    this.#depthTexture = this.#device.createTexture({
-      size: [canvasTexture.width, canvasTexture.height],
-      format: 'depth24plus',
+    // Free old texture buffers
+    [this.#offScreenTexture, ... this.#rasterRenderTextures].forEach(texture => {
+      try {
+        texture.destroy();
+      } catch {}
+    });
+
+    this.#offScreenTexture = this.#device.createTexture({
+      size: [width, height],
+      format: 'rgba8unorm',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
+    this.#depthBuffer = this.#device.createBuffer({ size: height * width * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+
     this.#rasterRenderTextures = rasterRenderFormats.map(format => this.#device.createTexture({
-      size: [canvasTexture.width, canvasTexture.height],
+      size: [width, height],
       format: format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
     }));
 
-    let renderGroupEntries = this.#rasterRenderTextures.map((texture, i) => ({ binding: i, resource: texture.createView() }));
-
-    this.#rasterRenderGroup = this.#device.createBindGroup({
-      label: 'render output group for raster pass',
-      layout: this.#rasterRenderGroupLayout,
-      entries: renderGroupEntries.slice(0, 3),
-    });
-    
     // This compute render group will be generated in the frame cycle due to the canvas texture being deleted every frame
   }
   
@@ -124,6 +131,7 @@ export class PathTracerWGPU {
 
   updateScene () {
     // Generate texture arrays and buffers
+    console.log(this.scene.queue);
     let builtScene = this.scene.generateArraysFromGraph();
     
     this.#engineState.bufferLength = builtScene.bufferLength;
@@ -156,10 +164,10 @@ export class PathTracerWGPU {
   }
 
   async #generateAtlasView (list) {
-    const [width, height] = this.scene.standardTextureSizes;
-    const textureWidth = Math.floor(2048 / width);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    let [width, height] = this.scene.standardTextureSizes;
+    let textureWidth = Math.floor(2048 / width);
+    let canvas = document.createElement('canvas');
+    let ctx = canvas.getContext('2d');
 		// Test if there is even a texture
 		if (list.length === 0) {
 			canvas.width = width;
@@ -251,8 +259,8 @@ export class PathTracerWGPU {
       // Iterate over light sources
       this.scene.primaryLightSources.forEach(lightSource => {
         // Set intensity to lightSource intensity or default if not specified
-        const intensity = Object.is(lightSource.intensity)? this.scene.defaultLightIntensity : lightSource.intensity;
-        const variation = Object.is(lightSource.variation)? this.scene.defaultLightVariation : lightSource.variation;
+        let intensity = Object.is(lightSource.intensity)? this.scene.defaultLightIntensity : lightSource.intensity;
+        let variation = Object.is(lightSource.variation)? this.scene.defaultLightVariation : lightSource.variation;
         // push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
         lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], 0, intensity, variation, 0, 0);
       });
@@ -277,6 +285,8 @@ export class PathTracerWGPU {
     }
     // Allow frame rendering
     this.#halt = false;
+
+    console.log(this.#canvas);
 
     // Request webgpu context
     this.#context = this.#canvas.getContext('webgpu');
@@ -315,20 +325,36 @@ export class PathTracerWGPU {
     // Internal Webgpu parameters
     this.#engineState.bufferLength = 0;
 
+    this.#clearGroupLayout = this.#device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },                                                            // depth
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } },   // 3d positions
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rg32float', viewDimension: '2d' } },     // uvs
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'r32sint', viewDimension: '2d' } }        // triangle index
+      ]
+    });
+
+    this.#depthGroupLayout = this.#device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'storage' } }  // depth
+      ]
+    });
+
     this.#rasterRenderGroupLayout = this.#device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } }, // 3d positions
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'rg32float', viewDimension: '2d' } },   // uvs
-        { binding: 2, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'r32sint', viewDimension: '2d' } }      // triangle index
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },                                                 // depth
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } },  // 3d positions
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'rg32float', viewDimension: '2d' } },    // uvs
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'r32sint', viewDimension: '2d' } }       // triangle index
       ]
     });
 
     this.#computeRenderGroupLayout = this.#device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },                            // 3d positions
-        { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rg32float', viewDimension: '2d' } },                              // uvs
-        { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'r32sint', viewDimension: '2d' } },                                // triangle index
-        { binding: 3, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba8unorm', viewDimension: '2d' } }   // canvas
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba8unorm', viewDimension: '2d' } },  // canvas
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },  // 3d positions
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rg32float', viewDimension: '2d' } },    // uvs
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'r32sint', viewDimension: '2d' } }       // triangle index
       ]
     });
 
@@ -349,8 +375,8 @@ export class PathTracerWGPU {
 
     this.#rasterDynamicGroupLayout = this.#device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },            // uniforms
-        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },  // transforms
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uniforms
+        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },                 // transforms
       ]
     });
 
@@ -368,6 +394,47 @@ export class PathTracerWGPU {
         { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: 'uint' } },  // pbr texture atlas
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { type: 'uint' } }   // translucency texture atlas
       ]
+    });
+
+    let clearShader = Network.fetchSync('shaders/pathtracer_clear.wgsl');
+    // Shaders are written in a language called WGSL.
+    let clearModule = this.#device.createShaderModule({ code: clearShader });
+    
+    this.#clearPipeline = this.#device.createComputePipeline({
+      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+        this.#clearGroupLayout
+      ] }),
+      compute: {
+        module: clearModule,
+        entryPoint: 'compute'
+      }
+    });
+
+    let depthShader = Network.fetchSync('shaders/pathtracer_depth.wgsl');
+    let depthModule = this.#device.createShaderModule({ code: depthShader });
+
+    this.#depthPipeline = this.#device.createRenderPipeline({
+      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+        this.#depthGroupLayout,
+        this.#rasterStaticGroupLayout,
+        this.#rasterDynamicGroupLayout
+      ] }),
+      // Vertex shader
+      vertex: {
+        module: depthModule,
+        entryPoint: 'vertex',
+      },
+      // Fragment shader
+      fragment: {
+        module: depthModule,
+        entryPoint: 'fragment',
+        targets: [{ format: 'rgba8unorm' }],
+      },
+      // Culling config
+      primitive: {
+        topology: 'triangle-list',
+        cullMode: 'back'
+      },
     });
 
     let rasterShader = Network.fetchSync('shaders/pathtracer_raster.wgsl');
@@ -395,12 +462,6 @@ export class PathTracerWGPU {
         topology: 'triangle-list',
         cullMode: 'back'
       },
-      // Depth buffer
-      depthStencil: {
-        depthWriteEnabled: true,
-        depthCompare: 'greater',
-        format: 'depth24plus'
-      }
     });
 
     let computeShader = Network.fetchSync('shaders/pathtracer_compute.wgsl');
@@ -433,15 +494,9 @@ export class PathTracerWGPU {
         // When the pass is done, save the results in the attachment texture.
         storeOp: 'store',
       }],
-      
-      depthStencilAttachment: {
-        depthClearValue: 0,
-        depthLoadOp: 'clear',
-        depthStoreOp: 'store'
-      }
     };
     // Create uniform buffer for shader uniforms
-    this.#uniformBuffer = this.#device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniformBuffer = this.#device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Create uniform buffer for transforms in shader
     // Build / Rebuild scene graph for GPU into storage buffer
     this.updateScene();
@@ -505,6 +560,39 @@ export class PathTracerWGPU {
   }
 
   async #renderFrame () {
+    // Create group 
+    let canvasTexture = this.#context.getCurrentTexture();
+    let depthBufferEntry = { binding: 0, resource: { buffer: this.#depthBuffer }};
+    let rasterGroupEntries = this.#rasterRenderTextures.map((texture, i) => ({ binding: i + 1, resource: texture.createView() }));
+    rasterGroupEntries.unshift(depthBufferEntry);
+
+    let computeGroupEntries = [canvasTexture, ... this.#rasterRenderTextures].map((texture, i) => ({ binding: i, resource: texture.createView() }));
+
+    // console.log(rasterGroupEntries);
+    
+    this.#clearGroup = this.#device.createBindGroup({
+      label: 'clear storage textures',
+      layout: this.#clearGroupLayout,
+      entries: rasterGroupEntries,
+    });
+
+    this.#depthGroup = this.#device.createBindGroup({
+      label: 'depth buffer for depth testing raster pass',
+      layout: this.#depthGroupLayout,
+      entries: [depthBufferEntry],
+    });
+
+    this.#rasterRenderGroup = this.#device.createBindGroup({
+      label: 'render output group for raster pass',
+      layout: this.#rasterRenderGroupLayout,
+      entries: rasterGroupEntries,
+    });
+
+    this.#computeRenderGroup = this.#device.createBindGroup({
+      label: 'render input group for compute pass',
+      layout: this.#computeRenderGroupLayout,
+      entries: computeGroupEntries,
+    });
     // Calculate camera offset and projection matrix
     let dir = {x: this.camera.fx, y: this.camera.fy};
     let invFov = 1 / this.camera.fov;
@@ -540,6 +628,8 @@ export class PathTracerWGPU {
       1, 0,
       // Texture size
       this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1],
+      // Render size
+      this.canvas.width, this.canvas.height
     ]);
     // Update uniform values on GPU
     this.#device.queue.writeBuffer(this.#uniformBuffer, 0, uniformValues);
@@ -568,20 +658,35 @@ export class PathTracerWGPU {
       entries: dynamicEntries,
     });
 
-    let canvasTexture = this.#context.getCurrentTexture();
-    let renderGroupEntries = [... this.#rasterRenderTextures, canvasTexture].map((texture, i) => ({ binding: i, resource: texture.createView() }));
-    
-    this.#computeRenderGroup = this.#device.createBindGroup({
-      label: 'render input group for compute pass',
-      layout: this.#computeRenderGroupLayout,
-      entries: renderGroupEntries,
-    });
-
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = this.#device.createCommandEncoder();
 
-    this.#renderPassDescriptor.colorAttachments[0].view = canvasTexture.createView();
-    this.#renderPassDescriptor.depthStencilAttachment.view = this.#depthTexture.createView();
+    this.#renderPassDescriptor.colorAttachments[0].view = this.#offScreenTexture.createView();
+
+    // Clear renderable textures
+    let clearClusterDims = [Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8)];
+    let clearEncoder = commandEncoder.beginComputePass();
+    clearEncoder.setPipeline(this.#clearPipeline);
+    clearEncoder.setBindGroup(0, this.#clearGroup);
+    // Compute pass
+    clearEncoder.dispatchWorkgroups(clearClusterDims[0], clearClusterDims[1]);
+    // End compute pass
+    clearEncoder.end();
+
+    
+    // All rendering commands happen in a render pass
+    let depthEncoder = commandEncoder.beginRenderPass(this.#renderPassDescriptor);
+    // Set the pipeline to use when drawing
+    depthEncoder.setPipeline(this.#depthPipeline);
+    // Set storage buffers for rester pass
+    depthEncoder.setBindGroup(0, this.#depthGroup);
+    depthEncoder.setBindGroup(1, this.#rasterStaticGroup);
+    depthEncoder.setBindGroup(2, this.#rasterDynamicGroup);
+    // Draw vertices using the previously set pipeline and vertex buffer
+    depthEncoder.draw(3, this.#engineState.bufferLength);
+    // End the render pass
+    depthEncoder.end();
+
     // All rendering commands happen in a render pass
     let renderEncoder = commandEncoder.beginRenderPass(this.#renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -595,6 +700,7 @@ export class PathTracerWGPU {
     // End the render pass
     renderEncoder.end();
     
+
     // Run compute shader
     let computeEncoder = commandEncoder.beginComputePass();
     let kernelClusterDims = [Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8)];
@@ -604,11 +710,11 @@ export class PathTracerWGPU {
     computeEncoder.setBindGroup(1, this.#textureGroup);
     computeEncoder.setBindGroup(2, this.#computeStaticGroup);
     computeEncoder.setBindGroup(3, this.#computeDynamicGroup);
-
     // Compute pass
     computeEncoder.dispatchWorkgroups(kernelClusterDims[0], kernelClusterDims[1]);
     // End compute pass
     computeEncoder.end();
+    
     // Finish recording commands, which creates a command buffer.
     let commandBuffer = commandEncoder.finish();
     this.#device.queue.submit([commandBuffer]);
