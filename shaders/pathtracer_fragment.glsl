@@ -437,7 +437,7 @@ vec3 reservoirSample (Material material, Ray ray, vec4 randomVec, vec3 N, vec3 s
     bool showColor = reservoirLength == 0.0 || reservoirWeight == 0.0;
     bool showShadow = dot(smoothNormal, unitLightDir) <= BIAS;
     // Apply emissive texture and ambient light
-    vec3 baseLuminance = vec3(material.rme.z);
+    vec3 baseLuminance = vec3(material.rme.z) * material.albedo;
     // Update filter
     if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) << 1) * INV_255;
     // Test if in shadow
@@ -466,12 +466,13 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
     // Use additive color mixing technique, so start with black
     vec3 finalColor = vec3(0);
     vec3 importancyFactor = vec3(1);
+    vec3 filterFactor = vec3(1);
     originalColor = vec3(1);
 
     Ray ray = Ray(camera, normalize(target - camera));
     vec3 lastHitPoint = camera;
     // Iterate over each bounce and modify color accordingly
-    for (int i = 0; i < bounces && length(importancyFactor * originalColor) >= minImportancy * SQRT3; i++) {
+    for (int i = 0; i < bounces && length(filterFactor) >= minImportancy * SQRT3; i++) {
         float fi = float(i);
         mat3 rTI = rotation[hit.transformId];
         vec3 sTI = shift[hit.transformId];
@@ -548,11 +549,19 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         // object is solid or translucent by chance because of the fresnel effect
         bool isSolid = material.tpo.x * fresnelReflect <= abs(randomVec.w);
 
-        // Multiply albedo with either absorption value or filter color
+        // Determine local color considering PBR attributes and lighting
+        vec3 localColor = reservoirSample(material, ray, randomVec, - signDir * roughNormal, - signDir * smoothNormal, geometryOffset, dontFilter, i);
+        // Calculate primary light sources for this pass if ray hits non translucent object
+        finalColor += localColor * importancyFactor;
+        // Multiply albedo with either absorption value or filter colo
         if (dontFilter) {
+            originalColor *= (material.albedo + INV_255);
+            finalColor /= (material.albedo + INV_255);
+            
+            // importancyFactor /= material.albedo;
+            // importancyFactor *= material.albedo;
             // Update last used tpo.x value
             originalTPOx = material.tpo.x;
-            originalColor *= material.albedo;
             // Add filtering intensity for respective surface
             originalRMEx += material.rme.x;
             // Update render id
@@ -560,23 +569,22 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
 
             renderId += renderIdUpdate;
             if (i == 0) renderOriginalId += renderIdUpdate;
-            // Update dontFilter variable
+            // Test if filter is already necessary
             dontFilter = (material.rme.x < 0.01f && isSolid) || !isSolid;
 
             if(isSolid && material.tpo.x > 0.01f) {
                 glassFilter += 1.0f;
                 dontFilter = false;
             }
+            
         } else {
             importancyFactor *= material.albedo;
         }
 
-        // Test if filter is already necessary
+        filterFactor *= material.albedo;
+        // Update length of first fector to control blur intensity
         if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
-        // Determine local color considering PBR attributes and lighting
-        vec3 localColor = reservoirSample(material, ray, randomVec, - signDir * roughNormal, - signDir * smoothNormal, geometryOffset, dontFilter, i);
-        // Calculate primary light sources for this pass if ray hits non translucent object
-        finalColor += localColor * importancyFactor;
+
         // Handle translucency and skip rest of light calculation
         if(isSolid) {
             // Calculate reflecting ray
@@ -619,13 +627,13 @@ void main() {
         // Render all relevant information to 4 textures for the post processing shader
         renderColor = vec4(fract(finalColor), 1.0f);
         // 16 bit HDR for improved filtering
-        renderColorIp = vec4(floor(finalColor) * INV_256, glassFilter);
+        renderColorIp = vec4(floor(finalColor) * INV_255, glassFilter);
     } else {
         finalColor *= originalColor;
         if(isTemporal == 1) {
             renderColor = vec4(fract(finalColor), 1.0f);
             // 16 bit HDR for improved filtering
-            renderColorIp = vec4(floor(finalColor) * INV_256, 1.0f);
+            renderColorIp = vec4(floor(finalColor) * INV_255, 1.0f);
         } else {
             renderColor = vec4(finalColor, 1.0f);
         }
