@@ -2,8 +2,10 @@ const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
+const POW32U: u32 = 4294967295u;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
+const INV_255: f32 = 0.00392156862745098;
 const INV_65535: f32 = 0.000015259021896696422;
 
 struct Transform {
@@ -22,20 +24,22 @@ struct Uniforms {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
+    texture_size: vec2<f32>,
+    render_size: vec2<f32>,
+
     samples: f32,
     max_reflections: f32,
     min_importancy: f32,
     use_filter: f32,
 
     is_temporal: f32,
-    random_seed: f32,
-    texture_size: vec2<f32>,
+    temporal_target: f32
 };
 
-@group(0) @binding(0) var texture_out: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(1) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
-@group(0) @binding(2) var texture_uv: texture_storage_2d<rg32float, read>;
-@group(0) @binding(3) var texture_triangle_id: texture_storage_2d<r32sint, read>;
+@group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
+@group(0) @binding(1) var texture_triangle_id: texture_storage_2d<r32sint, read>;
+@group(0) @binding(2) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
+@group(0) @binding(3) var texture_uv: texture_storage_2d<rg32float, read>;
 
 @group(1) @binding(0) var texture_atlas: texture_2d<f32>;
 @group(1) @binding(1) var pbr_atlas: texture_2d<f32>;
@@ -65,6 +69,14 @@ struct Hit {
     triangle_id: i32
 };
 
+struct Sample {
+    color: vec3<f32>,
+    render_id_w: f32
+}
+
+// var render_id: vec4<f32> = vec4<f32>(0.0f);
+// var render_original_id: vec4<f32> = vec4<f32>(0.0f);
+
 // Lookup values for texture atlases
 fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val: vec3<f32>) -> vec3<f32> {
     // Return default value if no texture is set
@@ -86,7 +98,7 @@ fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val:
 }
 
 fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
-    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.random_seed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
+    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.temporal_target * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
 fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3<f32> {
@@ -374,16 +386,13 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4<f32>, rough_n:
     let show_color: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f;
     let show_shadow: bool = dot(smooth_n, unit_light_dir) <= BIAS;
     // Apply emissive texture and ambient light
-    let base_luminance: vec3<f32> = vec3<f32>(material.rme.z);
-    // Update filter
-    // if (dont_filter || i == 0) renderId.w = float((reservoirNum % 128) << 1) * INV_255;
+    let base_luminance: vec3<f32> = vec3<f32>(material.rme.z) * material.albedo;
     // Test if in shadow
     if (show_color) {
         return local_color + base_luminance;
     }
 
     if (show_shadow) {
-        // if (dontFilter || i == 0) renderId.w += INV_255;
         return base_luminance;
     }
     // Apply geometry offset
@@ -391,7 +400,6 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4<f32>, rough_n:
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
 
     if (shadowTest(light_ray, length(reservoir_light_dir))) {
-        // if (dontFilter || i == 0) renderId.w += INV_255;
         return base_luminance;
     } else {
         return local_color + base_luminance;
@@ -400,7 +408,7 @@ fn reservoirSample(material: Material, ray: Ray, random_vec: vec4<f32>, rough_n:
 
 fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, cos_sample_n: f32, bounces: i32) -> vec3<f32> {
     // Set bool to false when filter becomes necessary
-    var dont_filter: bool = false;
+    var dont_filter: bool = true;
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
     var importancy_factor: vec3<f32> = vec3(1.0f);
@@ -489,39 +497,37 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let fresnel_reflect: f32 = max(f.x, max(f.y, f.z));
         // object is solid or translucent by chance because of the fresnel effect
         let is_solid: bool = material.tpo.x * fresnel_reflect <= abs(random_vec.w);
-
-        // Multiply albedo with either absorption value or filter color
-        /*if (dont_filter) {
-            // Update last used tpo.x value
-            originalTPOx = material.tpo.x;
-            originalColor *= material.albedo;
-            // Add filtering intensity for respective surface
-            originalRMEx += material.rme.x;
-            // Update render id
-            vec4 renderIdUpdate = pow(2.0f, - fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
-
-            renderId += renderIdUpdate;
-            if (i == 0) renderOriginalId += renderIdUpdate;
-            // Update dontFilter variable
-            dontFilter = (material.rme.x < 0.01f && isSolid) || !isSolid;
-
-            if(isSolid && material.tpo.x > 0.01f) {
-                glassFilter += 1.0f;
-                dontFilter = false;
-            }
-        } else {
-            */
-        importancy_factor = importancy_factor * material.albedo;
-            /*
-        }
-        */
-
         // Test if filter is already necessary
         // if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
         // Determine local color considering PBR attributes and lighting
         let local_color: vec3<f32> = reservoirSample(material, ray, random_vec, - sign_dir * rough_n, - sign_dir * smooth_n, geometry_offset, dont_filter, i);
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_color * importancy_factor;
+        // Multiply albedo with either absorption value or filter color
+        if (dont_filter) {
+            // Update last used tpo.x value
+            // originalTPOx = material.tpo.x;
+            /*
+            originalColor *= material.albedo;
+            // Add filtering intensity for respective surface
+            // originalRMEx += material.rme.x;
+            // Update render id
+            vec4 renderIdUpdate = pow(2.0f, - fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
+
+            renderId += renderIdUpdate;
+            if (i == 0) renderOriginalId += renderIdUpdate;
+            // Update dontFilter variable
+            dont_filter = (material.rme.x < 0.01f && isSolid) || !isSolid;
+
+            if(is_solid && material.tpo.x != 0.0f) {
+                // glassFilter += 1.0f;
+                dont_filter = false;
+            }
+            */
+            importancy_factor = importancy_factor * material.albedo;
+        } else {
+            importancy_factor = importancy_factor * material.albedo;
+        }
         // Handle translucency and skip rest of light calculation
         if(is_solid) {
             // Calculate reflecting ray
@@ -557,23 +563,31 @@ fn compute(
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;//local_invocation_id.xy + (workgroup_id.xy * 16u);
     // Get based clip space coordinates (with 0.0 at upper left corner)
-    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 16u);
-    // Load attributes from fragment shader out of
-    let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos).xyz;
-    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos).xy;
+    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
+    // Load attributes from fragment shader out ofad(texture_triangle_id, screen_pos).x;
     let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos).x;
 
     if (triangle_id == 0) {
+        // If there is no triangle render ambient color 
+        textureStore(compute_out, screen_pos, i32(uniforms.temporal_target), vec4<f32>(uniforms.ambient, 1.0f));
+        // And overwrite position with 0 0 0 0
+        if (uniforms.is_temporal == 1.0f) {
+            // Amount of temporal passes
+            let depth: u32 = textureNumLayers(compute_out) / 2;
+            // Store position in target
+            textureStore(compute_out, screen_pos, depth + u32(uniforms.temporal_target), vec4<f32>(0.0f));
+        }
         return;
     }
+
+    let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos).xyz;
+    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos).xy;
     
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
     let init_hit: Hit = Hit(vec3<f32>(distance(absolute_position, uniforms.camera_position), uvw.yz), triangle_id);
 
     var final_color = vec3<f32>(0.0f);
-
-    // lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec3<f32>, cos_sample_n: f32, bounces: i32)
     // Generate multiple samples
     for(var i: i32 = 0; i < i32(uniforms.samples); i++) {
         // Use cosine as noise in random coordinate picker
@@ -584,8 +598,16 @@ fn compute(
     let inv_samples: f32 = 1.0f / uniforms.samples;
     final_color *= inv_samples;
 
-    // return vec4<f32>(final_color, 1.0f);
-    
-    // Render to canvas
-    textureStore(texture_out, screen_pos, vec4<f32>(final_color, 1.0f));
+    // Write to additional textures for temporal pass
+    if (uniforms.is_temporal == 1.0f) {
+        // Amount of temporal passes
+        let depth: u32 = textureNumLayers(compute_out) / 2;
+        // Render to compute target
+        textureStore(compute_out, screen_pos, u32(uniforms.temporal_target), vec4<f32>(final_color, 1.0f));
+        // Store position in target
+        textureStore(compute_out, screen_pos, depth + u32(uniforms.temporal_target), vec4<f32>(absolute_position, 1.0f));
+    } else {
+        // Render to compute target
+        textureStore(compute_out, screen_pos, u32(uniforms.temporal_target), vec4<f32>(final_color, 1.0f));
+    }
 }
