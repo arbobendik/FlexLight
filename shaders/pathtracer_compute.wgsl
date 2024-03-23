@@ -37,9 +37,9 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
-@group(0) @binding(1) var texture_triangle_id: texture_storage_2d<r32sint, read>;
-@group(0) @binding(2) var texture_absolute_position: texture_storage_2d<rgba32float, read>;
-@group(0) @binding(3) var texture_uv: texture_storage_2d<rg32float, read>;
+@group(0) @binding(1) var texture_triangle_id: texture_2d<i32>;
+@group(0) @binding(2) var texture_absolute_position: texture_2d<f32>;
+@group(0) @binding(3) var texture_uv: texture_2d<f32>;
 
 @group(1) @binding(0) var texture_atlas: texture_2d<f32>;
 @group(1) @binding(1) var pbr_atlas: texture_2d<f32>;
@@ -565,7 +565,7 @@ fn compute(
     // Get based clip space coordinates (with 0.0 at upper left corner)
     let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     // Load attributes from fragment shader out ofad(texture_triangle_id, screen_pos).x;
-    let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos).x;
+    let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos, 0).x;
 
     if (triangle_id == 0) {
         // If there is no triangle render ambient color 
@@ -580,8 +580,8 @@ fn compute(
         return;
     }
 
-    let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos).xyz;
-    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos).xy;
+    let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
+    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
     
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer

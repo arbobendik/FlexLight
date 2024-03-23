@@ -21,7 +21,7 @@ struct Uniforms {
     temporal_target: f32
 };
 
-@group(0) @binding(0) var shift_out: texture_storage_2d_array<rgba32float, read>;
+@group(0) @binding(0) var shift_out: texture_2d_array<f32>;
 @group(0) @binding(1) var canvas_out: texture_storage_2d<rgba32float, write>;
 
 @group(1) @binding(0) var<uniform> uniforms: Uniforms;
@@ -43,7 +43,7 @@ fn compute(
 
     let buffer_index: u32 = global_invocation_id.x + num_workgroups.x * 8u * global_invocation_id.y;
 
-    let cur_texel = textureLoad(shift_out, screen_pos, u32(uniforms.temporal_target));
+    let cur_texel = textureLoad(shift_out, screen_pos, u32(uniforms.temporal_target), 0);
     // The current pixel has the desireable depth
     let cur_depth: f32 = cur_texel.w;
     // Accumulate color values
@@ -58,7 +58,7 @@ fn compute(
             continue;
         }
         // Extract color values
-        let texel: vec4<f32> = textureLoad(shift_out, screen_pos, i);
+        let texel: vec4<f32> = textureLoad(shift_out, screen_pos, i, 0);
         // Test if depth is close enough to account for non-perfect overlap
         if (abs(cur_depth - texel.w) < cur_depth * INV_1023) {
             // Add color to total and increase counter by one
