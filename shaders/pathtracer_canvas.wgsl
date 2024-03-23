@@ -18,7 +18,7 @@ struct Uniforms {
     temporal_target: f32
 };
 
-@group(0) @binding(0) var compute_out: texture_storage_2d<rgba32float, read>;
+@group(0) @binding(0) var compute_out: texture_2d<f32>;
 @group(0) @binding(1) var canvas_out: texture_storage_2d<rgba8unorm, write>;
 
 @group(1) @binding(0) var<uniform> uniforms: Uniforms;
@@ -40,7 +40,7 @@ fn compute(
 
     let buffer_index: u32 = global_invocation_id.x + num_workgroups.x * 8u * global_invocation_id.y;
 
-    let compute_color: vec4<f32> = textureLoad(compute_out, screen_pos);
+    let compute_color: vec4<f32> = textureLoad(compute_out, screen_pos, 0);
     // Clear textures we render to every frame
     textureStore(canvas_out, screen_pos, compute_color);
 }
