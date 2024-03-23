@@ -250,7 +250,7 @@ void main() {
         )
     );
 
-    vec3 finalColor = vec3(material.rme.z + ambient);
+    vec3 finalColor = vec3(material.rme.z + ambient) * material.albedo;
     // Calculate primary light sources for this pass if ray hits non translucent object
     for(int j = 0; j < textureSize(lightTex, 0).y; j++) {
         // Read light position
@@ -272,7 +272,7 @@ void main() {
         if(showColor || !shadowTest(lightRay, length(dir))) finalColor += localColor;
     }
 
-    finalColor *= material.albedo;
+    // finalColor *= material.albedo;
 
     float translucencyFactor = min(1.0 + max(finalColor.x, max(finalColor.y, finalColor.z)) - material.tpo.x, 1.0);
     finalColor = mix(material.albedo * material.albedo, finalColor, translucencyFactor);

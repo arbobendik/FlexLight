@@ -36,8 +36,6 @@ export class PathTracerWGL2 {
   #gl;
   #canvas;
 
-  #halt = true;
-
   #geometryTexture;
   #sceneTexture;
   // Buffer arrays
@@ -56,6 +54,10 @@ export class PathTracerWGL2 {
   #lightTexture;
   // Shader source will be generated later
   #tempGlsl;
+
+  #engineState = {};
+  #resizeEvent;
+  #halt = true;
   // Create new PathTracer from canvas and setup movement
   constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
@@ -63,8 +65,7 @@ export class PathTracerWGL2 {
     this.scene = scene;
     this.config = config;
     this.#gl = canvas.getContext('webgl2');
-
-    this.config.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
+    //  this.config.temporalSamples = Math.floor(this.#gl.getParameter(this.#gl.MAX_TEXTURE_IMAGE_UNITS) / 4);
   }
 
   halt = () => {
@@ -74,6 +75,7 @@ export class PathTracerWGL2 {
       console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
     this.#halt = true;
+    window.removeEventListener('resize',this.#resizeEvent);
   }
   
   // Make canvas read only accessible
@@ -211,22 +213,15 @@ export class PathTracerWGL2 {
     let OriginalRenderTexture = new Array(2);
     let IdRenderTexture = new Array(2);
 
-    let TempTexture = new Array(this.config.temporalSamples);
-    let TempIpTexture = new Array(this.config.temporalSamples);
-    let TempIdTexture = new Array(this.config.temporalSamples);
-    let TempOriginalIdTexture = new Array(this.config.temporalSamples);
+    let TempTexture;
+    let TempIpTexture;
+    let TempIdTexture;
+    let TempOriginalIdTexture;
     
-    let TempTex = new Array(this.config.temporalSamples);
-    let TempIpTex = new Array(this.config.temporalSamples);
-    let TempIdTex = new Array(this.config.temporalSamples);
-    let TempOriginalIdTex = new Array(this.config.temporalSamples);
-
-    for (let i = 0; i < this.config.temporalSamples; i++) {
-      TempTexture[i] = this.#gl.createTexture();
-      TempIpTexture[i] = this.#gl.createTexture();
-      TempIdTexture[i] = this.#gl.createTexture();
-      TempOriginalIdTexture[i] = this.#gl.createTexture();
-    }
+    let TempTex;
+    let TempIpTex;
+    let TempIdTex;
+    let TempOriginalIdTex;
 
     let RenderTex = new Array(5);
     let IpRenderTex = new Array(5);
@@ -252,7 +247,7 @@ export class PathTracerWGL2 {
     let PostVao = new Array(5).map(() => this.#gl.createVertexArray());
 
     // Internal render engine Functions
-    let frameCycle = engineState => {
+    let frameCycle = () => {
       if (this.#halt) return;
       let timeStamp = performance.now();
       // Update Textures
@@ -262,13 +257,21 @@ export class PathTracerWGL2 {
       // build bounding boxes for scene first
       this.updatePrimaryLightSources();
       // Check if recompile is required
-      if (engineState.filter !== this.config.filter || engineState.renderQuality !== this.config.renderQuality) {
-        resize();
-        engineState = prepareEngine();
+      if (
+        this.#engineState.filter !== this.config.filter ||
+        this.#engineState.temporal !== this.config.temporal ||
+        this.#engineState.temporalSamples !== this.config.temporalSamples ||
+        this.#engineState.renderQuality !== this.config.renderQuality
+      ) {
+        // resize();
+        // this.#engineState = prepareEngine();
+        // Update Textures
+        requestAnimationFrame(() => prepareEngine());
+        return;
       }
       // Swap antialiasing programm if needed
-      if (engineState.antialiasing !== this.config.antialiasing) {
-        engineState.antialiasing = this.config.antialiasing;
+      if (this.#engineState.antialiasing !== this.config.antialiasing) {
+        this.#engineState.antialiasing = this.config.antialiasing;
         // Use internal antialiasing variable for actual state of antialiasing.
         let val = this.config.antialiasing.toLowerCase();
         switch (val) {
@@ -286,24 +289,24 @@ export class PathTracerWGL2 {
         }
       }
       // Render new Image, work through queue
-      renderFrame(engineState);
+      renderFrame(this.#engineState);
       // Update frame counter
-      engineState.intermediateFrames ++;
-      engineState.temporalFrame = (engineState.temporalFrame + 1) % this.config.temporalSamples;
+      this.#engineState.intermediateFrames ++;
+      this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % this.config.temporalSamples;
       // Calculate Fps
-			let timeDifference = timeStamp - engineState.lastTimeStamp;
+			let timeDifference = timeStamp - this.#engineState.lastTimeStamp;
       if (timeDifference > 500) {
-        this.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
-        engineState.lastTimeStamp = timeStamp;
-        engineState.intermediateFrames = 0;
+        this.fps = (1000 * this.#engineState.intermediateFrames / timeDifference).toFixed(0);
+        this.#engineState.lastTimeStamp = timeStamp;
+        this.#engineState.intermediateFrames = 0;
       }
       // Request browser to render frame with hardware acceleration
       setTimeout(function () {
-        requestAnimationFrame(() => frameCycle(engineState))
+        requestAnimationFrame(() => frameCycle())
       }, 1000 / this.fpsLimit);
     }
 
-    let pathtracingPass = engineState => {
+    let pathtracingPass = () => {
 
       let jitter = {x: 0, y: 0};
       if (this.#antialiasing !== undefined && (this.#antialiasing === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
@@ -326,7 +329,7 @@ export class PathTracerWGL2 {
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, texture);
       });
       // Set uniforms for shaders
-      // console.log(engineState.intermediateFrames);
+      // console.log(this.#engineState.intermediateFrames);
       let uniformValues = [
         // 3d position of camera
         [this.camera.x, this.camera.y, this.camera.z],
@@ -345,7 +348,7 @@ export class PathTracerWGL2 {
         // ambient background color
         this.scene.ambientLight,
         // random seed for monte carlo pathtracing
-        [this.config.temporal ? engineState.temporalFrame : 0],
+        [this.config.temporal ? this.#engineState.temporalFrame : 0],
         // width of textures
         this.scene.standardTextureSizes,
         // whole triangle based geometry scene graph, triangle attributes for scene graph
@@ -356,7 +359,7 @@ export class PathTracerWGL2 {
         [5]
       ];
 
-      PathtracingUniformFunctionTypes.forEach((functionType, i) => this.#gl[functionType](engineState.pathtracingUniformLocations[i], ... uniformValues[i]));
+      PathtracingUniformFunctionTypes.forEach((functionType, i) => this.#gl[functionType](this.#engineState.pathtracingUniformLocations[i], ... uniformValues[i]));
 
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
@@ -373,7 +376,7 @@ export class PathTracerWGL2 {
       this.#gl.drawArraysInstanced(this.#gl.TRIANGLES, 0, 3, this.#bufferLength);
     }
 
-    let renderFrame = engineState => {
+    let renderFrame = () => {
       // Configure where the final image should go
       if (this.config.temporal || this.config.filter || this.#antialiasing) {
         this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, Framebuffer);
@@ -415,7 +418,7 @@ export class PathTracerWGL2 {
 
       // Clear depth and color buffers from last frame
       this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
-      pathtracingPass(engineState);
+      pathtracingPass();
 
       if (this.config.temporal) {
         if (this.config.filter || this.#antialiasing) {
@@ -555,16 +558,23 @@ export class PathTracerWGL2 {
     }
 
     let prepareEngine = () => {
-      let initialState = {
+      this.halt();
+      // Allow frame rendering
+      this.#halt = false;
+      // Reset engine state
+      Object.assign(this.#engineState, {
         // Attributes to meassure frames per second
         intermediateFrames: 0,
         lastTimeStamp: performance.now(),
-        // Count frames to match with temporal accumulation
-        temporalFrame: 0,
         // Parameters to compare against current state of the engine and recompile shaders on change
         filter: this.config.filter,
-        renderQuality: this.config.renderQuality
-      };
+        temporal: this.config.temporal,
+        temporalFrame: 0,
+        temporalSamples: this.config.temporalSamples,
+        renderQuality: this.config.renderQuality,
+        // New buffer length
+        bufferLength: 0
+      });
 
       let newLine = `
       `;
@@ -688,7 +698,7 @@ export class PathTracerWGL2 {
       // Create global vertex array object (Vao)
       this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      initialState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => this.#gl.getUniformLocation(Program, identifier));
+      this.#engineState.pathtracingUniformLocations = PathtracingUniformLocationIdentifiers.map(identifier => this.#gl.getUniformLocation(Program, identifier));
       // Create UBO objects
       let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
       // Get the size of the Uniform Block in bytes
@@ -738,27 +748,46 @@ export class PathTracerWGL2 {
       this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, vertexIdBuffer);
       this.#gl.enableVertexAttribArray(1);
       this.#gl.vertexAttribIPointer(1, 1, this.#gl.INT, false, 0, 0);
-      // Create frame buffers and textures to be rendered to
-      [Framebuffer, OriginalIdRenderTexture] = [this.#gl.createFramebuffer(), this.#gl.createTexture()];
-      this.#gl.bindVertexArray(TempVao);
-      this.#gl.useProgram(TempProgram);
-      TempHdrLocation = this.#gl.getUniformLocation(TempProgram, 'hdr');
-      
-      for (let i = 0; i < this.config.temporalSamples; i++) {
-        TempTex[i] = this.#gl.getUniformLocation(TempProgram, 'cache' + i);
-        TempIpTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
-        TempIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
-        TempOriginalIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheOriginalId' + i);
+
+      if (this.config.temporal) {
+        TempTexture = new Array(this.config.temporalSamples);
+        TempIpTexture = new Array(this.config.temporalSamples);
+        TempIdTexture = new Array(this.config.temporalSamples);
+        TempOriginalIdTexture = new Array(this.config.temporalSamples);
+    
+        for (let i = 0; i < this.config.temporalSamples; i++) {
+          TempTexture[i] = this.#gl.createTexture();
+          TempIpTexture[i] = this.#gl.createTexture();
+          TempIdTexture[i] = this.#gl.createTexture();
+          TempOriginalIdTexture[i] = this.#gl.createTexture();
+        }
+        // Create frame buffers and textures to be rendered to
+        [Framebuffer, OriginalIdRenderTexture] = [this.#gl.createFramebuffer(), this.#gl.createTexture()];
+        this.#gl.bindVertexArray(TempVao);
+        this.#gl.useProgram(TempProgram);
+        TempHdrLocation = this.#gl.getUniformLocation(TempProgram, 'hdr');
+
+        TempTex = new Array(this.config.temporalSamples);
+        TempIpTex = new Array(this.config.temporalSamples);
+        TempIdTex = new Array(this.config.temporalSamples);
+        TempOriginalIdTex = new Array(this.config.temporalSamples);
+        
+        for (let i = 0; i < this.config.temporalSamples; i++) {
+          TempTex[i] = this.#gl.getUniformLocation(TempProgram, 'cache' + i);
+          TempIpTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheIp' + i);
+          TempIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheId' + i);
+          TempOriginalIdTex[i] = this.#gl.getUniformLocation(TempProgram, 'cacheOriginalId' + i);
+        }
+        
+        let TempVertexBuffer = this.#gl.createBuffer();
+        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
+        this.#gl.enableVertexAttribArray(0);
+        this.#gl.vertexAttribPointer(0, 2, this.#gl.FLOAT, false, 0, 0);
+        // Fill buffer with data for two verices
+        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
+        this.#gl.bufferData(this.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), this.#gl.DYNAMIC_DRAW);
+        TempFramebuffer = this.#gl.createFramebuffer();
       }
-      
-      let TempVertexBuffer = this.#gl.createBuffer();
-      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
-      this.#gl.enableVertexAttribArray(0);
-      this.#gl.vertexAttribPointer(0, 2, this.#gl.FLOAT, false, 0, 0);
-      // Fill buffer with data for two verices
-      this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, TempVertexBuffer);
-      this.#gl.bufferData(this.#gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), this.#gl.DYNAMIC_DRAW);
-      TempFramebuffer = this.#gl.createFramebuffer();
       
       for (let i = 0; i < 5; i++){
         // Create post program buffers and uniforms
@@ -784,13 +813,21 @@ export class PathTracerWGL2 {
       renderTextureBuilder();
       // Reload / Rebuild scene graph after resize or page reload
       this.updateScene();
-      // Return initialized objects for engine.
-      return initialState;
+      // Init canvas parameters and textures with resize
+      resize();
+      // this.#renderFrame();
+      this.#resizeEvent = window.addEventListener('resize', () => resize());
+      // Begin frame cycle
+      requestAnimationFrame(() => frameCycle());
     }
 
     let renderTextureBuilder = () => {
+
+      let textureList = [RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]];
+
+      if (this.config.temporal) textureList.push(TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture);
       // Init textures for denoiser
-      [TempTexture, TempIpTexture, TempIdTexture, TempOriginalIdTexture, RenderTexture, IpRenderTexture, OriginalRenderTexture, IdRenderTexture, [OriginalIdRenderTexture]].forEach(parent => {
+      textureList.forEach(parent => {
         parent.forEach(item => {
           // console.log(this);
           this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
@@ -819,15 +856,7 @@ export class PathTracerWGL2 {
       this.config.firstPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 600), 3);
       this.config.secondPasses = 3;//Math.max(Math.round(Math.min(canvas.width, canvas.height) / 500), 3);
     }
-    // Init canvas parameters and textures with resize
-    resize();
-    // Handle canvas resize
-    // Init canvas parameters and textures with resize
-    window.addEventListener('resize', resize);
     // Prepare Renderengine
-    let engineState = prepareEngine();
-    // resize();
-    // Begin frame cycle
-    requestAnimationFrame(() => frameCycle(engineState));
+    prepareEngine();
   }
 }

@@ -2,10 +2,11 @@ const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
+const POW32U: u32 = 4294967295u;
 const POW23M1: f32 = 8388607.0;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
-const INV_65535: f32 = 0.000015259021896696422;
+const INV_255: f32 = 0.00392156862745098;
 
 struct Transform {
     rotation: mat3x3<f32>,
@@ -18,15 +19,16 @@ struct Uniforms {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
+    texture_size: vec2<f32>,
+    render_size: vec2<f32>,
+
     samples: f32,
     max_reflections: f32,
     min_importancy: f32,
     use_filter: f32,
-
+    
     is_temporal: f32,
-    random_seed: f32,
-    texture_size: vec2<f32>,
-    render_size: vec2<f32>
+    temporal_target: f32
 };
 
 struct VertexOut {
@@ -39,9 +41,9 @@ struct VertexOut {
 
 
 @group(0) @binding(0) var<storage, read> depth_buffer: array<u32>;
-@group(0) @binding(1) var texture_absolute_position: texture_storage_2d<rgba32float, write>;
-@group(0) @binding(2) var texture_uv: texture_storage_2d<rg32float, write>;
-@group(0) @binding(3) var texture_triangle_id: texture_storage_2d<r32sint, write>;
+@group(0) @binding(1) var texture_triangle_id: texture_storage_2d<r32sint, write>;
+@group(0) @binding(2) var texture_absolute_position: texture_storage_2d<rgba32float, write>;
+@group(0) @binding(3) var texture_uv: texture_storage_2d<rg32float, write>;
 
 @group(1) @binding(0) var<storage, read> indices: array<i32>;
 @group(1) @binding(1) var<storage, read> geometry: array<f32>;
@@ -102,7 +104,7 @@ fn fragment(
 
     let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
     // Only save if texel is closer to camera then previously
-    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_65535)));
+    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
 
     if (current_depth == depth_buffer[buffer_index]) {
         // Save values for compute pass
@@ -111,5 +113,5 @@ fn fragment(
         textureStore(texture_triangle_id, coord, vec4<i32>(i32(triangle_id), 0, 0, 0));
     }
 
-    return vec4<f32>(1.0f);
+    return vec4<f32>(f32(triangle_id % 3) / 3.0f, f32(triangle_id % 2) / 2.0f, f32(triangle_id % 5) / 5.0f, 1.0f);
 }

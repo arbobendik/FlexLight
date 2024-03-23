@@ -5,7 +5,7 @@ const POW32: f32 = 4294967296.0;
 const POW23M1: f32 = 8388607.0;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
-const INV_65535: f32 = 0.000015259021896696422;
+const INV_255: f32 = 0.00392156862745098;
 
 struct Transform {
     rotation: mat3x3<f32>,
@@ -18,15 +18,16 @@ struct Uniforms {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
+    texture_size: vec2<f32>,
+    render_size: vec2<f32>,
+
     samples: f32,
     max_reflections: f32,
     min_importancy: f32,
     use_filter: f32,
 
     is_temporal: f32,
-    random_seed: f32,
-    texture_size: vec2<f32>,
-    render_size: vec2<f32>
+    temporal_target: f32
 };
 
 struct VertexOut {
@@ -98,7 +99,7 @@ fn fragment(
 
     let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
     // Only save if texel is closer to camera then previously
-    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_65535)));
+    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
     // Store in texture
     atomicMin(&depth_buffer[buffer_index], current_depth);
     return vec4<f32>(1.0f);
