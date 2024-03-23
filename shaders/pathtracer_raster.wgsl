@@ -52,11 +52,6 @@ struct VertexOut {
 @group(2) @binding(1) var<storage, read> transforms: array<Transform>;
 
 
-const base_uvs: array<vec2<f32>, 3> = array(
-    vec2<f32>(1.0f, 0.0f),
-    vec2<f32>(0.0f, 1.0f),
-    vec2<f32>(0.0f, 0.0f)
-);
 
 @vertex
 fn vertex(
@@ -77,8 +72,17 @@ fn vertex(
     let transform: Transform = transforms[t_i];
     out.absolute_position = (transform.rotation * relative_position) + transform.shift;
     // Set uv to vertex uv and let the vertex interpolation generate the values in between
-    out.uv = base_uvs[vertex_num];
-
+    switch (vertex_num) {
+        case 0: {
+            out.uv = vec2<f32>(1.0f, 0.0f);
+        }
+        case 1: {
+            out.uv = vec2<f32>(0.0f, 1.0f);
+        }
+        case 2, default {
+            out.uv = vec2<f32>(0.0f, 0.0f);
+        }
+    }
     out.clip_space = uniforms.view_matrix * (out.absolute_position - uniforms.camera_position);
     // Set triangle position in clip space
     out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);

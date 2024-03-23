@@ -18,7 +18,7 @@ struct Uniforms {
     temporal_target: f32
 };
 
-@group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, read>;
+@group(0) @binding(0) var compute_out: texture_2d_array<f32>;
 @group(0) @binding(1) var shift_out: texture_storage_2d_array<rgba32float, write>;
 
 @group(1) @binding(0) var<uniform> uniforms: Uniforms;
@@ -44,9 +44,9 @@ fn compute(
 
     for (var i: u32 = 0; i < depth; i++) {
         // Extract color value from old position
-        let color: vec3<f32> = textureLoad(compute_out, screen_pos, i).xyz;
+        let color: vec3<f32> = textureLoad(compute_out, screen_pos, i, 0).xyz;
         // Extract 3d position value
-        let absolute_position: vec3<f32> = textureLoad(compute_out, screen_pos, depth + i).xyz;
+        let absolute_position: vec3<f32> = textureLoad(compute_out, screen_pos, depth + i, 0).xyz;
         // Map postion according to current camera positon and view matrix to clip space
         let clip_space: vec3<f32> = uniforms.view_matrix * (absolute_position - uniforms.camera_position);
         // Project onto screen and shift origin to the corner

@@ -389,9 +389,9 @@ export class PathTracerWGPU {
     this.#computeRenderGroupLayout = this.#device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }, // output
-        { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'r32sint', viewDimension: '2d' } },            // triangle index
-        { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },        // 3d positions
-        { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rg32float', viewDimension: '2d' } }           // uvs
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: 'sint', sampleType: 'sint' } }, //storageTexture: { access: 'read-only', format: 'r32sint', viewDimension: '2d' } },            // triangle index
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float' } }, //storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },        // 3d positions
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float' } }  //storageTexture: { access: 'read-only', format: 'rg32float', viewDimension: '2d' } }           // uvs
       ]
     });
 
@@ -436,14 +436,14 @@ export class PathTracerWGPU {
     if (this.config.temporal) {
       this.#shiftGroupLayout = this.#device.createBindGroupLayout({
         entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // compute output
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } }, // storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // compute output
           { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }   // shift target
         ]
       });
 
       this.#averageGroupLayout = this.#device.createBindGroupLayout({
         entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // shift output
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },//storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // shift output
           { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } }         // average target
         ]
       });
@@ -457,7 +457,7 @@ export class PathTracerWGPU {
 
     this.#canvasGroupLayout = this.#device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },  // compute output
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float' } }, //storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },  // compute output
         { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba8unorm', viewDimension: '2d' } }   // canvas target
       ]
     });
