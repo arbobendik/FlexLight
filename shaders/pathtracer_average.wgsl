@@ -46,6 +46,13 @@ fn compute(
     let cur_texel = textureLoad(shift_out, screen_pos, u32(uniforms.temporal_target), 0);
     // The current pixel has the desireable depth
     let cur_depth: f32 = cur_texel.w;
+
+    // If depth is 0.0f then that pixel is in the void in current frame
+    if (cur_depth == 0.0f) {
+        // Output current color value
+        textureStore(canvas_out, screen_pos, vec4<f32>(uniforms.ambient, 0.0f));
+        return;
+    }
     // Accumulate color values
     var color_sum: vec3<f32> = cur_texel.xyz;
     var counter: i32 = 1;
@@ -67,6 +74,6 @@ fn compute(
         }
     }
 
-    // Clear textures we render to every frame
+    // Write average to target
     textureStore(canvas_out, screen_pos, vec4<f32>(color_sum / f32(counter), cur_depth));
 }
