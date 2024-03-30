@@ -43,12 +43,22 @@ fn compute(
     let depth: u32 = textureNumLayers(compute_out) / 2;
 
     for (var i: u32 = 0; i < depth; i++) {
+        // Extract 3d position value
+        let absolute_position: vec4<f32> = textureLoad(compute_out, screen_pos, depth + i, 0);
+        // If absolute position is all zeros then there is nothing to do
+        if (
+            i == u32(uniforms.temporal_target) &&
+            absolute_position.x == 0.0f &&
+            absolute_position.y == 0.0f &&
+            absolute_position.z == 0.0f &&
+            absolute_position.w == 0.0f) {
+            textureStore(shift_out, screen_pos, i, vec4<f32>(0.0f));
+            return;
+        }
         // Extract color value from old position
         let color: vec3<f32> = textureLoad(compute_out, screen_pos, i, 0).xyz;
-        // Extract 3d position value
-        let absolute_position: vec3<f32> = textureLoad(compute_out, screen_pos, depth + i, 0).xyz;
         // Map postion according to current camera positon and view matrix to clip space
-        let clip_space: vec3<f32> = uniforms.view_matrix * (absolute_position - uniforms.camera_position);
+        let clip_space: vec3<f32> = uniforms.view_matrix * (absolute_position.xyz - uniforms.camera_position);
         // Project onto screen and shift origin to the corner
         let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
         // Translate to texel value
