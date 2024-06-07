@@ -41,8 +41,6 @@ fn compute(
         return;
     }
 
-    let buffer_index: u32 = global_invocation_id.x + num_workgroups.x * 8u * global_invocation_id.y;
-
     let cur_texel = textureLoad(shift_out, screen_pos, u32(uniforms.temporal_target), 0);
     // The current pixel has the desireable depth
     let cur_depth: f32 = cur_texel.w;
@@ -54,16 +52,16 @@ fn compute(
         return;
     }
     // Accumulate color values
-    var color_sum: vec3<f32> = cur_texel.xyz;
-    var counter: i32 = 1;
+    var color_sum: vec3<f32> = vec3<f32>(0.0f);
+    var counter: i32 = 0;
     // Amount of temporal passes
     let layers: u32 = textureNumLayers(shift_out);
 
     for (var i: u32 = 0; i < layers; i++) {
         // Skip current layer as it's already accounted for
-        if (i == u32(uniforms.temporal_target)) {
-            continue;
-        }
+        //if (i == u32(uniforms.temporal_target)) {
+        //    continue;
+        //}
         // Extract color values
         let texel: vec4<f32> = textureLoad(shift_out, screen_pos, i, 0);
         // Test if depth is close enough to account for non-perfect overlap

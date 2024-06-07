@@ -24,13 +24,15 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [0, 1, 0];
-	[camera.fx, camera.fy] = [- 2.38, 0.2];
+	[camera.x, camera.y, camera.z] = [100, 100, 200];
+	[camera.fx, camera.fy] = [1.38, 0.2];
 	
 	
-	scene.primaryLightSources = [[50, 50.9, -10]];
-	scene.primaryLightSources[0].intensity = 50000;
-	scene.primaryLightSources[0].variation = 0;
+	scene.primaryLightSources = [[100, 500, 100], [-100, 100, 500]];
+	scene.primaryLightSources[0].intensity = 2000000;
+	scene.primaryLightSources[0].variation = 100;
+	scene.primaryLightSources[1].intensity = 1500000;
+	scene.primaryLightSources[1].variation = 100;
 	
 	
 	scene.ambientLight = [.01, .01, .01];
