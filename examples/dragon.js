@@ -92,7 +92,7 @@ async function buildScene() {
 
 	console.log(scene.queue);
 
-	engine.renderer.updateScene();
+	// engine.renderer.updateScene();
 
 	let rotationAngle = 0;
 	setInterval(() => {

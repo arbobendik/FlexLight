@@ -162,7 +162,8 @@ export class PathTracerWGPU {
     return this.#canvas;
   }
 
-  updateScene () {
+  updateScene (device = this.#device) {
+    if (!device) return;
     // Generate texture arrays and buffers
     console.log(this.scene.queue);
     let builtScene = this.scene.generateArraysFromGraph();
@@ -176,20 +177,20 @@ export class PathTracerWGPU {
     ];
 
     this.#staticBuffers = staticBufferArrays.map(array => {
-      let buffer = this.#device.createBuffer({ size: array.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-      this.#device.queue.writeBuffer(buffer, 0, array);
+      let buffer = device.createBuffer({ size: array.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+      device.queue.writeBuffer(buffer, 0, array);
       return buffer;
     });
 
     let staticEntries = this.#staticBuffers.map((buffer, i) => ({ binding: i, resource: { buffer }}));
 
-    this.#rasterStaticGroup = this.#device.createBindGroup({
+    this.#rasterStaticGroup = device.createBindGroup({
       label: 'static binding group for raster pass',
       layout: this.#rasterStaticGroupLayout,
       entries: staticEntries.slice(0, 2),
     });
     
-    this.#computeStaticGroup = this.#device.createBindGroup({
+    this.#computeStaticGroup = device.createBindGroup({
       label: 'static binding group for compute pass',
       layout: this.#computeStaticGroupLayout,
       entries: staticEntries,
@@ -346,10 +347,10 @@ export class PathTracerWGPU {
     await this.#updatePbrAtlas(true);
     await this.#updateTranslucencyAtlas(true);
     
-    this.#prepareEngine();
+    this.#prepareEngine(this.#device);
   }
   
-  #prepareEngine () {
+  #prepareEngine (device) {
     this.halt();
     // Allow frame rendering
     this.#halt = false;
@@ -364,20 +365,20 @@ export class PathTracerWGPU {
       bufferLength: 0
     });
 
-    this.#clearGroupLayout = this.#device.createBindGroupLayout({
+    this.#clearGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },                                                            // depth
         { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'r32sint', viewDimension: '2d' } }        // triangle index
       ]
     });
 
-    this.#depthGroupLayout = this.#device.createBindGroupLayout({
+    this.#depthGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'storage' } }  // depth
       ]
     });
 
-    this.#rasterRenderGroupLayout = this.#device.createBindGroupLayout({
+    this.#rasterRenderGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },                                                 // depth
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: 'write-only', format: 'r32sint', viewDimension: '2d' } },      // triangle index
@@ -386,7 +387,7 @@ export class PathTracerWGPU {
       ]
     });
 
-    this.#computeRenderGroupLayout = this.#device.createBindGroupLayout({
+    this.#computeRenderGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }, // output
         { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: 'sint', sampleType: 'sint' } }, //storageTexture: { access: 'read-only', format: 'r32sint', viewDimension: '2d' } },            // triangle index
@@ -395,14 +396,14 @@ export class PathTracerWGPU {
       ]
     });
 
-    this.#rasterStaticGroupLayout = this.#device.createBindGroupLayout({
+    this.#rasterStaticGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },  // indices
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },  // geometry
       ]
     });
 
-    this.#computeStaticGroupLayout = this.#device.createBindGroupLayout({
+    this.#computeStaticGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // indices
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // geometry
@@ -410,14 +411,14 @@ export class PathTracerWGPU {
       ]
     });
 
-    this.#rasterDynamicGroupLayout = this.#device.createBindGroupLayout({
+    this.#rasterDynamicGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uniforms
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },                 // transforms
       ]
     });
 
-    this.#computeDynamicGroupLayout = this.#device.createBindGroupLayout({
+    this.#computeDynamicGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },            // uniforms
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // transforms
@@ -425,7 +426,7 @@ export class PathTracerWGPU {
       ]
     });
 
-    this.#textureGroupLayout = this.#device.createBindGroupLayout({
+    this.#textureGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'uint' } },  // texture atlas
         { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: 'uint' } },  // pbr texture atlas
@@ -434,14 +435,14 @@ export class PathTracerWGPU {
     });
 
     if (this.config.temporal) {
-      this.#shiftGroupLayout = this.#device.createBindGroupLayout({
+      this.#shiftGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } }, // storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // compute output
           { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }   // shift target
         ]
       });
 
-      this.#averageGroupLayout = this.#device.createBindGroupLayout({
+      this.#averageGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },//storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // shift output
           { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } }         // average target
@@ -449,13 +450,13 @@ export class PathTracerWGPU {
       });
     }
 
-    this.#postDynamicGroupLayout = this.#device.createBindGroupLayout({
+    this.#postDynamicGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // uniforms
       ]
     });
 
-    this.#canvasGroupLayout = this.#device.createBindGroupLayout({
+    this.#canvasGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float' } }, //storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d' } },  // compute output
         { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba8unorm', viewDimension: '2d' } }   // canvas target
@@ -464,10 +465,10 @@ export class PathTracerWGPU {
 
     let clearShader = Network.fetchSync('shaders/pathtracer_clear.wgsl');
     // Shaders are written in a language called WGSL.
-    let clearModule = this.#device.createShaderModule({ code: clearShader });
+    let clearModule = device.createShaderModule({ code: clearShader });
     
-    this.#clearPipeline = this.#device.createComputePipeline({
-      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+    this.#clearPipeline = device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#clearGroupLayout
       ] }),
       compute: {
@@ -477,10 +478,10 @@ export class PathTracerWGPU {
     });
 
     let depthShader = Network.fetchSync('shaders/pathtracer_depth.wgsl');
-    let depthModule = this.#device.createShaderModule({ code: depthShader });
+    let depthModule = device.createShaderModule({ code: depthShader });
 
-    this.#depthPipeline = this.#device.createRenderPipeline({
-      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+    this.#depthPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#depthGroupLayout,
         this.#rasterStaticGroupLayout,
         this.#rasterDynamicGroupLayout
@@ -504,10 +505,10 @@ export class PathTracerWGPU {
     });
 
     let rasterShader = Network.fetchSync('shaders/pathtracer_raster.wgsl');
-    let rasterModule = this.#device.createShaderModule({ code: rasterShader });
+    let rasterModule = device.createShaderModule({ code: rasterShader });
 
-    this.#rasterPipeline = this.#device.createRenderPipeline({
-      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+    this.#rasterPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#rasterRenderGroupLayout,
         this.#rasterStaticGroupLayout,
         this.#rasterDynamicGroupLayout
@@ -532,10 +533,10 @@ export class PathTracerWGPU {
 
     let computeShader = Network.fetchSync('shaders/pathtracer_compute.wgsl');
     // Shaders are written in a language called WGSL.
-    let computeModule = this.#device.createShaderModule({code: computeShader});
+    let computeModule = device.createShaderModule({code: computeShader});
     
-    this.#computePipeline = this.#device.createComputePipeline({
-      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [
+    this.#computePipeline = device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#computeRenderGroupLayout,
         this.#textureGroupLayout,
         this.#computeStaticGroupLayout,
@@ -550,30 +551,30 @@ export class PathTracerWGPU {
     if (this.config.temporal) {
       let shiftShader = Network.fetchSync('shaders/pathtracer_shift.wgsl');
       // Shaders are written in a language called WGSL.
-      let shiftModule = this.#device.createShaderModule({code: shiftShader});
+      let shiftModule = device.createShaderModule({code: shiftShader});
       // Pipeline for screen space correction of motion before accumulation
-      this.#shiftPipeline = this.#device.createComputePipeline({
-        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [ this.#shiftGroupLayout, this.#postDynamicGroupLayout ] }),
+      this.#shiftPipeline = device.createComputePipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#shiftGroupLayout, this.#postDynamicGroupLayout ] }),
         compute: { module: shiftModule, entryPoint: 'compute' }
       });
 
 
       let averageShader = Network.fetchSync('shaders/pathtracer_average.wgsl');
       // Shaders are written in a language called WGSL.
-      let averageModule = this.#device.createShaderModule({code: averageShader});
+      let averageModule = device.createShaderModule({code: averageShader});
       // Pipeline for temporal accumulation
-      this.#averagePipeline = this.#device.createComputePipeline({
-        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [ this.#averageGroupLayout, this.#postDynamicGroupLayout ] }),
+      this.#averagePipeline = device.createComputePipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#averageGroupLayout, this.#postDynamicGroupLayout ] }),
         compute: { module: averageModule, entryPoint: 'compute' }
       });
     }
 
     let canvasShader = Network.fetchSync('shaders/pathtracer_canvas.wgsl');
     // Shaders are written in a language called WGSL.
-    let canvasModule = this.#device.createShaderModule({code: canvasShader});
+    let canvasModule = device.createShaderModule({code: canvasShader});
     // Pipeline for rendering to canvas
-    this.#canvasPipeline = this.#device.createComputePipeline({
-      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [ this.#canvasGroupLayout, this.#postDynamicGroupLayout ] }),
+    this.#canvasPipeline = device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#canvasGroupLayout, this.#postDynamicGroupLayout ] }),
       compute: { module: canvasModule, entryPoint: 'compute' }
     });
     
@@ -590,10 +591,10 @@ export class PathTracerWGPU {
       }],
     };
     // Create uniform buffer for shader uniforms
-    this.#uniformBuffer = this.#device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniformBuffer = device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Create uniform buffer for transforms in shader
     // Build / Rebuild scene graph for GPU into storage buffer
-    this.updateScene();
+    this.updateScene(device);
     // Init canvas parameters and textures with resize
     this.resize();
     // this.#renderFrame();
