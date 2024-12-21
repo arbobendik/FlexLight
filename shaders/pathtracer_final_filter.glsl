@@ -62,8 +62,8 @@
         // Apply Reinhard tone mapping
         finalColor = finalColor / (finalColor + vec3(1.0));
         // Gamma correction
-        float gamma = 0.8;
-        finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
+        // float gamma = 0.8;
+        // finalColor = pow(4.0 * finalColor, vec3(1.0 / gamma)) / 4.0 * 1.3;
       }
       outColor = vec4(finalColor, 1.0);
     } else {
