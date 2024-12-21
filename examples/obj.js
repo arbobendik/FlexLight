@@ -24,8 +24,8 @@ async function buildScene() {
 	});
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [100, 100, 200];
-	[camera.fx, camera.fy] = [1.38, 0.2];
+	[camera.x, camera.y, camera.z] = [0, 10, 0];
+	[camera.fx, camera.fy] = [-2.38, 0.8];
 	
 	
 	scene.primaryLightSources = [[100, 500, 100], [-100, 100, 500]];
