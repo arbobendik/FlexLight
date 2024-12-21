@@ -26,7 +26,8 @@ struct Uniforms {
     max_reflections: f32,
     min_importancy: f32,
     use_filter: f32,
-    
+
+    tonemapping_operator: f32,
     is_temporal: f32,
     temporal_target: f32
 };

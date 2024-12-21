@@ -26,6 +26,7 @@ struct Uniforms {
     min_importancy: f32,
     use_filter: f32,
 
+    tonemapping_operator: f32,
     is_temporal: f32,
     temporal_target: f32
 };
@@ -55,7 +56,7 @@ const base_uvs: array<vec2<f32>, 3> = array(
 
 @vertex
 fn vertex(
-    @builtin(vertex_index) vertex_index : u32,
+    @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32
 ) -> VertexOut {
     var out: VertexOut;
