@@ -32,6 +32,7 @@ struct Uniforms {
     min_importancy: f32,
     use_filter: f32,
 
+    tonemapping_operator: f32,
     is_temporal: f32,
     temporal_target: f32
 };
@@ -98,7 +99,7 @@ fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val:
 }
 
 fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
-    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * (seed + uniforms.temporal_target * PHI)) * 43758.5453f) * 2.0f - 1.0f;
+    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI * 100.0f)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
 fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3<f32> {
@@ -503,11 +504,12 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let local_color: vec3<f32> = reservoirSample(material, ray, random_vec, - sign_dir * rough_n, - sign_dir * smooth_n, geometry_offset, dont_filter, i);
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_color * importancy_factor;
+
         // Multiply albedo with either absorption value or filter color
+        /*
         if (dont_filter) {
             // Update last used tpo.x value
             // originalTPOx = material.tpo.x;
-            /*
             originalColor *= material.albedo;
             // Add filtering intensity for respective surface
             // originalRMEx += material.rme.x;
@@ -523,11 +525,11 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
                 // glassFilter += 1.0f;
                 dont_filter = false;
             }
-            */
-            importancy_factor = importancy_factor * material.albedo;
-        } else {
-            importancy_factor = importancy_factor * material.albedo;
         }
+        */
+        importancy_factor = importancy_factor * material.albedo;
+        // forwardTrace(material: Material, light_dir: vec3<f32>, strength: f32, n: vec3<f32>, v: vec3<f32>)
+        // importancy_factor = importancy_factor * forwardTrace(material, - old_ray_unit_dir, 4.0f, smooth_n, ray.unit_direction);
         // Handle translucency and skip rest of light calculation
         if(is_solid) {
             // Calculate reflecting ray
@@ -569,13 +571,13 @@ fn compute(
 
     if (triangle_id == 0) {
         // If there is no triangle render ambient color 
-        textureStore(compute_out, screen_pos, i32(uniforms.temporal_target), vec4<f32>(uniforms.ambient, 1.0f));
+        textureStore(compute_out, screen_pos, 0, vec4<f32>(uniforms.ambient, 1.0f));
         // And overwrite position with 0 0 0 0
         if (uniforms.is_temporal == 1.0f) {
             // Amount of temporal passes
             let depth: u32 = textureNumLayers(compute_out) / 2;
             // Store position in target
-            textureStore(compute_out, screen_pos, depth + u32(uniforms.temporal_target), vec4<f32>(0.0f));
+            textureStore(compute_out, screen_pos, 1, vec4<f32>(0.0f));
         }
         return;
     }
@@ -600,14 +602,12 @@ fn compute(
 
     // Write to additional textures for temporal pass
     if (uniforms.is_temporal == 1.0f) {
-        // Amount of temporal passes
-        let depth: u32 = textureNumLayers(compute_out) / 2;
         // Render to compute target
-        textureStore(compute_out, screen_pos, u32(uniforms.temporal_target), vec4<f32>(final_color, 1.0f));
+        textureStore(compute_out, screen_pos, 0, vec4<f32>(final_color, 1.0f));
         // Store position in target
-        textureStore(compute_out, screen_pos, depth + u32(uniforms.temporal_target), vec4<f32>(absolute_position, 1.0f));
+        textureStore(compute_out, screen_pos, 1, vec4<f32>(absolute_position, 1.0f));
     } else {
         // Render to compute target
-        textureStore(compute_out, screen_pos, u32(uniforms.temporal_target), vec4<f32>(final_color, 1.0f));
+        textureStore(compute_out, screen_pos, 0, vec4<f32>(final_color, 1.0f));
     }
 }
