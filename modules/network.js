@@ -4,6 +4,7 @@ export class Network {
     static fetchSync (url) {
     var request = new XMLHttpRequest();
         request.open('GET', url, false); // Set the third parameter to false for a synchronous request
+        request.overrideMimeType('text/plain'); // Override MIME type for all shader files
         request.send(null);
         
         if (request.status === 200) {

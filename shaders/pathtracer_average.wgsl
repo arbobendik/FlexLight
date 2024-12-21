@@ -17,6 +17,7 @@ struct Uniforms {
     min_importancy: f32,
     use_filter: f32,
 
+    tonemapping_operator: f32,
     is_temporal: f32,
     temporal_target: f32
 };
@@ -41,7 +42,7 @@ fn compute(
         return;
     }
 
-    let cur_texel = textureLoad(shift_out, screen_pos, u32(uniforms.temporal_target), 0);
+    let cur_texel = textureLoad(shift_out, screen_pos, 0, 0);
     // The current pixel has the desireable depth
     let cur_depth: f32 = cur_texel.w;
 
