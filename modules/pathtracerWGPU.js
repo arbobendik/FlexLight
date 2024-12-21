@@ -30,6 +30,7 @@ export class PathTracerWGPU {
   #computePipeline;
   #shiftPipeline;
   #averagePipeline;
+  #selectiveAveragePipeline;
   #canvasPipeline;
 
   #renderPassDescriptor;
@@ -53,8 +54,10 @@ export class PathTracerWGPU {
   #rasterRenderTextures = [];
   
   #computeTarget;
-  #shiftTarget
+  #shiftTarget;
+  #accumulatedTarget;
   #averageTarget;
+  #selectiveAverageTarget;
   
   #clearGroupLayout;
   #depthGroupLayout;
@@ -69,6 +72,7 @@ export class PathTracerWGPU {
   #postDynamicGroupLayout;
   #shiftGroupLayout;
   #averageGroupLayout;
+  #selectiveAverageGroupLayout;
   #canvasGroupLayout;
   
   #clearGroup;
@@ -84,6 +88,7 @@ export class PathTracerWGPU {
   #postDynamicGroup;
   #shiftGroup;
   #averageGroup;
+  #selectiveAverageGroup;
   #canvasGroup;
   
   #engineState = {};
@@ -92,7 +97,6 @@ export class PathTracerWGPU {
   // Create new PathTracer from canvas and setup movement
   constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
-    console.log(this.#canvas);
     this.camera = camera;
     this.scene = scene;
     this.config = config;
@@ -114,7 +118,7 @@ export class PathTracerWGPU {
     
     let allScreenTextures = [this.#computeTarget, ... this.#rasterRenderTextures];
     // Add temporal target texture
-    if (this.config.temporal) allScreenTextures.push(this.#shiftTarget, this.#averageTarget);
+    if (this.config.temporal) allScreenTextures.push(this.#computeTarget, this.#shiftTarget, this.#averageTarget);
     // Free old texture buffers
     allScreenTextures.forEach(texture => {
       try {
@@ -135,7 +139,7 @@ export class PathTracerWGPU {
     // Init canvas render texture
     this.#computeTarget = this.#device.createTexture({
       // dimension: '3d',
-      size: [width, height, this.config.temporal ? this.config.temporalSamples * 2 : 1],
+      size: [width, height, this.config.temporal ? /*this.config.temporalSamples * 2*/ 2 : 1],
       format: 'rgba32float',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
     });
@@ -144,10 +148,18 @@ export class PathTracerWGPU {
       // Init temporal screen space correction render target
       this.#shiftTarget = this.#device.createTexture({
         // dimension: '3d',
-        size: [width, height, this.config.temporalSamples],
+        size: [width, height, 5],
         format: 'rgba32float',
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
       });
+        
+      this.#accumulatedTarget = this.#device.createTexture({
+        // dimension: '3d',
+        size: [width, height, 5],
+        format: 'rgba32float',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
+      });
+
       // Init temporal render texture
       this.#averageTarget = this.#device.createTexture({
         size: [width, height],
@@ -437,17 +449,21 @@ export class PathTracerWGPU {
     if (this.config.temporal) {
       this.#shiftGroupLayout = device.createBindGroupLayout({
         entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } }, // storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // compute output
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }   // shift target
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } }
         ]
       });
+      
 
-      this.#averageGroupLayout = device.createBindGroupLayout({
+      this.#selectiveAverageGroupLayout = device.createBindGroupLayout({
         entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },//storageTexture: { access: 'read-only', format: 'rgba32float', viewDimension: '2d-array' } },   // shift output
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } }         // average target
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: 'float', sampleType: 'unfilterable-float', viewDimension: '2d-array' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d-array' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba32float', viewDimension: '2d' } }
         ]
       });
+      
     }
 
     this.#postDynamicGroupLayout = device.createBindGroupLayout({
@@ -468,6 +484,7 @@ export class PathTracerWGPU {
     let clearModule = device.createShaderModule({ code: clearShader });
     
     this.#clearPipeline = device.createComputePipeline({
+      label: 'clear pipeline',
       layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#clearGroupLayout
       ] }),
@@ -481,6 +498,7 @@ export class PathTracerWGPU {
     let depthModule = device.createShaderModule({ code: depthShader });
 
     this.#depthPipeline = device.createRenderPipeline({
+      label: 'depth pipeline',
       layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#depthGroupLayout,
         this.#rasterStaticGroupLayout,
@@ -508,6 +526,7 @@ export class PathTracerWGPU {
     let rasterModule = device.createShaderModule({ code: rasterShader });
 
     this.#rasterPipeline = device.createRenderPipeline({
+      label: 'raster pipeline',
       layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#rasterRenderGroupLayout,
         this.#rasterStaticGroupLayout,
@@ -536,6 +555,7 @@ export class PathTracerWGPU {
     let computeModule = device.createShaderModule({code: computeShader});
     
     this.#computePipeline = device.createComputePipeline({
+      label: 'compute pipeline',
       layout: device.createPipelineLayout({ bindGroupLayouts: [
         this.#computeRenderGroupLayout,
         this.#textureGroupLayout,
@@ -554,19 +574,22 @@ export class PathTracerWGPU {
       let shiftModule = device.createShaderModule({code: shiftShader});
       // Pipeline for screen space correction of motion before accumulation
       this.#shiftPipeline = device.createComputePipeline({
+        label: 'shift pipeline',
         layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#shiftGroupLayout, this.#postDynamicGroupLayout ] }),
         compute: { module: shiftModule, entryPoint: 'compute' }
       });
-
-
-      let averageShader = Network.fetchSync('shaders/pathtracer_average.wgsl');
+        
+      
+      let selectiveAverageShader = Network.fetchSync('shaders/pathtracer_selective_average.wgsl');
       // Shaders are written in a language called WGSL.
-      let averageModule = device.createShaderModule({code: averageShader});
+      let selectiveAverageModule = device.createShaderModule({code: selectiveAverageShader});
       // Pipeline for temporal accumulation
-      this.#averagePipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#averageGroupLayout, this.#postDynamicGroupLayout ] }),
-        compute: { module: averageModule, entryPoint: 'compute' }
+      this.#selectiveAveragePipeline = device.createComputePipeline({
+        label: 'selective average pipeline',
+        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#selectiveAverageGroupLayout, this.#postDynamicGroupLayout ] }),
+        compute: { module: selectiveAverageModule, entryPoint: 'compute' }
       });
+      
     }
 
     let canvasShader = Network.fetchSync('shaders/pathtracer_canvas.wgsl');
@@ -574,6 +597,7 @@ export class PathTracerWGPU {
     let canvasModule = device.createShaderModule({code: canvasShader});
     // Pipeline for rendering to canvas
     this.#canvasPipeline = device.createComputePipeline({
+      label: 'canvas pipeline',
       layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#canvasGroupLayout, this.#postDynamicGroupLayout ] }),
       compute: { module: canvasModule, entryPoint: 'compute' }
     });
@@ -600,11 +624,11 @@ export class PathTracerWGPU {
     // this.#renderFrame();
     this.#resizeEvent = window.addEventListener('resize', () => this.resize());
     // Begin frame cycle
-    requestAnimationFrame(() => this.#frameCycle());
+    requestAnimationFrame(() => this.#frameCycle(device));
   }
 
   // Internal render engine Functions
-  #frameCycle () {
+  #frameCycle (device) {
     // console.log(this.#halt);
     if (this.#halt) return;
     // this.#halt = true;
@@ -618,7 +642,7 @@ export class PathTracerWGPU {
       this.#engineState.renderQuality !== this.config.renderQuality
     ) {
       // Update Textures
-      requestAnimationFrame(() => this.#prepareEngine());
+      requestAnimationFrame(() => this.#prepareEngine(device));
       return;
     }
     // update Textures
@@ -629,7 +653,7 @@ export class PathTracerWGPU {
     // update light sources
     this.#updatePrimaryLightSources();
     
-    // Swap antialiasing programm if needed
+    // Swap antialiasing program if needed
     if (this.#engineState.antialiasing !== this.config.antialiasing) {
       this.#engineState.antialiasing = this.config.antialiasing;
       // Use internal antialiasing variable for actual state of antialiasing.
@@ -646,7 +670,8 @@ export class PathTracerWGPU {
     this.#renderFrame();
     // Update frame counter
     this.#engineState.intermediateFrames ++;
-    this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % this.config.temporalSamples;
+    this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % 2048;//this.config.temporalSamples;
+
     // Calculate Fps
     let timeDifference = timeStamp - this.#engineState.lastTimeStamp;
     if (timeDifference > 500) {
@@ -656,7 +681,7 @@ export class PathTracerWGPU {
     }
     // Request browser to render frame with hardware acceleration
     setTimeout(() => {
-      requestAnimationFrame(() => this.#frameCycle())
+      requestAnimationFrame(() => this.#frameCycle(device))
     }, 1000 / this.fpsLimit);
   }
 
@@ -698,11 +723,31 @@ export class PathTracerWGPU {
 
 
     if (this.config.temporal) {
-      let shiftGroupEntries = [this.#computeTarget, this.#shiftTarget].map((texture, i) => ({ binding: i, resource: texture.createView() }));
-      this.#shiftGroup = this.#device.createBindGroup({ label: 'bind group for motion correction pass', layout: this.#shiftGroupLayout, entries: shiftGroupEntries });
-
-      let averageGroupEntries = [this.#shiftTarget, this.#averageTarget].map((texture, i) => ({ binding: i, resource: texture.createView() }));
-      this.#averageGroup = this.#device.createBindGroup({ label: 'bind group accumulation pass', layout: this.#averageGroupLayout, entries: averageGroupEntries });
+      // Create shift group with array views
+      let shiftGroupEntries = [
+        { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: '2d-array', arrayLayerCount: 5 }) },
+        { binding: 1, resource: this.#shiftTarget.createView({ dimension: '2d-array', arrayLayerCount: 5 }) }
+      ];
+      
+      this.#shiftGroup = this.#device.createBindGroup({ 
+        label: 'bind group for motion correction pass', 
+        layout: this.#shiftGroupLayout, 
+        entries: shiftGroupEntries 
+      });
+      
+      // Create selective average group with array views
+      let selectiveAverageGroupEntries = [
+        { binding: 0, resource: this.#computeTarget.createView({ dimension: '2d-array', arrayLayerCount: 2 }) },
+        { binding: 1, resource: this.#shiftTarget.createView({ dimension: '2d-array', arrayLayerCount: 5 }) },
+        { binding: 2, resource: this.#accumulatedTarget.createView({ dimension: '2d-array', arrayLayerCount: 5 }) },
+        { binding: 3, resource: this.#averageTarget.createView({ dimension: '2d' }) }
+      ];
+      
+      this.#selectiveAverageGroup = this.#device.createBindGroup({ 
+        label: 'bind group accumulation pass', 
+        layout: this.#selectiveAverageGroupLayout, 
+        entries: selectiveAverageGroupEntries 
+      });
     }
 
     let canvasIn = this.config.temporal ? this.#averageTarget : this.#computeTarget;
@@ -738,6 +783,7 @@ export class PathTracerWGPU {
       this.camera.x, this.camera.y, this.camera.z, 0,
       // Ambient light
       this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2], 0,
+
       // Texture size
       this.scene.standardTextureSizes[0], this.scene.standardTextureSizes[1],
       // Render size
@@ -752,10 +798,12 @@ export class PathTracerWGPU {
       // render for filter or not
       this.config.filter,
 
+      // Tonemapping operator
+      (this.config.hdr ? 1 : 0),
       // render for temporal or not
       this.config.temporal,
       // Temporal target
-      targetLayer, 0, 0
+      targetLayer,
     ]);
     // Update uniform values on GPU
     this.#device.queue.writeBuffer(this.#uniformBuffer, 0, uniformValues);
@@ -843,7 +891,7 @@ export class PathTracerWGPU {
     
     // Execute temporal pass if activated
     if (this.config.temporal) {
-
+      
       let shiftEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
       shiftEncoder.setPipeline(this.#shiftPipeline);
@@ -852,16 +900,19 @@ export class PathTracerWGPU {
       shiftEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
       // End motion correction pass
       shiftEncoder.end();
-
-      let averageEncoder = commandEncoder.beginComputePass();
+      
+      let selectiveAverageEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
-      averageEncoder.setPipeline(this.#averagePipeline);
-      averageEncoder.setBindGroup(0, this.#averageGroup);
-      averageEncoder.setBindGroup(1, this.#postDynamicGroup);
-      averageEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
-      // End accumulation pass
-      averageEncoder.end();
+      selectiveAverageEncoder.setPipeline(this.#selectiveAveragePipeline);
+      selectiveAverageEncoder.setBindGroup(0, this.#selectiveAverageGroup);
+      selectiveAverageEncoder.setBindGroup(1, this.#postDynamicGroup);
+      selectiveAverageEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
+
+      selectiveAverageEncoder.end();
+      
     }
+
+
     
     let canvasEncoder = commandEncoder.beginComputePass();
     // Set the storage buffers and textures for compute pass

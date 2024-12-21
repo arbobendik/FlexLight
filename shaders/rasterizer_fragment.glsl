@@ -281,8 +281,8 @@ void main() {
         // Apply Reinhard tone mapping
         finalColor = finalColor / (finalColor + vec3(1.0f));
         // Gamma correction
-        float gamma = 0.8f;
-        finalColor = pow(4.0f * finalColor, vec3(1.0f / gamma)) / 4.0f * 1.3f;
+        // float gamma = 0.8f;
+        // finalColor = pow(4.0f * finalColor, vec3(1.0f / gamma)) / 4.0f * 1.3f;
     }
 
     renderColor = vec4(finalColor, 1.0f - (0.5 * material.tpo.x));
