@@ -661,8 +661,8 @@ export class PathTracerWGL2 {
             // Apply Reinhard tone mapping
             color = color / (color + vec3(1));
             // Gamma correction
-            float gamma = 0.8;
-            color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
+            // float gamma = 0.8;
+            // color = pow(4.0 * color, vec3(1.0 / gamma)) / 4.0 * 1.3;
             renderColor = vec4(color, centerW);
           } else {
             // Set color of object itself
