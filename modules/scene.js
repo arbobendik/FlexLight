@@ -253,10 +253,10 @@ export class Scene {
         // Push texture positions of triangles into triangle id array
         for (let i = 0; i < item.length; i ++) idBuffer[bufferPos ++] = texturePos ++;
         // Declare bounding volume of object
-        let v = item.vertices;
-        let curMinMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+        // let v = item.vertices;
+        let curMinMax = item.aabb;//[v[0], v[1], v[2], v[0], v[1], v[2]];
         // get min and max values of veritces of object
-        for (let i = 3; i < v.length; i += 3) {
+        /*for (let i = 3; i < v.length; i += 3) {
           curMinMax[0] = Math.min(curMinMax[0], v[i]);
           curMinMax[1] = Math.min(curMinMax[1], v[i + 1]);
           curMinMax[2] = Math.min(curMinMax[2], v[i + 2]);
@@ -264,6 +264,8 @@ export class Scene {
           curMinMax[4] = Math.max(curMinMax[4], v[i + 1]);
           curMinMax[5] = Math.max(curMinMax[5], v[i + 2]);
         }
+        */
+        // item.aabb = curMinMax;
         return curMinMax;
       }
     }
@@ -496,6 +498,8 @@ export class Transform {
   #rotationMatrix;
   #position;
   #scale = 1;
+  
+  #transformedNodes = new Set();
 
   static used = [];
   static count = 0;
@@ -558,7 +562,7 @@ export class Transform {
   move (x, y, z) {
     this.#position = [x, y, z];
   }
-
+  
   rotateAxis (normal, theta) {
     let n = normal;
     let sT = Math.sin(theta);
@@ -588,6 +592,14 @@ export class Transform {
 
   scale (s) {
     this.#scale = s;
+  }
+
+  addNode (n) {
+    this.#transformedNodes.add(n);
+  }
+
+  removeNode (n) {
+    this.#transformedNodes.delete(n);
   }
 
   static classConstructor = (function() {
@@ -643,14 +655,28 @@ export class Primitive {
       this.sceneBuffer.set(this.#tpo, i28 + 24);
     }
   }
+  
+  get aabb () {
+    let v = this.vertices;
+    let curMinMax = [v[0], v[1], v[2], v[0], v[1], v[2]];
+    // get min and max values of veritces of object
+    for (let i = 3; i < v.length; i += 3) {
+      curMinMax[0] = Math.min(curMinMax[0], v[i]);
+      curMinMax[1] = Math.min(curMinMax[1], v[i + 1]);
+      curMinMax[2] = Math.min(curMinMax[2], v[i + 2]);
+      curMinMax[3] = Math.max(curMinMax[3], v[i]);
+      curMinMax[4] = Math.max(curMinMax[4], v[i + 1]);
+      curMinMax[5] = Math.max(curMinMax[5], v[i + 2]);
+    }
+    return curMinMax;
+  }
     
   get vertices () { return this.#vertices };
   get normals () { return this.#normals };
   get normal () { return this.#normal };
 
   get transformNum () {
-    if (this.#transform === undefined) return 0;
-    else return this.#transform.number;
+    return this.#transform ? this.#transform.number : 0;
   }
   get transform () { return this.#transform };
   
@@ -682,6 +708,12 @@ export class Primitive {
   }
 
   set transform (t) {
+    if (this.#transform) this.#transform.deleteNode(this)
+    t.addNode(this);
+    this.setTransformRec(t);
+  }
+
+  setTransformRec = t => {
     this.#transform = t;
     this.#buildTextureArrays();
   }
@@ -765,17 +797,19 @@ export class Object3D {
   #transform;
 
   get transformNum () {
-    if (this.#transform) {
-      return this.#transform.number;
-    } else {
-      return 0;
-    }
+    return this.#transform ? this.#transform.number : 0;
   }
   get transform () { return this.#transform };
 
   set transform (t) {
+    if (this.#transform) this.#transform.deleteNode(this)
+    t.addNode(this);
+    this.setTransformRec(t);
+  }
+
+  setTransformRec = t => {
     this.#transform = t;
-    for (let i = 0; i < this.length; i++) this[i].transform = t;
+    for (let i = 0; i < this.length; i++) this[i].setTransformRec(t);
   }
 
   set textureNums (tn) {
