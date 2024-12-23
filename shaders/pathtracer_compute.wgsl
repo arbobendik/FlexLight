@@ -20,6 +20,7 @@ struct Light {
 
 struct Uniforms {
     view_matrix: mat3x3<f32>,
+    inv_view_matrix: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -99,7 +100,10 @@ fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val:
 }
 
 fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
+    // let temp_component: vec2<f32> = fract(vec2<f32>(uniforms.temporal_target * PHI, cos(uniforms.temporal_target) + PHI));
+    // return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * seed) * 43758.5453f) * 2.0f - 1.0f;
     return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI * 100.0f)) * 43758.5453f) * 2.0f - 1.0f;
+
 }
 
 fn moellerTrumbore(t: mat3x3<f32>, ray: Ray, l: f32) -> vec3<f32> {
@@ -482,7 +486,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
         // Generate pseudo random vector
         let fi: f32 = f32(i);
-        let random_vec: vec4<f32> = noise(clip_space.xy, fi + cos_sample_n);
+        let random_vec: vec4<f32> = noise(clip_space.xy, fi + cos_sample_n * PHI);
         let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
         let brdf: f32 = mix(1.0f, abs(dot(smooth_n, ray.unit_direction)), material.rme.y);
 

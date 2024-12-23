@@ -2,6 +2,7 @@ const POW32U: u32 = 4294967295u;
 
 struct Uniforms {
     view_matrix: mat3x3<f32>,
+    inv_view_matrix: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -42,38 +43,58 @@ fn compute(
     // for (var i: u32 = 0; i < depth; i++) {
     // Extract color value from old position
     let fine_color_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 0, 0);
-    let fine_color_low_variance_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 1, 0);
-    let coarse_color_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 2, 0);
+    let coarse_color_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 1, 0);
+    let fine_color_low_variance_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 2, 0);
     let coarse_color_low_variance_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 3, 0);
     // Extract 3d position value
-    let absolute_position: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
+    let fine_position_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
+    let coarse_position_acc: vec4<f32> = textureLoad(accumulated, screen_pos, 5, 0);
     // If absolute position is all zeros then there is nothing to do
-    if (
-        absolute_position.x == 0.0f &&
-        absolute_position.y == 0.0f &&
-        absolute_position.z == 0.0f &&
-        absolute_position.w == 0.0f
-    ) {
-        return;
-    }
+    
     // Map postion according to current camera positon and view matrix to clip space
-    let clip_space: vec3<f32> = uniforms.view_matrix * (absolute_position.xyz - uniforms.camera_position);
+    let clip_space_fine: vec3<f32> = uniforms.view_matrix * (fine_position_acc.xyz - uniforms.camera_position);
+    let clip_space_coarse: vec3<f32> = uniforms.view_matrix * (coarse_position_acc.xyz - uniforms.camera_position);
     // Project onto screen and shift origin to the corner
-    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
+    let screen_space_fine: vec2<f32> = (clip_space_fine.xy / clip_space_fine.z) * 0.5 + 0.5;
+    let screen_space_coarse: vec2<f32> = (clip_space_coarse.xy / clip_space_coarse.z) * 0.5 + 0.5;
     // Translate to texel value
-    let coord: vec2<u32> = vec2<u32>(
-        u32(uniforms.render_size.x * screen_space.x),
-        u32(uniforms.render_size.y * (1.0 - screen_space.y))
+    let coord_fine: vec2<u32> = vec2<u32>(
+        u32(uniforms.render_size.x * screen_space_fine.x),
+        u32(uniforms.render_size.y * (1.0 - screen_space_fine.y))
     );
+    let coord_coarse: vec2<u32> = vec2<u32>(
+        u32(uniforms.render_size.x * screen_space_coarse.x),
+        u32(uniforms.render_size.y * (1.0 - screen_space_coarse.y))
+    );
+    
 
     // let depth = length(absolute_position.xyz - uniforms.camera_position.xyz);
     // let color = 0.1 * current_color + 0.9 * accumulated_color;
     // Write color value to projected position in new texture and store depth in the 4'th variable
-    textureStore(shift_out, coord, 0, fine_color_acc);
-    textureStore(shift_out, coord, 1, fine_color_low_variance_acc);
-    textureStore(shift_out, coord, 2, coarse_color_acc);
-    textureStore(shift_out, coord, 3, coarse_color_low_variance_acc);
-    textureStore(shift_out, coord, 4, vec4<f32>(absolute_position.xyz, 1.0f));
+    if (
+        fine_position_acc.x != 0.0f ||
+        fine_position_acc.y != 0.0f ||
+        fine_position_acc.z != 0.0f ||
+        fine_position_acc.w != 0.0f
+    ) {
+        textureStore(shift_out, coord_fine, 0, fine_color_acc);
+        textureStore(shift_out, coord_fine, 2, fine_color_low_variance_acc);
+        textureStore(shift_out, coord_fine, 4, vec4<f32>(fine_position_acc.xyz, 0.0f));
+    }
+
+    if (
+        coarse_position_acc.x != 0.0f ||
+        coarse_position_acc.y != 0.0f ||
+        coarse_position_acc.z != 0.0f ||
+        coarse_position_acc.w != 0.0f
+    ) {
+        textureStore(shift_out, coord_coarse, 1, coarse_color_acc);
+        textureStore(shift_out, coord_coarse, 3, coarse_color_low_variance_acc);
+        textureStore(shift_out, coord_coarse, 5, vec4<f32>(coarse_position_acc.xyz, 0.0f));
+    }
+
+    // textureStore(shift_out, coord, 1, fine_color_low_variance_acc);
+    // textureStore(shift_out, coord, 3, coarse_color_low_variance_acc);
     //}
 
     // Clear textures we render to every frame

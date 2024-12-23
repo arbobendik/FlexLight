@@ -54,7 +54,7 @@ async function buildScene() {
 	// Set intensities
 	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
 	// Test many lightsources
-	for (let i = 8; i < 64; i++) {
+	for (let i = 8; i < 8; i++) {
 		scene.primaryLightSources[i] = [-300 + i * 10, 300, -300];
 		scene.primaryLightSources[i].intensity = 50;
 	}
@@ -82,7 +82,7 @@ async function buildScene() {
 		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
 		// animate light sources
 		scene.primaryLightSources[1] = [20*sin, 8, 20*cos];
-		scene.primaryLightSources[1].intensity = 10;
+		scene.primaryLightSources[1].intensity = 1000;
 		engine.renderer.updatePrimaryLightSources();
 		// move element
 		r[0].move(0.05*sin, 0, 0);
