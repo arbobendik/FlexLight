@@ -7,6 +7,7 @@ import { Scene, Transform, Primitive, Triangle, Plane, Object3D, Cuboid, Boundin
 import { PathTracerWGL2 } from './modules/pathtracerWGL2.js';
 import { PathTracerWGPU } from './modules/pathtracerWGPU.js';
 import { RasterizerWGL2 } from './modules/rasterizerWGL2.js';
+import { RasterizerWGPU } from './modules/rasterizerWGPU.js';
 import { WebIo } from './modules/io.js';
 import { UI } from './modules/ui.js';
 
@@ -119,7 +120,7 @@ class FlexLight {
         this.#renderer = new RasterizerWGL2(this.#canvas, this.#scene, this.#camera, this.#config);
         break;
       case 'rasterizerwebgpu':
-        this.#renderer = new PathTracerWGPU(this.#canvas, this.#scene, this.#camera, this.#config);
+        this.#renderer = new RasterizerWGPU(this.#canvas, this.#scene, this.#camera, this.#config);
         break;
       default:
         console.error('Renderer option', this.#idRenderer, 'on api', this.#api, 'doesn\'t exist.');
@@ -138,6 +139,16 @@ class FlexLight {
         console.error('Io option', this.#idIo, 'doesn\'t exist.');
     }
     this.#io.renderer = this.#renderer;
+  }
+
+  screenshot () {
+    this.#canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'screenshot.png';
+      a.click();
+    });
   }
 }
 

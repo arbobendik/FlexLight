@@ -16,12 +16,13 @@ export class TAA {
     #vao;
     #vertexBuffer;
     #gl;
-
-    #currentNum = 0;
+    #canvas;
+    frameIndex = 0;
     #randomVecs;
 
-    constructor (gl) {
+    constructor (gl, canvas) {
         this.#gl = gl;
+        this.#canvas = canvas;
         // Compile shaders and link them into program
         this.#program = GLLib.compile (gl, GLLib.postVertex, this.#shader);
         // Create post program buffers and uniforms
@@ -41,20 +42,21 @@ export class TAA {
         // Fill buffer with data for two verices
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), gl.DYNAMIC_DRAW);
-        this.buildTexture();
+        
+        this.createTexture();
 
         // Generate pseudo random vectors to prevent shaking.
         this.#randomVecs = this.genPseudoRandomVecsWith0Sum(FRAMES);
     }
 
-    buildTexture = () => {
+    createTexture = () => {
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.textureIn);
-        this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
+        this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#canvas.width, this.#canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
         GLLib.setTexParams(this.#gl);
         
         for (let i = 0; i < FRAMES; i++) {
             this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textures[i]);
-            this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
+            this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
             GLLib.setTexParams(this.#gl);
         }
     };  
@@ -79,13 +81,13 @@ export class TAA {
         this.#gl.drawArrays(this.#gl.TRIANGLES, 0, 6);
     }
 
-    jitter = (canvas) => {
+    jitter = () => {
         // Cycle through random vecs
-        this.#currentNum = (this.#currentNum + 1) % FRAMES;
+        this.frameIndex = (this.frameIndex + 1) % FRAMES;
         // Scaling factor
-        let scale = 0.3 / Math.min(canvas.width, canvas.height);
+        let scale = 0.3 / Math.min(this.#canvas.width, this.#canvas.height);
         // Return as easy to handle 2-dimensional vector
-        return { x: this.#randomVecs[this.#currentNum][0] * scale, y: this.#randomVecs[this.#currentNum][1] * scale};
+        return { x: this.#randomVecs[this.frameIndex][0] * scale, y: this.#randomVecs[this.frameIndex][1] * scale};
     }
 
     // Generate n d-dimensional pseudo random vectors that all add up to 0.

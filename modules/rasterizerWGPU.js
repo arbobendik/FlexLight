@@ -8,8 +8,8 @@ import { Transform } from "./scene.js";
 
 let rasterRenderFormats = ["r32sint", "rgba32float", "rg32float"];
 
-export class PathTracerWGPU extends Renderer {
-  type = "pathtracer";
+export class RasterizerWGPU extends Renderer {
+  type = "rasterizer";
   // Configurable runtime properties of the pathtracer (public attributes)
   config;
   // Performance metric
@@ -27,8 +27,6 @@ export class PathTracerWGPU extends Renderer {
   #depthPipeline
   #rasterPipeline;
   #computePipeline;
-  #shiftPipeline;
-  #temporalPipeline;
   #canvasPipeline;
 
   #renderPassDescriptor;
@@ -131,30 +129,6 @@ export class PathTracerWGPU extends Renderer {
       format: "rgba32float",
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
     });
-
-    if (this.config.temporal) {
-      // Init canvas render texture
-      this.#temporalIn = this.device.createTexture({
-        // dimension: "3d",
-        size: [width, height, this.config.temporal ? /*this.config.temporalSamples * 2*/ 2 : 1],
-        format: "rgba32float",
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
-      });
-      // Init temporal screen space correction render target
-      this.#shiftTarget = this.device.createTexture({
-        // dimension: "3d",
-        size: [width, height, 6],
-        format: "rgba32float",
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
-      });
-        
-      this.#accumulatedTarget = this.device.createTexture({
-        // dimension: "3d",
-        size: [width, height, 6],
-        format: "rgba32float",
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
-      });
-    }
 
     if (this.#AAObject) this.#AAObject.createTexture();
   }
@@ -320,26 +294,6 @@ export class PathTracerWGPU extends Renderer {
       ]
     });
 
-    if (this.config.temporal) {
-      this.#shiftGroupLayout = device.createBindGroupLayout({
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } }
-        ]
-      });
-      
-
-      this.#temporalGroupLayout = device.createBindGroupLayout({
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
-          { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d" } }
-        ]
-      });
-      
-    }
-
     this.#postDynamicGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // uniforms
@@ -442,30 +396,6 @@ export class PathTracerWGPU extends Renderer {
       }
     });
 
-    if (this.config.temporal) {
-      let shiftShader = Network.fetchSync("shaders/pathtracer_shift.wgsl");
-      // Shaders are written in a language called WGSL.
-      let shiftModule = device.createShaderModule({code: shiftShader});
-      // Pipeline for screen space correction of motion before accumulation
-      this.#shiftPipeline = device.createComputePipeline({
-        label: "shift pipeline",
-        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#shiftGroupLayout, this.#postDynamicGroupLayout ] }),
-        compute: { module: shiftModule, entryPoint: "compute" }
-      });
-        
-      
-      let selectiveAverageShader = Network.fetchSync("shaders/pathtracer_selective_average.wgsl");
-      // Shaders are written in a language called WGSL.
-      let selectiveAverageModule = device.createShaderModule({code: selectiveAverageShader});
-      // Pipeline for temporal accumulation
-      this.#temporalPipeline = device.createComputePipeline({
-        label: "selective average pipeline",
-        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#temporalGroupLayout, this.#postDynamicGroupLayout ] }),
-        compute: { module: selectiveAverageModule, entryPoint: "compute" }
-      });
-      
-    }
-
     let canvasShader = Network.fetchSync("shaders/pathtracer_canvas.wgsl");
     // Shaders are written in a language called WGSL.
     let canvasModule = device.createShaderModule({code: canvasShader});
@@ -489,7 +419,7 @@ export class PathTracerWGPU extends Renderer {
       }],
     };
     // Create uniform buffer for shader uniforms
-    this.#uniformBuffer = device.createBuffer({ size: 128 + 4 * 4 * 3, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniformBuffer = device.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Create uniform buffer for transforms in shader
     // Build / Rebuild scene graph for GPU into storage buffer
     this.updateScene(device);
@@ -529,6 +459,7 @@ export class PathTracerWGPU extends Renderer {
     
     // Swap antialiasing program if needed
     if (this.#engineState.antialiasing !== this.config.antialiasing) {
+      console.log("SET ANTIALIASING", this.config.antialiasing, this.#engineState.antialiasing);
       this.#engineState.antialiasing = this.config.antialiasing;
       // Use internal antialiasing variable for actual state of antialiasing.
       let val = this.config.antialiasing.toLowerCase();
@@ -566,10 +497,10 @@ export class PathTracerWGPU extends Renderer {
   }
 
   async #renderFrame () {
-    let jitter = { x: 0, y: 0 };
-    if (this.#AAObject && this.#antialiasing === "taa") jitter = this.#AAObject.jitter();;
+    let jitter = {x: 0, y: 0};
+    if (this.#antialiasing !== undefined && (this.#antialiasing.toLocaleLowerCase() === "taa")) jitter = this.#AAObject.jitter();;
     // Calculate projection matrix
-    let dir = { x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y };
+    let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
 
     let canvasTarget = this.#context.getCurrentTexture();
     // Assemble lists to fill bind groups
@@ -579,7 +510,7 @@ export class PathTracerWGPU extends Renderer {
 
     let computeTargetView =
       !this.config.temporal && !this.#AAObject ? this.#canvasIn.createView({ dimension: "2d-array", arrayLayerCount: 1 }) :
-      !this.config.temporal && this.#AAObject ? this.#AAObject.textureInView2dArray :
+      !this.config.temporal && this.#AAObject ? this.#AAObject.textureInView2d :
       this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 });
 
     let computeGroupEntries = [... this.#rasterRenderTextures].map((texture, i) => ({ binding: i + 1, resource: texture.createView() }));
@@ -614,8 +545,8 @@ export class PathTracerWGPU extends Renderer {
       let temporalTargetView = this.#AAObject ? this.#AAObject.textureInView : this.#canvasIn.createView({ dimension: "2d" });
       // Create shift group with array views
       let shiftGroupEntries = [
-        { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 6 }) },
-        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 6 }) }
+        { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) }
       ];
       
       this.#shiftGroup = this.device.createBindGroup({ 
@@ -627,8 +558,8 @@ export class PathTracerWGPU extends Renderer {
       // Create selective average group with array views
       let selectiveAverageGroupEntries = [
         { binding: 0, resource: this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
-        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 6 }) },
-        { binding: 2, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 6 }) },
+        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+        { binding: 2, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
         { binding: 3, resource: temporalTargetView }
       ];
       
@@ -661,9 +592,6 @@ export class PathTracerWGPU extends Renderer {
       [ - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov  ],
       [ - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)           ]
     ];
-
-    let invViewMatrix = Math.moorePenrose(viewMatrix);
-    // let invViewMatrix = viewMatrix;
     
     // console.log(this.#randomSeedNums[targetLayer]);
     let targetLayer = this.config.temporal ? this.#engineState.temporalFrame : 0;
@@ -673,10 +601,6 @@ export class PathTracerWGPU extends Renderer {
       viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0], 0,
       viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1], 0,
       viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2], 0,
-      // View matrix inverse
-      invViewMatrix[0][0], invViewMatrix[1][0], invViewMatrix[2][0], 0,
-      invViewMatrix[0][1], invViewMatrix[1][1], invViewMatrix[2][1], 0,
-      invViewMatrix[0][2], invViewMatrix[1][2], invViewMatrix[2][2], 0,
       // Camera
       this.camera.x, this.camera.y, this.camera.z, 0,
       // Ambient light
@@ -785,30 +709,6 @@ export class PathTracerWGPU extends Renderer {
     computeEncoder.dispatchWorkgroups(kernelClusterDims[0], kernelClusterDims[1]);
     // End compute pass
     computeEncoder.end();
-
-    
-    // Execute temporal pass if activated
-    if (this.config.temporal) {
-      
-      let shiftEncoder = commandEncoder.beginComputePass();
-      // Set the storage buffers and textures for compute pass
-      shiftEncoder.setPipeline(this.#shiftPipeline);
-      shiftEncoder.setBindGroup(0, this.#shiftGroup);
-      shiftEncoder.setBindGroup(1, this.#postDynamicGroup);
-      shiftEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
-      // End motion correction pass
-      shiftEncoder.end();
-      
-      let selectiveAverageEncoder = commandEncoder.beginComputePass();
-      // Set the storage buffers and textures for compute pass
-      selectiveAverageEncoder.setPipeline(this.#temporalPipeline);
-      selectiveAverageEncoder.setBindGroup(0, this.#temporalGroup);
-      selectiveAverageEncoder.setBindGroup(1, this.#postDynamicGroup);
-      selectiveAverageEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
-
-      selectiveAverageEncoder.end();
-      
-    }
 
     if (this.#AAObject) {
       this.#AAObject.renderFrame(commandEncoder);

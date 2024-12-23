@@ -20,6 +20,7 @@ function load() {
     const parameterForm = document.getElementById('parameterForm');
     const selectors = ['antialiasing'];
     const tickBoxes = ['filter', 'temporal', 'hdr'];
+    const buttons = ['screenshot'];
     const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy'];
 
     parameterForm.children['pathtracing'].checked = (localStorage.getItem('pathtracing') ?? 'true') === 'true';
@@ -36,6 +37,12 @@ function load() {
     tickBoxes.forEach((item) => {
       config[item] = (localStorage.getItem(item) ?? 'true') === 'true';
       parameterForm.children[item].checked = config[item];
+    });
+
+    buttons.forEach((item) => {
+      document.getElementById(item).addEventListener('click', () => {
+        engine.screenshot();
+      });
     });
 
     sliders.forEach((item) => {

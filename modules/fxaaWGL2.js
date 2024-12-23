@@ -135,14 +135,16 @@ export class FXAA {
       out_color = color / pixel_count;
     }
     `;
+    #canvas;
     #program;
     #tex;
     #vao;
     #vertexBuffer;
     #gl;
 
-    constructor (gl) {
+    constructor (gl, canvas) {
         this.#gl = gl;
+        this.#canvas = canvas;
         // Compile shaders and link them into program
         this.#program = GLLib.compile (gl, GLLib.postVertex, this.#shader);
 
@@ -162,12 +164,12 @@ export class FXAA {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), gl.DYNAMIC_DRAW);
 
-        this.buildTexture();
+        this.createTexture();
     }
 
-    buildTexture = () => {
+    createTexture = () => {
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.textureIn);
-        this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
+        this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#canvas.width, this.#canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
         GLLib.setTexParams(this.#gl);
     };
 
