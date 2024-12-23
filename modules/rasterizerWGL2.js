@@ -1,14 +1,13 @@
-'use strict';
+"use strict";
 
-import { Network } from './network.js';
-import { GLLib } from './gllib.js';
-import { FXAA } from './fxaa.js';
-import { TAA } from './taa.js';
-import { Transform } from './scene.js';
-import { Arrays } from './arrays.js';
+import { Network } from "./network.js";
+import { GLLib } from "./gllib.js";
+import { FXAA } from "./fxaaWGL2.js";
+import { TAA } from "./taaWGL2.js";
+import { Transform } from "./scene.js";
 
 export class RasterizerWGL2 {
-  type = 'rasterizer';
+  type = "rasterizer";
   // Configurable runtime properties (public attributes)
   config;
   // Performance metric
@@ -44,7 +43,7 @@ export class RasterizerWGL2 {
     this.camera = camera;
     this.config = config;
     this.scene = scene;
-    this.#gl = canvas.getContext('webgl2');
+    this.#gl = canvas.getContext("webgl2");
   }
 
   halt = () => {
@@ -71,8 +70,8 @@ export class RasterizerWGL2 {
 
 		const [width, height] = this.scene.standardTextureSizes;
 		const textureWidth = Math.floor(2048 / width);
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d');
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
 
 		canvas.width = Math.min(width * list.length, 2048);
     canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
@@ -84,7 +83,7 @@ export class RasterizerWGL2 {
 	}
 
   async #updateTextureAtlas () {
-    // Don't build texture atlas if there are no changes.
+    // Don"t build texture atlas if there are no changes.
     if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
     this.#textureList = this.scene.textures;
 
@@ -96,7 +95,7 @@ export class RasterizerWGL2 {
   }
 
   async #updatePbrAtlas () {
-    // Don't build texture atlas if there are no changes.
+    // Don"t build texture atlas if there are no changes.
     if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
     this.#pbrList = this.scene.pbrTextures;
 
@@ -108,7 +107,7 @@ export class RasterizerWGL2 {
   }
 
   async #updateTranslucencyAtlas () {
-    // Don't build texture atlas if there are no changes.
+    // Don"t build texture atlas if there are no changes.
     if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
     this.#translucencyList = this.scene.translucencyTextures;
 
@@ -121,7 +120,7 @@ export class RasterizerWGL2 {
 
   // Functions to update vertex and light source data textures
   updatePrimaryLightSources () {
-		// Don't update light sources if there are or no changes
+		// Don"t update light sources if there are or no changes
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
@@ -217,13 +216,13 @@ export class RasterizerWGL2 {
         // Use internal antialiasing variable for actual state of antialiasing.
         let val = this.config.antialiasing.toLowerCase();
         switch (val) {
-          case 'fxaa':
+          case "fxaa":
             this.#antialiasing = val
-            this.#AAObject = new FXAA(this.#gl);
+            this.#AAObject = new FXAA(this.#gl, this.#canvas);
             break;
-          case 'taa':
+          case "taa":
             this.#antialiasing = val
-            this.#AAObject = new TAA(this.#gl);
+            this.#AAObject = new TAA(this.#gl, this.#canvas);
             break;
           default:
             this.#antialiasing = undefined
@@ -250,7 +249,7 @@ export class RasterizerWGL2 {
 
     let rasterizingPass = () => {
       let jitter = {x: 0, y: 0};
-      if (this.#antialiasing !== undefined && (this.#antialiasing.toLocaleLowerCase() === 'taa')) jitter = this.#AAObject.jitter(this.#canvas);
+      if (this.#antialiasing !== undefined && (this.#antialiasing.toLocaleLowerCase() === "taa")) jitter = this.#AAObject.jitter();
       // Calculate projection matrix
       let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
 
@@ -343,29 +342,29 @@ export class RasterizerWGL2 {
       this.#pbrList = [];
       this.#translucencyList = [];
       // Compile shaders and link them into Program global
-      let vertexShader = Network.fetchSync('shaders/rasterizer_vertex.glsl');
-      let fragmentShader = Network.fetchSync('shaders/rasterizer_fragment.glsl');
+      let vertexShader = Network.fetchSync("shaders/rasterizer_vertex.glsl");
+      let fragmentShader = Network.fetchSync("shaders/rasterizer_fragment.glsl");
       // Calculate max possible transforms
       const MAX_TRANSFORMS = Math.floor((Math.min(this.#gl.getParameter(this.#gl.MAX_VERTEX_UNIFORM_VECTORS), this.#gl.getParameter(this.#gl.MAX_FRAGMENT_UNIFORM_VECTORS)) - 16) * 0.25);
-      console.log('MAX_TRANSFORMS evaluated to', MAX_TRANSFORMS);
-      vertexShader = GLLib.addCompileTimeConstant(vertexShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
-      fragmentShader = GLLib.addCompileTimeConstant(fragmentShader, 'MAX_TRANSFORMS', MAX_TRANSFORMS);
+      console.log("MAX_TRANSFORMS evaluated to", MAX_TRANSFORMS);
+      vertexShader = GLLib.addCompileTimeConstant(vertexShader, "MAX_TRANSFORMS", MAX_TRANSFORMS);
+      fragmentShader = GLLib.addCompileTimeConstant(fragmentShader, "MAX_TRANSFORMS", MAX_TRANSFORMS);
 
       Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
       this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
-      CameraPosition = this.#gl.getUniformLocation(Program, 'cameraPosition');
-      AmbientLocation = this.#gl.getUniformLocation(Program, 'ambient');
-      GeometryTex = this.#gl.getUniformLocation(Program, 'geometryTex');
-      SceneTex = this.#gl.getUniformLocation(Program, 'sceneTex');
-      TextureDims = this.#gl.getUniformLocation(Program, 'textureDims');
-      HdrLocation = this.#gl.getUniformLocation(Program, 'hdr');
+      CameraPosition = this.#gl.getUniformLocation(Program, "cameraPosition");
+      AmbientLocation = this.#gl.getUniformLocation(Program, "ambient");
+      GeometryTex = this.#gl.getUniformLocation(Program, "geometryTex");
+      SceneTex = this.#gl.getUniformLocation(Program, "sceneTex");
+      TextureDims = this.#gl.getUniformLocation(Program, "textureDims");
+      HdrLocation = this.#gl.getUniformLocation(Program, "hdr");
       
-      ViewMatrixLocation = this.#gl.getUniformLocation(Program, 'viewMatrix');
+      ViewMatrixLocation = this.#gl.getUniformLocation(Program, "viewMatrix");
 
       // Create UBO objects
-      let BlockIndex = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
+      let BlockIndex = this.#gl.getUniformBlockIndex(Program, "transformMatrix");
       // Get the size of the Uniform Block in bytes
       let BlockSize = this.#gl.getActiveUniformBlockParameter(Program, BlockIndex, this.#gl.UNIFORM_BLOCK_DATA_SIZE);
       
@@ -375,20 +374,20 @@ export class RasterizerWGL2 {
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
 
-      UboVariableIndices = this.#gl.getUniformIndices( Program, ['rotation', 'shift']);
+      UboVariableIndices = this.#gl.getUniformIndices( Program, ["rotation", "shift"]);
       UboVariableOffsets = this.#gl.getActiveUniforms(
         Program,
         UboVariableIndices,
         this.#gl.UNIFORM_OFFSET
       );
 
-      let index = this.#gl.getUniformBlockIndex(Program, 'transformMatrix');
+      let index = this.#gl.getUniformBlockIndex(Program, "transformMatrix");
       this.#gl.uniformBlockBinding(Program, index, 0);
 
-      LightTex = this.#gl.getUniformLocation(Program, 'lightTex');
-      PbrTex = this.#gl.getUniformLocation(Program, 'pbrTex');
-      TranslucencyTex = this.#gl.getUniformLocation(Program, 'translucencyTex');
-      Tex = this.#gl.getUniformLocation(Program, 'tex');
+      LightTex = this.#gl.getUniformLocation(Program, "lightTex");
+      PbrTex = this.#gl.getUniformLocation(Program, "pbrTex");
+      TranslucencyTex = this.#gl.getUniformLocation(Program, "translucencyTex");
+      Tex = this.#gl.getUniformLocation(Program, "tex");
       // Enable depth buffer and therefore overlapping vertices
       this.#gl.enable(this.#gl.BLEND);
       this.#gl.enable(this.#gl.DEPTH_TEST);
@@ -437,12 +436,12 @@ export class RasterizerWGL2 {
       // Rebuild textures with every resize
       renderTextureBuilder();
       // rt.updatePrimaryLightSources();
-      if (this.#AAObject !== undefined) this.#AAObject.buildTexture();
+      if (this.#AAObject !== undefined) this.#AAObject.createTexture();
     }
     // Init canvas parameters and textures with resize
     resize();
     // Handle canvas resize
-    window.addEventListener('resize', resize);
+    window.addEventListener("resize", resize);
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle
