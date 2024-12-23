@@ -19,6 +19,8 @@ async function buildScene() {
 	[camera.x, camera.y, camera.z] = [-10, 14, -10];
 	[camera.fx, camera.fy] = [- .9, .45];
 
+	// camera.fov = 1;
+
 	scene.primaryLightSources = [[50, 70, 50]];
 	scene.primaryLightSources[0].intensity = 50000;
 	scene.primaryLightSources[0].variation = 10;
@@ -32,39 +34,45 @@ async function buildScene() {
 	scene.queue.push(plane);
 
 	let dragonTransform = engine.scene.Transform();
-	dragonTransform.move(15, 0, 15);
-	dragonTransform.scale(0.5);
+	await dragonTransform.move(15, 0, 15);
+	await dragonTransform.scale(0.5);
 	var obj = await scene.importObj('objects/dragon_lp.obj');
-	// obj.move(15, 0, 15);
-	obj.transform = dragonTransform;
-	obj.roughness = 0;
-	obj.metallicity = 1;
-	obj.translucency = 1;
-	obj.ior = 1.5;
-	obj.color = [255, 100, 100];
-	// obj.staticPermanent = true;
-	scene.queue.push(obj);
+
+	{
+		// obj.move(15, 0, 15);
+		obj.transform = dragonTransform;
+		obj.roughness = 0;
+		obj.metallicity = 1;
+		obj.translucency = 1;
+		obj.ior = 1.5;
+		obj.color = [255, 100, 100];
+		// obj.staticPermanent = true;
+	}
 	
 	let monkeTransform = engine.scene.Transform();
-	monkeTransform.move(5, 1, 12);
-	monkeTransform.scale(2);
+	await monkeTransform.move(5, 1, 12);
+	await monkeTransform.scale(2);
 
-	var monke = await scene.importObj('objects/monke_smooth.obj');
-	monke.transform = monkeTransform;
-	monke.roughness = 0.1;
-	monke.metallicity = 1;
-	monke.color = [255, 200, 100]
-	scene.queue.push(monke);
+	{
+	
+		var monke = await scene.importObj('objects/monke_smooth.obj');
+		monke.transform = monkeTransform;
+		monke.roughness = 0.1;
+		monke.metallicity = 1;
+		monke.color = [255, 200, 100];
+	}
 
-	var sphere = await scene.importObj('objects/sphere.obj');
-	sphere.scale(4);
-	await sphere.move(15, 3, 0);
-	sphere.metallicity = 1;
-	sphere.roughness = 0;
-	sphere.translucency = 1;
-	sphere.ior = 1.5;
-	scene.queue.push(sphere);
+	{
+		var sphere = await scene.importObj('objects/sphere.obj');
+		await sphere.scale(4);
+		await sphere.move(15, 3, 0);
+		sphere.metallicity = 1;
+		sphere.roughness = 0;
+		sphere.translucency = 1;
+		sphere.ior = 1.5;
+	}
 
+	scene.queue.push(obj, monke, sphere);
 	/*
 	var mirror = scene.Bounding([scene.Plane([-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0])]);
 	mirror.scale(15);
@@ -88,7 +96,8 @@ async function buildScene() {
 	scene.queue.push(sphere2);
 	*/
 
-	scene.generateBVH();
+	await scene.generateBVH();
+	await engine.renderer.updateScene();
 
 	console.log(scene.queue);
 
