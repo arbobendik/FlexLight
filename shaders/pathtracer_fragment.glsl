@@ -52,7 +52,7 @@ layout (std140) uniform transformMatrix
 uniform int samples;
 uniform int maxReflections;
 uniform float minImportancy;
-uniform int useFilter;
+uniform int hdr;
 uniform int isTemporal;
 
 // Get global illumination color, intensity
@@ -74,17 +74,14 @@ uniform sampler2D lightTex;
 
 layout(location = 0) out vec4 renderColor;
 layout(location = 1) out vec4 renderColorIp;
-layout(location = 2) out vec4 renderOriginalColor;
-layout(location = 3) out vec4 renderId;
-layout(location = 4) out vec4 renderOriginalId;
-layout(location = 5) out vec4 renderLocationId;
+layout(location = 2) out vec4 renderId;
 
 const Hit NO_HIT = Hit(vec3(0.0), 0, -1);
 
 // Prevent blur over shadow border or over (close to) perfect reflections
 float firstRayLength = 1.0f;
 // Accumulate color of mirror reflections
-float glassFilter = 0.0f;
+// float glassFilter = 0.0f;
 float originalRMEx = 0.0f;
 float originalTPOx = 0.0f;
 vec3 originalColor;
@@ -568,12 +565,12 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
             vec4 renderIdUpdate = pow(2.0f, - fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
 
             renderId += renderIdUpdate;
-            if (i == 0) renderOriginalId += renderIdUpdate;
+            // if (i == 0) renderOriginalId += renderIdUpdate;
             // Test if filter is already necessary
             dontFilter = (material.rme.x < 0.01f && isSolid) || !isSolid;
 
             if(isSolid && material.tpo.x > 0.01f) {
-                glassFilter += 1.0f;
+                // glassFilter += 1.0f;
                 dontFilter = false;
             }
             
@@ -623,31 +620,28 @@ void main() {
     float invSamples = 1.0f / float(samples);
     finalColor *= invSamples;
 
-    if(useFilter == 1) {
+    /*if(useFilter == 1) {
         // Render all relevant information to 4 textures for the post processing shader
         renderColor = vec4(fract(finalColor), 1.0f);
         // 16 bit HDR for improved filtering
         renderColorIp = vec4(floor(finalColor) * INV_255, glassFilter);
     } else {
-        finalColor *= originalColor;
-        if(isTemporal == 1) {
-            renderColor = vec4(fract(finalColor), 1.0f);
-            // 16 bit HDR for improved filtering
-            renderColorIp = vec4(floor(finalColor) * INV_255, 1.0f);
-        } else {
-            renderColor = vec4(finalColor, 1.0f);
-        }
+    */
+    finalColor *= originalColor;
+    if (isTemporal == 1) {
+        renderColor = vec4(fract(finalColor), 1.0f);
+        // 16 bit HDR for improved filtering
+        renderColorIp = vec4(floor(finalColor) * INV_255, 1.0f);
+    } else {
+        renderColor = vec4(finalColor, 1.0f);
     }
-
-    renderOriginalColor = vec4(originalColor, min(originalRMEx, firstRayLength) + INV_255);
+    //}
+    /*
+    
+    */
     // render normal (last in transparency)
     renderId += vec4(0.0f, 0.0f, 0.0f, INV_255);
-    // render material (last in transparency)
-    renderOriginalId = vec4(0.0f, 0.0f, 0.0f, originalTPOx + INV_255);
-    // render modulus of absolute position (last in transparency)
-    float div = 2.0f * distance(relativePosition, camera);
-    renderLocationId = vec4(mod(relativePosition, div) / div, INV_255);
-
+    // render modulus of absolute position (last in transparency)´
     // renderColor = vec4(smoothNormal, 1.0);
     // renderColorIp = vec4(0.0);
 }

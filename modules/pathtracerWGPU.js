@@ -582,6 +582,7 @@ export class PathTracerWGPU extends Renderer {
       !this.config.temporal && this.#AAObject ? this.#AAObject.textureInView2dArray :
       this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 });
 
+    
     let computeGroupEntries = [... this.#rasterRenderTextures].map((texture, i) => ({ binding: i + 1, resource: texture.createView() }));
     computeGroupEntries.unshift({ binding: 0, resource: computeTargetView });
 

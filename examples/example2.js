@@ -42,7 +42,7 @@ async function buildScene() {
 	// Package cube and cuboids together in a shared bounding volume.
 	let objects = [r, cube];
 
-	scene.primaryLightSources = new Array(64);
+	scene.primaryLightSources = new Array(8);
 	scene.primaryLightSources[0] = [0, 10, 0];
 	scene.primaryLightSources[0].intensity = 50;
 	scene.primaryLightSources[2] = [10, 30, 10];

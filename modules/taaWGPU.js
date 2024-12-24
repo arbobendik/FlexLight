@@ -5,7 +5,7 @@ import { Network } from './network.js';
 const FRAMES = 4;
 
 export class TAA {
-    #shader = Network.fetchSync('shaders/pathtracer_taa.wgsl');
+    #shader = Network.fetchSync('shaders/taa.wgsl');
     #pipeline;
     #texture;
     #device;

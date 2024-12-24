@@ -9,7 +9,7 @@ const FRAMES = 9;
 export class TAA {
     textureIn;
 
-    #shader = Network.fetchSync('shaders/pathtracer_taa.glsl');
+    #shader = Network.fetchSync('shaders/taa.glsl');
     #program;
     #tex = new Array (FRAMES);
     #textures = new Array (FRAMES);
@@ -56,7 +56,7 @@ export class TAA {
         
         for (let i = 0; i < FRAMES; i++) {
             this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#textures[i]);
-            this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, canvas.width, canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
+            this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#canvas.width, this.#canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
             GLLib.setTexParams(this.#gl);
         }
     };  

@@ -3,7 +3,7 @@
 import { Network } from "./network.js";
 
 export class FXAA {
-    #shader = Network.fetchSync("shaders/pathtracer_fxaa.wgsl");
+    #shader = Network.fetchSync("shaders/fxaa.wgsl");
     #pipeline;
     #texture;
     #device;
@@ -37,7 +37,7 @@ export class FXAA {
         return this.#texture.createView({ dimension: "2d" });
     }
 
-    get textureInView2d() {
+    get textureInView2dArray () {
         return this.#texture.createView({ dimension: "2d-array", arrayLayerCount: 1 });
     }
 
@@ -48,7 +48,7 @@ export class FXAA {
         } catch {}
         // Create texture for FXAA input
         this.#texture = this.#device.createTexture({
-            size: [this.#canvas.width, this.#canvas.height],
+            size: [this.#canvas.width, this.#canvas.height, 1],
             format: "rgba32float",
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | 
                    GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
