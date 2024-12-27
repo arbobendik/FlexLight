@@ -34,7 +34,7 @@ export class FXAA {
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
         // Fill buffer with data for two verices
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0]), gl.DYNAMIC_DRAW);
 
         this.createTexture();
     }

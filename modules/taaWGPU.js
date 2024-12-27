@@ -79,6 +79,16 @@ export class TAA {
     };
 
     renderFrame = async (commandEncoder) => {
+        // Cycle through random vecs
+        this.frameIndex = (this.frameIndex + 1) % FRAMES;
+        const taaParams = new Float32Array([
+            this.frameIndex,
+            FRAMES,
+            this.#randomVecs[this.frameIndex][0],
+            this.#randomVecs[this.frameIndex][1]
+        ]);
+
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, taaParams);
         // Rotate textures
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(this.#pipeline);
@@ -94,19 +104,11 @@ export class TAA {
     // Jitter and genPseudoRandomVecsWith0Sum methods remain the same
     jitter = () => {
         // Cycle through random vecs
-        this.frameIndex = (this.frameIndex + 1) % FRAMES;
-        const taaParams = new Float32Array([
-            this.frameIndex,
-            FRAMES,
-            this.#randomVecs[this.frameIndex][0],
-            this.#randomVecs[this.frameIndex][1]
-        ]);
-
-        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, taaParams);
+        let frameIndex = (this.frameIndex + 1) % FRAMES;
         // Scaling factor
         let scale = 0.3 / Math.min(this.#canvas.width, this.#canvas.height);
         // Return as easy to handle 2-dimensional vector
-        return { x: this.#randomVecs[this.frameIndex][0] * scale, y: this.#randomVecs[this.frameIndex][1] * scale};
+        return { x: this.#randomVecs[frameIndex][0] * scale, y: this.#randomVecs[frameIndex][1] * scale };
     }
 
     // Generate n d-dimensional pseudo random vectors that all add up to 0.

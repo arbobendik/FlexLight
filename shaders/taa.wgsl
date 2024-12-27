@@ -27,40 +27,33 @@ fn compute(
     
     for (var i = 0; i < 3; i++) {
         for (var j = 0; j < 3; j++) {
-            let offset = vec2<i32>(i - 1, j - 1);
-            let sample_pos = vec2<i32>(screen_pos) + offset;
             // Ensure we don't sample outside texture bounds
-            let neighbor = textureLoad(input_texture, vec2<u32>(sample_pos), u32(uniforms.frame_index), 0).xyz;
-            min_rgb = min(min_rgb, neighbor);
-            max_rgb = max(max_rgb, neighbor);
+            let p = textureLoad(input_texture, vec2<i32>(screen_pos) + vec2<i32>(i - 1, j - 1), u32(uniforms.frame_index), 0).xyz;
+            min_rgb = min(min_rgb, p);
+            max_rgb = max(max_rgb, p);
         }
     }
 
     // Accumulate colors from history frames (1-8)
-    var final_color = textureLoad(input_texture, screen_pos, u32(uniforms.frame_index), 0).xyz;
+    var final_color = vec3<f32>(0.0);
     
-    var counter = 1;
     // Process first history frames
     for (var i = 0; i < i32(uniforms.frames); i++) {
-        if (i == i32(uniforms.frame_index)) {
-            continue;
-        }
-        
         let history_color = textureLoad(input_texture, screen_pos, u32(i), 0).xyz;
-        //final_color += min(max(history_color, min_rgb), max_rgb);
-        //counter += 1;
+        final_color += min(max(history_color, min_rgb), max_rgb);
 
-        
+        /*
         if (all(min(min_rgb, history_color) == min_rgb) && all(max(max_rgb, history_color) == max_rgb)) {
             counter += 1;
             final_color += history_color;
         }
+        */
         
         
     }
     
     // Average the accumulated colors (9 samples total - current + 8 history frames)
-    final_color /= f32(counter);
+    final_color /= f32(uniforms.frames);
     
     // Write final color to output
     textureStore(output_texture, screen_pos, vec4<f32>(final_color, 1.0));

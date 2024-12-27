@@ -41,7 +41,7 @@ export class TAA {
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
         // Fill buffer with data for two verices
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0,0,1,0,0,1,1,1,0,1,1,0]), gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from([0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0]), gl.DYNAMIC_DRAW);
         
         this.createTexture();
 
@@ -62,6 +62,8 @@ export class TAA {
     };  
     
     renderFrame = () => {
+        // Cycle through random vecs
+        this.frameIndex = (this.frameIndex + 1) % FRAMES;
         // Rotate textures, delete last, add new
         this.#textures.unshift(this.textureIn);
         this.textureIn = this.#textures.pop();
@@ -83,11 +85,11 @@ export class TAA {
 
     jitter = () => {
         // Cycle through random vecs
-        this.frameIndex = (this.frameIndex + 1) % FRAMES;
+        let frameIndex = (this.frameIndex + 1) % FRAMES;
         // Scaling factor
         let scale = 0.3 / Math.min(this.#canvas.width, this.#canvas.height);
         // Return as easy to handle 2-dimensional vector
-        return { x: this.#randomVecs[this.frameIndex][0] * scale, y: this.#randomVecs[this.frameIndex][1] * scale};
+        return { x: this.#randomVecs[frameIndex][0] * scale, y: this.#randomVecs[frameIndex][1] * scale};
     }
 
     // Generate n d-dimensional pseudo random vectors that all add up to 0.

@@ -34,7 +34,6 @@ void main () {
     
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            if (length(vec2(i - 1, j - 1)) > 2.0) continue;
             vec4 p = texelFetch(cache0, texel + ivec2(i - 1, j - 1), 0);
             minRGB = min(minRGB, p);
             maxRGB = max(maxRGB, p);

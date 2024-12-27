@@ -272,7 +272,7 @@ export class PathTracerWGL2 {
       renderFrame(this.#engineState);
       // Update frame counter
       this.#engineState.intermediateFrames ++;
-      this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % this.config.temporalSamples;
+      this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % 2048;//this.config.temporalSamples;
       // Calculate Fps
 			let timeDifference = timeStamp - this.#engineState.lastTimeStamp;
       if (timeDifference > 500) {
@@ -288,7 +288,7 @@ export class PathTracerWGL2 {
 
     let pathtracingPass = () => {
 
-      let jitter = {x: 0, y: 0};
+      let jitter = { x: 0, y: 0 };
       if (this.#AAObject && this.#antialiasing === "taa") jitter = this.#AAObject.jitter();
       // Calculate projection matrix
       let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};

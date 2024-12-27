@@ -20,7 +20,7 @@ struct Light {
 
 struct Uniforms {
     view_matrix: mat3x3<f32>,
-    inv_view_matrix: mat3x3<f32>,
+    view_matrix_jitter: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -102,7 +102,7 @@ fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val:
 fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
     // let temp_component: vec2<f32> = fract(vec2<f32>(uniforms.temporal_target * PHI, cos(uniforms.temporal_target) + PHI));
     // return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * seed) * 43758.5453f) * 2.0f - 1.0f;
-    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI * 100.0f)) * 43758.5453f) * 2.0f - 1.0f;
+    return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 
 }
 
@@ -486,7 +486,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
         // Generate pseudo random vector
         let fi: f32 = f32(i);
-        let random_vec: vec4<f32> = noise(clip_space.xy, fi + cos_sample_n * PHI);
+        let random_vec: vec4<f32> = noise(clip_space.xy * length(ray.origin - last_hit_point), fi + cos_sample_n * PHI);
         let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
         let brdf: f32 = mix(1.0f, abs(dot(smooth_n, ray.unit_direction)), material.rme.y);
 
@@ -569,7 +569,6 @@ fn compute(
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;//local_invocation_id.xy + (workgroup_id.xy * 16u);
     // Get based clip space coordinates (with 0.0 at upper left corner)
-    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     // Load attributes from fragment shader out ofad(texture_triangle_id, screen_pos).x;
     let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos, 0).x;
 
@@ -579,7 +578,7 @@ fn compute(
         // And overwrite position with 0 0 0 0
         if (uniforms.is_temporal == 1.0f) {
             // Amount of temporal passes
-            let depth: u32 = textureNumLayers(compute_out) / 2;
+            // let depth: u32 = textureNumLayers(compute_out) / 2;
             // Store position in target
             textureStore(compute_out, screen_pos, 1, vec4<f32>(0.0f));
         }
@@ -588,6 +587,8 @@ fn compute(
 
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
+
+    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
