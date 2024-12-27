@@ -118,6 +118,7 @@ vec3 fetchTexVal(sampler2D atlas, vec2 uv, float texNum, vec3 defaultVal) {
 
 vec4 noise(vec2 n, float seed) {
     return fract(sin(dot(n.xy, vec2(12.9898f, 78.233f)) + vec4(53.0f, 59.0f, 61.0f, 67.0f) * (seed + randomSeed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
+    // fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 }
 
 vec3 moellerTrumbore(mat3 t, Ray ray, float l) {
@@ -529,7 +530,7 @@ vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces
         smoothNormal *= - signDir;
 
         // Generate pseudo random vector
-        vec4 randomVec = noise(clipSpace.xy / clipSpace.z, fi + cosSampleN);
+        vec4 randomVec = noise(clipSpace.xy * length(ray.origin - lastHitPoint), fi + cosSampleN * PHI);
         vec3 randomSpheareVec = normalize(smoothNormal + normalize(randomVec.xyz));
         float BRDF = mix(1.0f, abs(dot(smoothNormal, ray.unitDirection)), material.rme.y);
 
@@ -628,6 +629,16 @@ void main() {
     } else {
     */
     finalColor *= originalColor;
+
+    if (isTemporal == 0 && hdr == 1) {
+        // Apply Reinhard tone mapping
+        finalColor = finalColor / (finalColor + vec3(1.0f));
+        // Gamma correction
+        // float gamma = 0.8f;
+        // finalColor = pow(4.0f * finalColor, vec3(1.0f / gamma)) / 4.0f * 1.3f;
+    }
+
+
     if (isTemporal == 1) {
         renderColor = vec4(fract(finalColor), 1.0f);
         // 16 bit HDR for improved filtering

@@ -15,7 +15,7 @@ struct Transform {
 
 struct Uniforms {
     view_matrix: mat3x3<f32>,
-    inv_view_matrix: mat3x3<f32>,
+    view_matrix_jitter: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -85,9 +85,9 @@ fn vertex(
             out.uv = vec2<f32>(0.0f, 0.0f);
         }
     }
-    out.clip_space = uniforms.view_matrix * (out.absolute_position - uniforms.camera_position);
+    out.clip_space = uniforms.view_matrix_jitter * (out.absolute_position - uniforms.camera_position);
     // Set triangle position in clip space
-    out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
+    out.pos = vec4<f32>(out.clip_space.xy, 0.0f, out.clip_space.z);
     return out;
 }
 
@@ -102,10 +102,10 @@ fn fragment(
 ) -> @location(0) vec4<f32> {
 
     // Get canvas size
-    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
+    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5f + 0.5f;
     let coord: vec2<u32> = vec2<u32>(
         u32(uniforms.render_size.x * screen_space.x),
-        u32(uniforms.render_size.y  * (1.0 - screen_space.y))
+        u32(uniforms.render_size.y  * (1.0f - screen_space.y))
     );
 
     let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
