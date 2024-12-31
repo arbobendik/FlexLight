@@ -4,6 +4,14 @@ const SQRT3: f32 = 1.7320508075688772;
 const BIAS: f32 = 0.0000152587890625;
 const INV_1023: f32 = 0.0009775171065493646;
 
+/*
+const YUV_MATRIX: mat3x3<f32> = mat3x3<f32>(
+    0.299,      0.587,     0.114,
+  - 0.14713,  - 0.28886,   0.436,
+    0.615,    - 0.51499, - 0.10001
+);
+*/
+
 struct Uniforms {
     view_matrix: mat3x3<f32>,
     view_matrix_jitter: mat3x3<f32>,
@@ -21,7 +29,8 @@ struct Uniforms {
 
     tonemapping_operator: f32,
     is_temporal: f32,
-    temporal_target: f32
+    temporal_count: f32,
+    temporal_max: f32
 };
 
 @group(0) @binding(0) var compute_out: texture_2d_array<f32>;
@@ -67,9 +76,8 @@ fn compute(
     let position_old: vec4<f32> = textureLoad(shift_out, coord, 4, 0);
     
     // If absolute position is all zeros then there is nothing to do
-
-    let diff: f32 = length(position_cur.xyz - position_old.xyz);
-    let cur_depth: f32 = length(position_cur.xyz - uniforms.camera_position.xyz);
+    let dist: f32 = distance(position_cur.xyz, position_old.xyz);
+    let cur_depth: f32 = distance(position_cur.xyz, uniforms.camera_position.xyz);
     // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
 
     let croped_cur_color: vec3<f32> = min(color_cur.xyz, vec3<f32>(1.0f));
@@ -82,9 +90,16 @@ fn compute(
     var coarse_color_low_variance: vec3<f32> = croped_cur_color;
     var coarse_count: f32 = 0.0f;
 
-    let no_pos = position_cur.x == 0.0f && position_cur.y == 0.0f && position_cur.z == 0.0f && position_cur.w == 0.0f;
+    let is_pos = position_cur.x != 0.0f || position_cur.y != 0.0f || position_cur.z != 0.0f || position_cur.w != 0.0f;
 
-    if (!no_pos && diff < cur_depth / uniforms.render_size.x * 8.0f) {
+    
+    let last_frame = position_old.w == uniforms.temporal_count;
+    
+    if (
+        dist <= cur_depth * 8.0f / uniforms.render_size.x
+        && last_frame 
+        && is_pos 
+    ) {
         // Add color to total and increase counter by one
         fine_count = min(fine_color_low_variance_acc.w + 1.0f, 32.0f);
         fine_color = mix(fine_color_acc, color_cur, 1.0f / fine_count);
@@ -95,20 +110,25 @@ fn compute(
 
 
         let low_variance_color_length: f32 = (length(fine_color_low_variance) + length(coarse_color_low_variance)) * 0.5f;
-        
+
+        // If the color is not stable enough, use the coarse color
         if (
-            dot(normalize(fine_color_low_variance), normalize(coarse_color_low_variance)) < cos(PI * 0.125)
+            dot(normalize(fine_color_low_variance + BIAS), normalize(coarse_color_low_variance + BIAS)) < cos(PI * 0.125)
             || abs(length(fine_color_low_variance) - length(coarse_color_low_variance)) > low_variance_color_length
         ) {
+            // If the color is not stable enough, use the coarse color
             fine_color = coarse_color;
             fine_color_low_variance = coarse_color_low_variance;
             fine_count = coarse_count;
         }
+        
+        
     }
 
+    // Write to accumulated buffer
     textureStore(accumulated, coord, 0, fine_color);
     textureStore(accumulated, coord, 1, coarse_color);
     textureStore(accumulated, coord, 2, vec4<f32>(fine_color_low_variance, fine_count));
     textureStore(accumulated, coord, 3, vec4<f32>(coarse_color_low_variance, coarse_count));
-    textureStore(accumulated, coord, 4, vec4<f32>(position_cur.xyz, uniforms.temporal_target));
+    textureStore(accumulated, coord, 4, vec4<f32>(position_cur.xyz, (uniforms.temporal_count + 1.0f) % uniforms.temporal_max));
 }
