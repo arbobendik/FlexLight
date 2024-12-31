@@ -3,6 +3,7 @@ const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
 const POW23M1: f32 = 8388607.0;
+const POW23M1U: u32 = 8388607u;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
 const INV_255: f32 = 0.00392156862745098;
@@ -110,8 +111,8 @@ fn fragment(
 
     let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
     // Only save if texel is closer to camera then previously
-    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
+    let current_depth: u32 = POW23M1U - u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
     // Store in texture
-    atomicMin(&depth_buffer[buffer_index], current_depth);
+    atomicMax(&depth_buffer[buffer_index], current_depth);
     return vec4<f32>(1.0f);
 }
