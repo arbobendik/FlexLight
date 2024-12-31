@@ -6,7 +6,10 @@ import { FXAA } from "./fxaaWGPU.js";
 import { TAA } from "./taaWGPU.js";
 import { Transform } from "./scene.js";
 
-let rasterRenderFormats = ["r32sint", "rgba32float", "rg32float"];
+let rasterRenderFormats = ["rgba32float", "rg32float"];
+
+const POW32U = 2 ** 32 - 1;
+const TEMPORAL_MAX = 2 ** 23 - 1;
 
 export class PathTracerWGPU extends Renderer {
   type = "pathtracer";
@@ -23,19 +26,15 @@ export class PathTracerWGPU extends Renderer {
   device;
   #preferedCanvasFormat;
 
-  #clearPipeline;
   #depthPipeline
   #rasterPipeline;
   #computePipeline;
   #shiftPipeline;
   #temporalPipeline;
   #reprojectPipeline;
-  #mapPipeline;
   #canvasPipeline;
 
   #renderPassDescriptor;
-  
-  #clearUniformBuffer;
 
   #staticBuffers;
   #dynamicBuffers;
@@ -44,15 +43,16 @@ export class PathTracerWGPU extends Renderer {
   #transformBuffer;
   
   #depthBuffer;
+
+  #triangleIdBuffer;
   #rasterRenderTextures = [];
   
   #temporalIn;
   #shiftTarget;
   #accumulatedTarget;
-  #reprojectionBuffer;
+  #shiftLock;
   #canvasIn;
   
-  #clearGroupLayout;
   #depthGroupLayout;
   #rasterRenderGroupLayout;
   #computeRenderGroupLayout;
@@ -65,10 +65,9 @@ export class PathTracerWGPU extends Renderer {
   #shiftGroupLayout;
   #temporalGroupLayout;
   #reprojectGroupLayout;
-  #mapGroupLayout;
+  // #mapGroupLayout;
   #canvasGroupLayout;
   
-  #clearGroup;
   #depthGroup;
   #rasterRenderGroup;
   #computeRenderGroup;
@@ -82,7 +81,6 @@ export class PathTracerWGPU extends Renderer {
   #temporalGroup;
   #canvasGroup;
   #reprojectGroup;
-  #mapGroup;
   #engineState = {};
   #resizeEvent;
   #halt = true;
@@ -113,7 +111,7 @@ export class PathTracerWGPU extends Renderer {
     this.#canvas.width = width;
     this.#canvas.height = height;
     
-    let allScreenTextures = [this.#canvasIn, ... this.#rasterRenderTextures];
+    let allScreenTextures = [this.#canvasIn, ...this.#rasterRenderTextures];
     // Add temporal target texture
     if (this.config.temporal) allScreenTextures.push(this.#shiftTarget, this.#temporalIn);
     // Free old texture buffers
@@ -125,13 +123,13 @@ export class PathTracerWGPU extends Renderer {
 
     
     this.#depthBuffer = this.device.createBuffer({ size: height * width * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
-    
+    this.#triangleIdBuffer = this.device.createBuffer({ size: height * width * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+
     this.#rasterRenderTextures = rasterRenderFormats.map(format => this.device.createTexture({
       size: [width, height],
       format: format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
     }));
-    // This compute render group will be generated in the frame cycle due to the canvas texture being deleted every frame
     
     // Init temporal render texture
     this.#canvasIn = this.device.createTexture({
@@ -163,9 +161,10 @@ export class PathTracerWGPU extends Renderer {
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
       });
 
+      
+      this.#shiftLock = this.device.createBuffer({ size: width * height * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+      this.device.queue.writeBuffer(this.#shiftLock, 0, new Uint32Array(new Array(width * height).fill(POW32U)));
     }
-    // Init buffer only with minimum size for clear group binding.
-    this.#reprojectionBuffer = this.device.createBuffer({ size: this.config.temporal ?  width * height * 16 : 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
 
     if (this.#AAObject) this.#AAObject.createTexture();
   }
@@ -264,17 +263,6 @@ export class PathTracerWGPU extends Renderer {
       bufferLength: 0
     });
 
-    
-
-    this.#clearGroupLayout = device.createBindGroupLayout({
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },        
-        { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32sint", viewDimension: "2d" } },        // triangle index
-        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-      ]
-    });
-
     this.#depthGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "storage" } }  // depth
@@ -284,7 +272,7 @@ export class PathTracerWGPU extends Renderer {
     this.#rasterRenderGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },                                                 // depth
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: "write-only", format: "r32sint", viewDimension: "2d" } },      // triangle index
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "storage" } },                                                           // triangle index
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d" } },  // 3d positions
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, storageTexture: { access: "write-only", format: "rg32float", viewDimension: "2d" } }     // uvs
       ]
@@ -293,7 +281,7 @@ export class PathTracerWGPU extends Renderer {
     this.#computeRenderGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } }, // output
-        { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { type: "sint", sampleType: "sint" } }, //storageTexture: { access: "read-only", format: "r32sint", viewDimension: "2d" } },            // triangle index
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, //storageTexture: { access: "read-only", format: "r32sint", viewDimension: "2d" } },            // triangle index
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float" } }, //storageTexture: { access: "read-only", format: "rgba32float", viewDimension: "2d" } },        // 3d positions
         { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float" } }  //storageTexture: { access: "read-only", format: "rg32float", viewDimension: "2d" } }           // uvs
       ]
@@ -341,7 +329,8 @@ export class PathTracerWGPU extends Renderer {
       this.#shiftGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } }
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
         ]
       });
       
@@ -357,17 +346,9 @@ export class PathTracerWGPU extends Renderer {
       this.#reprojectGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-        ]
-      });
-
-      this.#mapGroupLayout = device.createBindGroupLayout({
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
           { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d" } }
         ]
       });
-      
     }
 
     this.#postDynamicGroupLayout = device.createBindGroupLayout({
@@ -381,21 +362,6 @@ export class PathTracerWGPU extends Renderer {
         { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { type: "float", sampleType: "unfilterable-float" } }, //storageTexture: { access: "read-only", format: "rgba32float", viewDimension: "2d" } },  // compute output
         { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba8unorm", viewDimension: "2d" } }   // canvas target
       ]
-    });
-
-    let clearShader = Network.fetchSync("shaders/pathtracer_clear.wgsl");
-    // Shaders are written in a language called WGSL.
-    let clearModule = device.createShaderModule({ code: clearShader });
-    
-    this.#clearPipeline = device.createComputePipeline({
-      label: "clear pipeline",
-      layout: device.createPipelineLayout({ bindGroupLayouts: [
-        this.#clearGroupLayout
-      ] }),
-      compute: {
-        module: clearModule,
-        entryPoint: "compute"
-      }
     });
 
     let depthShader = Network.fetchSync("shaders/pathtracer_depth.wgsl");
@@ -503,16 +469,6 @@ export class PathTracerWGPU extends Renderer {
         layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#reprojectGroupLayout, this.#postDynamicGroupLayout ] }),
         compute: { module: reprojectModule, entryPoint: "compute" }
       });
-
-      let mapShader = Network.fetchSync("shaders/pathtracer_map.wgsl");
-      let mapModule = device.createShaderModule({code: mapShader});
-
-      this.#mapPipeline = device.createComputePipeline({
-        label: "map pipeline",
-        layout: device.createPipelineLayout({ bindGroupLayouts: [ this.#mapGroupLayout, this.#postDynamicGroupLayout ] }),
-        compute: { module: mapModule, entryPoint: "compute" }
-      });
-      
     }
 
     let canvasShader = Network.fetchSync("shaders/pathtracer_canvas.wgsl");
@@ -539,8 +495,6 @@ export class PathTracerWGPU extends Renderer {
     };
     // Create uniform buffer for shader uniforms
     this.#uniformBuffer = device.createBuffer({ size: 128 + 4 * 4 * 3, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-
-    this.#clearUniformBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Create uniform buffer for transforms in shader
     // Build / Rebuild scene graph for GPU into storage buffer
     this.updateScene(device);
@@ -549,11 +503,11 @@ export class PathTracerWGPU extends Renderer {
     // this.#renderFrame();
     this.#resizeEvent = window.addEventListener("resize", () => this.resize());
     // Begin frame cycle
-    requestAnimationFrame(() => this.#frameCycle(device));
+    requestAnimationFrame(() => this.frameCycle(device));
   }
 
   // Internal render engine Functions
-  #frameCycle (device) {
+  frameCycle (device) {
     // console.log(this.#halt);
     if (this.#halt) return;
     // this.#halt = true;
@@ -561,7 +515,6 @@ export class PathTracerWGPU extends Renderer {
 
     // Check if recompile is required
     if (
-      this.#engineState.filter !== this.config.filter ||
       this.#engineState.temporal !== this.config.temporal ||
       this.#engineState.temporalSamples !== this.config.temporalSamples ||
       this.#engineState.renderQuality !== this.config.renderQuality
@@ -598,10 +551,10 @@ export class PathTracerWGPU extends Renderer {
       }
     }
     // Render new Image, work through queue
-    this.#renderFrame();
+    this.renderFrame();
     // Update frame counter
     this.#engineState.intermediateFrames ++;
-    this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % 2048;//this.config.temporalSamples;
+    this.#engineState.temporalFrame = (this.#engineState.temporalFrame + 1) % TEMPORAL_MAX;
 
     // Calculate Fps
     let timeDifference = timeStamp - this.#engineState.lastTimeStamp;
@@ -612,129 +565,94 @@ export class PathTracerWGPU extends Renderer {
     }
     // Request browser to render frame with hardware acceleration
     setTimeout(() => {
-      requestAnimationFrame(() => this.#frameCycle(device))
+      requestAnimationFrame(() => this.frameCycle(device))
     }, 1000 / this.fpsLimit);
   }
 
-  async #renderFrame () {
+  async renderFrame () {
     let jitter = { x: 0, y: 0 };
     if (this.#AAObject && this.#antialiasing === "taa") jitter = this.#AAObject.jitter();
     // Calculate projection matrix
     let dir = { x: this.camera.fx, y: this.camera.fy };
     let dirJitter = { x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y };
-
-    // console.log(jitter.x);
-
     let canvasTarget = this.#context.getCurrentTexture();
     // Assemble lists to fill bind groups
     let depthBufferEntry = { binding: 0, resource: { buffer: this.#depthBuffer }};
-    let rasterGroupEntries = this.#rasterRenderTextures.map((texture, i) => ({ binding: i + 1, resource: texture.createView() }));
-    rasterGroupEntries.unshift(depthBufferEntry);
-
-    let clearGroupEntries = rasterGroupEntries.slice(0, 2);
-    clearGroupEntries.push({ binding: 2, resource: { buffer: this.#reprojectionBuffer } });
-    clearGroupEntries.push({ binding: 3, resource: { buffer: this.#clearUniformBuffer } });
-
-    // console.log(clearGroupEntries);
-
     let computeTargetView =
       !this.config.temporal && !this.#AAObject ? this.#canvasIn.createView({ dimension: "2d-array", arrayLayerCount: 1 }) :
       !this.config.temporal && this.#AAObject ? this.#AAObject.textureInView2dArray :
       this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 });
 
-    
-    let computeGroupEntries = [... this.#rasterRenderTextures].map((texture, i) => ({ binding: i + 1, resource: texture.createView() }));
-    computeGroupEntries.unshift({ binding: 0, resource: computeTargetView });
-
     // Fill render binding groups
-    this.#clearGroup = this.device.createBindGroup({
-      label: "clear storage textures",
-      layout: this.#clearGroupLayout,
-      entries: clearGroupEntries
-    });
-
     this.#depthGroup = this.device.createBindGroup({
       label: "depth buffer for depth testing raster pass",
       layout: this.#depthGroupLayout,
-      entries: [depthBufferEntry]
+      entries: [ depthBufferEntry ]
     });
 
     this.#rasterRenderGroup = this.device.createBindGroup({
       label: "render output group for raster pass",
       layout: this.#rasterRenderGroupLayout,
-      entries: rasterGroupEntries
+      entries: [
+        depthBufferEntry,
+        { binding: 1, resource: { buffer: this.#triangleIdBuffer } },
+        ...this.#rasterRenderTextures.map((texture, i) => ({ binding: i + 2, resource: texture.createView() }))
+      ]
     });
 
     this.#computeRenderGroup = this.device.createBindGroup({
       label: "render input group for compute pass",
       layout: this.#computeRenderGroupLayout,
-      entries: computeGroupEntries
+      entries: [
+        { binding: 0, resource: computeTargetView },
+        { binding: 1, resource: { buffer: this.#triangleIdBuffer } },
+        ...this.#rasterRenderTextures.map((texture, i) => ({ binding: i + 2, resource: texture.createView() }))
+      ]
     });
     
     if (this.config.temporal) {
       let temporalTargetView = this.#AAObject ? this.#AAObject.textureInView : this.#canvasIn.createView({ dimension: "2d" });
       // Create shift group with array views
-      let shiftGroupEntries = [
-        { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) }
-      ];
-      
       this.#shiftGroup = this.device.createBindGroup({ 
-        label: "bind group for motion correction pass", 
-        layout: this.#shiftGroupLayout, 
-        entries: shiftGroupEntries 
+        label: "bind group for motion correction pass", layout: this.#shiftGroupLayout, 
+        entries: [
+          { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+          { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+          { binding: 2, resource: { buffer: this.#shiftLock } }
+        ]
       });
-      
       // Create selective average group with array views
-      let selectiveAverageGroupEntries = [
-        { binding: 0, resource: this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
-        { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-        { binding: 2, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) }
-      ];
-      
       this.#temporalGroup = this.device.createBindGroup({ 
-        label: "bind group accumulation pass", 
-        layout: this.#temporalGroupLayout, 
-        entries: selectiveAverageGroupEntries 
+        label: "bind group accumulation pass", layout: this.#temporalGroupLayout, 
+        entries: [
+          { binding: 0, resource: this.#temporalIn.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 1, resource: this.#shiftTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+          { binding: 2, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) }
+        ] 
       });
-
-      let reprojectGroupEntries = [
-        { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-        { binding: 1, resource: { buffer: this.#reprojectionBuffer } }
-      ];
 
       this.#reprojectGroup = this.device.createBindGroup({ 
-        label: "bind group for reprojection pass", 
-        layout: this.#reprojectGroupLayout, 
-        entries: reprojectGroupEntries 
-      });
-
-      let mapGroupEntries = [
-        { binding: 0, resource: { buffer: this.#reprojectionBuffer } },
-        { binding: 1, resource: temporalTargetView }
-      ];
-
-      this.#mapGroup = this.device.createBindGroup({ 
-        label: "bind group for map pass", 
-        layout: this.#mapGroupLayout, 
-        entries: mapGroupEntries 
+        label: "bind group for reprojection pass", layout: this.#reprojectGroupLayout, 
+        entries: [
+          { binding: 0, resource: this.#accumulatedTarget.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
+          { binding: 1, resource: temporalTargetView }
+        ] 
       });
     }
 
     if (this.#AAObject) {
       this.#AAObject.createBindGroup(this.#canvasIn);
     }
-
-
-    let canvasGroupEntries = [this.#canvasIn, canvasTarget].map((texture, i) => ({ binding: i, resource: texture.createView() }));
-    canvasGroupEntries[0].resource = this.#canvasIn.createView({ dimension: "2d"});
     
     this.#canvasGroup = this.device.createBindGroup({
-      label: "render input group for canvas pass",
-      layout: this.#canvasGroupLayout,
-      entries: canvasGroupEntries
+      label: "render input group for canvas pass", layout: this.#canvasGroupLayout,
+      entries: [
+        { binding: 0, resource: this.#canvasIn.createView({ dimension: "2d" }) },
+        { binding: 1, resource: canvasTarget.createView() }
+      ]
     });
-    
+    // Set render target for canvas
+    this.#renderPassDescriptor.colorAttachments[0].view = canvasTarget.createView();
     // Calculate camera offset and projection matrix
     let invFov = 1 / this.camera.fov;
     let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
@@ -753,10 +671,8 @@ export class PathTracerWGPU extends Renderer {
     if (!this.config.temporal) {
       viewMatrix = viewMatrixJitter;
     }
-    
     // console.log(this.#randomSeedNums[targetLayer]);
-    let targetLayer = this.config.temporal ? this.#engineState.temporalFrame : 0;
-
+    let temporalCount = this.config.temporal ? this.#engineState.temporalFrame : 0;
     // Update uniform values on GPU
     this.device.queue.writeBuffer(this.#uniformBuffer, 0, new Float32Array([
       // View matrix
@@ -791,12 +707,11 @@ export class PathTracerWGPU extends Renderer {
       // render for temporal or not
       this.config.temporal,
       // Temporal target
-      targetLayer,
+      temporalCount,
+      // Temporal samples
+      TEMPORAL_MAX
     ]));
 
-    this.device.queue.writeBuffer(this.#clearUniformBuffer, 0, new Uint32Array([
-      this.config.temporal ? 1 : 0,
-    ]));
     // Update transform matrices on GPU
     let transformArray = Transform.buildWGPUArray();
     this.#transformBuffer = this.device.createBuffer({ size: transformArray.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST})
@@ -825,20 +740,12 @@ export class PathTracerWGPU extends Renderer {
 
     let screenClusterDims = [Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8)];
     let kernelClusterDims = [Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8)];
-    // Set render target for canvas
-    this.#renderPassDescriptor.colorAttachments[0].view = canvasTarget.createView();
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = this.device.createCommandEncoder();
-    // Clear renderable textures
-    let clearEncoder = commandEncoder.beginComputePass();
-    clearEncoder.setPipeline(this.#clearPipeline);
-    clearEncoder.setBindGroup(0, this.#clearGroup);
-    // Compute pass
-    clearEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
-    // End compute pass
-    clearEncoder.end();
 
-    
+    commandEncoder.clearBuffer(this.#depthBuffer);
+    commandEncoder.clearBuffer(this.#triangleIdBuffer);
+
     // All rendering commands happen in a render pass
     let depthEncoder = commandEncoder.beginRenderPass(this.#renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -899,7 +806,7 @@ export class PathTracerWGPU extends Renderer {
       selectiveAverageEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
 
       selectiveAverageEncoder.end();
-
+      
       let reprojectEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
       reprojectEncoder.setPipeline(this.#reprojectPipeline);
@@ -908,15 +815,6 @@ export class PathTracerWGPU extends Renderer {
       reprojectEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
       // End reproject pass
       reprojectEncoder.end();
-
-      let mapEncoder = commandEncoder.beginComputePass();
-      // Set the storage buffers and textures for compute pass
-      mapEncoder.setPipeline(this.#mapPipeline);
-      mapEncoder.setBindGroup(0, this.#mapGroup);
-      mapEncoder.setBindGroup(1, this.#postDynamicGroup);
-      mapEncoder.dispatchWorkgroups(screenClusterDims[0], screenClusterDims[1]);
-      // End map pass
-      mapEncoder.end();
     }
 
     if (this.#AAObject) {

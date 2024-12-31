@@ -39,7 +39,7 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
-@group(0) @binding(1) var texture_triangle_id: texture_2d<i32>;
+@group(0) @binding(1) var<storage, read> triangle_id_buffer: array<i32>;
 @group(0) @binding(2) var texture_absolute_position: texture_2d<f32>;
 @group(0) @binding(3) var texture_uv: texture_2d<f32>;
 
@@ -568,9 +568,10 @@ fn compute(
 ) {
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;//local_invocation_id.xy + (workgroup_id.xy * 16u);
+    let buffer_index: u32 = global_invocation_id.x + u32(uniforms.render_size.x) * global_invocation_id.y;
     // Get based clip space coordinates (with 0.0 at upper left corner)
     // Load attributes from fragment shader out ofad(texture_triangle_id, screen_pos).x;
-    let triangle_id: i32 = textureLoad(texture_triangle_id, screen_pos, 0).x;
+    let triangle_id: i32 = triangle_id_buffer[buffer_index];
 
     if (triangle_id == 0) {
         // If there is no triangle render ambient color 

@@ -19,15 +19,19 @@ struct Uniforms {
 
     tonemapping_operator: f32,
     is_temporal: f32,
-    temporal_target: f32
+    temporal_count: f32,
+    temporal_max: f32
 };
 
 @group(0) @binding(0) var accumulated: texture_2d_array<f32>;
-@group(0) @binding(1) var<storage, read_write> buffer_out: array<atomic<u32>>;
+@group(0) @binding(1) var canvas_in: texture_storage_2d<rgba32float, write>;
+// @group(0) @binding(1) var<storage, read_write> buffer_out: array<atomic<u32>>;
 
 @group(1) @binding(0) var<uniform> uniforms: Uniforms;
 
 // atomicStore(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T)
+
+/*
 
 fn store_atomic(pos: vec2<u32>, val: vec4<f32>) {
     let b_pos: u32 = (pos.x + u32(uniforms.render_size.x) * pos.y) * 4u;
@@ -78,6 +82,7 @@ fn interpolate_store(pos: vec2<f32>, val: vec4<f32>) {
     add_atomic(pos_u32 + vec2<u32>(offsets[2]), val * weights.z);
     add_atomic(pos_u32 + vec2<u32>(offsets[3]), val * weights.w);
 }
+*/
 
 @compute
 @workgroup_size(8, 8)
@@ -88,24 +93,20 @@ fn compute(
     @builtin(local_invocation_index) local_invocation_index: u32,
     @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
-    
+    // Skip if texel is out of bounds
     if (global_invocation_id.x > u32(uniforms.render_size.x) || global_invocation_id.y > u32(uniforms.render_size.y)) {
         return;
     }
     
-
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
-    // Amount of temporal passes
-    // for (var i: u32 = 0; i < depth; i++) {
     // Extract color value from old position
     var color: vec4<f32> = textureLoad(accumulated, screen_pos, 0, 0);
     // Extract 3d position value
     let position_cur: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
-    // If absolute position is all zeros then there is nothing to do
-
-    if (position_cur.w != uniforms.temporal_target) {
-        store_atomic(screen_pos, vec4<f32>(uniforms.ambient, 1.0f));
+    // If data is not from last frame write ambient color
+    if (position_cur.w != (uniforms.temporal_count + 1.0f) % uniforms.temporal_max) {
+        textureStore(canvas_in, screen_pos, vec4<f32>(uniforms.ambient, 1.0f));
         return;
     }
 
@@ -113,31 +114,15 @@ fn compute(
         // Reproject position to jitter if temporal is enabled
         let clip_space: vec3<f32> = uniforms.view_matrix_jitter * (position_cur.xyz - uniforms.camera_position);
         let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
-        let canvas_pos: vec2<f32> = vec2<f32>(
-            uniforms.render_size.x * screen_space.x,
-            uniforms.render_size.y * (1.0f - screen_space.y)
-        );
 
-        let canvas_pos_u32: vec2<u32> = vec2<u32>(
+        let canvas_pos: vec2<u32> = vec2<u32>(
             u32(uniforms.render_size.x * screen_space.x),
             u32(uniforms.render_size.y * (1.0f - screen_space.y))
         );
 
-        // Interpolate color from old position
-        // interpolate_store(canvas_pos, color);
-        store_atomic(canvas_pos_u32, color);
-
-
-        // fine_color = vec3<f32>(1.0f, 0.0f, 0.0f);
+        textureStore(canvas_in, canvas_pos, color);
     } else {
         // Write straight to canvas.
-        store_atomic(screen_pos, color);
-        // textureStore(canvas_out, screen_pos, vec4<f32>(fine_color, 1.0f));
+        textureStore(canvas_in, screen_pos, color);
     }
-
-    // textureStore(shift_out, coord, 1, fine_color_low_variance_acc);
-    // textureStore(shift_out, coord, 3, coarse_color_low_variance_acc);
-    //}
-
-    // Clear textures we render to every frame
 }
