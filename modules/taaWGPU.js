@@ -44,8 +44,7 @@ export class TAA {
             size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
-
-        // Create textures and bind groups will be done in buildTexture()
+        
         this.createTexture();
     }
 

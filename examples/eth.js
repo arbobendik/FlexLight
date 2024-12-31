@@ -15,16 +15,16 @@ async function buildScene() {
 	let camera = engine.camera;
 	let scene = engine.scene;
 	// Create pbr textures.
-	let normalTex = await scene.textureFromRME([1, 1, 0], 1, 1);
+	let normalTex = await scene.textureFromRME([1, 0, 0], 1, 1);
 	scene.pbrTextures.push(normalTex);
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [4.5, 9, -7];
-	[camera.fx, camera.fy] = [0, 0.8];
+	[camera.x, camera.y, camera.z] = [4.5, 10, -7];
+	[camera.fx, camera.fy] = [0, 0.85];
 
 	// Generate plane.
 	let plane = scene.Plane([-50,0,-50],[50,0,-50],[50,0,50],[-50,0,50]);
-    plane.color = [50, 50, 150];
+    plane.color = [8, 64, 126];
 
 	let e = scene.Bounding([
 		scene.Bounding([
@@ -102,7 +102,8 @@ async function buildScene() {
 
 	scene.primaryLightSources = [[40, 50, 40]];
 	scene.primaryLightSources[0].intensity = 50000;
-	scene.ambientLight = [0.1, 0.1, 0.1];
+	scene.primaryLightSources[0].variation = 20;
+	scene.ambientLight = [0.2, 0.2, 0.2];
 	
 	scene.queue.push(plane, eth);
 	// Start render engine.
