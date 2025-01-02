@@ -1,0 +1,46 @@
+#!/bin/bash
+function minify (
+    set -e
+    cd -- "$1"
+    for file in $(find -name "*.js"); do
+        uglifyjs "$file" -c -m -o "$file"
+        echo minified: "$file"
+    done
+    exit
+)
+
+function bundle (
+    set -e
+    esbuild "$1" --bundle --platform=neutral --loader:.glsl=text --loader:.wgsl=text --outfile="$2"
+    exit
+)
+
+function compile (
+    set -e
+    cd -- "$1"
+    npx tsc
+    exit
+)
+
+
+# Build engine js into build folder.
+compile ./src/flexlight
+bundle ./src/flexlight/flexlight.js ./public/build/flexlight.js
+rm -rf ./public/build/flexlight
+
+
+while getopts "e" flag; do
+    case $flag in
+        e)
+        mkdir -p ./public/build/examples
+        compile ./src/examples
+        ;;
+        \?)
+        # Handle invalid options
+        echo "Invalid option: -$OPTARG" >&2
+        ;;
+    esac
+done
+
+# Minify all js files in build folders.
+minify ./public/build
