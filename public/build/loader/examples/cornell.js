@@ -1,1 +1,78 @@
-let staticPath="./static/";var engine;async function buildScene(){var e=document.createElement("canvas"),e=(document.body.appendChild(e),(engine=new FlexLight(e)).io="web",engine.camera),n=engine.scene,a=await n.textureFromRME([Array(64).fill([Array(64).fill([1,0,.4]).flat(),Array(64).fill([.1,1,0]).flat()].flat()).flat(),Array(64).fill([Array(64).fill([.1,1,0]).flat(),Array(64).fill([1,0,.4]).flat()].flat()).flat()].flat(),128,128),a=(n.pbrTextures.push(a),e.z=-20,n.primaryLightSources=[[0,4,0]],n.primaryLightSources[0].intensity=160,n.Plane([-5,-5,-21],[5,-5,-21],[5,-5,5],[-5,-5,5])),e=n.Plane([-5,5,-21],[-5,5,5],[5,5,5],[5,5,-21]),l=n.Plane([-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5]),r=n.Plane([-5,-5,-21],[-5,5,-21],[5,5,-21],[5,-5,-21]),t=n.Plane([-5,-5,-21],[-5,-5,5],[-5,5,5],[-5,5,-21]),i=n.Plane([5,-5,-21],[5,5,-21],[5,5,5],[5,-5,5]),c=([a,e,l,r,t,i].forEach(e=>{e.color=[230,230,230]}),t.color=[220,0,0],i.color=[0,150,0],[[],[]]),[o,u,d,f,s,P]=(c[0]=n.Cuboid(-3,-1.5,-5,-2,-1,1),c[0].textureNums=[-1,0,-1],[0,3,-5,-1,-1,2]),[d,y,m,g]=(c[1]=n.Cuboid(0,3,-5,-1,-1,2),[[o+1,d,s],[u,d,s+1],[u-1,d,P],[o,d,P-1]]),[s,u,o,f]=[[o+1,f,s],[u,f,s+1],[u-1,f,P],[o,f,P-1]],P=(c[1][0]=n.Plane(s,u,o,f,[0,1,0]),c[1][1]=n.Plane(u,y,m,o,[1,0,0]),c[1][2]=n.Plane(o,m,g,f,[0,0,1]),c[1][3]=n.Plane(g,m,y,d,[0,-1,0]),c[1][4]=n.Plane(f,g,d,s,[-1,0,0]),c[1][5]=n.Plane(s,d,y,u,[0,0,-1]),[a,e,l,r,t,i]),p=(n.queue.push(c,P),n.generateBVH(),engine.renderer.render(),document.createElement("div"));document.body.appendChild(p),setInterval(()=>{p.textContent=engine.renderer.fps},100)}buildScene();
+"use strict";
+const staticPath = './static/';
+// Declare engine global.
+var engine;
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
+    // Create new canvas.
+    var canvas = document.createElement("canvas");
+    // Append it to body.
+    document.body.appendChild(canvas);
+    engine = new FlexLight(canvas);
+    engine.io = 'web';
+    let camera = engine.camera;
+    let scene = engine.scene;
+    // Create pbr textures.
+    let caroTex = await scene.textureFromRME([
+        Array(64).fill([
+            Array(64).fill([1, 0, 0.4]).flat(),
+            Array(64).fill([0.1, 1, 0]).flat()
+        ].flat()).flat(),
+        Array(64).fill([
+            Array(64).fill([0.1, 1, 0]).flat(),
+            Array(64).fill([1, 0, 0.4]).flat()
+        ].flat()).flat()
+    ].flat(), 128, 128);
+    scene.pbrTextures.push(caroTex);
+    // Move camera out of center.
+    camera.z = -20;
+    // Set primary light source.
+    scene.primaryLightSources = [[0, 4, 0]];
+    // Modify brightness.
+    scene.primaryLightSources[0].intensity = 160;
+    // Generate side planes of box.
+    let bottom_plane = scene.Plane([-5, -5, -21], [5, -5, -21], [5, -5, 5], [-5, -5, 5]);
+    let top_plane = scene.Plane([-5, 5, -21], [-5, 5, 5], [5, 5, 5], [5, 5, -21]);
+    let back_plane = scene.Plane([-5, -5, 5], [5, -5, 5], [5, 5, 5], [-5, 5, 5]);
+    let front_plane = scene.Plane([-5, -5, -21], [-5, 5, -21], [5, 5, -21], [5, -5, -21]);
+    let left_plane = scene.Plane([-5, -5, -21], [-5, -5, 5], [-5, 5, 5], [-5, 5, -21]);
+    let right_plane = scene.Plane([5, -5, -21], [5, 5, -21], [5, 5, 5], [5, -5, 5]);
+    // Make planes diffuse.
+    [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane].forEach((item) => {
+        item.color = [230, 230, 230];
+    });
+    // Color left and right plane.
+    left_plane.color = [220, 0, 0];
+    right_plane.color = [0, 150, 0];
+    // Generate a few cuboids in the box with respective bounding box.
+    let cube = [[], []];
+    cube[0] = scene.Cuboid(-3, -1.5, -5, -2, -1, 1);
+    cube[0].textureNums = [-1, 0, -1];
+    // Generate rotated cube object from planes.
+    var [x, x2, y, y2, z, z2] = [0, 3, -5, -1, -1, 2];
+    cube[1] = scene.Cuboid(0, 3, -5, -1, -1, 2);
+    var [b0, b1, b2, b3] = [[x + 1, y, z], [x2, y, z + 1], [x2 - 1, y, z2], [x, y, z2 - 1]];
+    var [t0, t1, t2, t3] = [[x + 1, y2, z], [x2, y2, z + 1], [x2 - 1, y2, z2], [x, y2, z2 - 1]];
+    cube[1][0] = scene.Plane(t0, t1, t2, t3, [0, 1, 0]);
+    cube[1][1] = scene.Plane(t1, b1, b2, t2, [1, 0, 0]);
+    cube[1][2] = scene.Plane(t2, b2, b3, t3, [0, 0, 1]);
+    cube[1][3] = scene.Plane(b3, b2, b1, b0, [0, -1, 0]);
+    cube[1][4] = scene.Plane(t3, b3, b0, t0, [-1, 0, 0]);
+    cube[1][5] = scene.Plane(t0, b0, b1, t1, [0, 0, -1]);
+    let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
+    // Push both objects to render queue.
+    scene.queue.push(cube, box);
+    scene.generateBVH();
+    // Start render engine.
+    engine.renderer.render();
+    // Add FPS counter to top-right corner.
+    var fpsCounter = document.createElement("div");
+    // Append it to body.
+    document.body.appendChild(fpsCounter);
+    // Update Counter periodically.
+    setInterval(() => {
+        fpsCounter.textContent = engine.renderer.fps;
+    }, 100);
+}
