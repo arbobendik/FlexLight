@@ -1,1 +1,91 @@
-import{FlexLight}from"../flexlight.js";function load(){null!==document.currentScript&&document.currentScript.remove();let t=new URLSearchParams(location.search);var e=document.createElement("script"),a=t.get("v")??"wave";e.src="./build/loader/examples/"+a+".js",document.head.appendChild(e),window.addEventListener("load",function(){let r=engine.config,e=document.getElementById("scriptForm"),a=document.getElementById("parameterForm"),c=["antialiasing"],l=["filter","temporal","hdr"];let n=["renderQuality","samplesPerRay","maxReflections","minImportancy"];a.children.pathtracing.checked="true"===(localStorage.getItem("pathtracing")??"true"),a.children.api.value=localStorage.getItem("api")??"webgl2",engine.api=a.children.api.value,engine.renderer=a.children.pathtracing.checked?"pathtracer":"rasterizer",c.forEach(e=>{r[e]=localStorage.getItem(e)??r[e],a.children[e].value=r[e]}),l.forEach(e=>{r[e]="true"===(localStorage.getItem(e)??"true"),a.children[e].checked=r[e]}),["screenshot"].forEach(e=>{document.getElementById(e).addEventListener("click",()=>{engine.screenshot()})}),n.forEach(e=>{r[e]=Number(localStorage.getItem(e)??r[e]),a.children[e].value=r[e]}),document.querySelectorAll("output").forEach((e,t)=>{e.value=r[n[t]];var a=document.getElementById(n[t]);a.addEventListener("input",()=>e.value=a.value)}),t.has("v")?e[0].value=t.get("v"):e.submit(),e.addEventListener("change",()=>{t.set("v",e[0].value),location.search=t.toString()}),a.addEventListener("change",()=>{var e=document.getElementById("pathtracing").checked,t=document.getElementById("api").value;"true"===localStorage.getItem("pathtracing")!==e&&(localStorage.setItem("pathtracing",e),engine.renderer=e?"pathtracer":"rasterizer"),localStorage.getItem("api")!==t&&(localStorage.setItem("api",t),engine.api=t),c.forEach(e=>{r[e]=a.children[e].value,localStorage.setItem(e,r[e])}),l.forEach(e=>{r[e]=a.children[e].checked,localStorage.setItem(e,r[e])}),n.forEach(e=>{r[e]=Number(a.children[e].value),localStorage.setItem(e,r[e])})})},{once:!0})}window.FlexLight=FlexLight,console.log(FlexLight),load();
+'use strict';
+import { FlexLight } from "../flexlight.js";
+window.FlexLight = FlexLight;
+console.log(FlexLight);
+load();
+function load() {
+    if (document.currentScript !== null)
+        document.currentScript.remove();
+    const urlParams = new URLSearchParams(location.search);
+    const script = document.createElement('script');
+    let sceneName = urlParams.get('v') ?? 'wave';
+    script.src = './build/loader/examples/' + sceneName + '.js';
+    document.head.appendChild(script);
+    window.addEventListener('load', function () {
+        let config = engine.config;
+        // Get form elements
+        const scriptForm = document.getElementById('scriptForm');
+        const parameterForm = document.getElementById('parameterForm');
+        const selectors = ['antialiasing'];
+        const tickBoxes = ['filter', 'temporal', 'hdr'];
+        const buttons = ['screenshot'];
+        const sliders = ['renderQuality', 'samplesPerRay', 'maxReflections', 'minImportancy'];
+        parameterForm.children['pathtracing'].checked = (localStorage.getItem('pathtracing') ?? 'true') === 'true';
+        parameterForm.children['api'].value = localStorage.getItem('api') ?? 'webgl2';
+        // Set renderer and api
+        engine.api = parameterForm.children['api'].value;
+        engine.renderer = parameterForm.children['pathtracing'].checked ? 'pathtracer' : 'rasterizer';
+        selectors.forEach((item) => {
+            config[item] = localStorage.getItem(item) ?? config[item];
+            parameterForm.children[item].value = config[item];
+        });
+        // Restore values in pathtracer
+        tickBoxes.forEach((item) => {
+            config[item] = (localStorage.getItem(item) ?? 'true') === 'true';
+            parameterForm.children[item].checked = config[item];
+        });
+        buttons.forEach((item) => {
+            document.getElementById(item).addEventListener('click', () => {
+                engine.screenshot();
+            });
+        });
+        sliders.forEach((item) => {
+            config[item] = Number(localStorage.getItem(item) ?? config[item]);
+            parameterForm.children[item].value = config[item];
+        });
+        // Load slider variables
+        document.querySelectorAll('output').forEach((item, i) => {
+            item.value = config[sliders[i]];
+            // Define silder
+            var slider = document.getElementById(sliders[i]);
+            // Live update slider variables
+            slider.addEventListener('input', () => item.value = slider.value);
+        });
+        if (urlParams.has('v')) {
+            scriptForm[0].value = urlParams.get('v');
+        }
+        else {
+            scriptForm.submit();
+        }
+        // Reload if scene changes
+        scriptForm.addEventListener('change', () => {
+            urlParams.set('v', scriptForm[0].value);
+            location.search = urlParams.toString();
+        });
+        // Update gl quality params on form change
+        parameterForm.addEventListener('change', () => {
+            let pathtracing = document.getElementById('pathtracing').checked;
+            let api = document.getElementById('api').value;
+            if ((localStorage.getItem('pathtracing') === 'true') !== pathtracing) {
+                localStorage.setItem('pathtracing', pathtracing);
+                engine.renderer = pathtracing ? 'pathtracer' : 'rasterizer';
+            }
+            if (localStorage.getItem('api') !== api) {
+                localStorage.setItem('api', api);
+                engine.api = api;
+            }
+            selectors.forEach((item) => {
+                config[item] = parameterForm.children[item].value;
+                localStorage.setItem(item, config[item]);
+            });
+            tickBoxes.forEach((item) => {
+                config[item] = parameterForm.children[item].checked;
+                localStorage.setItem(item, config[item]);
+            });
+            sliders.forEach((item) => {
+                config[item] = Number(parameterForm.children[item].value);
+                localStorage.setItem(item, config[item]);
+            });
+        });
+    }, { once: true });
+}

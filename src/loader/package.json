@@ -6,7 +6,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "flexlight": "../flexlight"
+    "flexlight": "../flexlight",
+    "config-ui": "../config-ui"
   },
   "author": "",
   "license": "ISC",

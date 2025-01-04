@@ -1,16 +1,17 @@
 "use strict";
 
 import { FlexLight, Vector } from '../../flexlight/flexlight.js';
+import { ConfigUI } from '../../config-ui/config-ui.js';
 
 const staticPath = './static/';
 // Declare engine global
 // var engine;
 // Create new canvas
-// var canvas = document.createElement("canvas");
+var canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-// engine = new FlexLight (canvas);
+engine = new FlexLight (canvas);
 engine.io = 'web';
 
 let camera = engine.camera;
