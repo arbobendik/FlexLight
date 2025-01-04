@@ -4,10 +4,10 @@
 import { GLLib } from "../webgl2/renderer.js";
 import { FXAA } from "../webgl2/fxaa.js";
 import { TAA } from "../webgl2/taa.js";
-import { Transform } from "../common/scene.js";
+import { Transform } from "../common/scene/transform.js";
 
-import PathtracingVertexShader from '../webgl2/shaders/pathtracer_vertex.glsl';
-import PathtracingFragmentShader from '../webgl2/shaders/pathtracer_fragment.glsl';
+import PathtracingVertexShader from '../webgl2/shaders/pathtracer-vertex.glsl';
+import PathtracingFragmentShader from '../webgl2/shaders/pathtracer-fragment.glsl';
 
 
 
@@ -101,7 +101,6 @@ export class PathTracerWGL2 {
 
 		canvas.width = Math.min(width * list.length, 2048);
     canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
-    console.log(canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
     // TextureWidth for third argument was 3 for regular textures
 		list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
@@ -149,7 +148,6 @@ export class PathTracerWGL2 {
   async updatePrimaryLightSources () {
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
-    // console.log("light sources: ", this.scene.primaryLightSources.length);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
 		// Don"t update light sources if there is none
@@ -159,7 +157,6 @@ export class PathTracerWGL2 {
 		}
 
     var lightTexArray = [];
-    // console.log("light sources: ", this.scene.primaryLightSources);
     // Iterate over light sources
     for (let lightSource of this.scene.primaryLightSources) {
       if (!lightSource) continue;
@@ -169,8 +166,6 @@ export class PathTracerWGL2 {
 			// push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
 			lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], intensity, variation, 0);
 		}
-
-    // console.log("light tex array length: ", lightTexArray.length);
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
@@ -295,7 +290,7 @@ export class PathTracerWGL2 {
       let jitter = { x: 0, y: 0 };
       if (this.#AAObject && this.#antialiasing === "taa") jitter = this.#AAObject.jitter();
       // Calculate projection matrix
-      let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
+      let dir = {x: this.camera.direction.x + jitter.x, y: this.camera.direction.y + jitter.y};
 
       let invFov = 1 / this.camera.fov;
       let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
@@ -313,10 +308,9 @@ export class PathTracerWGL2 {
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, texture);
       });
       // Set uniforms for shaders
-      // console.log(this.#engineState.intermediateFrames);
       let uniformValues = [
         // 3d position of camera
-        [this.camera.x, this.camera.y, this.camera.z],
+        [this.camera.position.x, this.camera.position.y, this.camera.position.z],
         // View rotation and TAA jitter
         [true, viewMatrix],
         // amount of samples per ray
@@ -348,7 +342,9 @@ export class PathTracerWGL2 {
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       // Get transformation matrices elements and set them in buffer
-      Transform.buildWGL2Arrays().forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
+      let transformArrays = Transform.buildWGL2Arrays();
+      this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[0], transformArrays.rotationBuffer, 0);
+      this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[1], transformArrays.shiftBuffer, 0);
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
@@ -511,8 +507,6 @@ export class PathTracerWGL2 {
 
         renderColor = vec4(color, 1.0);
       }`;
-
-      console.log(this.#tempGlsl);
       // Force update textures by resetting texture Lists
       this.#textureList = [];
       this.#pbrList = [];
@@ -634,7 +628,6 @@ export class PathTracerWGL2 {
       if (this.config.temporal) textureList.push(...TempTexture, ...TempIpTexture, ...TempIdTexture);
       // Init textures for denoiser
       textureList.forEach(item => {
-        // console.log(this);
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, item);
         this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.canvas.width, this.#gl.canvas.height, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, null);
         GLLib.setTexParams(this.#gl);

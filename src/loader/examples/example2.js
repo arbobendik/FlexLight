@@ -21,8 +21,8 @@ async function buildScene() {
 	scene.pbrTextures.push(normal_tex);
 
 	// Set camera perspective and position.
-	[camera.x, camera.y, camera.z] = [-12, 5, -18];
-	[camera.fx, camera.fy] = [-0.440, 0.235];
+	[camera.position.x, camera.position.y, camera.position.z] = [-12, 5, -18];
+	[camera.direction.x, camera.direction.y] = [-0.440, 0.235];
 
 	// Generate plane.
 	let thisPlane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);

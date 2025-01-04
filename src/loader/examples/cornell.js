@@ -71,6 +71,8 @@ async function buildScene() {
 	let box = [bottom_plane, top_plane, back_plane, front_plane, left_plane, right_plane];
 	// Push both objects to render queue.
 	scene.queue.push(cube, box);
+
+	scene.generateBVH();
 	// Start render engine.
 	engine.renderer.render();
 

@@ -1,134 +1,139 @@
 "use strict";
 
+import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, vector_scale, ZeroVector } from "../lib/math";
+
+type Object3D = any;
 
 export class Transform {
-    number = 0;
-    #rotationMatrix;
-    #position;
-    #scale = 1;
-    
-    #transformedNodes = new Set();
+    private referenceNumber: number = 0;
+    private rotationMatrix: Matrix<3, 3>;
+    private position: Vector<3>;
+    private scaleFactor: number = 1;
+    private transformedNodes = new Set();
+
+    private static NO_TRANSFORM: Transform;
+    private static used: Array<boolean> = [];
+    private static transformList: Array<Transform | undefined> = [];
   
-    static used = [];
-    static count = 0;
-    static transformList = [];
-  
-    static buildWGL2Arrays = () => {
+    static buildWGL2Arrays = (): { rotationBuffer: Float32Array, shiftBuffer: Float32Array } => {
+      let length: number = Transform.transformList.length;
       // Create UBO buffer array
-      let rotationBuffer = new Float32Array(24 * Transform.count);
-      let shiftBuffer = new Float32Array(8 * Transform.count);
+      let rotationBuffer: Float32Array = new Float32Array(24 * length);
+      let shiftBuffer: Float32Array = new Float32Array(8 * length);
       // Iterate over set elements
-      for (let i = 0; i < Transform.count; i++) {
-        let matrix = this.transformList[i].matrix;
-        let inverse = Math.moorePenrose(matrix);
-        let pos = this.transformList[i].position;
-        let invPos = Math.mul(- 1, this.transformList[i].position);
-        rotationBuffer.set(new Float32Array(matrix[0]), i * 24);
-        rotationBuffer.set(new Float32Array(matrix[1]), i * 24 + 4);
-        rotationBuffer.set(new Float32Array(matrix[2]), i * 24 + 8);
-        rotationBuffer.set(new Float32Array(inverse[0]), i * 24 + 12);
-        rotationBuffer.set(new Float32Array(inverse[1]), i * 24 + 16);
-        rotationBuffer.set(new Float32Array(inverse[2]), i * 24 + 20);
-        shiftBuffer.set(new Float32Array(pos), i * 8);
-        shiftBuffer.set(new Float32Array(invPos), i * 8 + 4);
+      for (let i: number = 0; i < length; i++) {
+        let transform: Transform = Transform.transformList[i] ?? Transform.NO_TRANSFORM;
+        let matrix: Matrix<3, 3> = transform.matrix;
+        let inverse: Matrix<3, 3> = moore_penrose(matrix);
+        let pos: Vector<3> = transform.position;
+        let invPos: Vector<3> = vector_scale(transform.position, - 1);
+        rotationBuffer.set(matrix[0]!, i * 24);
+        rotationBuffer.set(matrix[1]!, i * 24 + 4);
+        rotationBuffer.set(matrix[2]!, i * 24 + 8);
+        rotationBuffer.set(inverse[0]!, i * 24 + 12);
+        rotationBuffer.set(inverse[1]!, i * 24 + 16);
+        rotationBuffer.set(inverse[2]!, i * 24 + 20);
+        shiftBuffer.set(pos, i * 8);
+        shiftBuffer.set(invPos, i * 8 + 4);
       }
   
-      return [rotationBuffer, shiftBuffer];
+      return { rotationBuffer, shiftBuffer };
     }
   
-    static buildWGPUArray = () => {
+    static buildWGPUArray = (): Float32Array => {
+      let length: number = Transform.transformList.length;
       // Create UBO buffer array
-      let transfromBuffer = new Float32Array(32 * Transform.count);
+      let transfromBuffer: Float32Array = new Float32Array(32 * length);
       // Iterate over set elements
-      for (let i = 0; i < Transform.count; i++) {
-        let matrix = this.transformList[i].matrix;
-        let inverse = Math.moorePenrose(matrix);
-        let pos = this.transformList[i].position;
-        let invPos = Math.mul(- 1, this.transformList[i].position);
-        transfromBuffer.set(new Float32Array(matrix[0]), i * 32);
-        transfromBuffer.set(new Float32Array(matrix[1]), i * 32 + 4);
-        transfromBuffer.set(new Float32Array(matrix[2]), i * 32 + 8);
-        transfromBuffer.set(new Float32Array(pos), i * 32 + 12);
-        transfromBuffer.set(new Float32Array(inverse[0]), i * 32 + 16);
-        transfromBuffer.set(new Float32Array(inverse[1]), i * 32 + 20);
-        transfromBuffer.set(new Float32Array(inverse[2]), i * 32 + 24);
-        transfromBuffer.set(new Float32Array(invPos), i * 32 + 28);
+      for (let i: number = 0; i < length; i++) {
+        let transform: Transform = Transform.transformList[i] ?? Transform.NO_TRANSFORM;
+        let matrix: Matrix<3, 3> = transform.matrix;
+        let inverse: Matrix<3, 3> = moore_penrose(matrix);
+        let pos: Vector<3> = transform.position;
+        let invPos: Vector<3> = vector_scale(transform.position, - 1);
+        transfromBuffer.set(matrix[0]!, i * 32);
+        transfromBuffer.set(matrix[1]!, i * 32 + 4);
+        transfromBuffer.set(matrix[2]!, i * 32 + 8);
+        transfromBuffer.set(pos, i * 32 + 12);
+        transfromBuffer.set(inverse[0]!, i * 32 + 16);
+        transfromBuffer.set(inverse[1]!, i * 32 + 20);
+        transfromBuffer.set(inverse[2]!, i * 32 + 24);
+        transfromBuffer.set(invPos, i * 32 + 28);
       }
-  
+
       return transfromBuffer;
     }
-  
-    get matrix () {
-      let scaledRotation = Math.mul(this.#scale, this.#rotationMatrix);
-      return scaledRotation;
+
+    get number (): number {
+      return this.referenceNumber;
     }
   
-    get position () {
-      return this.#position;
+    get matrix (): Matrix<3, 3> {
+      return matrix_scale(this.rotationMatrix, this.scaleFactor);
     }
   
-    move (x, y, z) {
-      this.#position = [x, y, z];
+    move (x: number, y: number, z: number): void {
+      this.position = new Vector(x, y, z);
     }
-    
-    rotateAxis (normal, theta) {
-      let n = normal;
-      let sT = Math.sin(theta);
-      let cT = Math.cos(theta);
-      let currentRotation = [
-        [ n[0] * n[0] * (1 - cT) + cT,          n[0] * n[1] * (1 - cT) - n[2] * sT,   n[0] * n[2] * (1 - cT) + n[1] * sT  ],
-        [ n[0] * n[1] * (1 - cT) + n[2] * sT,   n[1] * n[1] * (1 - cT) + cT,          n[1] * n[2] * (1 - cT) - n[0] * sT  ],
-        [ n[0] * n[2] * (1 - cT) - n[1] * sT,   n[1] * n[2] * (1 - cT) + n[0] * sT,   n[2] * n[2] * (1- cT) + cT          ]  
-      ];
-      this.#rotationMatrix = currentRotation;
-    }
-  
-    rotateSpherical (theta, psi) {
-      let sT = Math.sin(theta);
-      let cT = Math.cos(theta);
-      let sP = Math.sin(psi);
-      let cP = Math.cos(psi);
-  
-      let currentRotation = [
-        [      cT,    0,      sT],
-        [-sT * sP,   cP, cT * sP],
-        [-sT * cP, - sP, cT * cP]
-      ];
-      
-      this.#rotationMatrix = currentRotation;
+
+    rotateAxis (normal: Vector<3>, theta: number): void {
+      let n: Vector<3> = normal;
+      let sT: number = Math.sin(theta);
+      let cT: number = Math.cos(theta);
+      this.rotationMatrix = new Matrix(
+        [n.x * n.x * (1 - cT) + cT,          n.x * n.y * (1 - cT) - n.z * sT,    n.x * n.z * (1 - cT) + n.y * sT],
+        [n.x * n.y * (1 - cT) + n.z * sT,    n.y * n.y * (1 - cT) + cT,          n.y * n.z * (1 - cT) - n.x * sT],
+        [n.x * n.z * (1 - cT) - n.y * sT,    n.y * n.z * (1 - cT) + n.x * sT,    n.z * n.z * (1 - cT) + cT]
+      );
     }
   
-    scale (s) {
-      this.#scale = s;
+    rotateSpherical (theta: number, psi: number): void {
+      let sT: number = Math.sin(theta);
+      let cT: number = Math.cos(theta);
+      let sP: number = Math.sin(psi);
+      let cP: number = Math.cos(psi);
+
+      this.rotationMatrix = new Matrix(
+        [cT,         0,      sT],
+        [- sT * sP,  cP,     cT * sP],
+        [- sT * cP,  - sP,   cT * cP]
+      );
     }
   
-    addNode (n) {
-      this.#transformedNodes.add(n);
+    scale (s: number): void {
+      this.scaleFactor = s;
     }
   
-    removeNode (n) {
-      this.#transformedNodes.delete(n);
+    addNode (n: Object3D): void {
+      this.transformedNodes.add(n);
     }
-  
+
+    removeNode (n: Object3D): void {
+      this.transformedNodes.delete(n);
+    }
+
+    destroy (): void {
+      Transform.used[this.referenceNumber] = false;
+      Transform.transformList[this.referenceNumber] = undefined;
+    }
+
     static classConstructor = (function() {
       // Add one identity matrix transform at position 0 to default to.
-      new Transform();
+      Transform.NO_TRANSFORM = new Transform();
     })();
   
     constructor () {
-      // Default to identity matrix
-      this.#rotationMatrix = Math.identity(3);
-      this.#position = [0, 0, 0];
-      // Assign next larger available number
+      // Default to identity matrix.
+      this.rotationMatrix = new IdentityMatrix(3);
+      this.position = new ZeroVector(3);
+      // Assign next larger available number.
       for (let i = 0; i < Infinity; i++) {
         if (Transform.used[i]) continue;
         Transform.used[i] = true;
-        this.number = i;
+        this.referenceNumber = i;
         break;
       }
-      // Update max index
-      Transform.count = Math.max(Transform.count, this.number + 1);
-      // Set in transform list
-      Transform.transformList[this.number] = this;
+      // Set in transform list.
+      Transform.transformList[this.referenceNumber] = this;
     }
   }
