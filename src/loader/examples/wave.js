@@ -57,7 +57,7 @@ async function buildScene() {
 		transforms.push(rowTransforms);
 	}
 
-	// scene.generateBVH();
+	scene.generateBVH();
 
 	// Init iterator variable for simple animations.
 	let t = 0;

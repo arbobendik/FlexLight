@@ -3,10 +3,10 @@
 import { GLLib } from "../webgl2/renderer.js";
 import { FXAA } from "../webgl2/fxaa.js";
 import { TAA } from "../webgl2/taa.js";
-import { Transform } from "../common/scene.js";
+import { Transform } from "../common/scene/transform.js";
 
-import RasterizerVertexShader from '../webgl2/shaders/rasterizer_vertex.glsl';
-import RasterizerFragmentShader from '../webgl2/shaders/rasterizer_fragment.glsl';
+import RasterizerVertexShader from '../webgl2/shaders/rasterizer-vertex.glsl';
+import RasterizerFragmentShader from '../webgl2/shaders/rasterizer-fragment.glsl';
 
 export class RasterizerWGL2 {
   type = "rasterizer";
@@ -28,7 +28,7 @@ export class RasterizerWGL2 {
   // Buffer arrays
   #triangleIdBufferArray;
   #bufferLength;
-  
+
   // Internal gl texture variables of texture atlases
   #textureAtlas;
   #pbrAtlas;
@@ -40,7 +40,7 @@ export class RasterizerWGL2 {
 
   #lightTexture;
   // Create new raysterizer from canvas and setup movement
-  constructor (canvas, scene, camera, config) {
+  constructor(canvas, scene, camera, config) {
     this.#canvas = canvas;
     this.camera = camera;
     this.config = config;
@@ -58,33 +58,33 @@ export class RasterizerWGL2 {
   }
 
   // Make canvas read only accessible
-  get canvas () {
+  get canvas() {
     return this.#canvas;
   }
 
   // Functions to update texture atlases to add more textures during runtime
-	async #updateAtlas (list) {
-		// Test if there is even a texture
-		if (list.length === 0) {
-			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
-			return;
-		}
+  async #updateAtlas(list) {
+    // Test if there is even a texture
+    if (list.length === 0) {
+      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, 1, 1, 0, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, new Uint8Array(4));
+      return;
+    }
 
-		const [width, height] = this.scene.standardTextureSizes;
-		const textureWidth = Math.floor(2048 / width);
-		const canvas = document.createElement("canvas");
-		const ctx = canvas.getContext("2d");
+    const [width, height] = this.scene.standardTextureSizes;
+    const textureWidth = Math.floor(2048 / width);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-		canvas.width = Math.min(width * list.length, 2048);
+    canvas.width = Math.min(width * list.length, 2048);
     canvas.height = height * (Math.floor((width * list.length) / 2048) + 1);
     console.log(canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
     // TextureWidth for third argument was 3 for regular textures
-		list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
+    list.forEach(async (texture, i) => ctx.drawImage(texture, width * (i % textureWidth), height * Math.floor(i / textureWidth), width, height));
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA, this.#gl.RGBA, this.#gl.UNSIGNED_BYTE, canvas);
-	}
+  }
 
-  async #updateTextureAtlas () {
+  async #updateTextureAtlas() {
     // Don"t build texture atlas if there are no changes.
     if (this.scene.textures.length === this.#textureList.length && this.scene.textures.every((e, i) => e === this.#textureList[i])) return;
     this.#textureList = this.scene.textures;
@@ -93,10 +93,10 @@ export class RasterizerWGL2 {
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-		this.#updateAtlas(this.scene.textures);
+    this.#updateAtlas(this.scene.textures);
   }
 
-  async #updatePbrAtlas () {
+  async #updatePbrAtlas() {
     // Don"t build texture atlas if there are no changes.
     if (this.scene.pbrTextures.length === this.#pbrList.length && this.scene.pbrTextures.every((e, i) => e === this.#pbrList[i])) return;
     this.#pbrList = this.scene.pbrTextures;
@@ -105,10 +105,10 @@ export class RasterizerWGL2 {
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-		this.#updateAtlas(this.scene.pbrTextures);
+    this.#updateAtlas(this.scene.pbrTextures);
   }
 
-  async #updateTranslucencyAtlas () {
+  async #updateTranslucencyAtlas() {
     // Don"t build texture atlas if there are no changes.
     if (this.scene.translucencyTextures.length === this.#translucencyList.length && this.scene.translucencyTextures.every((e, i) => e === this.#translucencyList[i])) return;
     this.#translucencyList = this.scene.translucencyTextures;
@@ -117,36 +117,36 @@ export class RasterizerWGL2 {
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
-		this.#updateAtlas(this.scene.translucencyTextures);
+    this.#updateAtlas(this.scene.translucencyTextures);
   }
 
   // Functions to update vertex and light source data textures
-  updatePrimaryLightSources () {
-		// Don"t update light sources if there are or no changes
+  updatePrimaryLightSources() {
+    // Don"t update light sources if there are or no changes
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#lightTexture);
     this.#gl.pixelStorei(this.#gl.UNPACK_ALIGNMENT, 1);
     // Set data texture details and tell webgl, that no mip maps are required
     GLLib.setTexParams(this.#gl);
     // Skip processing if there are no light sources
-		if (this.scene.primaryLightSources.length === 0) {
-			this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
-			return;
-		}
+    if (this.scene.primaryLightSources.length === 0) {
+      this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 1, 1, 0, this.#gl.RGB, this.#gl.FLOAT, new Float32Array(3));
+      return;
+    }
 
     var lightTexArray = [];
     // Iterate over light sources
-		this.scene.primaryLightSources.forEach(lightSource => {
-			// Set intensity to lightSource intensity or default if not specified
-			const intensity = Object.is(lightSource.intensity)? this.scene.defaultLightIntensity : lightSource.intensity;
-			const variation = Object.is(lightSource.variation)? this.scene.defaultLightVariation : lightSource.variation;
-			// push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
-			lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], intensity, variation, 0);
-		});
+    this.scene.primaryLightSources.forEach(lightSource => {
+      // Set intensity to lightSource intensity or default if not specified
+      const intensity = Object.is(lightSource.intensity) ? this.scene.defaultLightIntensity : lightSource.intensity;
+      const variation = Object.is(lightSource.variation) ? this.scene.defaultLightVariation : lightSource.variation;
+      // push location of lightSource and intensity to texture, value count has to be a multiple of 3 rgb format
+      lightTexArray.push(lightSource[0], lightSource[1], lightSource[2], intensity, variation, 0);
+    });
 
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGB32F, 2, this.scene.primaryLightSources.length, 0, this.#gl.RGB, this.#gl.FLOAT, Float32Array.from(lightTexArray));
   }
-  
-  async updateScene () {
+
+  async updateScene() {
     // Generate texture arrays and buffers
     let builtScene = await this.scene.generateArraysFromGraph();
     // Set buffer parameters
@@ -234,10 +234,10 @@ export class RasterizerWGL2 {
       // Render new Image, work through queue
       renderFrame(engineState);
       // Update frame counter
-      engineState.intermediateFrames ++;
+      engineState.intermediateFrames++;
       engineState.temporalFrame = (engineState.temporalFrame + 1) % this.config.temporalSamples;
       // Calculate Fps
-			let timeDifference = timeStamp - engineState.lastTimeStamp;
+      let timeDifference = timeStamp - engineState.lastTimeStamp;
       if (timeDifference > 500) {
         this.fps = (1000 * engineState.intermediateFrames / timeDifference).toFixed(0);
         engineState.lastTimeStamp = timeStamp;
@@ -250,17 +250,17 @@ export class RasterizerWGL2 {
     }
 
     let rasterizingPass = () => {
-      let jitter = {x: 0, y: 0};
+      let jitter = { x: 0, y: 0 };
       if (this.#antialiasing !== undefined && (this.#antialiasing.toLocaleLowerCase() === "taa")) jitter = this.#AAObject.jitter();
       // Calculate projection matrix
-      let dir = {x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y};
+      let dir = { x: this.camera.direction.x + jitter.x, y: this.camera.direction.y + jitter.y };
 
       let invFov = 1 / this.camera.fov;
       let heightInvWidthFov = this.#canvas.height * invFov / this.#canvas.width;
       let viewMatrix = [
-        Math.cos(dir.x) * heightInvWidthFov,            0,                          Math.sin(dir.x) * heightInvWidthFov,
-      - Math.sin(dir.x) * Math.sin(dir.y) * invFov,     Math.cos(dir.y) * invFov,   Math.cos(dir.x) * Math.sin(dir.y) * invFov,
-      - Math.sin(dir.x) * Math.cos(dir.y),            - Math.sin(dir.y),            Math.cos(dir.x) * Math.cos(dir.y)
+        Math.cos(dir.x) * heightInvWidthFov, 0, Math.sin(dir.x) * heightInvWidthFov,
+        - Math.sin(dir.x) * Math.sin(dir.y) * invFov, Math.cos(dir.y) * invFov, Math.cos(dir.x) * Math.sin(dir.y) * invFov,
+        - Math.sin(dir.x) * Math.cos(dir.y), - Math.sin(dir.y), Math.cos(dir.x) * Math.cos(dir.y)
       ];
 
       this.#gl.bindVertexArray(Vao);
@@ -272,7 +272,7 @@ export class RasterizerWGL2 {
       });
       // Set uniforms for shaders
       // Set 3d camera position
-      this.#gl.uniform3f(CameraPosition, this.camera.x, this.camera.y, this.camera.z);
+      this.#gl.uniform3f(CameraPosition, this.camera.position.x, this.camera.position.y, this.camera.position.z);
       // Set projection matrix
       this.#gl.uniformMatrix3fv(ViewMatrixLocation, true, viewMatrix);
       // Set global illumination
@@ -296,8 +296,9 @@ export class RasterizerWGL2 {
       // Fill UBO
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       // Get transformation matrices elements and set them in buffer
-      let buffers = Transform.buildWGL2Arrays();
-      buffers.forEach((array, i) => this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[i], array, 0));
+      let transformArrays = Transform.buildWGL2Arrays();
+      this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[0], transformArrays.rotationBuffer, 0);
+      this.#gl.bufferSubData(this.#gl.UNIFORM_BUFFER, UboVariableOffsets[1], transformArrays.shiftBuffer, 0);
       // Bind buffer
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       // Set buffers
@@ -350,7 +351,7 @@ export class RasterizerWGL2 {
       let vertexShader = GLLib.addCompileTimeConstant(RasterizerVertexShader, "MAX_TRANSFORMS", MAX_TRANSFORMS);
       let fragmentShader = GLLib.addCompileTimeConstant(RasterizerFragmentShader, "MAX_TRANSFORMS", MAX_TRANSFORMS);
 
-      Program = GLLib.compile (this.#gl, vertexShader, fragmentShader);
+      Program = GLLib.compile(this.#gl, vertexShader, fragmentShader);
       // Create global vertex array object (Vao)
       this.#gl.bindVertexArray(Vao);
       // Bind uniforms to Program
@@ -360,21 +361,21 @@ export class RasterizerWGL2 {
       SceneTex = this.#gl.getUniformLocation(Program, "sceneTex");
       TextureDims = this.#gl.getUniformLocation(Program, "textureDims");
       HdrLocation = this.#gl.getUniformLocation(Program, "hdr");
-      
+
       ViewMatrixLocation = this.#gl.getUniformLocation(Program, "viewMatrix");
 
       // Create UBO objects
       let BlockIndex = this.#gl.getUniformBlockIndex(Program, "transformMatrix");
       // Get the size of the Uniform Block in bytes
       let BlockSize = this.#gl.getActiveUniformBlockParameter(Program, BlockIndex, this.#gl.UNIFORM_BLOCK_DATA_SIZE);
-      
+
       UboBuffer = this.#gl.createBuffer();
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, UboBuffer);
       this.#gl.bufferData(this.#gl.UNIFORM_BUFFER, BlockSize, this.#gl.DYNAMIC_DRAW);
       this.#gl.bindBuffer(this.#gl.UNIFORM_BUFFER, null);
       this.#gl.bindBufferBase(this.#gl.UNIFORM_BUFFER, 0, UboBuffer);
 
-      UboVariableIndices = this.#gl.getUniformIndices( Program, ["rotation", "shift"]);
+      UboVariableIndices = this.#gl.getUniformIndices(Program, ["rotation", "shift"]);
       UboVariableOffsets = this.#gl.getActiveUniforms(
         Program,
         UboVariableIndices,
@@ -409,7 +410,7 @@ export class RasterizerWGL2 {
       this.#sceneTexture = this.#gl.createTexture();
       // Create buffers
       [triangleIdBuffer, vertexIdBuffer] = [this.#gl.createBuffer(), this.#gl.createBuffer()];
-      
+
       this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, triangleIdBuffer);
       this.#gl.enableVertexAttribArray(0);
       this.#gl.vertexAttribIPointer(0, 1, this.#gl.INT, false, 0, 0);
