@@ -1,14 +1,16 @@
 "use strict";
 
+import { FlexLight, Vector } from '../../flexlight/flexlight.js';
+
 const staticPath = './static/';
 // Declare engine global
-var engine;
+// var engine;
 // Create new canvas
-var canvas = document.createElement("canvas");
+// var canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-engine = new FlexLight (canvas);
+// engine = new FlexLight (canvas);
 engine.io = 'web';
 
 let camera = engine.camera;
@@ -36,8 +38,8 @@ let scene = engine.scene;
 });
 
 // Set camera perspective and position
-[camera.x, camera.y, camera.z] = [8, 7, -11];
-[camera.fx, camera.fy] = [0.440, 0.55];
+camera.position = new Vector(8, 7, -11);
+camera.direction = new Vector(0.440, 0.55);
 
 scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 // Make light dimmer (default = 200)

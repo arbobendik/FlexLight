@@ -1,0 +1,1 @@
+function loadScript(e,t=void 0){var c=document.createElement("script");c.src=e,t&&(c.type=t),document.head.appendChild(c)}export{loadScript};
