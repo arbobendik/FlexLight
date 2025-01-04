@@ -1,18 +1,8 @@
 'use strict';
 
-import { loadScript } from "./load-script.js";
-import { ConfigForm, ValueType } from "./ui.js";
-
-import { Config } from "../flexlight/flexlight.js";
 import { FlexLight } from "../flexlight/flexlight.js";
-
-
-const canvas: HTMLCanvasElement = document.createElement('canvas');
-document.body.appendChild(canvas);
-
-const config = new Config();
-const engine = new FlexLight(canvas);
-
+import { ValueType, ConfigForm } from "./form.js";
+// Types for ConfigUI
 interface Property<T extends ValueType> {
     name: string;
     defaultValue: T;
@@ -40,32 +30,21 @@ const getStartValueSelect = <T extends ValueType>(property: Property<T>): T => {
     else return value as T;
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    const urlParams: URLSearchParams = new URLSearchParams(location.search);
-    const sceneName: string = urlParams.get('v') ?? 'example1';
-    loadScript(`./build/loader/examples/${sceneName}.js`, 'module');
 
-    const scriptForm: HTMLElement | null = document.getElementById('scriptForm');
-    const parameterForm: HTMLElement | null = document.getElementById('parameterForm');
-
-    if (!scriptForm || !parameterForm) {
-        console.error('Script or parameter form not found');
-        return;
-    }
+export function createConfigUI(engine: FlexLight): HTMLFormElement {
+    const form = document.createElement("form");
 
     const localStorageHook = (name: string, value: ValueType) => {
-        console.log(name, value);
         localStorage.setItem(name, value.toString());
     };
     
     // Add FlexLight settings to parameter form
-    const flexLightForm = new ConfigForm(parameterForm, engine, localStorageHook);
+    const flexLightForm = new ConfigForm(form, engine, localStorageHook);
     flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"], getStartValueSelect({ name: 'Backend', defaultValue: 'webgl2' }));
     flexLightForm.addSelect("Renderer", "renderer", ["rasterizer", "pathtracer"], getStartValueSelect({ name: 'Renderer', defaultValue: 'rasterizer' }));
 
-    console.log(config);
     // Add Config settings to parameter form
-    const configForm = new ConfigForm(parameterForm, config, localStorageHook);
+    const configForm = new ConfigForm(form, engine.config, localStorageHook);
     configForm.addSelect("Antialiasing", "antialiasing", ["none", "fxaa", "taa"], getStartValueSelect({ name: 'Antialiasing', defaultValue: 'fxaa' }));
     configForm.addCheckbox("Temporal averaging", "temporal", true);
     configForm.addCheckbox("HDR", "hdr", getStartValueCheckbox({ name: 'HDR', defaultValue: true }));
@@ -74,5 +53,5 @@ document.addEventListener('DOMContentLoaded', () => {
     configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: 'Max reflections', defaultValue: 5 }));
     configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: 'Min importancy', defaultValue: 0.3 }));
 
-    // engine = new FlexLight(document.getElementById('canvas') as HTMLCanvasElement);
-});
+    return form;
+};

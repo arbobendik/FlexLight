@@ -1,1 +1,52 @@
-let staticPath="./static/";var engine;async function buildScene(){var e=document.createElement("canvas"),e=(document.body.appendChild(e),(engine=new FlexLight(e)).io="web",engine.camera);let n=engine.scene;[staticPath+"textures/grass.jpg"].forEach(e=>{var t=new Image;t.src=e,n.textures.push(t)}),[e.x,e.y,e.z]=[0,1,0],[e.fx,e.fy]=[-2.38,.2],n.primaryLightSources[0].intensity=0,n.ambientLight=[.01,.01,.01],engine.renderer.render();var e="cornell",t=(console.log("loading "+e),staticPath+"objects/"+e+".obj"),e=staticPath+"objects/"+e+".mtl",e=await n.importMtl(e),t=await n.importObj(t,e),a=(t.scale(20),n.queue.push(t),engine.renderer.updateScene(),document.createElement("div"));document.body.appendChild(a),setInterval(()=>{a.textContent=engine.renderer.fps},1e3)}buildScene();
+"use strict";
+const staticPath = './static/';
+// Declare engine global.
+var engine;
+// Start scene buider
+buildScene();
+// Build example scene
+async function buildScene() {
+    // Create new canvas.
+    var canvas = document.createElement("canvas");
+    // Append it to body.
+    document.body.appendChild(canvas);
+    engine = new FlexLight(canvas);
+    engine.io = 'web';
+    let camera = engine.camera;
+    let scene = engine.scene;
+    [
+        staticPath + "textures/grass.jpg", // 0
+    ].forEach(item => {
+        let img = new Image();
+        img.src = item;
+        scene.textures.push(img);
+    });
+    // Set camera perspective and position.
+    [camera.x, camera.y, camera.z] = [0, 1, 0];
+    [camera.fx, camera.fy] = [-2.38, 0.2];
+    scene.primaryLightSources[0].intensity = 0;
+    scene.ambientLight = [.01, .01, .01];
+    // scene.queue.push(plane);
+    // Start render engine.
+    engine.renderer.render();
+    // console.log(search.getAll());
+    let model = 'cornell';
+    console.log('loading ' + model);
+    let modelUrl = staticPath + 'objects/' + model + '.obj';
+    let materialUrl = staticPath + 'objects/' + model + '.mtl';
+    var mtl = await scene.importMtl(materialUrl);
+    var obj = await scene.importObj(modelUrl, mtl);
+    // obj.emissiveness = 0;
+    obj.scale(20);
+    // obj.move(5, 0, - 5);
+    scene.queue.push(obj);
+    engine.renderer.updateScene();
+    // Add FPS counter to top-right corner
+    var fpsCounter = document.createElement("div");
+    // Append it to body.
+    document.body.appendChild(fpsCounter);
+    // Update Counter periodically.
+    setInterval(() => {
+        fpsCounter.textContent = engine.renderer.fps;
+    }, 1000);
+}
