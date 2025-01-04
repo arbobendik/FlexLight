@@ -23,24 +23,25 @@ function compile (
 )
 
 
+rm -rf ./public/build
+
+bundle ./src/flexlight/flexlight.js ./public/build/flexlight/flexlight.js
+# rm -rf ./public/build/flexlight
+
 # Build engine js into build folder.
-compile ./src/flexlight
-bundle ./src/flexlight/flexlight.js ./public/build/flexlight.js
-rm -rf ./public/build/flexlight
+compile ./src/loader
 
 
-while getopts "e" flag; do
-    case $flag in
-        e)
-        mkdir -p ./public/build/examples
-        compile ./src/examples
-        ;;
-        \?)
-        # Handle invalid options
-        echo "Invalid option: -$OPTARG" >&2
-        ;;
-    esac
-done
+# while getopts "e" flag; do
+#    case $flag in
+#        e)
+#        ;;
+#        \?)
+#        # Handle invalid options
+#        echo "Invalid option: -$OPTARG" >&2
+#        ;;
+#    esac
+# done
 
 # Minify all js files in build folders.
 minify ./public/build

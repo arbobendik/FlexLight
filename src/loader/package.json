@@ -1,0 +1,14 @@
+{
+  "name": "flexlight-loader",
+  "version": "1.0.0",
+  "main": "loader.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "flexlight": "../flexlight"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

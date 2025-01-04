@@ -50,11 +50,12 @@ export class WebIo {
 
 	update = (time) => {
 		if (!this.#isListening) return;
-		const c = this.camera;
+		const position = this.camera.position;
+		const direction = this.camera.direction;
 		const difference = (time - this.#savedTime) * this.movementSpeed;
-		c.x += difference * (this.#movement[0] * Math.cos(c.fx) - this.#movement[2] * Math.sin(c.fx));
-		c.y += difference * this.#movement[1];
-		c.z += difference * (this.#movement[2] * Math.cos(c.fx) + this.#movement[0] * Math.sin(c.fx));
+		position.x += difference * (this.#movement[0] * Math.cos(direction.x) - this.#movement[2] * Math.sin(direction.x));
+		position.y += difference * this.#movement[1];
+		position.z += difference * (this.#movement[2] * Math.cos(direction.x) + this.#movement[0] * Math.sin(direction.x));
 		this.#savedTime = time;
 	}
 
@@ -100,8 +101,8 @@ export class WebIo {
 			if (!io.#isListening) return;
 			const speed = [io.mouseX / canvas.width, io.mouseY / canvas.height];
 			var movement = [speed[0] * event.movementX, speed[1] * event.movementY];
-			io.camera.fx -= movement[0];
-			if (2 * Math.abs(io.camera.fy + movement[1]) < Math.PI) io.camera.fy += movement[1];
+			io.camera.direction.x -= movement[0];
+			if (2 * Math.abs(io.camera.direction.y + movement[1]) < Math.PI) io.camera.direction.y += movement[1];
 		};
 	}
 }

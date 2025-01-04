@@ -2,6 +2,7 @@
 
 import { Math } from './math.js';
 import { Float16Array, Arrays } from './arrays.js';
+import { Transform } from './scene/transform.js';
 
 const BVH_MAX_LEAVES_PER_NODE = 4;
 export class Scene {
@@ -210,7 +211,6 @@ export class Scene {
     let fillData = (item) => {
       if (item.static) {
         // Item is static and precaluculated values can just be used
-        console.log(geometryBuffer, texturePos * 12, item.geometryBuffer);
         geometryBuffer.set(item.geometryBuffer, texturePos * 12);
         sceneBuffer.set(item.sceneBuffer, texturePos * 28);
         // Update id buffer
@@ -283,7 +283,6 @@ export class Scene {
     geometryBufferWidth = 3 * 4 * 256;
     // 7 pixels * 4 values * 256 vertecies per line
     sceneBufferWidth = 7 * 4 * 256;
-    console.log(textureLength, bufferLength);
     console.log(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth)
     // Round up data to next higher multiple of (3 pixels * 4 values * 256 vertecies per line)
     geometryBuffer = new Float32Array(Math.ceil(textureLength * 12 / geometryBufferWidth) * geometryBufferWidth);
@@ -434,11 +433,8 @@ export class Scene {
     text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
     // generate boundings for object and give it 
     console.log('Generating BVH ...');
-    console.log(obj);
     obj = Scene.generateBVH(obj);
-    console.log(obj);
     Scene.updateBoundings(obj);
-    console.log(obj);
     // return built object
     return obj;
   }
@@ -493,6 +489,7 @@ export class Scene {
   }
 }
 
+/*
 export class Transform {
   number = 0;
   #rotationMatrix;
@@ -624,6 +621,7 @@ export class Transform {
     Transform.transformList[this.number] = this;
   }
 }
+*/
 
 export class Primitive {
   #vertices;

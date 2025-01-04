@@ -3,13 +3,15 @@
 import { Renderer } from "../webgpu/renderer.js";
 import { FXAA } from "../webgpu/fxaa.js";
 import { TAA } from "../webgpu/taa.js";
-import { Transform } from "../common/scene.js";
+import { Transform } from "../common/scene/transform.js";
 
-import PathtracerShiftShader from '../webgpu/shaders/pathtracer_shift.wgsl';
-import PathtracerComputeShader from '../webgpu/shaders/pathtracer_compute.wgsl';
-import PathtracerSelectiveAverageShader from '../webgpu/shaders/pathtracer_selective_average.wgsl';
-import PathtracerReprojectShader from '../webgpu/shaders/pathtracer_reproject.wgsl';
-import PathtracerCanvasShader from '../webgpu/shaders/pathtracer_canvas.wgsl';
+import PathtracerDepthShader from '../webgpu/shaders/pathtracer-depth.wgsl';
+import PathtracerRasterShader from '../webgpu/shaders/pathtracer-raster.wgsl';
+import PathtracerShiftShader from '../webgpu/shaders/pathtracer-shift.wgsl';
+import PathtracerComputeShader from '../webgpu/shaders/pathtracer-compute.wgsl';
+import PathtracerSelectiveAverageShader from '../webgpu/shaders/pathtracer-selective-average.wgsl';
+import PathtracerReprojectShader from '../webgpu/shaders/pathtracer-reproject.wgsl';
+import PathtracerCanvasShader from '../webgpu/shaders/canvas.wgsl';
 
 let rasterRenderFormats = ["rgba32float", "rg32float"];
 
@@ -370,7 +372,7 @@ export class RasterizerWGPU extends Renderer {
       ]
     });
 
-    let depthShader = Network.fetchSync("shaders/pathtracer_depth.wgsl");
+    let depthShader = PathtracerDepthShader;
     let depthModule = device.createShaderModule({ code: depthShader });
 
     this.#depthPipeline = device.createRenderPipeline({
@@ -398,7 +400,7 @@ export class RasterizerWGPU extends Renderer {
       },
     });
 
-    let rasterShader = Network.fetchSync("shaders/pathtracer_raster.wgsl");
+    let rasterShader = PathtracerRasterShader;
     let rasterModule = device.createShaderModule({ code: rasterShader });
 
     this.#rasterPipeline = device.createRenderPipeline({
@@ -579,8 +581,8 @@ export class RasterizerWGPU extends Renderer {
     let jitter = { x: 0, y: 0 };
     if (this.#AAObject && this.#antialiasing === "taa") jitter = this.#AAObject.jitter();
     // Calculate projection matrix
-    let dir = { x: this.camera.fx, y: this.camera.fy };
-    let dirJitter = { x: this.camera.fx + jitter.x, y: this.camera.fy + jitter.y };
+    let dir = { x: this.camera.direction.x, y: this.camera.direction.y };
+    let dirJitter = { x: this.camera.direction.x + jitter.x, y: this.camera.direction.y + jitter.y };
     let canvasTarget = this.#context.getCurrentTexture();
     // Assemble lists to fill bind groups
     let depthBufferEntry = { binding: 0, resource: { buffer: this.#depthBuffer }};
@@ -690,7 +692,7 @@ export class RasterizerWGPU extends Renderer {
       viewMatrixJitter[0][1], viewMatrixJitter[1][1], viewMatrixJitter[2][1], 0,
       viewMatrixJitter[0][2], viewMatrixJitter[1][2], viewMatrixJitter[2][2], 0,
       // Camera
-      this.camera.x, this.camera.y, this.camera.z, 0,
+      this.camera.position.x, this.camera.position.y, this.camera.position.z, 0,
       // Ambient light
       this.scene.ambientLight[0], this.scene.ambientLight[1], this.scene.ambientLight[2], 0,
 

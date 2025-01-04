@@ -1,16 +1,20 @@
 'use strict';
-
+			
+import { FlexLight } from "../flexlight.js";
+window.FlexLight = FlexLight;
+console.log(FlexLight);
 
 load();
 
 function load() {
   
   if(document.currentScript !== null) document.currentScript.remove();
+
   
   const urlParams = new URLSearchParams(location.search);
   const script = document.createElement('script');
   let sceneName = urlParams.get('v') ?? 'wave';
-  script.src = './build/examples/' + sceneName + '.js';
+  script.src = './build/loader/examples/' + sceneName + '.js';
   document.head.appendChild(script);
 
 	window.addEventListener('load', function() {

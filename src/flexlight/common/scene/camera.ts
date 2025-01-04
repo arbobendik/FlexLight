@@ -1,11 +1,11 @@
 'use strict';
 
-import { vec2, vec3 } from '../math/math_types.js';
+import { Vector, ZeroVector } from '../lib/math.js';
 
 
 export class Camera {
   // Camera and frustrum settings
-  position: vec3 = { x: 0, y: 0, z: 0 };
-  rotation: vec2 = { x: 0, y: 0 };
+  position: Vector<3> = new ZeroVector(3);
+  direction: Vector<2> = new ZeroVector(2);
   fov: number = 1 / Math.PI;
 }
