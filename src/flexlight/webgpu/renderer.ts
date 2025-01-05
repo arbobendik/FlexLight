@@ -1,13 +1,20 @@
 "use strict";
 
-export class Renderer {
 
-    device;
-    scene;
+export interface RenderTarget {
+    context: GPUCanvasContext;
+    device: GPUDevice;
+}
 
-    textureAtlas;
-    pbrAtlas;
-    translucencyAtlas;
+export class RendererWGPU {
+    scene: Scene;
+
+
+    canvas: HTMLCanvasElement;
+    
+    textureAtlas: GPUTexture;
+    pbrAtlas: GPUTexture;
+    translucencyAtlas: GPUTexture;
 
     textureList = [];
     pbrList = [];
@@ -20,16 +27,33 @@ export class Renderer {
     lightBuffer;
     primaryLightSources;
 
+    // Track if engine is running
+    isRunning = false;
 
-    constructor(scene) {
+
+    constructor(scene, canvas: HTMLCanvasElement) {
         this.scene = scene;
+        this.canvas = canvas;
+        // Request webgpu context
+    }
+    
+    async requestDevice(): Promise<RenderTarget | void> {
+        let context = this.canvas.getContext("webgpu");
+        let adapter = navigator.gpu.requestAdapter();
+        if (!adapter) return undefined;
+        let device = await adapter.requestDevice();
+        return {
+            context,
+            device
+        };
     }
 
-    async generateAtlasView (list) {
-        let [width, height] = this.scene.standardTextureSizes;
+    async generateAtlasView (list: Array<HTMLImageElement>) {
+        let { x: width, y: height}: Vector<2> = this.scene.standardTextureSizes;
         let textureWidth = Math.floor(2048 / width);
         let canvas = document.createElement("canvas");
-        let ctx = canvas.getContext("2d");
+        let ctx: CanvasRenderingContext2D | null = canvas.getContext("2d"); 
+        if (!ctx) throw new Error("Failed to get canvas context");
         // Test if there is even a texture
         if (list.length === 0) {
             canvas.width = width;
