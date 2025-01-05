@@ -1434,7 +1434,8 @@ var PathTracerWGL2 = class {
   #tempGlsl;
   #engineState = {};
   #resizeEvent;
-  #halt = true;
+  /*readonly*/
+  #isRunning = false;
   // Create new PathTracer from canvas and setup movement
   constructor(canvas, scene, camera, config) {
     this.#canvas = canvas;
@@ -1444,13 +1445,15 @@ var PathTracerWGL2 = class {
     this.#gl = canvas.getContext("webgl2");
   }
   halt = () => {
+    let oldIsRunning = this.#isRunning;
     try {
       this.#gl.loseContext();
     } catch (e) {
       console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
-    this.#halt = true;
+    this.#isRunning = false;
     window.removeEventListener("resize", this.#resizeEvent);
+    return oldIsRunning;
   };
   // Make canvas read only accessible
   get canvas() {
@@ -1528,7 +1531,7 @@ var PathTracerWGL2 = class {
     this.#gl.texImage2D(this.#gl.TEXTURE_2D, 0, this.#gl.RGBA32F, 7 * 256, builtScene.sceneBufferHeight, 0, this.#gl.RGBA, this.#gl.FLOAT, builtScene.sceneBuffer);
   }
   async render() {
-    this.#halt = false;
+    this.#isRunning = true;
     let Program;
     let TempProgram, TempHdrLocation;
     let triangleIdBuffer, vertexIdBuffer;
@@ -1548,13 +1551,14 @@ var PathTracerWGL2 = class {
     let Vao = this.#gl.createVertexArray();
     let TempVao = this.#gl.createVertexArray();
     let frameCycle = () => {
-      if (this.#halt) return;
+      if (!this.#isRunning) return;
       let timeStamp = performance.now();
       this.#updateTextureAtlas();
       this.#updatePbrAtlas();
       this.#updateTranslucencyAtlas();
       this.updatePrimaryLightSources();
       if (this.#engineState.temporal !== this.config.temporal || this.#engineState.temporalSamples !== this.config.temporalSamples || this.#engineState.renderQuality !== this.config.renderQuality) {
+        console.log("FORCED PREPARE ENGINE BY CONFIG CHANGE");
         requestAnimationFrame(() => prepareEngine());
         return;
       }
@@ -1703,8 +1707,9 @@ var PathTracerWGL2 = class {
       if (this.#antialiasing) this.#AAObject.renderFrame();
     };
     let prepareEngine = () => {
+      console.log("PREPARE ENGINE");
       this.halt();
-      this.#halt = false;
+      this.#isRunning = true;
       Object.assign(this.#engineState, {
         // Attributes to meassure frames per second
         intermediateFrames: 0,
@@ -1869,6 +1874,7 @@ var PathTracerWGL2 = class {
       renderTextureBuilder();
       if (this.#AAObject) this.#AAObject.createTexture();
     };
+    throw new Error("INITIALIZING ENGINE");
     prepareEngine();
   }
 };
@@ -4113,7 +4119,7 @@ var FlexLight = class {
   set renderer(renderer) {
     this.#idRenderer = renderer;
     console.log(this.#idRenderer + this.#api);
-    this.#renderer.halt();
+    let wasRunning = this.#renderer.halt();
     switch (this.#idRenderer + this.#api) {
       case "pathtracerwebgl2":
         this.#renderer = new PathTracerWGL2(this.#canvas, this.#scene, this.#camera, this.#config);
@@ -4130,7 +4136,7 @@ var FlexLight = class {
       default:
         console.error("Renderer option", this.#idRenderer, "on api", this.#api, "doesn't exist.");
     }
-    this.#renderer.render();
+    if (wasRunning) this.#renderer.render();
   }
   set io(io) {
     this.#idIo = io ?? "web";
