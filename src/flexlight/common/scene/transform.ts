@@ -11,7 +11,7 @@ export class Transform {
     private scaleFactor: number = 1;
     private transformedNodes = new Set();
 
-    private static NO_TRANSFORM: Transform;
+    private static DEFAULT_TRANSFORM: Transform;
     private static used: Array<boolean> = [];
     private static transformList: Array<Transform | undefined> = [];
   
@@ -22,7 +22,7 @@ export class Transform {
       let shiftBuffer: Float32Array = new Float32Array(8 * length);
       // Iterate over set elements
       for (let i: number = 0; i < length; i++) {
-        let transform: Transform = Transform.transformList[i] ?? Transform.NO_TRANSFORM;
+        let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
         let matrix: Matrix<3, 3> = transform.matrix;
         let inverse: Matrix<3, 3> = moore_penrose(matrix);
         let pos: Vector<3> = transform.position;
@@ -46,7 +46,7 @@ export class Transform {
       let transfromBuffer: Float32Array = new Float32Array(32 * length);
       // Iterate over set elements
       for (let i: number = 0; i < length; i++) {
-        let transform: Transform = Transform.transformList[i] ?? Transform.NO_TRANSFORM;
+        let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
         let matrix: Matrix<3, 3> = transform.matrix;
         let inverse: Matrix<3, 3> = moore_penrose(matrix);
         let pos: Vector<3> = transform.position;
@@ -117,9 +117,9 @@ export class Transform {
       Transform.transformList[this.referenceNumber] = undefined;
     }
 
-    static classConstructor = (function() {
+    static staticConstructor = (function() {
       // Add one identity matrix transform at position 0 to default to.
-      Transform.NO_TRANSFORM = new Transform();
+      Transform.DEFAULT_TRANSFORM = new Transform();
     })();
   
     constructor () {

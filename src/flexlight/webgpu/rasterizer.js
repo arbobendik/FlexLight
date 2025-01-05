@@ -1,6 +1,6 @@
 
 
-import { Renderer } from "../webgpu/renderer.js";
+import { RendererWGPU } from "../webgpu/renderer.js";
 import { FXAA } from "../webgpu/fxaa.js";
 import { TAA } from "../webgpu/taa.js";
 import { Transform } from "../common/scene/transform.js";
@@ -19,7 +19,7 @@ let rasterRenderFormats = ["rgba32float", "rg32float"];
 const POW32U = 2 ** 32 - 1;
 const TEMPORAL_MAX = 2 ** 23 - 1;
 
-export class RasterizerWGPU extends Renderer {
+export class RasterizerWGPU extends RendererWGPU {
   type = "rasterizer";
   // Configurable runtime properties of the pathtracer (public attributes)
   config;
