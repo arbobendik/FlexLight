@@ -5,17 +5,10 @@
 		<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
 		<meta name="viewport" content="width=device-width, initial-scale=1"/>
 		<link href = "style.css" rel = "stylesheet"/>
-		<script type="module">
-			import { FlexLight } from "./flexlight/flexlight.js";
-
-			window.canvas = document.createElement("canvas");
-			window.engine = new FlexLight(window.canvas);
-			document.body.appendChild(window.canvas);
-		</script>
-		<script defer type="module" src="./build/loader/loader.js"></script>
+		<script defer type="module" src="./build/loader/load-script.js"></script>
 	</head>
 	<body>
-		<div id = "controlPanel">
+		<div id ="controlPanel">
 			<button id="screenshot">Screenshot</button>
 			<form id="scriptForm" action="." method="GET">
 				<label for="v">Scene</label>
@@ -27,7 +20,6 @@
 					<option value="wave">Wave</option>
 				</select>
 			</form>
-			<form id="parameterForm"></form>
 		</div>
 	</body>
 </html>

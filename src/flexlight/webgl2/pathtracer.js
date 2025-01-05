@@ -60,7 +60,8 @@ export class PathTracerWGL2 {
 
   #engineState = {};
   #resizeEvent;
-  #halt = true;
+
+  /*readonly*/ #isRunning = false;
   // Create new PathTracer from canvas and setup movement
   constructor (canvas, scene, camera, config) {
     this.#canvas = canvas;
@@ -72,13 +73,15 @@ export class PathTracerWGL2 {
   }
 
   halt = () => {
+    let oldIsRunning = this.#isRunning;
     try {
       this.#gl.loseContext();
     } catch (e) {
       console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
-    this.#halt = true;
+    this.#isRunning = false;
     window.removeEventListener("resize",this.#resizeEvent);
+    return oldIsRunning;
   }
   
   // Make canvas read only accessible
@@ -196,7 +199,7 @@ export class PathTracerWGL2 {
 
   async render() {
     // Allow frame rendering
-    this.#halt = false;
+    this.#isRunning = true;
     // Internal GL objects
     let Program;
     let TempProgram, TempHdrLocation;
@@ -228,7 +231,7 @@ export class PathTracerWGL2 {
 
     // Internal render engine Functions
     let frameCycle = () => {
-      if (this.#halt) return;
+      if (!this.#isRunning) return;
       let timeStamp = performance.now();
       // Update Textures
       this.#updateTextureAtlas();
@@ -244,6 +247,7 @@ export class PathTracerWGL2 {
       ) {
         // resize();
         // this.#engineState = prepareEngine();
+        console.log("FORCED PREPARE ENGINE BY CONFIG CHANGE");
         // Update Textures
         requestAnimationFrame(() => prepareEngine());
         return;
@@ -429,9 +433,10 @@ export class PathTracerWGL2 {
     }
 
     let prepareEngine = () => {
+      console.log("PREPARE ENGINE");
       this.halt();
       // Allow frame rendering
-      this.#halt = false;
+      this.#isRunning = true;
       // Reset engine state
       Object.assign(this.#engineState, {
         // Attributes to meassure frames per second
@@ -648,6 +653,8 @@ export class PathTracerWGL2 {
       // rt.updatePrimaryLightSources();
       if (this.#AAObject) this.#AAObject.createTexture();
     }
+
+    throw new Error("INITIALIZING ENGINE");
     // Prepare Renderengine
     prepareEngine();
   }

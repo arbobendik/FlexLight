@@ -10,65 +10,83 @@ const TypeScriptAssign = <O extends Object, K extends keyof O> (obj: O, key: K, 
 type IsRange<IT extends InputType, T> = IT extends "range" ? T : never;
 type IsSelect<IT extends InputType, T> = IT extends "select" ? T : never;
 
+type Options<IT extends InputType> = IsSelect<IT, Array<string>> extends never ? [] : Array<string>;
 
 export class ConfigElement<IT extends InputType, O extends Object, K extends keyof O> extends HTMLElement {
-    private _name: string = "";
-    private _object: O | undefined = undefined;
-    private _key: K | undefined = undefined;
+    readonly name: string;
+    readonly object: O;
+    readonly key: K;
+    readonly type: IT;
+    readonly hook: ((name: string, value: ValidInputType<IT, O, K>) => void);
+    readonly options: Options<IT>;
+
     private _value: ValidInputType<IT, O, K> | undefined = undefined;
-    private _type: IT | undefined = undefined;
-    private _options: IsSelect<IT, Array<string>> | undefined = undefined;
 
     private label: HTMLLabelElement;
     private input: HTMLInputElement | undefined = undefined;
+    private rangeDisplay: HTMLSpanElement | undefined = undefined;
     private select: HTMLSelectElement | undefined = undefined;
 
-    private _hook: ((name: string, value: ValidInputType<IT, O, K>) => void) = () => {};
     
-
-    constructor() {
-      super();
-      // Create outer label element
-      this.label = document.createElement("label");
+    constructor(object: O, key: K, name: string, type: IT, hook: ((name: string, value: ValidInputType<IT, O, K>) => void), options: Options<IT> = []) {
+        super();
+        // Create outer label element
+        this.object = object;
+        this.key = key;
+        this.name = name;
+        this.type = type;
+        this.hook = hook;
+        this.options = options;
+        // Generate HTML element and render
+        this.label = document.createElement("label");
+        this.attemptRender();
     }
 
     connectedCallback() {
         this.appendChild(this.label);
+        console.log(this.label);
     }
 
     private createInput(): void {
         // If type is not set, don't create input
-        if (!this._type) return;
         let input = document.createElement("input");
-        input.type = this._type;
-        // Add event listener
-        input.addEventListener("change", (event: Event) => {
-            if (!(event.target instanceof HTMLInputElement)) return;
-            switch (input.type) {
-                case "checkbox":
-                    this._value = input.checked as ValidInputType<IT, O, K>;
-                    this._hook(this.name ?? "", this._value);
-                    break;
-                case "range":
-                    this._value = input.value as ValidInputType<IT, O, K>;
-                    this._hook(this.name ?? "", this._value);
-                    break;
-            }
-        });
+        input.name = this.name;
+        input.value = this._value?.toString() ?? "";
+        input.type = this.type;
+
+        switch (this.type) {
+            case "checkbox":
+                // Add event listener
+                input.addEventListener("change", (event: Event) => {
+                    if (!(event.target instanceof HTMLInputElement)) return;
+                    this.value = input.checked as ValidInputType<IT, O, K>;
+                });
+                break;
+            case "range":
+                // Create range display to show current value
+                let rangeDisplay = document.createElement("span");
+                rangeDisplay.textContent = this._value?.toString() ?? "";
+                this.rangeDisplay = rangeDisplay;
+                this.label.appendChild(rangeDisplay);
+                // Add event listener
+                input.addEventListener("change", (event: Event) => {
+                    if (!(event.target instanceof HTMLInputElement)) return;
+                    this.value = input.value as ValidInputType<IT, O, K>;
+                });
+                break;
+        }
+        
 
         this.input = input;
-        this.input.name = this._name;
-        console.log(this._name, this._value);
-        this.input.value = this._value?.toString() ?? "";
         this.label.appendChild(this.input);
     }
 
     private createSelect(): void {
-        // If type is not set or options are not set, don't create select
-        if (!this._type || !this._options) return;
+        // If options are not set, don't create select
+        if (!this.options) throw new Error("Options are not set for select element");
         let select = document.createElement("select");
         // Create options
-        for (let option of this._options) {
+        for (let option of this.options) {
             let optionElement: HTMLOptionElement = document.createElement("option");
             optionElement.value = option;
             optionElement.textContent = option;
@@ -77,26 +95,23 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
         // Add event listener
         select.addEventListener("change", (event: Event) => {
             if (!(event.target instanceof HTMLSelectElement)) return;
-            this._value = select.value as ValidInputType<IT, O, K>;
-            this._hook(this.name ?? "", this._value);
+            this.value = select.value as ValidInputType<IT, O, K>;
         });
 
         this.select = select;
-        this.select.name = this._name;
+        this.select.name = this.name;
         this.select.value = this._value?.toString() ?? "";
         this.label.appendChild(this.select);
     }
 
     private attemptRender () {
-        // If name is not set, don't render
-        if (!this._type) return;
         // Clear label
         this.label.replaceChildren();
         // Write name to label
-        this.label.textContent = this._name;
-        this.label.htmlFor = this._name;
+        this.label.textContent = this.name;
+        this.label.htmlFor = this.name;
         // Test if type is valid
-        switch (this._type) {
+        switch (this.type) {
             case "checkbox":
                 this.createInput();
                 break;
@@ -109,9 +124,6 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
         }
     }
 
-    set hook(hook: (name: string, value: ValidInputType<IT, O, K>) => void) { this._hook = hook; }
-    get hook() { return this._hook; }
-
     set min(min: IsRange<IT, string>) { if (this.input) this.input.min = min; }
     get min() { return this.input?.min as IsRange<IT, string>; }
 
@@ -121,41 +133,21 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
     set step(step: IsRange<IT, string>) { if (this.input) this.input.step = step; }
     get step() { return this.input?.step as IsRange<IT, string>; }
 
-    set options(options: IsSelect<IT, Array<string>> | undefined) {
-        this._options = options;
-        this.attemptRender();
-    }
-    get options() { return this._options; }
-
-    set object(object: O | undefined) { this._object = object; }
-    get object() { return this._object; }
-
-    set key(key: K | undefined) { this._key = key; }
-    get key() { return this._key; }
-
     get value() { return this._value; }
     set value(value: ValidInputType<IT, O, K> | undefined) { 
         this._value = value;
-        if (this.input) this.input.value = (value ?? "").toString();
-        if (this.select) this.select.value = (value ?? "").toString();
-        if (this._object && this._key && value) TypeScriptAssign(this._object, this._key, value);
         
-        if (this.input) console.log(this._name, this.input.value, value);
-        if (this.select) console.log(this._name, this.select.value, value);
-    }
+        if (value) {
+            this.hook(this.name ?? "", value);
+            TypeScriptAssign(this.object, this.key, value);
+        }
 
-    get type() { return this._type; }
-    set type(type: IT | undefined) { 
-        this._type = type;
-        this.attemptRender();
-    }
+        let stringValue = (value ?? "").toString();
+        if (this.input) this.input.value = stringValue;
+        if (this.rangeDisplay) this.rangeDisplay.textContent = stringValue;
+        if (this.select) this.select.value = stringValue;
 
-    get name() { return this._name; }
-    set name(name: string) {
-        this._name = name;
-        this.attemptRender();
+        if (this.input) console.log(this.name, this.input.value, value);
+        if (this.select) console.log(this.name, this.select.value, value);
     }
 }
-
-// Register custom element
-customElements.define("config-element", ConfigElement);

@@ -1,8 +1,137 @@
+// src/config-ui/element.ts
+var TypeScriptAssign = (obj, key, val) => obj[key] = val;
+var ConfigElement = class extends HTMLElement {
+  name;
+  object;
+  key;
+  type;
+  hook;
+  options;
+  _value = void 0;
+  label;
+  input = void 0;
+  rangeDisplay = void 0;
+  select = void 0;
+  constructor(object, key, name, type, hook, options = []) {
+    super();
+    this.object = object;
+    this.key = key;
+    this.name = name;
+    this.type = type;
+    this.hook = hook;
+    this.options = options;
+    this.label = document.createElement("label");
+    this.attemptRender();
+  }
+  connectedCallback() {
+    this.appendChild(this.label);
+    console.log(this.label);
+  }
+  createInput() {
+    let input = document.createElement("input");
+    input.name = this.name;
+    input.value = this._value?.toString() ?? "";
+    input.type = this.type;
+    switch (this.type) {
+      case "checkbox":
+        input.addEventListener("change", (event) => {
+          if (!(event.target instanceof HTMLInputElement)) return;
+          this.value = input.checked;
+        });
+        break;
+      case "range":
+        let rangeDisplay = document.createElement("span");
+        rangeDisplay.textContent = this._value?.toString() ?? "";
+        this.rangeDisplay = rangeDisplay;
+        this.label.appendChild(rangeDisplay);
+        input.addEventListener("change", (event) => {
+          if (!(event.target instanceof HTMLInputElement)) return;
+          this.value = input.value;
+        });
+        break;
+    }
+    this.input = input;
+    this.label.appendChild(this.input);
+  }
+  createSelect() {
+    if (!this.options) throw new Error("Options are not set for select element");
+    let select = document.createElement("select");
+    for (let option of this.options) {
+      let optionElement = document.createElement("option");
+      optionElement.value = option;
+      optionElement.textContent = option;
+      select.appendChild(optionElement);
+    }
+    select.addEventListener("change", (event) => {
+      if (!(event.target instanceof HTMLSelectElement)) return;
+      this.value = select.value;
+    });
+    this.select = select;
+    this.select.name = this.name;
+    this.select.value = this._value?.toString() ?? "";
+    this.label.appendChild(this.select);
+  }
+  attemptRender() {
+    this.label.replaceChildren();
+    this.label.textContent = this.name;
+    this.label.htmlFor = this.name;
+    switch (this.type) {
+      case "checkbox":
+        this.createInput();
+        break;
+      case "range":
+        this.createInput();
+        break;
+      case "select":
+        this.createSelect();
+        break;
+    }
+  }
+  set min(min) {
+    if (this.input) this.input.min = min;
+  }
+  get min() {
+    return this.input?.min;
+  }
+  set max(max) {
+    if (this.input) this.input.max = max;
+  }
+  get max() {
+    return this.input?.max;
+  }
+  set step(step) {
+    if (this.input) this.input.step = step;
+  }
+  get step() {
+    return this.input?.step;
+  }
+  get value() {
+    return this._value;
+  }
+  set value(value) {
+    this._value = value;
+    if (value) {
+      this.hook(this.name ?? "", value);
+      TypeScriptAssign(this.object, this.key, value);
+    }
+    let stringValue = (value ?? "").toString();
+    if (this.input) this.input.value = stringValue;
+    if (this.rangeDisplay) this.rangeDisplay.textContent = stringValue;
+    if (this.select) this.select.value = stringValue;
+    if (this.input) console.log(this.name, this.input.value, value);
+    if (this.select) console.log(this.name, this.select.value, value);
+  }
+};
+
 // src/config-ui/form.ts
 var ConfigForm = class {
   _form;
   _config;
   _hook;
+  static classConstructor = function() {
+    console.log("Defining custom element");
+    customElements.define("config-element", ConfigElement);
+  }();
   constructor(form, config, hook = () => {
   }) {
     this._form = form;
@@ -10,36 +139,21 @@ var ConfigForm = class {
     this._hook = hook;
   }
   addCheckbox(name, key, val = void 0) {
-    const checkbox = document.createElement("config-element");
-    checkbox.object = this._config;
-    checkbox.key = key;
-    checkbox.name = name;
-    checkbox.type = "checkbox";
-    checkbox.hook = this._hook;
+    console.log("Adding checkbox");
+    const checkbox = new ConfigElement(this._config, key, name, "checkbox", this._hook);
     if (val) checkbox.value = val;
     this._form.appendChild(checkbox);
   }
   addSlider(name, key, min, max, step, val = void 0) {
-    const slider = document.createElement("config-element");
-    slider.object = this._config;
-    slider.key = key;
-    slider.name = name;
-    slider.type = "range";
+    const slider = new ConfigElement(this._config, key, name, "range", this._hook);
     slider.min = min.toString();
     slider.max = max.toString();
     slider.step = step.toString();
-    slider.hook = this._hook;
     if (val) slider.value = val;
     this._form.appendChild(slider);
   }
   addSelect(name, key, options, val = void 0) {
-    const select = document.createElement("config-element");
-    select.object = this._config;
-    select.key = key;
-    select.name = name;
-    select.type = "select";
-    select.options = options;
-    select.hook = this._hook;
+    const select = new ConfigElement(this._config, key, name, "select", this._hook, options);
     if (val) select.value = val;
     this._form.appendChild(select);
   }

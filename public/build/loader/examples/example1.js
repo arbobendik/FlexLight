@@ -1,16 +1,22 @@
 "use strict";
 import { FlexLight, Vector } from '../../flexlight/flexlight.js';
-import { ConfigUI } from '../../config-ui/config-ui.js';
+import { createConfigUI } from '../../config-ui/config-ui.js';
 const staticPath = './static/';
 // Declare engine global
 // var engine;
 // Create new canvas
-var canvas = document.createElement("canvas");
+const canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-engine = new FlexLight(canvas);
+const engine = new FlexLight(canvas);
 engine.io = 'web';
+const controlPanel = document.getElementById("controlPanel");
+if (!controlPanel)
+    throw new Error("Control panel not found");
+const configUI = createConfigUI(engine);
+controlPanel.appendChild(configUI);
+console.log(configUI);
 let camera = engine.camera;
 let scene = engine.scene;
 // Set Textures 0, 1, 2, 3, 4

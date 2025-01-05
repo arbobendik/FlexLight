@@ -22,23 +22,24 @@ export class RasterizerWGL2 {
   #gl;
   #canvas;
 
-  #halt = false;
   #geometryTexture;
   #sceneTexture;
   // Buffer arrays
   #triangleIdBufferArray;
   #bufferLength;
-
+  
   // Internal gl texture variables of texture atlases
   #textureAtlas;
   #pbrAtlas;
   #translucencyAtlas;
-
+  
   #textureList = [];
   #pbrList = [];
   #translucencyList = [];
-
+  
   #lightTexture;
+  
+  #isRunning = false;
   // Create new raysterizer from canvas and setup movement
   constructor(canvas, scene, camera, config) {
     this.#canvas = canvas;
@@ -49,12 +50,15 @@ export class RasterizerWGL2 {
   }
 
   halt = () => {
+    let oldIsRunning = this.#isRunning;
     try {
       this.#gl.loseContext();
     } catch (e) {
       console.warn("Unable to lose previous context, reload page in case of performance issue");
     }
-    this.#halt = true;
+    this.#isRunning = false;
+    window.removeEventListener("resize",this.#resizeEvent);
+    return oldIsRunning;
   }
 
   // Make canvas read only accessible

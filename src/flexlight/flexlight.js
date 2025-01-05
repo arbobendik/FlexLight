@@ -120,7 +120,7 @@ export class FlexLight {
     this.#idRenderer = renderer;
     // if (this.#idRenderer == this.#renderer.type) return;
     console.log(this.#idRenderer + this.#api);
-    this.#renderer.halt();
+    let wasRunning = this.#renderer.halt();
     switch (this.#idRenderer + this.#api) {
       case 'pathtracerwebgl2':
         this.#renderer = new PathTracerWGL2(this.#canvas, this.#scene, this.#camera, this.#config);
@@ -138,7 +138,7 @@ export class FlexLight {
         console.error('Renderer option', this.#idRenderer, 'on api', this.#api, 'doesn\'t exist.');
     }
     // Reapply antialiasing to new renderer
-    this.#renderer.render();
+    if (wasRunning) this.#renderer.render();
   }
 
   set io (io) {

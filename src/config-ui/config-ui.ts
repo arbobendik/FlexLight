@@ -53,5 +53,6 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: 'Max reflections', defaultValue: 5 }));
     configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: 'Min importancy', defaultValue: 0.3 }));
 
+
     return form;
 };
