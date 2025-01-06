@@ -2,8 +2,13 @@
 
 
 
-type ArrayView = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
-type StringTag<T extends ArrayView> = 
+type TypedArray = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
+
+interface TypedArrayConstructor<T extends TypedArray> {
+    new (buffer: ArrayBuffer, byteOffset: number, length: number): T;
+}
+
+type StringTag<T extends TypedArray> = 
     T extends Uint8Array ? "Uint8Array" :
     T extends Uint16Array ? "Uint16Array" :
     T extends Uint32Array ? "Uint32Array" :
@@ -14,16 +19,14 @@ type StringTag<T extends ArrayView> =
     T extends Float64Array ? "Float64Array" : never;
 
 
-let f = (A: new (...args: any[]) => any, args: Array<string>) => new A(...args);
-
 // Reimplementation to allow Views to implement typed arrays
-class TypedArrayWrapper<T extends ArrayView> {
+class TypedArrayWrapper<T extends TypedArray> {
 
-    private readonly ArrayConstructor: T & (new (...args: any[]) => any);
+    private readonly TypedArrayConstructor: TypedArrayConstructor<T>;
     private readonly stringTag: StringTag<T>;
 
     readonly BYTES_PER_ELEMENT: number;
-    buffer: ArrayBuffer;
+    readonly buffer: ArrayBuffer;
     arrayView: T;
     length: number;
 
@@ -54,15 +57,16 @@ class TypedArrayWrapper<T extends ArrayView> {
     keys: T['keys'];
 
     [n: number]: number;  // Add numeric index signature
-
+    
     constructor(
-        ArrayConstructor: T & (new (...args: any[]) => any),
-        buffer: ArrayBuffer, byteOffset: number, length: number, stringTag: StringTag<T>
+        TypedArrayConstructor: TypedArrayConstructor<T>,
+        stringTag: StringTag<T>,
+        buffer: ArrayBuffer, byteOffset: number, length: number
     ) {
-        this.ArrayConstructor = ArrayConstructor;
+        this.TypedArrayConstructor = TypedArrayConstructor;
         this.stringTag = stringTag;
         // Set array view
-        const arrayView = new ArrayConstructor(buffer, byteOffset, length);
+        const arrayView = new TypedArrayConstructor(buffer, byteOffset, length);
         // Set string tag
         this.BYTES_PER_ELEMENT = arrayView.BYTES_PER_ELEMENT;
         // Set buffer properties
@@ -126,8 +130,9 @@ class TypedArrayWrapper<T extends ArrayView> {
         this.keys = arrayView.keys;
     }
 
+    // Custom methods
     shift(byteOffset: number, length: number) {
-        this.setArrayView(new this.ArrayConstructor(this.buffer, byteOffset, length));
+        this.setArrayView(new this.TypedArrayConstructor(this.buffer, byteOffset, length));
     }
 
     // Reimplementation of certain array methods
@@ -167,6 +172,6 @@ class TypedArrayWrapper<T extends ArrayView> {
 
 export class Float32View extends TypedArrayWrapper<Float32Array> implements Float32Array {
     constructor(buffer: ArrayBuffer, byteOffset: number, length: number) {
-        super(Float32Array, buffer, byteOffset, length, "Float32Array");
+        super(Float32Array, "Float32Array", buffer, byteOffset, length);
     }
 }

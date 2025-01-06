@@ -312,7 +312,6 @@ export function lu<N extends number>(A: Matrix<N, N>): { L: Matrix<N, N>, U: Mat
             L[j]![i] = (A[j]![i]! - sum) / U[i]![i]!;
         }
     }
-
     return { L, U };
 }
 
@@ -321,9 +320,6 @@ export function qr<M extends number, N extends number>(A: Matrix<M, N>): { Q: Ma
     let Q: Matrix<M, M> = new IdentityMatrix(A.height as M);
     let R: Matrix<M, N> = new Matrix({ matrix_height: A.height as M, matrix_width: A.width as N });
     for (let i = 0; i < A.height; i++) for (let j = 0; j < A.width; j++) R[i]![j] = A[i]![j]!;
-
-    
-
     // For each column
     for (let j = 0; j < Math.min(A.width, A.height - 1); j++) {
         // Extract the column vector below diagonal
@@ -399,4 +395,8 @@ export function ray_triangle(ray_origin: Vector<3>, ray_direction: Vector<3>, tr
     if (Math.min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return Infinity;
     // Return point of intersection.
     return s;
+}
+
+export function next_power_of_two(x: number): number {
+    return Math.pow(2, Math.ceil(Math.log2(x)));
 }
