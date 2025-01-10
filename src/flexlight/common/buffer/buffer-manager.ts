@@ -3,7 +3,7 @@
 import { TypedArray, Constructor, TypedArrayView } from "./typed-array-view";
 import { next_power_of_two } from "../lib/math";
 
-// All @ts-expect-error in this class are used due to typescript not implementing ArrayBuffer.resize() and ArrayBuffer.maxByteLength yet.
+// All @ts-expect-error in this class are used due to typescript not supporting ArrayBuffer.resize() and ArrayBuffer.maxByteLength yet.
 // For reference, see: 
 //  maxByteLength:  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/maxByteLength
 //  resize:         https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/resize
@@ -20,7 +20,12 @@ export class BufferManager<T extends TypedArray> {
         this.ViewConstructor = ViewConstructor;
     }
 
-    addArrayView (array: TypedArray | Array<number>): TypedArrayView<T> {
+    get bufferView(): TypedArrayView<T> {
+        const BYTES_PER_ELEMENT = this.ViewConstructor.prototype.BYTES_PER_ELEMENT;
+        return new TypedArrayView(this.buffer, 0, this.buffer.byteLength / BYTES_PER_ELEMENT, this.ViewConstructor);
+    }
+
+    allocateArray (array: TypedArray | Array<number>): TypedArrayView<T> {
         const BYTES_PER_ELEMENT = this.ViewConstructor.prototype.BYTES_PER_ELEMENT;
         // Get array attributes
         const arrayLength: number = array.length;
@@ -56,10 +61,10 @@ export class BufferManager<T extends TypedArray> {
             let i: number = 0;
             for (let value of array) bufferView[i++] = value;
         } else {
-            throw new Error("BufferManager.addArrayView(): Array is neither a view nor an array");
+            throw new Error("BufferManager.allocateArray(): Argument is neither a view nor an array");
         }
         
-        const typedArrayView = new TypedArrayView<T>(this.ViewConstructor, this.buffer, arrayByteOffset, arrayByteLength);
+        const typedArrayView = new TypedArrayView<T>(this.buffer, arrayByteOffset, arrayByteLength / BYTES_PER_ELEMENT, this.ViewConstructor);
         // Add this buffer to the list of instances
         this.instances.add(typedArrayView);
         // Construct current buffer view
@@ -67,9 +72,9 @@ export class BufferManager<T extends TypedArray> {
     }
 
     // Remove this buffer from the list of instances
-    deleteArrayView(typedArrayView: TypedArrayView<T>) {
+    freeArray (typedArrayView: TypedArrayView<T>) {
         if (!this.instances.has(typedArrayView)) {
-            throw new Error("BufferManager.deleteArrayView(): TypedArrayView instance not found");
+            throw new Error("BufferManager.freeArray(): TypedArrayView instance not found");
         }
         // Remove this buffer from the list of instances
         this.instances.delete(typedArrayView);
@@ -89,5 +94,11 @@ export class BufferManager<T extends TypedArray> {
         // Resize buffer to remove unused space at the end by arrayByteLength
         // @ts-expect-error
         this.buffer.resize(bufferByteLength - arrayByteLength);
+    }
+
+    // Free all buffers and clear instances set
+    freeAll() {
+        for (let instance of this.instances) this.freeArray(instance);
+        this.instances.clear();
     }
 }
