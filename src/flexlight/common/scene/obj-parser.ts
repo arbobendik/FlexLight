@@ -2,19 +2,13 @@
 
 import { Vector, vector_scale } from "../lib/math";
 import { Material } from "./material";
-
-export interface ObjArrays {
-    vertices: Array<number>;
-    normals: Array<number>;
-    uvs: Array<number>;
-    triangles: Array<number>;
-}
+import { PrototypeArrays } from "./prototype";
 
 export class Parser {
     // Create object from .obj file
-    static obj = async (path: string, materials: Map<string, Material>): Promise<ObjArrays> => {
+    static obj = async (path: string, materials: Map<string, Material>): Promise<PrototypeArrays> => {
         // final object variable 
-        let obj: ObjArrays = { vertices: [], normals: [], uvs: [], triangles: [] };
+        let obj: PrototypeArrays = { vertices: [], normals: [], uvs: [], triangles: [] };
         // track current material
         let curMaterialName: string | undefined = undefined;
         // line interpreter
@@ -102,7 +96,7 @@ export class Parser {
           switch (words[0]) {
             case 'newmtl':
               currentMaterialName = words[1] ?? "";
-              materials.set(currentMaterialName, { color: new Vector(255, 255, 255), roughness: 0, metallic: 0, emissive: 0, transmission: 0, ior: 0 });
+              materials.set(currentMaterialName, new Material());
               break;
             case 'Ka':
               materials.get(currentMaterialName)!.color = vector_scale(new Vector(Number(words[1]), Number(words[2]), Number(words[3])), 255);

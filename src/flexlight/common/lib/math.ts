@@ -63,7 +63,7 @@ export class Vector<N extends number> extends Float32Array {
     set z(value: GreaterThan<number, N, 2>) { this[2] = value }
     set w(value: GreaterThan<number, N, 3>) { this[3] = value }
     // Constructor for the Vector class
-    constructor(... args: Tuple<number, N> | [ VectorDimensions<N> ] | [ Tuple<number, N> ]) {
+    constructor(... args: Tuple<number, N> | [ VectorDimensions<N> ] | [ Tuple<number, N> ] | [ Vector<N> ]) {
 
         let all_numbers: boolean = true;
         for (let arg of args) if (typeof arg !== 'number') all_numbers = false;
@@ -90,6 +90,24 @@ export class Vector<N extends number> extends Float32Array {
     }
 }
 
+/*
+// Vector class with operations
+export class Vector<N extends number> extends VectorData<N> {
+    constructor(... args: Tuple<number, N> | [ VectorDimensions<N> ] | [ Tuple<number, N> ]) { super(... args) }
+
+    add = (v: Vector<N>): Vector<N> => vector_add(this, v);
+    sub = (v: Vector<N>): Vector<N> => vector_subtract(this, v);
+    distance = (v: Vector<N>): number => vector_distance(this, v);
+    hadamard = (v: Vector<N>): Vector<N> => vector_hadamard(this, v);
+    scale = (v: number): Vector<N> => vector_scale(this, v);
+    dot = (v: Vector<N>): number => dot(this, v);
+    normalize = (): Vector<N> => normalize(this);
+    outer = (v: Vector<N>): Matrix<N, N> => outer(this, v);
+
+    cross = (v: Vector<3>): Vector<3> => cross(this, v);
+}
+*/
+
 export class ZeroVector<N extends number> extends Vector<N> {
     constructor(n: N) {
         super({ vector_length: n });
@@ -111,7 +129,7 @@ export class Matrix<M extends number, N extends number> extends Array<Vector<N>>
     }
 
     // Constructor for the Matrix class
-    constructor(... rows: Tuple<Vector<N>, M> | Tuple<Tuple<number, N>, M> | [ MatrixDimensions<M, N> ]) {
+    constructor(... rows: Tuple<Vector<N>, M> | Tuple<Tuple<number, N>, M> | [ MatrixDimensions<M, N> ] | [ Matrix<M, N> ]) {
         let all_arrays: boolean = true;
         for (let row of rows) if (!Array.isArray(row)) all_arrays = false;
 
@@ -284,6 +302,12 @@ export function matrix_scale<M extends number, N extends number>(A: Matrix<M, N>
 export function matrix_mul<M extends number, N extends number, P extends number>(A: Matrix<M, N>, B: Matrix<N, P>): Matrix<M, P> {
     let result: Matrix<M, P> = new Matrix({ matrix_height: A.height as M, matrix_width: B.width as P });
     for (let i = 0; i < result.height; i++) for (let j = 0; j < result.width; j++) for (let k = 0; k < A.width; k++) result[i]![j]! += A[i]![k]! * B[k]![j]!;
+    return result;
+}
+
+export function matrix_vector_mul<M extends number, N extends number>(A: Matrix<M, N>, v: Vector<N>): Vector<M> {
+    let result: Vector<M> = new ZeroVector(A.height as M);
+    for (let i = 0; i < A.height; i++) for (let j = 0; j < A.width; j++) result[i]! += A[i]![j]! * v[j]!;
     return result;
 }
 

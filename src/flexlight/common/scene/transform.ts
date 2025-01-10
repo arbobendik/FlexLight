@@ -1,143 +1,169 @@
 "use strict";
 
-import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, vector_scale, ZeroVector } from "../lib/math";
+import { BufferManager } from "../buffer/buffer-manager";
+import { TypedArrayView } from "../buffer/typed-array-view";
+import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix } from "../lib/math";
+
 
 
 export class Transform {
-  private referenceNumber: number = 0;
-  private rotationMatrix: Matrix<3, 3>;
-  private position: Vector<3>;
-  private scaleFactor: number = 1;
-  // private transformedNodes = new Set();
+  // M11 M12 M13 M21 M22 M23 M31 M32 M33 X Y Z S
+  private static transformManager = new BufferManager(Float32Array);
+  readonly transformArray: TypedArrayView<Float32Array>;
 
-  private static DEFAULT_TRANSFORM: Transform;
-  private static used: Array<boolean> = [];
-  private static transformList: Array<Transform | undefined> = [];
+  // Add one identity matrix transform at position 0 to default to.
+  static readonly DEFAULT_TRANSFORM: Transform = new Transform();
 
-  static buildWGL2Arrays = (): { rotationBuffer: Float32Array, shiftBuffer: Float32Array } => {
-    let length: number = Transform.transformList.length;
-    // Create UBO buffer array
-    let rotationBuffer: Float32Array = new Float32Array(24 * length);
-    let shiftBuffer: Float32Array = new Float32Array(8 * length);
-    // Iterate over set elements
-    for (let i: number = 0; i < length; i++) {
-      let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
-      let matrix: Matrix<3, 3> = transform.matrix;
-      let inverse: Matrix<3, 3> = moore_penrose(matrix);
-      let pos: Vector<3> = transform.position;
-      let invPos: Vector<3> = vector_scale(transform.position, - 1);
-      rotationBuffer.set(matrix[0]!, i * 24);
-      rotationBuffer.set(matrix[1]!, i * 24 + 4);
-      rotationBuffer.set(matrix[2]!, i * 24 + 8);
-      rotationBuffer.set(inverse[0]!, i * 24 + 12);
-      rotationBuffer.set(inverse[1]!, i * 24 + 16);
-      rotationBuffer.set(inverse[2]!, i * 24 + 20);
-      shiftBuffer.set(pos, i * 8);
-      shiftBuffer.set(invPos, i * 8 + 4);
-    }
+  private _rotationMatrix: Matrix<3, 3>;
+  private _position: Vector<3>;
+  private _scaleFactor: number;
 
-    return { rotationBuffer, shiftBuffer };
+  private updateMatrix(): void {
+    const matrix: Matrix<3, 3> = matrix_scale(this._rotationMatrix, this._scaleFactor);
+    // Compute inverse matrix
+    const inverse: Matrix<3, 3> = moore_penrose(matrix);
+    // Set transform array
+    this.transformArray.set(matrix[0]!, 0);
+    this.transformArray.set(matrix[1]!, 3);
+    this.transformArray.set(matrix[2]!, 6);
+    // Set inverse rotation matrix
+    this.transformArray.set(inverse[0]!, 9);
+    this.transformArray.set(inverse[1]!, 12);
+    this.transformArray.set(inverse[2]!, 15);
+  }
+  
+  set rotationMatrix(matrix: Matrix<3, 3>) {
+    // Set rotation matrix
+    this._rotationMatrix = matrix;
+    this.updateMatrix();
   }
 
-  static buildWGPUArray = (): Float32Array => {
-    let length: number = Transform.transformList.length;
-    // Create UBO buffer array
-    let transfromBuffer: Float32Array = new Float32Array(32 * length);
-    // Iterate over set elements
-    for (let i: number = 0; i < length; i++) {
-      let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
-      let matrix: Matrix<3, 3> = transform.matrix;
-      let inverse: Matrix<3, 3> = moore_penrose(matrix);
-      let pos: Vector<3> = transform.position;
-      let invPos: Vector<3> = vector_scale(transform.position, - 1);
-      transfromBuffer.set(matrix[0]!, i * 32);
-      transfromBuffer.set(matrix[1]!, i * 32 + 4);
-      transfromBuffer.set(matrix[2]!, i * 32 + 8);
-      transfromBuffer.set(pos, i * 32 + 12);
-      transfromBuffer.set(inverse[0]!, i * 32 + 16);
-      transfromBuffer.set(inverse[1]!, i * 32 + 20);
-      transfromBuffer.set(inverse[2]!, i * 32 + 24);
-      transfromBuffer.set(invPos, i * 32 + 28);
-    }
-
-    return transfromBuffer;
+  get rotationMatrix(): Matrix<3, 3> {
+    return this._rotationMatrix;
   }
 
-  get number (): number {
-    return this.referenceNumber;
+  get matrix(): Matrix<3, 3> {
+    return matrix_scale(this._rotationMatrix, this._scaleFactor);
   }
 
-  get matrix (): Matrix<3, 3> {
-    return matrix_scale(this.rotationMatrix, this.scaleFactor);
+  set position(position: Vector<3>) {
+    this._position = position;
+    this.transformArray.set(position, 12);
   }
 
   move (x: number, y: number, z: number): void {
-    this.position = new Vector(x, y, z);
+    this._position = new Vector(x, y, z);
+    this.transformArray.set(this._position, 12);
+  }
+
+  get position(): Vector<3> {
+    return this._position;
+  }
+
+  set scaleFactor(s: number) {
+    this._scaleFactor = s;
+    this.updateMatrix();
+  }
+
+  scale (s: number): void {
+    this._scaleFactor = s;
+    this.updateMatrix();
+  }
+
+  get scaleFactor(): number {
+    return this._scaleFactor;
+  }
+
+  destroy (): void {
+    Transform.transformManager.freeArray(this.transformArray);
   }
 
   rotateAxis (normal: Vector<3>, theta: number): void {
     let n: Vector<3> = normal;
     let sT: number = Math.sin(theta);
     let cT: number = Math.cos(theta);
-    this.rotationMatrix = new Matrix(
+    this._rotationMatrix = new Matrix(
       [n.x * n.x * (1 - cT) + cT,          n.x * n.y * (1 - cT) - n.z * sT,    n.x * n.z * (1 - cT) + n.y * sT],
       [n.x * n.y * (1 - cT) + n.z * sT,    n.y * n.y * (1 - cT) + cT,          n.y * n.z * (1 - cT) - n.x * sT],
       [n.x * n.z * (1 - cT) - n.y * sT,    n.y * n.z * (1 - cT) + n.x * sT,    n.z * n.z * (1 - cT) + cT]
     );
+    this.updateMatrix();
   }
 
   rotateSpherical (theta: number, psi: number): void {
-    let sT: number = Math.sin(theta);
-    let cT: number = Math.cos(theta);
-    let sP: number = Math.sin(psi);
-    let cP: number = Math.cos(psi);
-
-    this.rotationMatrix = new Matrix(
-      [cT,         0,      sT],
-      [- sT * sP,  cP,     cT * sP],
-      [- sT * cP,  - sP,   cT * cP]
-    );
+    this._rotationMatrix = new SphericalRotationMatrix(theta, psi);
+    this.updateMatrix();
   }
-
-  scale (s: number): void {
-    this.scaleFactor = s;
-  }
-
-  /*
-
-  addNode (n: Object3D): void {
-    this.transformedNodes.add(n);
-  }
-
-  removeNode (n: Object3D): void {
-    this.transformedNodes.delete(n);
-  }
-
-  */
-  destroy (): void {
-    Transform.used[this.referenceNumber] = false;
-    Transform.transformList[this.referenceNumber] = undefined;
-  }
-
-  static staticConstructor = (function() {
-    // Add one identity matrix transform at position 0 to default to.
-    Transform.DEFAULT_TRANSFORM = new Transform();
-  })();
 
   constructor () {
     // Default to identity matrix.
-    this.rotationMatrix = new IdentityMatrix(3);
-    this.position = new ZeroVector(3);
+    this._rotationMatrix = new IdentityMatrix(3);
+    this._position = new ZeroVector(3);
+    this._scaleFactor = 1;
     // Assign next larger available number.
-    for (let i = 0; i < Infinity; i++) {
-      if (Transform.used[i]) continue;
-      Transform.used[i] = true;
-      this.referenceNumber = i;
-      break;
-    }
-    // Set in transform list.
-    Transform.transformList[this.referenceNumber] = this;
+    this.transformArray = Transform.transformManager.allocateArray([
+      // rotation matrix
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+      // inverse rotation matrix
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+      // position
+      0, 0, 0,
+    ]);
   }
 }
 
 
+/*
+static buildWGL2Arrays = (): { rotationBuffer: Float32Array, shiftBuffer: Float32Array } => {
+  let length: number = Transform.transformList.length;
+  // Create UBO buffer array
+  let rotationBuffer: Float32Array = new Float32Array(24 * length);
+  let shiftBuffer: Float32Array = new Float32Array(8 * length);
+  // Iterate over set elements
+  for (let i: number = 0; i < length; i++) {
+    let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
+    let matrix: Matrix<3, 3> = transform.matrix;
+    let inverse: Matrix<3, 3> = moore_penrose(matrix);
+    let pos: Vector<3> = transform.position;
+    let invPos: Vector<3> = vector_scale(transform.position, - 1);
+    rotationBuffer.set(matrix[0]!, i * 24);
+    rotationBuffer.set(matrix[1]!, i * 24 + 4);
+    rotationBuffer.set(matrix[2]!, i * 24 + 8);
+    rotationBuffer.set(inverse[0]!, i * 24 + 12);
+    rotationBuffer.set(inverse[1]!, i * 24 + 16);
+    rotationBuffer.set(inverse[2]!, i * 24 + 20);
+    shiftBuffer.set(pos, i * 8);
+    shiftBuffer.set(invPos, i * 8 + 4);
+  }
+
+  return { rotationBuffer, shiftBuffer };
+}
+
+static buildWGPUArray = (): Float32Array => {
+  let length: number = Transform.transformList.length;
+  // Create UBO buffer array
+  let transfromBuffer: Float32Array = new Float32Array(32 * length);
+  // Iterate over set elements
+  for (let i: number = 0; i < length; i++) {
+    let transform: Transform = Transform.transformList[i] ?? Transform.DEFAULT_TRANSFORM;
+    let matrix: Matrix<3, 3> = transform.matrix;
+    let inverse: Matrix<3, 3> = moore_penrose(matrix);
+    let pos: Vector<3> = transform.position;
+    let invPos: Vector<3> = vector_scale(transform.position, - 1);
+    transfromBuffer.set(matrix[0]!, i * 32);
+    transfromBuffer.set(matrix[1]!, i * 32 + 4);
+    transfromBuffer.set(matrix[2]!, i * 32 + 8);
+    transfromBuffer.set(pos, i * 32 + 12);
+    transfromBuffer.set(inverse[0]!, i * 32 + 16);
+    transfromBuffer.set(inverse[1]!, i * 32 + 20);
+    transfromBuffer.set(inverse[2]!, i * 32 + 24);
+    transfromBuffer.set(invPos, i * 32 + 28);
+  }
+
+  return transfromBuffer;
+}
+*/
