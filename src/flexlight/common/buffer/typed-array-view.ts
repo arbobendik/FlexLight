@@ -23,9 +23,14 @@ export class TypedArrayView<T extends TypedArray> {
 
     readonly BYTES_PER_ELEMENT: number;
     readonly buffer: ArrayBuffer;
-    arrayView: T;
-    length: number;
+    private arrayView: T;
 
+    // Add shiftHook
+    private shiftHooks: Set<() => void> = new Set();
+    // Add offset as custom property
+    offset: number;
+
+    length: number;
     byteOffset: number;
     byteLength: number;
 
@@ -54,7 +59,7 @@ export class TypedArrayView<T extends TypedArray> {
 
     [n: number]: number;  // Add numeric index signature
     
-    constructor(TypedArrayConstructor: Constructor<T>, buffer: ArrayBuffer, byteOffset: number, length: number) {
+    constructor(buffer: ArrayBuffer, byteOffset: number, length: number, TypedArrayConstructor: Constructor<T>) {
         this.TypedArrayConstructor = TypedArrayConstructor;
         // Set array view
         const arrayView: T = new TypedArrayConstructor(buffer, byteOffset, length);
@@ -65,6 +70,7 @@ export class TypedArrayView<T extends TypedArray> {
         this.buffer = buffer;
         this.arrayView = arrayView;
         // Set array properties
+        this.offset = byteOffset / arrayView.BYTES_PER_ELEMENT;
         this.length = arrayView.length;
         this.byteOffset = arrayView.byteOffset;
         this.byteLength = arrayView.byteLength;
@@ -95,6 +101,7 @@ export class TypedArrayView<T extends TypedArray> {
     private setArrayView(arrayView: T) {
         this.arrayView = arrayView;
 
+        this.offset = arrayView.byteOffset / arrayView.BYTES_PER_ELEMENT;
         this.byteOffset = arrayView.byteOffset;
         this.length = arrayView.length;
         this.byteLength = arrayView.byteLength;
@@ -123,8 +130,18 @@ export class TypedArrayView<T extends TypedArray> {
     }
 
     // Custom methods
-    shift(byteOffset: number, length: number) {
+    shift (byteOffset: number, length: number) {
         this.setArrayView(new this.TypedArrayConstructor(this.buffer, byteOffset, length));
+        // Call all shift hooks
+        for (let hook of this.shiftHooks) hook();
+    }
+
+    addShiftHook (hook: () => void) {
+        this.shiftHooks.add(hook);
+    }
+
+    removeShiftHook(hook: () => void) {
+        this.shiftHooks.delete(hook);
     }
 
     // Reimplementation of certain array methods
