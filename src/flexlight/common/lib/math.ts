@@ -26,6 +26,7 @@ type GreaterThan<T, N extends number, I extends number> =
 
 
 export const BIAS: number = 1e-10;
+export const POW32M1: number = 4294967295;
 export const E: number = 2.718281828459045;
 export const PI: number = 3.141592653589793;
 

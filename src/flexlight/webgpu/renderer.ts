@@ -1,54 +1,54 @@
 "use strict";
 
+import { Vector } from "../common/lib/math";
+import { LightSource } from "../common/scene/light-source";
+import { SceneGraph } from "../common/scene/scene-graph";
 
-export interface RenderTarget {
+
+export interface WebGPUReferences {
     context: GPUCanvasContext;
     device: GPUDevice;
 }
 
 export class RendererWGPU {
-    scene: Scene;
+    readonly sceneGraph: SceneGraph;
 
-
-    canvas: HTMLCanvasElement;
+    readonly canvas: HTMLCanvasElement;
     
-    textureAtlas: GPUTexture;
-    pbrAtlas: GPUTexture;
-    translucencyAtlas: GPUTexture;
+    textureAtlas: GPUTexture | null = null;
+    pbrAtlas: GPUTexture | null = null;
+    translucencyAtlas: GPUTexture | null = null;
 
     textureList = [];
     pbrList = [];
     translucencyList = [];
 
-    textureGroupLayout;
-    textureGroup;
+    textureGroupLayout: GPUBindGroupLayout | null = null;
+    textureGroup: GPUBindGroup | null = null;
 
     lightSourceLength = 0;
-    lightBuffer;
-    primaryLightSources;
+    lightBuffer: GPUBuffer | null = null;
+    primaryLightSources: Set<LightSource> = new Set();
 
     // Track if engine is running
-    isRunning = false;
+    protected isRunning = false;
 
 
-    constructor(scene, canvas: HTMLCanvasElement) {
-        this.scene = scene;
+    constructor(sceneGraph: SceneGraph, canvas: HTMLCanvasElement) {
+        this.sceneGraph = sceneGraph;
         this.canvas = canvas;
-        // Request webgpu context
     }
     
-    async requestDevice(): Promise<RenderTarget | void> {
+    async requestDevice(): Promise<WebGPUReferences> {
         let context = this.canvas.getContext("webgpu");
-        let adapter = navigator.gpu.requestAdapter();
-        if (!adapter) return undefined;
+        if (!context) throw new Error("Failed to get webgpu context");
+        let adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error("Failed to request adapter");
         let device = await adapter.requestDevice();
-        return {
-            context,
-            device
-        };
+        return { context, device };
     }
 
-    async generateAtlasView (list: Array<HTMLImageElement>) {
+    async generateAtlasView (webGPUReferences: WebGPUReferences, list: Array<HTMLImageElement>) {
         let { x: width, y: height}: Vector<2> = this.scene.standardTextureSizes;
         let textureWidth = Math.floor(2048 / width);
         let canvas = document.createElement("canvas");
@@ -71,20 +71,20 @@ export class RendererWGPU {
 
         let bitMap = await createImageBitmap(canvas);
 
-        let atlasTexture = await this.device.createTexture({
+        let atlasTexture = await webGPUReferences.device.createTexture({
             format: "rgba8unorm",
             size: [canvas.width, canvas.height],
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
         });
 
-        this.device.queue.copyExternalImageToTexture(
+        webGPUReferences.device.queue.copyExternalImageToTexture(
             { source: bitMap, flipY: true },
             { texture: atlasTexture },
             { width: canvas.width, height: canvas.height },
         );
 
         this.lightSourceLength = 0;
-        this.lightBuffer = this.device.createBuffer({ size: Float32Array.BYTES_PER_ELEMENT * 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
+        this.lightBuffer = webGPUReferences.device.createBuffer({ size: Float32Array.BYTES_PER_ELEMENT * 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
 
         return atlasTexture.createView();
     }
@@ -93,8 +93,8 @@ export class RendererWGPU {
         // Don"t build texture atlas if there are no changes.
         if (
             !forceUpload
-            && this.scene.textures.length === this.textureList.length
-            && this.scene.textures.every((e, i) => e === this.textureList[i])
+            && this.sceneGraph.textures.length === this.textureList.length
+            && this.sceneGraph.textures.every((e, i) => e === this.textureList[i])
         ) return;
 
         this.textureList = this.scene.textures;

@@ -30,6 +30,8 @@ export class Transform {
     this.transformArray.set(inverse[0]!, 9);
     this.transformArray.set(inverse[1]!, 12);
     this.transformArray.set(inverse[2]!, 15);
+    // Update gpu buffer if it exists
+    if (Transform.transformManager.gpuBufferManager) Transform.transformManager.gpuBufferManager.update(this.transformArray.byteOffset, 18);
   }
   
   set rotationMatrix(matrix: Matrix<3, 3>) {
@@ -48,12 +50,16 @@ export class Transform {
 
   set position(position: Vector<3>) {
     this._position = position;
-    this.transformArray.set(position, 12);
+    this.transformArray.set(position, 18);
+    // Update gpu buffer if it exists
+    if (Transform.transformManager.gpuBufferManager) Transform.transformManager.gpuBufferManager.update(this.transformArray.byteOffset + 18 * this.transformArray.BYTES_PER_ELEMENT, 3);
   }
 
   move (x: number, y: number, z: number): void {
     this._position = new Vector(x, y, z);
-    this.transformArray.set(this._position, 12);
+    this.transformArray.set(this._position, 18);
+    // Update gpu buffer if it exists
+    if (Transform.transformManager.gpuBufferManager) Transform.transformManager.gpuBufferManager.update(this.transformArray.byteOffset + 18 * this.transformArray.BYTES_PER_ELEMENT, 3);
   }
 
   get position(): Vector<3> {
@@ -72,10 +78,6 @@ export class Transform {
 
   get scaleFactor(): number {
     return this._scaleFactor;
-  }
-
-  destroy (): void {
-    Transform.transformManager.freeArray(this.transformArray);
   }
 
   rotateAxis (normal: Vector<3>, theta: number): void {
@@ -113,8 +115,15 @@ export class Transform {
       // position
       0, 0, 0,
     ]);
+    // Update gpu buffer if it exists
+    if (Transform.transformManager.gpuBufferManager) Transform.transformManager.gpuBufferManager.update(this.transformArray.byteOffset, 21);
+  }
+  
+  destroy (): void {
+    Transform.transformManager.freeArray(this.transformArray);
   }
 }
+
 
 
 /*
