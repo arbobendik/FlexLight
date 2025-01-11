@@ -24,9 +24,6 @@ export class TypedArrayView<T extends TypedArray> {
     readonly BYTES_PER_ELEMENT: number;
     readonly buffer: ArrayBuffer;
     private arrayView: T;
-
-    // Add shiftHook
-    private shiftHooks: Set<() => void> = new Set();
     // Add offset as custom property
     offset: number;
 
@@ -132,16 +129,6 @@ export class TypedArrayView<T extends TypedArray> {
     // Custom methods
     shift (byteOffset: number, length: number) {
         this.setArrayView(new this.TypedArrayConstructor(this.buffer, byteOffset, length));
-        // Call all shift hooks
-        for (let hook of this.shiftHooks) hook();
-    }
-
-    addShiftHook (hook: () => void) {
-        this.shiftHooks.add(hook);
-    }
-
-    removeShiftHook(hook: () => void) {
-        this.shiftHooks.delete(hook);
     }
 
     // Reimplementation of certain array methods
