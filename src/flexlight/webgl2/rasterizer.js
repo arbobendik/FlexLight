@@ -40,6 +40,7 @@ export class RasterizerWGL2 {
   #lightTexture;
   
   #isRunning = false;
+  #resizeEvent;
   // Create new raysterizer from canvas and setup movement
   constructor(canvas, scene, camera, config) {
     this.#canvas = canvas;
@@ -178,7 +179,7 @@ export class RasterizerWGL2 {
     // start rendering
     let rt = this;
     // Allow frame rendering
-    rt.#halt = false;
+    rt.#isRunning = true;
     // Init Buffers
     let triangleIdBuffer, vertexIdBuffer;
     // Internal GL objects
@@ -202,7 +203,7 @@ export class RasterizerWGL2 {
 
     // Internal render engine Functions
     let frameCycle = engineState => {
-      if (this.#halt) return;
+      if (!this.#isRunning) return;
       let timeStamp = performance.now();
       // Update Textures
       this.#updateTextureAtlas();
@@ -446,7 +447,7 @@ export class RasterizerWGL2 {
     // Init canvas parameters and textures with resize
     resize();
     // Handle canvas resize
-    window.addEventListener("resize", resize);
+    this.#resizeEvent = window.addEventListener("resize", resize);
     // Prepare Renderengine
     prepareEngine();
     // Begin frame cycle

@@ -102,12 +102,9 @@ export class Parser {
               materials.get(currentMaterialName)!.color = vector_scale(new Vector(Number(words[1]), Number(words[2]), Number(words[3])), 255);
               break;
             case 'Ke':
-              let emissiveness = Math.max(Number(words[1]), Number(words[2]), Number(words[3]));
+              let emissiveness: Vector<3> = new Vector(Number(words[1]), Number(words[2]), Number(words[3]));
+              materials.get(currentMaterialName)!.emissive = emissiveness;
               // Replace color if emissiveness is not 0
-              if (emissiveness > 0) {
-                materials.get(currentMaterialName)!.emissive = emissiveness * 4;
-                materials.get(currentMaterialName)!.color = vector_scale(new Vector(Number(words[1]), Number(words[2]), Number(words[3])), 255 / emissiveness);
-              }
               break;
             case 'Ns':
               materials.get(currentMaterialName)!.metallic = Number(words[1]) / 1000;

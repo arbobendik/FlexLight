@@ -320,7 +320,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         return new BVHNode<IndexedInstance>(children, bounding, startingId);
     }
 
-    static fromInstances(instances: Array<Instance>): IndexedInstanceBVH {
+    static fromInstances(instances: Array<Instance> | Set<Instance>): IndexedInstanceBVH {
         let indexedInstances: Array<IndexedInstance> = [];
         let id: number = 0;
         // Iterate over instances, assigning ids and calculate boundings
