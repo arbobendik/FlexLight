@@ -1,20 +1,27 @@
 
 
-import { RendererWGPU } from "../webgpu/renderer.js";
-import { FXAA } from "../webgpu/fxaa.js";
-import { TAA } from "../webgpu/taa.js";
+import { RendererWGPU } from "./renderer.js";
+import { FXAA } from "./fxaa.js";
+import { TAA } from "./taa.js";
 import { Transform } from "../common/scene/transform.js";
 
-import PathtracerDepthShader from '../webgpu/shaders/pathtracer-depth.wgsl';
-import PathtracerRasterShader from '../webgpu/shaders/pathtracer-raster.wgsl';
-import PathtracerShiftShader from '../webgpu/shaders/pathtracer-shift.wgsl';
-import PathtracerComputeShader from '../webgpu/shaders/pathtracer-compute.wgsl';
-import PathtracerSelectiveAverageShader from '../webgpu/shaders/pathtracer-selective-average.wgsl';
-import PathtracerReprojectShader from '../webgpu/shaders/pathtracer-reproject.wgsl';
-import PathtracerCanvasShader from '../webgpu/shaders/canvas.wgsl';
+// Ignore all shader imports, the bundler will handle them as intended.
+// @ts-ignore
+import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
+// @ts-ignore
+import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
+// @ts-ignore
+import PathtracerShiftShader from './shaders/pathtracer-shift.wgsl';
+// @ts-ignore
+import PathtracerComputeShader from './shaders/pathtracer-compute.wgsl';
+// @ts-ignore
+import PathtracerSelectiveAverageShader from './shaders/pathtracer-selective-average.wgsl';
+// @ts-ignore
+import PathtracerReprojectShader from './shaders/pathtracer-reproject.wgsl';
+// @ts-ignore
+import PathtracerCanvasShader from './shaders/canvas.wgsl';
 
 let rasterRenderFormats = ["rgba32float", "rg32float"];
-
 
 const POW32U = 2 ** 32 - 1;
 const TEMPORAL_MAX = 2 ** 23 - 1;
