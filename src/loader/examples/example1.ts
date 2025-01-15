@@ -1,11 +1,10 @@
+/*
 "use strict";
 
-import { FlexLight, Vector } from '../../flexlight/flexlight.js';
-import { createConfigUI } from '../../config-ui/config-ui.js';
+import { FlexLight, Vector } from 'flexlight/flexlight.js';
+import { createConfigUI } from 'config-ui/config-ui.js';
 
 const staticPath = './static/';
-// Declare engine global
-// var engine;
 // Create new canvas
 const canvas = document.createElement("canvas");
 // Append it to body
@@ -147,7 +146,7 @@ let recreateBVH = (subTree) => {
 	}
 }
 recreateBVH(scene.queue);
-*/
+
 scene.generateBVH();
 // start render engine
 engine.renderer.render();
@@ -160,3 +159,5 @@ document.body.appendChild(fpsCounter);
 setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
+
+*/

@@ -1,8 +1,8 @@
 'use strict';
 
 import { Math } from './math.js';
-import { Float16Array, Arrays } from './arrays.js';
-import { Transform } from './scene/transform.js';
+import { Float16Array, Arrays } from '../common/arrays.js';
+import { Transform } from '../common/scene/transform.js';
 
 const BVH_MAX_LEAVES_PER_NODE = 4;
 export class Scene {
