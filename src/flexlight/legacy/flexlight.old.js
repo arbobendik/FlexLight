@@ -1,20 +1,20 @@
 'use strict';
 
 
-import { Camera } from './common/scene/camera.js';
-import { Config } from './common/config.js';
-import { Scene, Primitive, Triangle, Plane, Object3D, Cuboid, Bounding } from './common/scene.js';
-import { Vector, ZeroVector, Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix } from './common/lib/math.js';
-import { Transform } from './common/scene/transform.js';
-import { PathTracerWGL2 } from './webgl2/pathtracer.js';
-import { PathTracerWGPU } from './webgpu/pathtracer.js';
-import { RasterizerWGL2 } from './webgl2/rasterizer.js';
+import { Camera } from '../common/scene/camera.js';
+import { Config } from '../common/config.js';
+import { Scene } from '../common/scene/scene.js';
+import { Vector, ZeroVector, Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix } from '../common/lib/math.js';
+import { Transform } from '../common/scene/transform.js';
+import { PathTracerWGL2 } from '../webgl2/pathtracer.js';
+import { PathTracerWGPU } from '../webgpu/pathtracer.js';
+import { RasterizerWGL2 } from '../webgl2/rasterizer.js';
 import { RasterizerWGPU } from './webgpu/rasterizer.js';
-import { WebIo } from './common/io.js';
-import { UI } from './common/ui.js';
+import { WebIo } from '../common/io.js';
+import { UI } from '../common/ui.js';
 
 
-export { Camera, Config, Scene, Primitive, Triangle, Plane, Object3D, Cuboid, Bounding };
+export { Camera, Config, Scene };
 export { Vector, ZeroVector, Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix };
 export { Transform };
 export { PathTracerWGL2, PathTracerWGPU };

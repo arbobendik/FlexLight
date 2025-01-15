@@ -22,15 +22,26 @@ function compile (
     exit
 )
 
-
+# Remove old build
 rm -rf ./public/build
+rm -rf ./tmp
 
-compile ./src/
+# Copy source to build
+cp -r ./src/ ./tmp
 
-rm -rf ./public/build/flexlight
-bundle ./src/flexlight/flexlight.js ./public/build/flexlight/flexlight.js
-rm -rf ./public/build/config-ui
-bundle ./src/config-ui/config-ui.js ./public/build/config-ui/config-ui.js
+# Bundle flexlight
+bundle ./tmp/flexlight/flexlight.js ./public/build/flexlight/flexlight.js
+# Bundle config-ui
+bundle ./tmp/config-ui/config-ui.js ./public/build/config-ui/config-ui.js
+
+# Compile loader
+compile ./tmp/loader
+
+# Remove build
+rm -rf ./tmp
+
+# bundle ./src/config-ui/config-ui.js ./public/build/config-ui/config-ui.js
+# compile ./src/loader
 
 
 while getopts "m" flag; do

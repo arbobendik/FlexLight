@@ -42,7 +42,7 @@ export class ConfigForm<O extends Object> {
         this._form.appendChild(slider);
     }
 
-    addSelect<K extends keyof O>(name: string, key: KeyAssignable<O, K, string>, options: string[], val: ValidInputType<"select", O, K> | undefined = undefined) {
+    addSelect<K extends keyof O,>(name: string, key: KeyAssignable<O, K, string>, options: Array<string>, val: ValidInputType<"select", O, K> | undefined = undefined) {
         const select = new ConfigElement<"select", O, K>(this._config, key, name, "select", this._hook, options);
         // Set value if provided
         if (val) select.value = val;

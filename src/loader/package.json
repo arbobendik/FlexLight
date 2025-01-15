@@ -1,15 +1,22 @@
 {
-  "name": "flexlight-loader",
+  "name": "loader",
   "version": "1.0.0",
-  "main": "loader.js",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "load-script.ts",
+  "directories": {
+    "example": "examples"
+  },
   "scripts": {
-    "build": "tsc"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "flexlight": "../flexlight",
-    "config-ui": "../config-ui"
+    "config-ui": "file:../config-ui",
+    "flexlight": "file:../flexlight"
   },
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "devDependencies": {
+    "@webgpu/types": "^0.1.52"
+  }
 }

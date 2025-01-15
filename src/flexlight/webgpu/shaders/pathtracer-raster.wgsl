@@ -1,3 +1,7 @@
+const TRIANGLE_SIZE: u32 = 24u;
+const INSTANCE_SIZE: u32 = 11u;
+const TRANSFORM_SIZE: u32 = 28u;
+
 const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
@@ -39,56 +43,97 @@ struct VertexOut {
     @location(0) absolute_position: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) clip_space: vec3<f32>,
-    @location(3) @interpolate(flat) triangle_id: i32,
+    @location(3) @interpolate(flat) instance_offset: u32,
+    @location(4) @interpolate(flat) triangle_offset: u32,
 };
 
-
+// RasterRenderBindGroup
 @group(0) @binding(0) var<storage, read> depth_buffer: array<u32>;
-@group(0) @binding(1) var <storage, read_write> triangle_id_buffer: array<i32>;
+@group(0) @binding(1) var texture_offset: texture_storage_2d_array<r32uint, write>;
 @group(0) @binding(2) var texture_absolute_position: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var texture_uv: texture_storage_2d<rg32float, write>;
 
-@group(1) @binding(0) var<storage, read> indices: array<i32>;
-@group(1) @binding(1) var<storage, read> geometry: array<f32>;
+// RasterGeometryBindGroup
+@group(1) @binding(0) var triangles: texture_2d_array<f32>;
 
+// RasterDynamicBindGroup
 @group(2) @binding(0) var<uniform> uniforms: Uniforms;
 @group(2) @binding(1) var<storage, read> transforms: array<Transform>;
+@group(2) @binding(2) var<storage, read> instances: array<u32>;
 
 
+
+fn access_triangle(index: u32) -> f32 {
+    // Divide triangle index by 2048 * 2048 to get layer
+    let layer: u32 = index >> 22u;
+    // Get height of triangle
+    let height: u32 = (index - (layer << 22u)) >> 11u;
+    // Get width of triangle
+    let width: u32 = index & 0x3FFu;
+    // Return triangle
+    return textureLoad(triangles, vec2<u32>(width, height), layer, 0).x;
+}
+
+
+fn binary_search_instance(triangle_index: u32) -> u32 {
+    var low: u32 = 0u;
+    var high: u32 = arrayLength(&instances) / INSTANCE_SIZE;
+    while (low < high) {
+        let mid: u32 = (low + high) / 2u;
+        if (instances[mid * INSTANCE_SIZE + 13u] <= triangle_index) {
+            low = mid + 1u;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
 
 @vertex
 fn vertex(
-    @builtin(vertex_index) vertex_index : u32,
-    @builtin(instance_index) instance_index: u32
+    @builtin(vertex_index) global_vertex_index: u32,
+    @builtin(instance_index) triangle_index: u32
 ) -> VertexOut {
     var out: VertexOut;
+    let vertex_num: u32 = global_vertex_index % 3u;
 
-    let vertex_num: i32 = i32(vertex_index) % 3;
-    out.triangle_id = indices[instance_index];
-    let geometry_index: i32 = out.triangle_id * 12;
-    let v_i: i32 = geometry_index + vertex_num * 3;
-    // Transform position
-    let relative_position: vec3<f32> = vec3<f32>(geometry[v_i], geometry[v_i + 1], geometry[v_i + 2]);
-    // Get transformation ID
-    let t_i: i32 = i32(geometry[geometry_index + 9]) << 1u;
+    let instance_offset: u32 = binary_search_instance(triangle_index) * INSTANCE_SIZE;
+    out.instance_offset = instance_offset;
+
+    let triangle_offset: u32 = instances[instance_offset];
+    out.triangle_offset = triangle_offset;
+    let transform_offset: u32 = instances[instance_offset + 3u];
+    let triangle_index_offset: u32 = instances[instance_offset + 10u];
+    let internal_triangle_index: u32 = triangle_index - triangle_index_offset - 1u;
+
+    let vertex_offset: u32 = triangle_offset + internal_triangle_index * TRIANGLE_SIZE + vertex_num;
+
+    let relative_position: vec3<f32> = vec3<f32>(
+        access_triangle(vertex_offset),
+        access_triangle(vertex_offset + 1u),
+        access_triangle(vertex_offset + 2u)
+    );
     // Trasform position
-    let transform: Transform = transforms[t_i];
+    let transform: Transform = transforms[transform_offset / TRANSFORM_SIZE];
     out.absolute_position = (transform.rotation * relative_position) + transform.shift;
     // Set uv to vertex uv and let the vertex interpolation generate the values in between
     switch (vertex_num) {
-        case 0: {
+        case 0u: {
             out.uv = vec2<f32>(1.0f, 0.0f);
         }
-        case 1: {
+        case 1u: {
             out.uv = vec2<f32>(0.0f, 1.0f);
         }
-        case 2, default {
+        case 2u: {
+            out.uv = vec2<f32>(0.0f, 0.0f);
+        }
+        default: {
             out.uv = vec2<f32>(0.0f, 0.0f);
         }
     }
     out.clip_space = uniforms.view_matrix_jitter * (out.absolute_position - uniforms.camera_position);
     // Set triangle position in clip space
-    out.pos = vec4<f32>(out.clip_space.xy, 0.0f, out.clip_space.z);
+    out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
     return out;
 }
 
@@ -99,7 +144,8 @@ fn fragment(
     @location(0) absolute_position: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) clip_space: vec3<f32>,
-    @location(3) @interpolate(flat) triangle_id: i32
+    @location(3) @interpolate(flat) instance_offset: u32,
+    @location(4) @interpolate(flat) triangle_offset: u32
 ) -> @location(0) vec4<f32> {
 
     // Get canvas size
@@ -118,8 +164,13 @@ fn fragment(
         // Save values for compute pass
         textureStore(texture_absolute_position, coord, vec4<f32>(absolute_position, 0.0f));
         textureStore(texture_uv, coord, vec4<f32>(uv, 0.0f, 0.0f));
-        triangle_id_buffer[buffer_index] = triangle_id;
+        // textureStore(texture_offset, coord, 0, vec4<f32>(triangle_offset, instance_offset, 0.0f, 0.0f));
+        // textureStore(texture_offset, coord, 1, vec4<f32>(triangle_offset, instance_offset, 0.0f, 0.0f));
+        textureStore(texture_offset, coord, 0, vec4<u32>(instance_offset, 0u, 0u, 0u));
+        textureStore(texture_offset, coord, 1, vec4<u32>(triangle_offset, 0u, 0u, 0u));
     }
 
-    return vec4<f32>(f32(triangle_id % 3) / 3.0f, f32(triangle_id % 2) / 2.0f, f32(triangle_id % 5) / 5.0f, 1.0f);
+    let triangle_id: u32 = triangle_offset / TRIANGLE_SIZE;
+
+    return vec4<f32>(f32(triangle_id % 3u) / 3.0f, f32(triangle_id % 2u) / 2.0f, f32(triangle_id % 5u) / 5.0f, 1.0f);
 }

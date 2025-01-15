@@ -263,10 +263,16 @@ export function normalize<N extends number>(a: Vector<N>): Vector<N> {
 
 export function cross(a: Vector<3>, b: Vector<3>): Vector<3> {
     return new Vector(
-        a[1]! * b[2]! - a[2]! * b[1]!,
-        a[2]! * b[0]! - a[0]! * b[2]!,
-        a[0]! * b[1]! - a[1]! * b[0]!
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
     );
+}
+
+export function vector_abs<N extends number>(a: Vector<N>): Vector<N> {
+    let result: Vector<N> = new Vector({ vector_length: a.length as N });
+    for (let i = 0; i < a.length; i++) result[i] = Math.abs(a[i]!);
+    return result;
 }
 
 export function outer<M extends number, N extends number>(a: Vector<M>, b: Vector<N>): Matrix<M, N> {

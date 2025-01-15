@@ -5,27 +5,23 @@ import { TypedArrayView } from "../buffer/typed-array-view";
 
 type Channels = 1 | 2 | 3 | 4;
 
-
-interface TextureTypeProperties<T extends Channels> {
-    channels: T;
-    textureTypeInstances: Set<Texture<T>>;
-    textureInstanceManager: BufferManager<Uint32Array>;
-    textureDataManager: BufferManager<Uint8Array>;
-}
-
-class Texture<T extends Channels> {
+export class Texture {
     readonly texture: HTMLImageElement;
     readonly width: number;
     readonly height: number;
 
     // Save texture type properties
-    private readonly properties: TextureTypeProperties<T>;
+    private static instances: Set<Texture> = new Set();
     // Width, height, channels, dataOffset
-    private _textureInstanceBuffer: TypedArrayView<Uint32Array> | undefined;
-    get textureInstanceBuffer(): TypedArrayView<Uint32Array> | undefined { return this._textureInstanceBuffer; }
+    private static _textureInstanceBufferManager: BufferManager<Uint32Array> = new BufferManager(Uint32Array);
+    static get textureInstanceBufferManager () { return Texture._textureInstanceBufferManager; }
     // Texture data buffer
-    private _textureDataBuffer: TypedArrayView<Uint8Array> | undefined;
-    // get textureDataBuffer(): TypedArrayView<Uint8Array> | undefined { return this._textureDataBuffer; }
+    private static _textureDataBufferManager: BufferManager<Uint8Array> = new BufferManager(Uint8Array);
+    static get textureDataBufferManager () { return Texture._textureDataBufferManager; }
+
+    private textureDataBuffer: TypedArrayView<Uint8Array> | undefined;
+    private _textureInstanceBuffer: TypedArrayView<Uint32Array> | undefined;
+    get textureInstanceBuffer () { return this._textureInstanceBuffer; }
 
     private static async getTextureData(texture: HTMLImageElement, width: number, height: number, channels: Channels): Promise<Uint8Array> {
         // Create canvas, draw image and return bitmap
@@ -46,98 +42,67 @@ class Texture<T extends Channels> {
         return new Uint8Array(array);
     }
 
-    constructor (properties: TextureTypeProperties<T>, texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+    constructor (channels: Channels, texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
         this.texture = texture;
         this.width = width ?? texture.width;
         this.height = height ?? texture.height;
-        // Save texture type properties
-        this.properties = properties;
         // Get texture data
-        Texture.getTextureData(texture, this.width, this.height, properties.channels).then((array: Uint8Array) => {
-            this._textureDataBuffer = properties.textureDataManager.allocateArray(array);
-            this._textureInstanceBuffer = properties.textureInstanceManager.allocateArray(new Uint32Array([this.width, this.height, properties.channels, this._textureDataBuffer.offset]));
+        Texture.getTextureData(texture, this.width, this.height, channels).then((array: Uint8Array) => {
+            this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
+            this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray(new Uint32Array([this.width, this.height, channels, this.textureDataBuffer.offset]));
         });
-        // Add texture instance to texture type instances
-        properties.textureTypeInstances.add(this);
+
+        Texture.instances.add(this);
     }
 
     destroy() {
         // Remove texture instance from texture type instances
-        this.properties.textureTypeInstances.delete(this);
+        Texture.instances.delete(this);
         // Substract length of this texture from all saved offsets of textures after this one
-        for (let instance of this.properties.textureTypeInstances) {
-            if (this._textureInstanceBuffer && instance._textureInstanceBuffer && instance._textureInstanceBuffer.offset > this._textureInstanceBuffer.offset) {
-                instance._textureInstanceBuffer[3]! -= this._textureInstanceBuffer.length;   
+        for (let instance of Texture.instances) {
+            if (instance.textureInstanceBuffer && this._textureInstanceBuffer && instance.textureInstanceBuffer.offset > this._textureInstanceBuffer.offset) {
+                instance.textureInstanceBuffer[3]! -= this._textureInstanceBuffer.length;   
             }
         }
         // Free buffers if they exist
-        if (this._textureDataBuffer) this.properties.textureDataManager.freeArray(this._textureDataBuffer);
-        if (this._textureInstanceBuffer) this.properties.textureInstanceManager.freeArray(this._textureInstanceBuffer);
+        if (this.textureDataBuffer) Texture.textureDataBufferManager.freeArray(this.textureDataBuffer);
+        if (this._textureInstanceBuffer) Texture.textureInstanceBufferManager.freeArray(this._textureInstanceBuffer);
     }
 }
 
 
-export class NormalTexture extends Texture<3> {
-    private static textureTypeProperties: TextureTypeProperties<3> = {
-        channels: 3,
-        textureTypeInstances: new Set(),
-        textureInstanceManager: new BufferManager(Uint32Array),
-        textureDataManager: new BufferManager(Uint8Array),
-    }
-
+export class NormalTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(NormalTexture.textureTypeProperties, texture, width, height);
+        super(3, texture, width, height);
     }
 }
 
-export class AlbedoTexture extends Texture<3> {
-    private static textureTypeProperties: TextureTypeProperties<3> = {
-        channels: 3,
-        textureTypeInstances: new Set(),
-        textureInstanceManager: new BufferManager(Uint32Array),
-        textureDataManager: new BufferManager(Uint8Array),
-    }
-
+export class AlbedoTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(AlbedoTexture.textureTypeProperties, texture, width, height);
+        super(3, texture, width, height);
     }
 }
 
-export class EmissiveTexture extends Texture<3> {
-    private static textureTypeProperties: TextureTypeProperties<3> = {
-        channels: 3,
-        textureTypeInstances: new Set(),
-        textureInstanceManager: new BufferManager(Uint32Array),
-        textureDataManager: new BufferManager(Uint8Array),
-    }
-
+export class EmissiveTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(EmissiveTexture.textureTypeProperties, texture, width, height);
+        super(3, texture, width, height);
     }
 }
 
-export class RoughnessTexture extends Texture<1> {
-    private static textureTypeProperties: TextureTypeProperties<1> = {
-        channels: 1,
-        textureTypeInstances: new Set(),
-        textureInstanceManager: new BufferManager(Uint32Array),
-        textureDataManager: new BufferManager(Uint8Array),
-    }
-
+export class RoughnessTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(RoughnessTexture.textureTypeProperties, texture, width, height);
+        super(1, texture, width, height);
     }
 }
 
-export class MetallicTexture extends Texture<1> {
-    private static textureTypeProperties: TextureTypeProperties<1> = {
-        channels: 1,
-        textureTypeInstances: new Set(),
-        textureInstanceManager: new BufferManager(Uint32Array),
-        textureDataManager: new BufferManager(Uint8Array),
-    }
-
+export class MetallicTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(MetallicTexture.textureTypeProperties, texture, width, height);
+        super(1, texture, width, height);
+    }
+}
+
+export class HeightTexture extends Texture {    
+    constructor(texture: HTMLImageElement, width: number, height: number) {
+        super(1, texture, width, height);
     }
 }
