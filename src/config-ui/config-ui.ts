@@ -1,7 +1,10 @@
-'use strict';
+"use strict";
 
-import { FlexLight } from "../flexlight/flexlight.js";
+import { FlexLight } from "flexlight";
 import { ValueType, ConfigForm } from "./form.js";
+import { RendererType } from "flexlight/common/renderer.js";
+import { ApiType } from "flexlight/common/renderer.js";
+import { StringAntialiasingType } from "flexlight/common/config.js";
 // Types for ConfigUI
 interface Property<T extends ValueType> {
     name: string;
@@ -11,8 +14,8 @@ interface Property<T extends ValueType> {
 const getStartValueCheckbox = (property: Property<boolean>): boolean => {
     const value = localStorage.getItem(property.name);
     if (!value) return property.defaultValue;
-    else if (value === 'true') return true;
-    else if (value === 'false') return false;
+    else if (value === "true") return true;
+    else if (value === "false") return false;
     else throw new Error(`Unsupported value: ${value}`);
 };
 
@@ -40,18 +43,18 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     
     // Add FlexLight settings to parameter form
     const flexLightForm = new ConfigForm(form, engine, localStorageHook);
-    flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"], getStartValueSelect({ name: 'Backend', defaultValue: 'webgl2' }));
-    flexLightForm.addSelect("Renderer", "renderer", ["rasterizer", "pathtracer"], getStartValueSelect({ name: 'Renderer', defaultValue: 'rasterizer' }));
+    flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"] as const, getStartValueSelect({ name: "Backend", defaultValue: "webgl2" as ApiType }));
+    flexLightForm.addSelect("Renderer", "rendererType", ["rasterizer", "pathtracer"] as const, getStartValueSelect({ name: "Renderer", defaultValue: "rasterizer" as RendererType }));
 
     // Add Config settings to parameter form
     const configForm = new ConfigForm(form, engine.config, localStorageHook);
-    configForm.addSelect("Antialiasing", "antialiasing", ["none", "fxaa", "taa"], getStartValueSelect({ name: 'Antialiasing', defaultValue: 'fxaa' }));
+    configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"] as const, getStartValueSelect({ name: "Antialiasing", defaultValue: "fxaa" as StringAntialiasingType }));
     configForm.addCheckbox("Temporal averaging", "temporal", true);
-    configForm.addCheckbox("HDR", "hdr", getStartValueCheckbox({ name: 'HDR', defaultValue: true }));
-    configForm.addSlider("Render quality", "renderQuality", 0.1, 2, 0.1, getStartValueSlider({ name: 'Render quality', defaultValue: 1 }));
-    configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: 'samplesPerRay', defaultValue: 1 }));
-    configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: 'Max reflections', defaultValue: 5 }));
-    configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: 'Min importancy', defaultValue: 0.3 }));
+    configForm.addCheckbox("HDR", "hdr", getStartValueCheckbox({ name: "HDR", defaultValue: true }));
+    configForm.addSlider("Render quality", "renderQuality", 0.1, 2, 0.1, getStartValueSlider({ name: "Render quality", defaultValue: 1 }));
+    configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "samplesPerRay", defaultValue: 1 }));
+    configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 5 }));
+    configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.3 }));
 
 
     return form;

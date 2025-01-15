@@ -39,21 +39,39 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
-@group(0) @binding(1) var<storage, read> triangle_id_buffer: array<i32>;
-@group(0) @binding(2) var texture_absolute_position: texture_2d<f32>;
-@group(0) @binding(3) var texture_uv: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read> instance_offset_buffer: array<u32>;
+@group(0) @binding(2) var<storage, read> triangle_offset_buffer: array<u32>;
+@group(0) @binding(3) var texture_absolute_position: texture_2d<f32>;
+@group(0) @binding(4) var texture_uv: texture_2d<f32>;
 
-@group(1) @binding(0) var texture_atlas: texture_2d<f32>;
-@group(1) @binding(1) var pbr_atlas: texture_2d<f32>;
-@group(1) @binding(2) var translucency_atlas: texture_2d<f32>;
+// ComputeTextureBindGroup
+@group(1) @binding(0) var<storage, read> texture_instance_buffer: array<u32>;
+@group(1) @binding(1) var<storage, read> albedo_data_buffer: array<f32>;
+@group(1) @binding(2) var<storage, read> emissive_instance_buffer: array<u32>;
+@group(1) @binding(3) var<storage, read> emissive_data_buffer: array<f32>;
+@group(1) @binding(4) var<storage, read> roughness_instance_buffer: array<u32>;
+@group(1) @binding(5) var<storage, read> roughness_data_buffer: array<f32>;
+@group(1) @binding(6) var<storage, read> metallic_instance_buffer: array<u32>;
+@group(1) @binding(7) var<storage, read> metallic_data_buffer: array<f32>;
 
-@group(2) @binding(0) var<storage, read> indices: array<i32>;
-@group(2) @binding(1) var<storage, read> geometry: array<f32>;
-@group(2) @binding(2) var<storage, read> scene: array<f32>;
+// ComputeGeometryBindGroup
+@group(2) @binding(0) var<storage, read> triangle_bvh: array<u32>;
+@group(2) @binding(1) var<storage, read> triangle_bounding_vertices: array<f32>;
+@group(2) @binding(2) var<storage, read> triangles: array<f32>;
+@group(2) @binding(3) var<storage, read> vertices: array<f32>;
+@group(2) @binding(4) var<storage, read> normals: array<f32>;
+@group(2) @binding(5) var<storage, read> uvs: array<f32>;
+// @group(2) @binding(6) var<storage, read> normal_instance_buffer: array<u32>;
+// @group(2) @binding(7) var<storage, read> normal_data_buffer: array<f32>;
 
+// ComputeDynamicBindGroup
 @group(3) @binding(0) var<uniform> uniforms: Uniforms;
 @group(3) @binding(1) var<storage, read> transforms: array<Transform>;
 @group(3) @binding(2) var<storage, read> lights: array<Light>;
+
+@group(3) @binding(3) var<storage, read> instances: array<u32>;
+@group(3) @binding(4) var<storage, read> instances_bvh: array<u32>;
+@group(3) @binding(5) var<storage, read> instances_bounding_vertices: array<f32>;
 
 struct Ray {
     origin: vec3<f32>,

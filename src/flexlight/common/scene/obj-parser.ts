@@ -2,13 +2,16 @@
 
 import { Vector, vector_scale } from "../lib/math";
 import { Material } from "./material";
-import { PrototypeArrays } from "./prototype";
 
 export class Parser {
     // Create object from .obj file
-    static obj = async (path: string, materials: Map<string, Material>): Promise<PrototypeArrays> => {
+    static obj = async (path: string, materials: Map<string, Material>): Promise<Array<number>> => {
+
+        const vertices: Array<Vector<3>> = [];
+        const normals: Array<Vector<3>> = [];
+        const uvs: Array<Vector<2>> = [];
         // final object variable 
-        let obj: PrototypeArrays = { vertices: [], normals: [], uvs: [], triangles: [] };
+        let triangles: Array<number> = [];
         // track current material
         let curMaterialName: string | undefined = undefined;
         // line interpreter
@@ -20,15 +23,15 @@ export class Parser {
             switch (words[0]) {
                 case "v":
                     // push vertex
-                    obj.vertices.push(Number(words[1]), Number(words[2]), Number(words[3]));
+                    vertices.push(new Vector(Number(words[1]), Number(words[2]), Number(words[3])));
                     break;
                 case "vt":
                     // push uv
-                    obj.uvs.push(Number(words[1]), Number(words[2]));
+                    uvs.push(new Vector(Number(words[1]), Number(words[2])));
                     break;
                 case "vn":
                     // push normal
-                    obj.normals.push(Number(words[1]), Number(words[2]), Number(words[3]));
+                    normals.push(new Vector(Number(words[1]), Number(words[2]), Number(words[3])));
                     break;
                 case "f":
                     // Discard first word
@@ -37,28 +40,46 @@ export class Parser {
                     // extract array indecies form string
                     let data = dataString.split(/[ ]/g).filter(vertex => vertex.length).map(vertex => vertex.split(/[/]/g).map(numStr => {
                         let num = Number(numStr);
-                        if (num < 0) num = obj.vertices.length + num + 1;
+                        if (num < 0) num = vertices.length + num + 1;
                         return num;
                     }));
                 
                     // test if new part should be a triangle or plane
-                    if (data.length === 4 && data[1] && data[2] && data[3]) {
-                        obj.triangles.push(
+                    if (data.length === 4 && data[0] && data[1] && data[2] && data[3]) {
+                        triangles.push(
                             // Triangle 3 2 1
-                            data[3]![0]!, data[2]![0]!, data[1]![0]!,
-                            data[3]![1]!, data[2]![1]!, data[1]![1]!,
-                            data[3]![2]!, data[2]![2]!, data[1]![2]!,
+                            vertices[data[3]![0]! - 1]!.x, vertices[data[3]![0]! - 1]!.y, vertices[data[3]![0]! - 1]!.z,
+                            vertices[data[2]![0]! - 1]!.x, vertices[data[2]![0]! - 1]!.y, vertices[data[2]![0]! - 1]!.z,
+                            vertices[data[1]![0]! - 1]!.x, vertices[data[1]![0]! - 1]!.y, vertices[data[1]![0]! - 1]!.z,
+                            normals[data[3]![2]! - 1]!.x, normals[data[3]![2]! - 1]!.y, normals[data[3]![2]! - 1]!.z,
+                            normals[data[2]![2]! - 1]!.x, normals[data[2]![2]! - 1]!.y, normals[data[2]![2]! - 1]!.z,
+                            normals[data[1]![2]! - 1]!.x, normals[data[1]![2]! - 1]!.y, normals[data[1]![2]! - 1]!.z,
+                            uvs[data[3]![1]! - 1]!.x, uvs[data[3]![1]! - 1]!.y,
+                            uvs[data[2]![1]! - 1]!.x, uvs[data[2]![1]! - 1]!.y,
+                            uvs[data[1]![1]! - 1]!.x, uvs[data[1]![1]! - 1]!.y,
                             // Triangle 1 0 3
-                            data[1]![0]!, data[0]![0]!, data[3]![0]!,
-                            data[1]![1]!, data[0]![1]!, data[3]![1]!,
-                            data[1]![2]!, data[0]![2]!, data[3]![2]!
+                            vertices[data[1]![0]! - 1]!.x, vertices[data[1]![0]! - 1]!.y, vertices[data[1]![0]! - 1]!.z,
+                            vertices[data[0]![0]! - 1]!.x, vertices[data[0]![0]! - 1]!.y, vertices[data[0]![0]! - 1]!.z,
+                            vertices[data[3]![0]! - 1]!.x, vertices[data[3]![0]! - 1]!.y, vertices[data[3]![0]! - 1]!.z,
+                            normals[data[1]![2]! - 1]!.x, normals[data[1]![2]! - 1]!.y, normals[data[1]![2]! - 1]!.z,
+                            normals[data[0]![2]! - 1]!.x, normals[data[0]![2]! - 1]!.y, normals[data[0]![2]! - 1]!.z,
+                            normals[data[3]![2]! - 1]!.x, normals[data[3]![2]! - 1]!.y, normals[data[3]![2]! - 1]!.z,
+                            uvs[data[1]![1]! - 1]!.x, uvs[data[1]![1]! - 1]!.y,
+                            uvs[data[0]![1]! - 1]!.x, uvs[data[0]![1]! - 1]!.y,
+                            uvs[data[3]![1]! - 1]!.x, uvs[data[3]![1]! - 1]!.y,
                         );
-                    } else if (data.length === 3 && data[1] && data[2] && data[3]) {
-                        obj.triangles.push(
+                    } else if (data.length === 3 && data[0] && data[1] && data[2]) {
+                        triangles.push(
                             // Triangle 2 1 0
-                            data[2]![0]!, data[1]![0]!, data[0]![0]!,
-                            data[2]![1]!, data[1]![1]!, data[0]![1]!,
-                            data[2]![2]!, data[1]![2]!, data[0]![2]!
+                            vertices[data[2]![0]! - 1]!.x, vertices[data[2]![0]! - 1]!.y, vertices[data[2]![0]! - 1]!.z,
+                            vertices[data[1]![0]! - 1]!.x, vertices[data[1]![0]! - 1]!.y, vertices[data[1]![0]! - 1]!.z,
+                            vertices[data[0]![0]! - 1]!.x, vertices[data[0]![0]! - 1]!.y, vertices[data[0]![0]! - 1]!.z,
+                            normals[data[2]![2]! - 1]!.x, normals[data[2]![2]! - 1]!.y, normals[data[2]![2]! - 1]!.z,
+                            normals[data[1]![2]! - 1]!.x, normals[data[1]![2]! - 1]!.y, normals[data[1]![2]! - 1]!.z,
+                            normals[data[0]![2]! - 1]!.x, normals[data[0]![2]! - 1]!.y, normals[data[0]![2]! - 1]!.z,
+                            uvs[data[2]![1]! - 1]!.x, uvs[data[2]![1]! - 1]!.y,
+                            uvs[data[1]![1]! - 1]!.x, uvs[data[1]![1]! - 1]!.y,
+                            uvs[data[0]![1]! - 1]!.x, uvs[data[0]![1]! - 1]!.y
                         );
                     } else {
                         console.warn('Invalid face data:', data);
@@ -79,7 +100,7 @@ export class Parser {
         console.log('Parsing vertices ...');
         text.split(/\r\n|\r|\n/).forEach(line => interpreteLine(line));
         // return built object
-        return obj;
+        return triangles;
     }
 
     static mtl = async (path: string): Promise<Map<string, Material>> => {

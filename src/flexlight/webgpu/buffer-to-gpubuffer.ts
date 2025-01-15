@@ -1,14 +1,16 @@
 "use strict";
 
 import { TypedArray } from "../common/buffer/typed-array-view";
-import { GPUBufferManager } from "../common/buffer/gpu-buffer-manager";
+import { BufferToGPU } from "../common/buffer/buffer-to-gpu";
 import { BufferManager } from "../common/buffer/buffer-manager";
 
-export class WebGPUBufferManager<T extends TypedArray> extends GPUBufferManager {
+const MIN_BUFFER_LENGTH: number = 16;
+
+export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
     protected bufferManager: BufferManager<T>;
 
     private _gpuBuffer: GPUBuffer;
-    get gpuBuffer() { return this._gpuBuffer; }
+    get gpuResource() { return this._gpuBuffer; }
     
     private device: GPUDevice;
     private label: string;
@@ -21,10 +23,10 @@ export class WebGPUBufferManager<T extends TypedArray> extends GPUBufferManager 
         this.bufferManager = bufferManager;
         // Save label for reference
         this.label = label;
-        // Bind GPUBufferManager to BufferManager
-        bufferManager.bindGPUBufferManager(this);
+        // Bind GPUBuffer to BufferManager
+        bufferManager.bindGPUBuffer(this);
         // Create GPUBuffer
-        this._gpuBuffer = device.createBuffer({ size: bufferManager.buffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: label });
+        this._gpuBuffer = device.createBuffer({ size: Math.max(bufferManager.buffer.byteLength, MIN_BUFFER_LENGTH), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: label });
         // Copy data from buffer manager to GPUBuffer
         device.queue.writeBuffer(this._gpuBuffer, 0, this.bufferManager.bufferView);
     }
@@ -34,7 +36,7 @@ export class WebGPUBufferManager<T extends TypedArray> extends GPUBufferManager 
         // Destroy old GPUBuffer
         this._gpuBuffer.destroy();
         // Create GPUBuffer
-        this._gpuBuffer = this.device.createBuffer({ size: this.bufferManager.buffer.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: this.label });
+        this._gpuBuffer = this.device.createBuffer({ size: Math.max(this.bufferManager.buffer.byteLength, MIN_BUFFER_LENGTH), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: this.label });
         // Copy data from buffer manager to GPUBuffer
         this.device.queue.writeBuffer(this._gpuBuffer, 0, this.bufferManager.bufferView);
     }
@@ -48,7 +50,7 @@ export class WebGPUBufferManager<T extends TypedArray> extends GPUBufferManager 
     destroy = () => {
         // Destroy GPUBuffer
         this._gpuBuffer.destroy();
-        // Release GPUBufferManager from BufferManager
-        this.bufferManager.releaseGPUBufferManager();
+        // Release GPUBuffer from BufferManager
+        this.bufferManager.releaseGPUBuffer();
     }
 }

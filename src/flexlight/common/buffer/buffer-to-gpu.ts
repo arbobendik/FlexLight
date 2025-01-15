@@ -1,7 +1,7 @@
 "use strict";
 
-export abstract class GPUBufferManager {
-    abstract get gpuBuffer(): GPUBuffer;
+export abstract class BufferToGPU {
+    abstract get gpuResource(): any;
     // Reconstruct GPUBuffer from BufferManager, necessary if BufferManager is resized
     abstract reconstruct(): void;
     // Update GPUBuffer partially or fully from BufferManager if data has changed
