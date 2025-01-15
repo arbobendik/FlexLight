@@ -1,6 +1,6 @@
 'use strict';
 
-import { Math } from '../common/math.js';
+import { Math } from '../legacy/math.js';
 export class GLLib {
 
   static postVertex = `#version 300 es

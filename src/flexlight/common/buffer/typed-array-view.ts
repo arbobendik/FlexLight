@@ -30,29 +30,29 @@ export class TypedArrayView<T extends TypedArray> {
     length: number;
     byteOffset: number;
     byteLength: number;
+    // Array methods
+    get every() { return this.arrayView.every; }
+    get filter() { return this.arrayView.filter; }
+    get find() { return this.arrayView.find; }
+    get findIndex() { return this.arrayView.findIndex; }
+    get forEach() { return this.arrayView.forEach; }
+    get includes() { return this.arrayView.includes; }
+    get indexOf() { return this.arrayView.indexOf; }
+    get join() { return this.arrayView.join; }
+    get lastIndexOf() { return this.arrayView.lastIndexOf; }
+    get map() { return this.arrayView.map; }
+    get reduce() { return this.arrayView.reduce; }
+    get reduceRight() { return this.arrayView.reduceRight; }
+    get set() { return this.arrayView.set; }
+    get slice() { return this.arrayView.slice; }
+    get some() { return this.arrayView.some; }
+    get subarray() { return this.arrayView.subarray; }
+    get toLocaleString() { return this.arrayView.toLocaleString; }
+    get toString() { return this.arrayView.toString; }
+    get values() { return this.arrayView.values; }
 
-    every: T["every"];
-    filter: T["filter"];
-    find: T["find"];
-    findIndex: T["findIndex"];
-    forEach: T["forEach"];
-    includes: T["includes"];
-    indexOf: T["indexOf"];
-    join: T["join"];
-    lastIndexOf: T["lastIndexOf"];
-    map: T["map"];
-    reduce: T["reduce"];
-    reduceRight: T["reduceRight"];
-    set: T["set"];
-    slice: T["slice"];
-    some: T["some"];
-    subarray: T["subarray"];
-    toLocaleString: T["toLocaleString"];
-    toString: T["toString"];
-    values: T['values'];
-
-    entries: T["entries"];
-    keys: T["keys"];
+    get entries() { return this.arrayView.entries; }
+    get keys() { return this.arrayView.keys; }
 
     [n: number]: number;  // Add numeric index signature
     
@@ -71,28 +71,6 @@ export class TypedArrayView<T extends TypedArray> {
         this.length = arrayView.length;
         this.byteOffset = arrayView.byteOffset;
         this.byteLength = arrayView.byteLength;
-        // Set array methods
-        this.every = arrayView.every;
-        this.filter = arrayView.filter;
-        this.find = arrayView.find;
-        this.findIndex = arrayView.findIndex;
-        this.forEach = arrayView.forEach;
-        this.includes = arrayView.includes;
-        this.indexOf = arrayView.indexOf;
-        this.join = arrayView.join;
-        this.lastIndexOf = arrayView.lastIndexOf;
-        this.map = arrayView.map;
-        this.reduce = arrayView.reduce;
-        this.reduceRight = arrayView.reduceRight;
-        this.set = arrayView.set;
-        this.slice = arrayView.slice;
-        this.some = arrayView.some;
-        this.subarray = arrayView.subarray;
-        this.toLocaleString = arrayView.toLocaleString;
-        this.toString = arrayView.toString;
-        this.values = arrayView.values;
-        this.entries = arrayView.entries;
-        this.keys = arrayView.keys;
     }
 
     private setArrayView(arrayView: T) {
@@ -102,28 +80,6 @@ export class TypedArrayView<T extends TypedArray> {
         this.byteOffset = arrayView.byteOffset;
         this.length = arrayView.length;
         this.byteLength = arrayView.byteLength;
-        // Set array methods
-        this.every = arrayView.every;
-        this.filter = arrayView.filter;
-        this.find = arrayView.find;
-        this.findIndex = arrayView.findIndex;
-        this.forEach = arrayView.forEach;
-        this.includes = arrayView.includes;
-        this.indexOf = arrayView.indexOf;
-        this.join = arrayView.join;
-        this.lastIndexOf = arrayView.lastIndexOf;
-        this.map = arrayView.map;
-        this.reduce = arrayView.reduce;
-        this.reduceRight = arrayView.reduceRight;
-        this.set = arrayView.set;
-        this.slice = arrayView.slice;
-        this.some = arrayView.some;
-        this.subarray = arrayView.subarray;
-        this.toLocaleString = arrayView.toLocaleString;
-        this.toString = arrayView.toString;
-        this.values = arrayView.values;
-        this.entries = arrayView.entries;
-        this.keys = arrayView.keys;
     }
 
     // Custom methods
@@ -140,7 +96,7 @@ export class TypedArrayView<T extends TypedArray> {
         this.arrayView.copyWithin(target, start, end);
         return this;
     }
-
+    
     reverse(): this {
         this.arrayView.reverse();
         return this;
