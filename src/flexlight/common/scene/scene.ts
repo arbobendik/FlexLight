@@ -41,7 +41,7 @@ export class Scene {
         // Construct instance buffer, instance bounding vertex buffer, instance BVH buffer
         const instanceArray: Array<number> = [];
         // Keep track of global vertex offset
-        let globalTriangleCount: number = 0;
+        let globalTriangleOffset: number = 0;
         // Construct instance buffer
         for (let instance of this.instances) {
             instanceArray.push(
@@ -53,10 +53,10 @@ export class Scene {
                 // Texture buffer references
                 instance.normal?.textureInstanceBuffer?.offset ?? POW32M1, instance.albedo?.textureInstanceBuffer?.offset ?? POW32M1, instance.emissive?.textureInstanceBuffer?.offset ?? POW32M1,
                 instance.roughness?.textureInstanceBuffer?.offset ?? POW32M1, instance.metallic?.textureInstanceBuffer?.offset ?? POW32M1,
-                globalTriangleCount
+                globalTriangleOffset
             );
             // Increment global vertex offset by instance vertex count
-            globalTriangleCount += instance.prototype.triangles.length;
+            globalTriangleOffset += instance.prototype.triangles.length;
         }
         // Allocate instance buffer
         this._instanceManager.overwriteAll(instanceArray);
@@ -80,8 +80,8 @@ export class Scene {
         );
         // Allocate point light buffer
         this._pointLightManager.overwriteAll(pointLightArray);
-        // Return total vertex offset divided by 3 to obtain total vertex count
-        return globalTriangleCount;
+        // Return total triangle count by dividing global triangle offset by 24 (3 vertices per triangle, 3 normals per triangle, 3 UVs per triangle)
+        return globalTriangleOffset / 24;
     }
 
     // Add instance to scene

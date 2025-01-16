@@ -1,4 +1,5 @@
 "use strict";
+// @ts-ignore
 import { createConfigUI } from "../../config-ui/config-ui.js";
 import { FlexLight, Instance, PointLight, Prototype, Vector } from "../../flexlight/flexlight.js";
 const staticPath = './static/';
@@ -36,6 +37,7 @@ scene.ambientLight = new Vector(0.01, 0.01, 0.01);
 // scene.queue.push(plane);
 // Start render engine.
 engine.renderer.render();
+engine.renderer.fpsLimit = 1;
 // const search = new URLSearchParams(location.search);
 let urlParams = new URL(String(document.location)).searchParams;
 // console.log(search.getAll());
@@ -44,8 +46,10 @@ const loadObj = async (model) => {
     const objPath = staticPath + 'objects/' + model + '.obj';
     const mtlPath = staticPath + 'objects/' + model + '.mtl';
     const prototype = await Prototype.fromObj(objPath, mtlPath);
+    console.log("Loaded prototype", prototype);
     const instance = new Instance(prototype);
     scene.addInstance(instance);
+    console.log("Added instance", instance);
 };
 let model = urlParams.get('model') ?? 'sphere';
 loadObj(model);

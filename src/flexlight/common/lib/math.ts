@@ -86,6 +86,12 @@ export class Vector<N extends number> extends Float32Array {
         }
     }
 
+    /*
+    override toString(): string {
+        return "(" + this.join(", ") + ")";
+    }
+    */
+
     override *[Symbol.iterator](): IterableIterator<number> {
         for (let i = 0; i < this.length; i++) yield this[i]!;
     }
@@ -163,6 +169,12 @@ export class Matrix<M extends number, N extends number> extends Array<Vector<N>>
             throw new Error('Invalid number of rows');
         }
     }
+
+    /*
+    override toString(): string {
+        return "[" + this.map(row => row.toString()).join("\n") + "]";
+    }
+    */
 
     override *[Symbol.iterator](): IterableIterator<Vector<N>> {
         // Iterate over row vectors
