@@ -22,7 +22,8 @@ export class BufferManager<T extends TypedArray> {
     private instances: Set<TypedArrayView<T>> = new Set();
     // GPUBufferManager for this buffer
     private _gpuBuffer: BufferToGPU | undefined = undefined;
-    get gpuBuffer(): BufferToGPU | undefined { return this._gpuBuffer; }
+    get gpuBufferManager(): BufferToGPU | undefined { return this._gpuBuffer; }
+
     constructor(viewConstructor: Constructor<T>) {
         this._viewConstructor = viewConstructor;
     }
@@ -59,6 +60,8 @@ export class BufferManager<T extends TypedArray> {
         const newBufferMaxByteLength = next_power_of_two(arrayByteOffset + arrayByteLength);
         // Resize buffer
         this.resizeBuffer(newBufferMaxByteLength);
+        // Update length
+        this._length = this._length + arrayLength;
         // Get buffer view
         const bufferView = this.bufferView;
         // Insert array into buffer
@@ -74,12 +77,12 @@ export class BufferManager<T extends TypedArray> {
         }
         // Reconstruct GPUBuffer if it exists due to resize
         if (this._gpuBuffer) this._gpuBuffer.reconstruct();
+
+        // console.log(this._buffer, arrayByteOffset, arrayByteLength / BYTES_PER_ELEMENT, this._viewConstructor);
         
-        const typedArrayView = new TypedArrayView<T>(this._buffer, arrayByteOffset, arrayByteLength / BYTES_PER_ELEMENT, this._viewConstructor);
+        const typedArrayView = TypedArrayView<T>(this._buffer, arrayByteOffset, arrayByteLength / BYTES_PER_ELEMENT, this._viewConstructor);
         // Add this buffer to the list of instances
         this.instances.add(typedArrayView);
-        // Update length
-        this._length = this._length + arrayLength;
         // Construct current buffer view
         return typedArrayView;
     }
