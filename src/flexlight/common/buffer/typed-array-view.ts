@@ -17,7 +17,7 @@ type StringTag<T extends TypedArray> =
     T extends Float64Array ? "Float64Array" : never;
 
 // Reimplementation to allow Views to implement typed arrays
-export class TypedArrayView<T extends TypedArray> {
+class TypedArrayReimplementation<T extends TypedArray> {
     private readonly TypedArrayConstructor: Constructor<T>;
     private readonly stringTag: StringTag<T>;
 
@@ -87,6 +87,16 @@ export class TypedArrayView<T extends TypedArray> {
         this.setArrayView(new this.TypedArrayConstructor(this.buffer, byteOffset, length));
     }
 
+    writeValueAt(index: number, value: number): boolean {
+        if (index < 0 || index >= this.length) return false;
+        this.arrayView[index] = value;
+        return true;
+    }
+
+    readValueAt(index: number) {
+        return this.arrayView[index];
+    }
+
     // Reimplementation of certain array methods
     valueOf(): T {
         return this.arrayView;
@@ -121,4 +131,53 @@ export class TypedArrayView<T extends TypedArray> {
         return this.stringTag;
     }
 }
+
+/*
+let handler: ProxyHandler<TypedArrayReimplementation<T extends TypedArray>> = {
+    get(target: TypedArrayReimplementation<T>, prop: string, receiver: TypedArrayReimplementation<T>) {
+      return "world";
+    },
+};
+*/
+const TypeScriptAssign = <O extends Object, K extends keyof O> (obj: O, key: K, val: O[K]) => obj[key] = val;
+
+
+class Handler<T extends TypedArray> {
+    private targetKeySet: Set<string>;
+
+    constructor(target: TypedArrayReimplementation<T>) {
+        const keyList = Object.keys(target) as Array<string>;
+        this.targetKeySet = new Set(keyList);
+    }
+
+    get(target: TypedArrayReimplementation<T>, prop: string): any {
+        const asNumber = Number(prop);
+        // If property is an integer, return the value at the index
+        if (Number.isInteger(asNumber)) return target.readValueAt(asNumber);
+        // Otherwise, return the property
+        return target[prop as keyof TypedArrayReimplementation<T>];
+    }
+
+    set(target: TypedArrayReimplementation<T>, prop: string, value: any): boolean {
+        const asNumber = Number(prop);
+        // If property is an integer, set the value at the index
+        if (Number.isInteger(asNumber)) {
+            return target.writeValueAt(asNumber, value);
+        }
+        // Otherwise, set the respective property if key is in keySet
+        if (this.targetKeySet.has(prop)) {
+            TypeScriptAssign(target, prop as keyof TypedArrayReimplementation<T>, value);
+            return true;
+        }
+        return false;
+    }
+}
+
+export type TypedArrayView<T extends TypedArray> = TypedArrayReimplementation<T>;
+
+export function TypedArrayView<T extends TypedArray>(buffer: ArrayBuffer, byteOffset: number, length: number, TypedArrayConstructor: Constructor<T>) : TypedArrayView<T> {
+    const target = new TypedArrayReimplementation<T>(buffer, byteOffset, length, TypedArrayConstructor);
+    return new Proxy(target, new Handler<T>(target));
+}
+// export const Float32ArrayView = (buffer: ArrayBuffer, byteOffset: number, length: number) =>  TypedArrayView<Float32Array>(buffer, byteOffset, length, Float32Array);
 

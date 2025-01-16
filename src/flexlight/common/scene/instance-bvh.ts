@@ -169,7 +169,6 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
 
     static fromInstances(instances: Array<Instance> | Set<Instance>): IndexedInstanceBVH {
         let indexedInstances: Array<IndexedInstance> = [];
-        console.log("Instances:", instances);
         let id: number = 0;
         // Iterate over instances, assigning ids and calculate boundings
         for (let instance of instances) {
@@ -177,7 +176,6 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
                 min: new Vector(instance.prototype.boundingVertices[0]!, instance.prototype.boundingVertices[1]!, instance.prototype.boundingVertices[2]!),
                 max: new Vector(instance.prototype.boundingVertices[3]!, instance.prototype.boundingVertices[4]!, instance.prototype.boundingVertices[5]!)
             };
-            console.log("Untransformed bounding:", untransformedBounding);
             // Get all corners of bounding volume
             const corners: Array<Vector<3>> = [
                 new Vector(untransformedBounding.min.x, untransformedBounding.min.y, untransformedBounding.min.z),

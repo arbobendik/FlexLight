@@ -8,9 +8,11 @@ import { Config } from "../common/config.js";
 import { Transform } from "../common/scene/transform.js";
 import { Prototype } from "../common/scene/prototype.js";
 import { BufferToGPUBuffer } from "./buffer-to-gpubuffer.js";
-import { BufferToStorageTexture } from "./buffer-to-storage-texture.js";
+import { BufferToR32Float } from "./buffer-to-r32float.js";
+import { BufferToRGBA8Uint } from "./buffer-to-rgba8uint.js";
 import { Material } from "../common/scene/material.js";
-import { AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../common/scene/texture.js";
+import { Texture } from "../common/scene/texture.js";
+// import { AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../common/scene/texture.js";
 import { POW32M1, Vector } from "../common/lib/math.js";
 import { AntialiasingModule } from "./antialiasing/antialiasing-module.js";
 import { WebGPUAntialiasingType } from "./antialiasing/antialiasing-module.js";
@@ -33,7 +35,6 @@ import PathtracerSelectiveAverageShader from './shaders/pathtracer-selective-ave
 import PathtracerReprojectShader from './shaders/pathtracer-reproject.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-
 
 
 
@@ -81,7 +82,7 @@ interface PathTracerBindGroupLayouts {
 
 interface PathTracerGPUBufferManagers {
   // Pototype GPU Buffer Managers
-  triangleGPUManager: BufferToStorageTexture<Float32Array>;
+  triangleGPUManager: BufferToR32Float;
   BVHGPUManager: BufferToGPUBuffer<Uint32Array>;
   boundingVertexGPUManager: BufferToGPUBuffer<Float32Array>;
   // Material and Transform GPU Managers
@@ -89,7 +90,7 @@ interface PathTracerGPUBufferManagers {
   transformGPUManager: BufferToGPUBuffer<Float32Array>;
   // Texture GPU Managers
   textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array>;
-  textureDataGPUManager: BufferToStorageTexture<Uint8Array>;
+  textureDataGPUManager: BufferToRGBA8Uint;
   // Scene GPU Managers
   instanceGPUManager: BufferToGPUBuffer<Uint32Array>;
   instanceBVHGPUManager: BufferToGPUBuffer<Uint32Array>;
@@ -412,7 +413,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // Link GPUBufferManagers to BufferManagers
     const gpuManagers: PathTracerGPUBufferManagers = {
       // Prototype GPU Managers
-      triangleGPUManager: new BufferToStorageTexture<Float32Array>(Prototype.triangleManager, device, "triangle buffer"),
+      triangleGPUManager: new BufferToR32Float(Prototype.triangleManager, device, "triangle buffer"),
       BVHGPUManager: new BufferToGPUBuffer<Uint32Array>(Prototype.BVHManager, device, "bvh buffer"),
       boundingVertexGPUManager: new BufferToGPUBuffer<Float32Array>(Prototype.boundingVertexManager, device, "bounding vertex buffer"),
       // Material and Transform GPU Managers
@@ -420,7 +421,7 @@ export class PathTracerWGPU extends RendererWGPU {
       transformGPUManager: new BufferToGPUBuffer<Float32Array>(Transform.transformManager, device, "transform buffer"),
       // Texture GPU Managers
       textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
-      textureDataGPUManager: new BufferToStorageTexture<Uint8Array>(Texture.textureDataBufferManager, device, "texture data buffer"),
+      textureDataGPUManager: new BufferToRGBA8Uint(Texture.textureDataBufferManager, device, "texture data buffer"),
       // Scene GPU Managers
       instanceGPUManager: new BufferToGPUBuffer<Uint32Array>(this.scene.instanceManager, device, "instance buffer"),
       instanceBVHGPUManager: new BufferToGPUBuffer<Uint32Array>(this.scene.instanceBVHManager, device, "instance bvh buffer"),
@@ -536,7 +537,7 @@ export class PathTracerWGPU extends RendererWGPU {
         ...this.canvasSizeDependentResources!.rasterRenderTextures.map((texture, i) => ({ binding: i + 2, resource: texture.createView() }))
       ]
     });
-
+    /*
     const computeRenderGroup = device.createBindGroup({
       label: "render input group for compute pass",
       layout: bindGroupLayouts.computeRenderGroupLayout,
@@ -594,6 +595,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: canvasTarget.createView() }
       ]
     });
+    */
 
     // Update scene buffers on CPU and sync to GPU
     const totalTriangleCount = this.scene.updateBuffers();
@@ -606,6 +608,8 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 0, resource: gpuBufferManagers.triangleGPUManager.gpuResource }
       ]
     });
+
+    /*
 
     const computeGeometryGroup = device.createBindGroup({
       label: "bind group for compute geometry pass",
@@ -625,6 +629,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: gpuBufferManagers.textureDataGPUManager.gpuResource }
       ]
     });
+    */
 
     
     // Set render target for canvas
@@ -678,9 +683,6 @@ export class PathTracerWGPU extends RendererWGPU {
       (this.config.temporal ? 1 : 0),
       // Temporal target
       temporalCount,
-
-      // Temporal samples
-      TEMPORAL_MAX
     ]));
 
     // Create buffer groups with dynamic buffers
@@ -694,6 +696,7 @@ export class PathTracerWGPU extends RendererWGPU {
       ],
     });
 
+    /*
     const computeDynamicGroup = device.createBindGroup({
       label: "dynamic binding group for compute pass",
       layout: bindGroupLayouts.computeDynamicGroupLayout,
@@ -717,6 +720,8 @@ export class PathTracerWGPU extends RendererWGPU {
     });
 
     const clusterDims: Vector<2> = new Vector(Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8));
+    */
+
     // Command encoders record commands for the GPU to execute.
     let commandEncoder = device.createCommandEncoder();
 
@@ -734,6 +739,7 @@ export class PathTracerWGPU extends RendererWGPU {
       [this.canvas.width, this.canvas.height, 1]
     );
     */
+    console.log("totalTriangleCount", totalTriangleCount);
     // All rendering commands happen in a render pass
     let depthEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -747,6 +753,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // End the render pass
     depthEncoder.end();
 
+    /*
     // All rendering commands happen in a render pass
     let renderEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -759,6 +766,7 @@ export class PathTracerWGPU extends RendererWGPU {
     renderEncoder.draw(3, totalTriangleCount);
     // End the render pass
     renderEncoder.end();
+    */
     
     /*
     // Run compute shader
