@@ -25,6 +25,7 @@ export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
         this.label = label;
         // Bind GPUBuffer to BufferManager
         bufferManager.bindGPUBuffer(this);
+        if (bufferManager.bufferView.length > 0) console.log(label, bufferManager.bufferView);
         // Create GPUBuffer
         this._gpuBuffer = device.createBuffer({ size: Math.max(bufferManager.buffer.byteLength, MIN_BUFFER_LENGTH), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: label });
         // Copy data from buffer manager to GPUBuffer

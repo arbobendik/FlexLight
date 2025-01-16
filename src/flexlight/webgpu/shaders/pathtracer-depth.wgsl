@@ -26,14 +26,11 @@ struct Uniforms {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    texture_size: vec2<f32>,
     render_size: vec2<f32>,
-
     samples: f32,
     max_reflections: f32,
-    min_importancy: f32,
-    use_filter: f32,
 
+    min_importancy: f32,
     tonemapping_operator: f32,
     is_temporal: f32,
     temporal_target: f32
@@ -62,13 +59,13 @@ struct VertexOut {
 
 fn access_triangle(index: u32) -> f32 {
     // Divide triangle index by 2048 * 2048 to get layer
-    let layer: u32 = index >> 22u;
+    // let layer: u32 = index >> 22u;
     // Get height of triangle
-    let height: u32 = (index - (layer << 22u)) >> 11u;
+    // let height: u32 = (index - (layer << 22u)) >> 11u;
     // Get width of triangle
-    let width: u32 = index & 0x3FFu;
+    // let width: u32 = index & 0x3FFu;
     // Return triangle
-    return textureLoad(triangles, vec2<u32>(width, height), layer, 0).x;
+    return textureLoad(triangles, vec2<u32>(index, 0u), 0, 0).x;
 }
 
 
@@ -86,6 +83,9 @@ fn binary_search_instance(triangle_index: u32) -> u32 {
     return low;
 }
 
+
+
+
 @vertex
 fn vertex(
     @builtin(vertex_index) global_vertex_index: u32,
@@ -94,13 +94,13 @@ fn vertex(
     var out: VertexOut;
     let vertex_num: u32 = global_vertex_index % 3u;
 
-    let instance_offset: u32 = binary_search_instance(triangle_index) * INSTANCE_SIZE;
+    let instance_offset: u32 = 0u;//binary_search_instance(triangle_index) * INSTANCE_SIZE;
     out.instance_offset = instance_offset;
 
-    let triangle_offset: u32 = instances[instance_offset];
+    let triangle_offset: u32 = 0u;//instances[instance_offset];
     out.triangle_offset = triangle_offset;
-    let transform_offset: u32 = instances[instance_offset + 3u];
-    let triangle_index_offset: u32 = instances[instance_offset + 10u];
+    let transform_offset: u32 = 0u;//instances[instance_offset + 3u];
+    let triangle_index_offset: u32 = 0u;//instances[instance_offset + 10u];
     let internal_triangle_index: u32 = triangle_index - triangle_index_offset - 1u;
 
     let vertex_offset: u32 = triangle_offset + internal_triangle_index * TRIANGLE_SIZE + vertex_num;
@@ -111,26 +111,31 @@ fn vertex(
         access_triangle(vertex_offset + 2u)
     );
     // Trasform position
-    let transform: Transform = transforms[transform_offset / TRANSFORM_SIZE];
-    out.absolute_position = (transform.rotation * relative_position) + transform.shift;
-    // Set uv to vertex uv and let the vertex interpolation generate the values in between
-    switch (vertex_num) {
-        case 0u: {
-            out.uv = vec2<f32>(1.0f, 0.0f);
-        }
-        case 1u: {
-            out.uv = vec2<f32>(0.0f, 1.0f);
-        }
-        case 2u: {
-            out.uv = vec2<f32>(0.0f, 0.0f);
-        }
-        default: {
-            out.uv = vec2<f32>(0.0f, 0.0f);
-        }
-    }
+    // let transform: Transform = transforms[transform_offset / TRANSFORM_SIZE];
+    out.absolute_position = relative_position;//(transform.rotation * relative_position) + transform.shift;
     out.clip_space = uniforms.view_matrix_jitter * (out.absolute_position - uniforms.camera_position);
     // Set triangle position in clip space
     out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
+    // Set uv to vertex uv and let the vertex interpolation generate the values in between
+    switch (vertex_num) {
+        case 0u: {
+            out.pos = vec4<f32>(1.0f, 0.0f, 0.0f, 1.0f);
+            out.uv = vec2<f32>(1.0f, 0.0f);
+        }
+        case 1u: {
+            out.pos = vec4<f32>(0.0f, 1.0f, 0.0f, 1.0f);
+            out.uv = vec2<f32>(0.0f, 1.0f);
+        }
+        case 2u: {
+            out.pos = vec4<f32>(0.0f, 0.0f, 1.0f, 1.0f);
+            out.uv = vec2<f32>(0.0f, 0.0f);
+        }
+        default: {
+            out.pos = vec4<f32>(0.0f, 0.0f, 0.0f, 1.0f);
+            out.uv = vec2<f32>(0.0f, 0.0f);
+        }
+    }
+    
     return out;
 }
 

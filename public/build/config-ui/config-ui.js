@@ -1,74 +1,19 @@
-// tmp/config-ui/element.js
+// tmp/config-ui/element.ts
 var TypeScriptAssign = (obj, key, val) => obj[key] = val;
 var ConfigElement = class extends HTMLElement {
+  name;
+  object;
+  key;
+  type;
+  hook;
+  options;
+  _value = void 0;
+  label;
+  input = void 0;
+  rangeDisplay = void 0;
+  select = void 0;
   constructor(object, key, name, type, hook, options = []) {
     super();
-    Object.defineProperty(this, "name", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "object", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "key", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "type", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "hook", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "options", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "_value", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "label", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "input", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "rangeDisplay", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "select", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
     this.object = object;
     this.key = key;
     this.name = name;
@@ -90,8 +35,7 @@ var ConfigElement = class extends HTMLElement {
     switch (this.type) {
       case "checkbox":
         input.addEventListener("change", (event) => {
-          if (!(event.target instanceof HTMLInputElement))
-            return;
+          if (!(event.target instanceof HTMLInputElement)) return;
           this.value = input.checked;
         });
         break;
@@ -101,8 +45,7 @@ var ConfigElement = class extends HTMLElement {
         this.rangeDisplay = rangeDisplay;
         this.label.appendChild(rangeDisplay);
         input.addEventListener("change", (event) => {
-          if (!(event.target instanceof HTMLInputElement))
-            return;
+          if (!(event.target instanceof HTMLInputElement)) return;
           this.value = input.value;
         });
         break;
@@ -111,8 +54,7 @@ var ConfigElement = class extends HTMLElement {
     this.label.appendChild(this.input);
   }
   createSelect() {
-    if (!this.options)
-      throw new Error("Options are not set for select element");
+    if (!this.options) throw new Error("Options are not set for select element");
     let select = document.createElement("select");
     for (let option of this.options) {
       let optionElement = document.createElement("option");
@@ -121,8 +63,7 @@ var ConfigElement = class extends HTMLElement {
       select.appendChild(optionElement);
     }
     select.addEventListener("change", (event) => {
-      if (!(event.target instanceof HTMLSelectElement))
-        return;
+      if (!(event.target instanceof HTMLSelectElement)) return;
       this.value = select.value;
     });
     this.select = select;
@@ -147,22 +88,19 @@ var ConfigElement = class extends HTMLElement {
     }
   }
   set min(min) {
-    if (this.input)
-      this.input.min = min;
+    if (this.input) this.input.min = min;
   }
   get min() {
     return this.input?.min;
   }
   set max(max) {
-    if (this.input)
-      this.input.max = max;
+    if (this.input) this.input.max = max;
   }
   get max() {
     return this.input?.max;
   }
   set step(step) {
-    if (this.input)
-      this.input.step = step;
+    if (this.input) this.input.step = step;
   }
   get step() {
     return this.input?.step;
@@ -177,41 +115,25 @@ var ConfigElement = class extends HTMLElement {
       TypeScriptAssign(this.object, this.key, value);
     }
     let stringValue = (value ?? "").toString();
-    if (this.input)
-      this.input.value = stringValue;
-    if (this.rangeDisplay)
-      this.rangeDisplay.textContent = stringValue;
-    if (this.select)
-      this.select.value = stringValue;
-    if (this.input)
-      console.log(this.name, this.input.value, value);
-    if (this.select)
-      console.log(this.name, this.select.value, value);
+    if (this.input) this.input.value = stringValue;
+    if (this.rangeDisplay) this.rangeDisplay.textContent = stringValue;
+    if (this.select) this.select.value = stringValue;
+    if (this.input) console.log(this.name, this.input.value, value);
+    if (this.select) console.log(this.name, this.select.value, value);
   }
 };
 
-// tmp/config-ui/form.js
+// tmp/config-ui/form.ts
 var ConfigForm = class {
+  _form;
+  _config;
+  _hook;
+  static classConstructor = function() {
+    console.log("Defining custom element");
+    customElements.define("config-element", ConfigElement);
+  }();
   constructor(form, config, hook = () => {
   }) {
-    Object.defineProperty(this, "_form", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "_config", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "_hook", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
     this._form = form;
     this._config = config;
     this._hook = hook;
@@ -219,8 +141,7 @@ var ConfigForm = class {
   addCheckbox(name, key, val = void 0) {
     console.log("Adding checkbox");
     const checkbox = new ConfigElement(this._config, key, name, "checkbox", this._hook);
-    if (val)
-      checkbox.value = val;
+    if (val) checkbox.value = val;
     this._form.appendChild(checkbox);
   }
   addSlider(name, key, min, max, step, val = void 0) {
@@ -228,55 +149,35 @@ var ConfigForm = class {
     slider.min = min.toString();
     slider.max = max.toString();
     slider.step = step.toString();
-    if (val)
-      slider.value = val;
+    if (val) slider.value = val;
     this._form.appendChild(slider);
   }
   addSelect(name, key, options, val = void 0) {
     const select = new ConfigElement(this._config, key, name, "select", this._hook, options);
-    if (val)
-      select.value = val;
+    if (val) select.value = val;
     this._form.appendChild(select);
   }
 };
-Object.defineProperty(ConfigForm, "classConstructor", {
-  enumerable: true,
-  configurable: true,
-  writable: true,
-  value: function() {
-    console.log("Defining custom element");
-    customElements.define("config-element", ConfigElement);
-  }()
-});
 
-// tmp/config-ui/config-ui.js
+// tmp/config-ui/config-ui.ts
 var getStartValueCheckbox = (property) => {
   const value = localStorage.getItem(property.name);
-  if (!value)
-    return property.defaultValue;
-  else if (value === "true")
-    return true;
-  else if (value === "false")
-    return false;
-  else
-    throw new Error(`Unsupported value: ${value}`);
+  if (!value) return property.defaultValue;
+  else if (value === "true") return true;
+  else if (value === "false") return false;
+  else throw new Error(`Unsupported value: ${value}`);
 };
 var isNumber = (n) => String(Number.parseFloat(n)) === n;
 var getStartValueSlider = (property) => {
   const value = localStorage.getItem(property.name);
-  if (!value)
-    return property.defaultValue;
-  else if (isNumber(value))
-    return Number(value);
-  else
-    throw new Error(`Unsupported value: ${value}`);
+  if (!value) return property.defaultValue;
+  else if (isNumber(value)) return Number(value);
+  else throw new Error(`Unsupported value: ${value}`);
 };
 var getStartValueSelect = (property) => {
   const value = localStorage.getItem(property.name);
-  if (!value)
-    return property.defaultValue;
-  else
-    return value;
+  if (!value) return property.defaultValue;
+  else return value;
 };
 function createConfigUI(engine) {
   const form = document.createElement("form");

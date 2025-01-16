@@ -36,8 +36,9 @@ export class Texture {
         // Read pixels from canvas
         const imageData = ctx.getImageData(0, 0, width, height);
         // Construct array of pixel values
-        const array: Array<number> = [];
-        for (let i = 0; i < imageData.data.length; i += 4) for (let j = 0; j < channels; j++) array.push(imageData.data[i + j]!);
+        // const array: Array<number> = [];
+        // for (let i = 0; i < imageData.data.length; i += 4) for (let j = 0; j < channels; j++) array.push(imageData.data[i + j]!);
+        const array = imageData.data;
         // Return as Uint8Array view.
         return new Uint8Array(array);
     }
