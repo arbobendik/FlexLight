@@ -384,7 +384,8 @@ export class PathTracerWGPU extends RendererWGPU {
       bindGroupLayouts.canvasGroupLayout, bindGroupLayouts.postDynamicGroupLayout);
     */
     return {
-      depthPipeline, rasterPipeline, 
+      depthPipeline,
+      rasterPipeline,
       // computePipeline, shiftPipeline,
       // selectiveAveragePipeline, reprojectPipeline, canvasPipeline
     }
@@ -461,11 +462,11 @@ export class PathTracerWGPU extends RendererWGPU {
       return;
     }
     // Request browser to render frame with hardware acceleration
-    setTimeout(() => {
-      requestAnimationFrame(() => this.frameCycle(
-        device, context, bindGroupLayouts, pipelines, renderPassDescriptor, uniformBuffer, gpuManagers
-      ));
-    }, 1000 / this.fpsLimit);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        this.frameCycle(device, context, bindGroupLayouts, pipelines, renderPassDescriptor, uniformBuffer, gpuManagers);
+      }, 1000 / this.fpsLimit);
+    });
     
     // Swap antialiasing program if needed
     if (this.engineState.antialiasing !== this.config.antialiasing) {
@@ -598,7 +599,8 @@ export class PathTracerWGPU extends RendererWGPU {
     */
 
     // Update scene buffers on CPU and sync to GPU
-    const totalTriangleCount = this.scene.updateBuffers();
+    const totalTriangleCount: number = this.scene.updateBuffers();
+    // console.log("sceneNumbers", sceneNumbers);
 
     // Create buffer groups with static buffers
     const rasterGeometryGroup = device.createBindGroup({
@@ -683,6 +685,10 @@ export class PathTracerWGPU extends RendererWGPU {
       (this.config.temporal ? 1 : 0),
       // Temporal target
       temporalCount,
+      // Instance count
+      // sceneNumbers.instanceCount,
+      // Triangle count
+      // sceneNumbers.triangleCount,
     ]));
 
     // Create buffer groups with dynamic buffers
@@ -695,6 +701,8 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 2, resource: { buffer: gpuBufferManagers.instanceGPUManager.gpuResource } }
       ],
     });
+
+    // console.log(Transform.transformManager.bufferView);
 
     /*
     const computeDynamicGroup = device.createBindGroup({
@@ -739,7 +747,7 @@ export class PathTracerWGPU extends RendererWGPU {
       [this.canvas.width, this.canvas.height, 1]
     );
     */
-    console.log("totalTriangleCount", totalTriangleCount);
+    // console.log("totalTriangleCount", totalTriangleCount);
     // All rendering commands happen in a render pass
     let depthEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -753,7 +761,6 @@ export class PathTracerWGPU extends RendererWGPU {
     // End the render pass
     depthEncoder.end();
 
-    /*
     // All rendering commands happen in a render pass
     let renderEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     // Set the pipeline to use when drawing
@@ -766,7 +773,6 @@ export class PathTracerWGPU extends RendererWGPU {
     renderEncoder.draw(3, totalTriangleCount);
     // End the render pass
     renderEncoder.end();
-    */
     
     /*
     // Run compute shader
