@@ -31,7 +31,6 @@ export class BufferToRGBA8Uint extends BufferToGPU {
 
         // Update gpuTextureSize
         this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(bufferManager.length / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
-        console.log(this.gpuTextureSize + "");
         // Create GPUBuffer
         this._gpuTexture = this.device.createTexture({
             // dimension: "3d",
@@ -45,8 +44,6 @@ export class BufferToRGBA8Uint extends BufferToGPU {
         const arrayBuffer = new ArrayBuffer(bytesPerLayer * this.gpuTextureSize.z);
         const fullView = new Uint8Array(arrayBuffer, 0, arrayBuffer.byteLength);
 
-        console.log("RGBA8UINT bytesPerLayer", bytesPerLayer);
-
         fullView.set(this.bufferManager.bufferView);
         // Copy data from buffer manager to GPUBuffer
         device.queue.writeTexture(
@@ -58,7 +55,6 @@ export class BufferToRGBA8Uint extends BufferToGPU {
 
     // Reconstruct GPUBuffer from BufferManager, necessary if BufferManager is resized
     reconstruct = () => {
-        console.log("RECONSTRUCT UINT8");
         // Only reconstruct if gpuTexture needs to be recreated
         if (4 * this.gpuTextureSize.x * this.gpuTextureSize.y * this.gpuTextureSize.z < this.bufferManager.length) {
             // Destroy old GPUTexture
@@ -90,7 +86,6 @@ export class BufferToRGBA8Uint extends BufferToGPU {
 
     // Update GPUBuffer partially or fully from BufferManager if data has changed
     update = (byteOffset: number = 0, length: number = this.bufferManager.length) => {
-        console.log("UPDATE UINT8");
         const firstAffectedLayer = Math.floor(byteOffset / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * 4));
         const firstAffectedLayerByteOffset = firstAffectedLayer * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * 4;
         const lastAffectedLayer = Math.floor((byteOffset + length) / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * 4));
