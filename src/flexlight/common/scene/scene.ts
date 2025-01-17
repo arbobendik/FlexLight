@@ -7,6 +7,9 @@ import { Instance } from "./instance.js";
 import { PointLight } from "./point-light.js";
 import { POW32M1, Vector } from "../lib/math.js";
 
+// 24 (3 vertices per triangle, 3 normals per triangle, 3 UVs per triangle)
+const TRIANGLE_SIZE = 24;
+
 export class Scene {
     // Triangle Offset, Vertex Offset, BVH Offset, Bounding Vertex Offset, Normal Offset, UV Offset, Transform Offset, Material Offset,
     // Normal Texture Offset, Albedo Texture Offset, Emissive Texture Offset, Roughness Texture Offset, Metallic Texture Offset
@@ -37,51 +40,47 @@ export class Scene {
     }
 
     updateBuffers = (): number => {
-        // Bound GPU buffers are kept up to date in overwriteAll() calls on GPUBufferManagers
-        // Construct instance buffer, instance bounding vertex buffer, instance BVH buffer
         const instanceArray: Array<number> = [];
-        // Keep track of global vertex offset
-        let globalTriangleOffset: number = 0;
-        // Construct instance buffer
+        let globalTriangleIndexOffset: number = 0;
+
+        // Add debug logging
+        // console.log("Instance buffer construction:");
+        
         for (let instance of this.instances) {
+            const triangleCount = instance.prototype.triangles.length / TRIANGLE_SIZE;
+            
+            // Debug log for each instance
+            /*
+            console.log(`Instance:
+                Triangle offset: ${instance.prototype.triangles.offset}
+                Triangle count: ${triangleCount}
+                Global index offset: ${globalTriangleIndexOffset}
+            `);
+            */
+
             instanceArray.push(
-                // Prototype buffer references
                 instance.prototype.triangles.offset,
-                instance.prototype.bvh.offset, instance.prototype.boundingVertices.offset,
-                // Transform buffer and material buffer references
-                instance.transform?.transformArray.offset ?? 0, instance.material?.materialArray.offset ?? 0,
-                // Texture buffer references
-                instance.normal?.textureInstanceBuffer?.offset ?? POW32M1, instance.albedo?.textureInstanceBuffer?.offset ?? POW32M1, instance.emissive?.textureInstanceBuffer?.offset ?? POW32M1,
-                instance.roughness?.textureInstanceBuffer?.offset ?? POW32M1, instance.metallic?.textureInstanceBuffer?.offset ?? POW32M1,
-                globalTriangleOffset
+                instance.prototype.bvh.offset,
+                instance.prototype.boundingVertices.offset,
+                instance.transform?.transformArray.offset ?? 0,
+                instance.material?.materialArray.offset ?? 0,
+                instance.normal?.textureInstanceBuffer?.offset ?? POW32M1,
+                instance.albedo?.textureInstanceBuffer?.offset ?? POW32M1,
+                instance.emissive?.textureInstanceBuffer?.offset ?? POW32M1,
+                instance.roughness?.textureInstanceBuffer?.offset ?? POW32M1,
+                instance.metallic?.textureInstanceBuffer?.offset ?? POW32M1,
+                globalTriangleIndexOffset  // Store first triangle index
             );
-            // Increment global vertex offset by instance vertex count
-            globalTriangleOffset += instance.prototype.triangles.length;
+
+            globalTriangleIndexOffset += triangleCount;
         }
-        // Allocate instance buffer
+
+        // Debug log final buffer
+        // console.log("Final instance array:", instanceArray);
+        // console.log("Total triangle count:", globalTriangleIndexOffset);
+
         this._instanceManager.overwriteAll(instanceArray);
-
-
-        // Generate BVH
-        const bvh: IndexedInstanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
-        // Generate bounding vertices and BVH structure
-        const bvhArrays: BVHArrays = bvh.toArrays();
-        // Allocate BVH buffers
-        this._instanceBVHManager.overwriteAll(bvhArrays.bvh);
-        this._instanceBoundingVertexManager.overwriteAll(bvhArrays.boundingVertices);
-
-
-        // Construct point light buffer
-        const pointLightArray: Array<number> = [];
-        for (let pointLight of this.pointLights) pointLightArray.push(
-            pointLight.position.x, pointLight.position.y, pointLight.position.z,
-            pointLight.color.x, pointLight.color.y, pointLight.color.z,
-            pointLight.intensity, pointLight.variance
-        );
-        // Allocate point light buffer
-        this._pointLightManager.overwriteAll(pointLightArray);
-        // Return total triangle count by dividing global triangle offset by 24 (3 vertices per triangle, 3 normals per triangle, 3 UVs per triangle)
-        return globalTriangleOffset / 24;
+        return globalTriangleIndexOffset;
     }
 
     // Add instance to scene

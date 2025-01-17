@@ -63,6 +63,7 @@ export class WebIo {
 		position.x += difference * (this.movement.x * Math.cos(direction.x) - this.movement.z * Math.sin(direction.x));
 		position.y += difference * this.movement.y;
 		position.z += difference * (this.movement.z * Math.cos(direction.x) + this.movement.x * Math.sin(direction.x));
+		// console.log(this.movement.x, this.movement.y, this.movement.z);
 		// Update last time stamp
 		this.lastTimeMillis = time;
 	}
@@ -93,29 +94,25 @@ export class WebIo {
 		};
 
 		canvas.onkeydown = (event) => {
-			if (event.code in this.pressedKeys) {
-				// If key is already pressed, do nothing
-				if (this.pressedKeys.get(event.code)) return;
-				// Update position
-				this.updatePosition(event.timeStamp);
-				// Set key pressed state
-				this.pressedKeys.set(event.code, true);
-				// Update movement vector
-				this.updateMovement(this.keyMap.get(event.code) ?? new Vector(0, 0, 0));
-			}
+			// If key is already pressed, do nothing
+			if (this.pressedKeys.get(event.code)) return;
+			// Update position
+			this.updatePosition(event.timeStamp);
+			// Set key pressed state
+			this.pressedKeys.set(event.code, true);
+			// Update movement vector
+			this.updateMovement(this.keyMap.get(event.code) ?? new Vector(0, 0, 0));
 		};
 
 		canvas.onkeyup = (event) => {
-			if (event.code in this.pressedKeys && this.pressedKeys.get(event.code)) {
-				// If key is not pressed, do nothing
-				if (!this.pressedKeys.get(event.code)) return;
-				// Update position
-				this.updatePosition(event.timeStamp);
-				// Set key pressed state
-				this.pressedKeys.set(event.code, false);
-				// Update movement vector
-				this.updateMovement(vector_scale(this.keyMap.get(event.code) ?? new Vector(0, 0, 0), -1));
-			}
+			// If key is not pressed, do nothing
+			if (!this.pressedKeys.get(event.code)) return;
+			// Update position
+			this.updatePosition(event.timeStamp);
+			// Set key pressed state
+			this.pressedKeys.set(event.code, false);
+			// Update movement vector
+			this.updateMovement(vector_scale(this.keyMap.get(event.code) ?? new Vector(0, 0, 0), -1));
 		};
 
 		// Control camera direction with mouse

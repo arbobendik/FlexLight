@@ -15,6 +15,7 @@ export class BufferManager<T extends TypedArray> {
 
     private _length: number = 0;
     get length(): number { return this._length; }
+    get byteLength(): number { return this._length * this._viewConstructor.prototype.BYTES_PER_ELEMENT; }
     // TypedArrayConstructor for the buffer
     private _viewConstructor: Constructor<T>;
     get viewConstructor(): Constructor<T> { return this._viewConstructor; }
@@ -34,6 +35,8 @@ export class BufferManager<T extends TypedArray> {
     }
 
     private resizeBuffer(byteLength: number) {
+        // Update buffer length
+        this._length = byteLength / this._viewConstructor.prototype.BYTES_PER_ELEMENT;
         // Test if buffer can be resized or needs to be recreated
         const newBufferMaxByteLength = next_power_of_two(byteLength);
         if (newBufferMaxByteLength > this._buffer.byteLength) {
@@ -42,11 +45,9 @@ export class BufferManager<T extends TypedArray> {
             this._buffer = new ArrayBuffer(newBufferMaxByteLength);
             // Copy data over to new buffer
             new Uint8Array(this._buffer).set(new Uint8Array(oldBuffer));
+            // Reconstruct GPUBuffer if it exists due to resize
+            if (this._gpuBuffer) this._gpuBuffer.reconstruct();
         }
-        //} else {
-            // Resize buffer if new length is still within maxByteLength
-            // this._buffer.resize(byteLength);
-        //}
     }
 
     allocateArray (array: T | Array<number>): TypedArrayView<T> {
@@ -56,12 +57,10 @@ export class BufferManager<T extends TypedArray> {
         const arrayByteLength: number = arrayLength * BYTES_PER_ELEMENT;
 
         // New offset is old buffer byte length
-        const arrayByteOffset: number = this._buffer.byteLength;
-        const newBufferMaxByteLength = next_power_of_two(arrayByteOffset + arrayByteLength);
+        const arrayByteOffset: number = this.length * BYTES_PER_ELEMENT;
+        const newBufferLength = arrayByteOffset + arrayByteLength;
         // Resize buffer
-        this.resizeBuffer(newBufferMaxByteLength);
-        // Update length
-        this._length = this._length + arrayLength;
+        this.resizeBuffer(newBufferLength);
         // Get buffer view
         const bufferView = this.bufferView;
         // Insert array into buffer
@@ -70,7 +69,8 @@ export class BufferManager<T extends TypedArray> {
             bufferView.set(array, arrayByteOffset / BYTES_PER_ELEMENT);
         } else if (array instanceof Array) {
             // Insert array into buffer iteratively
-            let i: number = 0;
+            let i: number = arrayByteOffset / BYTES_PER_ELEMENT;
+            // console.log(i);
             for (let value of array) bufferView[i++] = value;
         } else {
             throw new Error("BufferManager.allocateArray(): Argument is neither a view nor an array");
@@ -126,28 +126,32 @@ export class BufferManager<T extends TypedArray> {
     }
 
     overwriteAll(array: T | Array<number>) {
+        // if (array.length == 22) console.log("OVERWRITE ALL", array);
         const BYTES_PER_ELEMENT = this._viewConstructor.prototype.BYTES_PER_ELEMENT;
         // Get array attributes
         const arrayLength: number = array.length;
         const arrayByteLength: number = arrayLength * BYTES_PER_ELEMENT;
-        // New offset is old buffer byte length
-        const bufferByteLength: number = this._buffer.byteLength;
-        const newBufferByteLength = arrayByteLength;
-        // Resize buffer if new length is unequal to old length
-        if (newBufferByteLength !== bufferByteLength) this.resizeBuffer(newBufferByteLength);
+        // if (array.length == 22) console.log("LENGTH New / Old", newBufferByteLength, bufferByteLength);
+        // Resize buffer if neccessary
+        this.resizeBuffer(arrayByteLength);
         // Copy data over to buffer, we've already ensured the buffer has exactly as much space as we need
         const bufferView = this.bufferView;
+        // if (array.length == 22) console.log("BUFFER VIEW", Array.from(bufferView));
         // Insert array into buffer
         if (array instanceof this._viewConstructor) {
             // Insert array into buffer by copying
             bufferView.set(array);
+            // if (array.length == 22) console.log("IN", Array.from(this.bufferView));
         } else if (array instanceof Array) {
             // Insert array into buffer iteratively
             let i: number = 0;
             for (let value of array) bufferView[i++] = value;
+            // if (array.length == 22) console.log("IN", Array.from(this.bufferView));
         } else {
             throw new Error("BufferManager.overwriteAll(): Argument is neither a view nor an array");
         }
+
+        // if (array.length == 22) console.log("OUT", Array.from(this.bufferView));
         // Reconstruct GPUBuffer if it exists due to resize
         if (this._gpuBuffer) this._gpuBuffer.reconstruct();
     }
