@@ -4,13 +4,15 @@ import { TypedArray } from "../common/buffer/typed-array-view";
 import { BufferToGPU } from "../common/buffer/buffer-to-gpu";
 import { BufferManager } from "../common/buffer/buffer-manager";
 
-const MIN_BUFFER_LENGTH: number = 16;
+const MIN_BUFFER_LENGTH: number = 2;
 
 export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
     protected bufferManager: BufferManager<T>;
 
     private _gpuBuffer: GPUBuffer;
     get gpuResource() { return this._gpuBuffer; }
+
+    private size: number;
     
     private device: GPUDevice;
     private label: string;
@@ -25,19 +27,28 @@ export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
         this.label = label;
         // Bind GPUBuffer to BufferManager
         bufferManager.bindGPUBuffer(this);
-        if (bufferManager.bufferView.length > 0) console.log(label, bufferManager.bufferView);
         // Create GPUBuffer
-        this._gpuBuffer = device.createBuffer({ size: Math.max(bufferManager.buffer.byteLength, MIN_BUFFER_LENGTH), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: label });
+        this.size = Math.max(bufferManager.length, MIN_BUFFER_LENGTH);
+        this._gpuBuffer = device.createBuffer({ size: this.size * this.bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: label });
+        // console.log(label, this.length, "" + this.bufferManager.bufferView);
         // Copy data from buffer manager to GPUBuffer
         device.queue.writeBuffer(this._gpuBuffer, 0, this.bufferManager.bufferView);
     }
 
     // Reconstruct GPUBuffer from BufferManager, necessary if BufferManager is resized
     reconstruct = () => {
-        // Destroy old GPUBuffer
-        this._gpuBuffer.destroy();
-        // Create GPUBuffer
-        this._gpuBuffer = this.device.createBuffer({ size: Math.max(this.bufferManager.buffer.byteLength, MIN_BUFFER_LENGTH), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: this.label });
+        // Get new byte length
+        const newSize = Math.max(this.bufferManager.length, MIN_BUFFER_LENGTH);
+        const newByteLength = newSize * this.bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT;
+        // Destroy old GPUBuffer if new byte length is greater than current byte length
+        if (this.size !== newSize) {
+            this.size = newSize;
+            // console.log(this.label, this.bufferManager.length, this.length, "" + this.bufferManager.bufferView);
+            // Destroy old GPUBuffer
+            this._gpuBuffer.destroy();
+            // Create GPUBuffer
+            this._gpuBuffer = this.device.createBuffer({ size: newByteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: this.label });
+        }
         // Copy data from buffer manager to GPUBuffer
         this.device.queue.writeBuffer(this._gpuBuffer, 0, this.bufferManager.bufferView);
     }

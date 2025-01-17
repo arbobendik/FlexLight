@@ -49,9 +49,10 @@ export class Transform {
     return matrix_scale(this._rotationMatrix, this._scaleFactor);
   }
 
-  set position(position: Vector<3>) {
+  set position(position: Vector<3> ) {
     this._position = position;
-    this.transformArray.set(position, 24);
+    this.transformArray.set(this._position, 24);
+    // console.log("TRANSFORM ARRAY", Array.from(... this.transformArray));
     // Update gpu buffer if it exists
     Transform._transformManager.gpuBufferManager?.update(this.transformArray.byteOffset + 24 * this.transformArray.BYTES_PER_ELEMENT, 3);
   }
@@ -116,6 +117,7 @@ export class Transform {
       // position
       0, 0, 0, 0,
     ]);
+    // console.log("NEW TRANSFORM", this.transformArray);
     // Update gpu buffer if it exists
     Transform._transformManager.gpuBufferManager?.update(this.transformArray.byteOffset, 28);
   }

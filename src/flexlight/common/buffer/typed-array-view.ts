@@ -2,8 +2,20 @@
 
 export type TypedArray = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
 
+
+const TypedArray = Object.getPrototypeOf(Uint8Array);
+
 export interface Constructor<T extends TypedArray> {
     new (buffer: ArrayBuffer, byteOffset: number, length: number): T;
+}
+
+const TypeScriptAssign = <O extends Object, K extends keyof O> (obj: O, key: K, val: O[K]) => obj[key] = val;
+
+const functionWrapper = <
+    O extends Object, K extends keyof O, P extends Array<any>,
+    R, F extends ((...args: P) => R)
+> (object: O, key: K, _foo: F & O[K]): F => {
+    return ((...args: P): R => (object[key] as F)(...args)) as F;
 }
 
 type StringTag<T extends TypedArray> = 
@@ -15,7 +27,7 @@ type StringTag<T extends TypedArray> =
     T extends Int32Array ? "Int32Array" :
     T extends Float32Array ? "Float32Array" :
     T extends Float64Array ? "Float64Array" : never;
-
+      
 // Reimplementation to allow Views to implement typed arrays
 class TypedArrayReimplementation<T extends TypedArray> {
     private readonly TypedArrayConstructor: Constructor<T>;
@@ -31,36 +43,60 @@ class TypedArrayReimplementation<T extends TypedArray> {
     byteOffset: number;
     byteLength: number;
     // Array methods
-    get every() { return this.arrayView.every; }
-    get filter() { return this.arrayView.filter; }
-    get find() { return this.arrayView.find; }
-    get findIndex() { return this.arrayView.findIndex; }
-    get forEach() { return this.arrayView.forEach; }
-    get includes() { return this.arrayView.includes; }
-    get indexOf() { return this.arrayView.indexOf; }
-    get join() { return this.arrayView.join; }
-    get lastIndexOf() { return this.arrayView.lastIndexOf; }
-    get map() { return this.arrayView.map; }
-    get reduce() { return this.arrayView.reduce; }
-    get reduceRight() { return this.arrayView.reduceRight; }
-    get set() { return this.arrayView.set; }
-    get slice() { return this.arrayView.slice; }
-    get some() { return this.arrayView.some; }
-    get subarray() { return this.arrayView.subarray; }
-    get toLocaleString() { return this.arrayView.toLocaleString; }
-    get toString() { return this.arrayView.toString; }
-    get values() { return this.arrayView.values; }
+    every;
+    filter;
+    find;
+    findIndex;
+    forEach;
+    includes;
+    indexOf;
+    join;
+    lastIndexOf;
+    map;
+    reduce;
+    reduceRight;
+    set;
+    slice;
+    some;
+    subarray;
+    toLocaleString;
+    toString;
+    values;
 
-    get entries() { return this.arrayView.entries; }
-    get keys() { return this.arrayView.keys; }
+    entries;
+    keys;
 
     [n: number]: number;  // Add numeric index signature
     
     constructor(buffer: ArrayBuffer, byteOffset: number, length: number, TypedArrayConstructor: Constructor<T>) {
+        
+        // super();
         this.TypedArrayConstructor = TypedArrayConstructor;
         // Set array view
         const arrayView: T = new TypedArrayConstructor(buffer, byteOffset, length);
         this.stringTag = arrayView[Symbol.toStringTag] as StringTag<T>;
+        // Wrap array methods to array view
+        this.every = functionWrapper(arrayView, "every", arrayView.every);
+        this.filter = functionWrapper(arrayView, "filter", arrayView.filter);
+        this.find = functionWrapper(arrayView, "find", arrayView.find);
+        this.findIndex = functionWrapper(arrayView, "findIndex", arrayView.findIndex);
+        this.forEach = functionWrapper(arrayView, "forEach", arrayView.forEach);
+        this.includes = functionWrapper(arrayView, "includes", arrayView.includes);
+        this.indexOf = functionWrapper(arrayView, "indexOf", arrayView.indexOf);
+        this.join = functionWrapper(arrayView, "join", arrayView.join);
+        this.lastIndexOf = functionWrapper(arrayView, "lastIndexOf", arrayView.lastIndexOf);
+        this.map = functionWrapper(arrayView, "map", arrayView.map);
+        this.reduce = functionWrapper(arrayView, "reduce", arrayView.reduce);
+        this.reduceRight = functionWrapper(arrayView, "reduceRight", arrayView.reduceRight);
+        this.set = functionWrapper(arrayView, "set", arrayView.set);
+        this.slice = functionWrapper(arrayView, "slice", arrayView.slice);
+        this.some = functionWrapper(arrayView, "some", arrayView.some);
+        this.subarray = functionWrapper(arrayView, "subarray", arrayView.subarray);
+        this.toLocaleString = functionWrapper(arrayView, "toLocaleString", arrayView.toLocaleString);
+        this.toString = functionWrapper(arrayView, "toString", arrayView.toString);
+        this.values = functionWrapper(arrayView, "values", arrayView.values);
+        this.entries = functionWrapper(arrayView, "entries", arrayView.entries);
+        this.keys = functionWrapper(arrayView, "keys", arrayView.keys);
         // Set string tag
         this.BYTES_PER_ELEMENT = arrayView.BYTES_PER_ELEMENT;
         // Set buffer properties
@@ -75,6 +111,28 @@ class TypedArrayReimplementation<T extends TypedArray> {
 
     private setArrayView(arrayView: T) {
         this.arrayView = arrayView;
+        // Redifine array methods for new array view
+        this.every = functionWrapper(arrayView, "every", arrayView.every);
+        this.filter = functionWrapper(arrayView, "filter", arrayView.filter);
+        this.find = functionWrapper(arrayView, "find", arrayView.find);
+        this.findIndex = functionWrapper(arrayView, "findIndex", arrayView.findIndex);
+        this.forEach = functionWrapper(arrayView, "forEach", arrayView.forEach);
+        this.includes = functionWrapper(arrayView, "includes", arrayView.includes);
+        this.indexOf = functionWrapper(arrayView, "indexOf", arrayView.indexOf);
+        this.join = functionWrapper(arrayView, "join", arrayView.join);
+        this.lastIndexOf = functionWrapper(arrayView, "lastIndexOf", arrayView.lastIndexOf);
+        this.map = functionWrapper(arrayView, "map", arrayView.map);
+        this.reduce = functionWrapper(arrayView, "reduce", arrayView.reduce);
+        this.reduceRight = functionWrapper(arrayView, "reduceRight", arrayView.reduceRight);
+        this.set = functionWrapper(arrayView, "set", arrayView.set);
+        this.slice = functionWrapper(arrayView, "slice", arrayView.slice);
+        this.some = functionWrapper(arrayView, "some", arrayView.some);
+        this.subarray = functionWrapper(arrayView, "subarray", arrayView.subarray);
+        this.toLocaleString = functionWrapper(arrayView, "toLocaleString", arrayView.toLocaleString);
+        this.toString = functionWrapper(arrayView, "toString", arrayView.toString);
+        this.values = functionWrapper(arrayView, "values", arrayView.values);
+        this.entries = functionWrapper(arrayView, "entries", arrayView.entries);
+        this.keys = functionWrapper(arrayView, "keys", arrayView.keys);
 
         this.offset = arrayView.byteOffset / arrayView.BYTES_PER_ELEMENT;
         this.byteOffset = arrayView.byteOffset;
@@ -139,7 +197,6 @@ let handler: ProxyHandler<TypedArrayReimplementation<T extends TypedArray>> = {
     },
 };
 */
-const TypeScriptAssign = <O extends Object, K extends keyof O> (obj: O, key: K, val: O[K]) => obj[key] = val;
 
 
 class Handler<T extends TypedArray> {

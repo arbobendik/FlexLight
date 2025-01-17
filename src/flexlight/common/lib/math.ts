@@ -246,6 +246,12 @@ export function vector_distance<N extends number>(a: Vector<N>, b: Vector<N>): n
     return Math.sqrt(result);
 }
 
+export function vector_length<N extends number>(a: Vector<N>): number {
+    let result: number = 0;
+    for (let i = 0; i < a.length; i++) result += a[i]! ** 2;
+    return Math.sqrt(result);
+}
+
 export function vector_hadamard<N extends number>(a: Vector<N>, b: Vector<N>): Vector<N> {
     let result: Vector<N> = new Vector({ vector_length: a.length as N });
     for (let i = 0; i < a.length; i++) result[i] = a[i]! * b[i]!;
