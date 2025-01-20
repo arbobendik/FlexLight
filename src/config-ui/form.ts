@@ -13,7 +13,6 @@ export class ConfigForm<O extends Object> {
 
     static classConstructor = (function() {
         // Define custom element
-        console.log("Defining custom element");
         customElements.define("config-element", ConfigElement);
     })();
 
@@ -24,11 +23,9 @@ export class ConfigForm<O extends Object> {
     }
 
     addCheckbox<K extends keyof O>(name: string, key: KeyAssignable<O, K, boolean>, val: ValidInputType<"checkbox", O, K> | undefined = undefined) {
-        console.log("Adding checkbox");
         const checkbox = new ConfigElement<"checkbox", O, K>(this._config, key, name, "checkbox", this._hook);
         // Set value if provided
         if (val) checkbox.value = val;
-        // console.log(checkbox);
         this._form.appendChild(checkbox);
     }
 

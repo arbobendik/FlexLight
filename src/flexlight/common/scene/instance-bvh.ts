@@ -189,7 +189,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             ];
 
             // Get transform
-            const transform: Transform = instance.transform ?? Transform.DEFAULT_TRANSFORM;
+            const transform: Transform = instance.transform;
             const transformedBounding: Bounding = { min: new Vector(Infinity, Infinity, Infinity), max: new Vector(-Infinity, -Infinity, -Infinity) };
             // Transform all corners
             for (let corner of corners) {
