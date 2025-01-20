@@ -48,9 +48,6 @@ export class FlexLight {
 
 
   private recreateRenderer(rendererType: RendererType): void {
-    // Log renderer type and api
-    console.log("rendererType", rendererType);
-    console.log("apiType", this._api);
     // Save if renderer was running
     const wasRunning: boolean = this._renderer.halt();
     switch (rendererType + this._api) {
