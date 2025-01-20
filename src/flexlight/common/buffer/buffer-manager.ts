@@ -47,6 +47,10 @@ export class BufferManager<T extends TypedArray> {
             new Uint8Array(this._buffer).set(new Uint8Array(oldBuffer));
             // Reconstruct GPUBuffer if it exists due to resize
             if (this._gpuBuffer) this._gpuBuffer.reconstruct();
+            // Reconstruct all views
+            for (let instance of this.instances) {
+                instance.swapBuffer(this._buffer);
+            }
         }
     }
 
