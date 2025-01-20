@@ -61,7 +61,7 @@ export class Parser {
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 3 2 1
                         if (quadNormals[3] && quadNormals[2] && quadNormals[1]) {
-                            triangles.push( ...quadNormals[3]!, ...quadNormals[2]!, ...quadNormals[1]);
+                            triangles.push( ...normalize(quadNormals[3]!), ...normalize(quadNormals[2]!), ...normalize(quadNormals[1]));
                         } else {
                             const normal = normalize(cross(vector_difference(quadVertices[1]!, quadVertices[3]!), vector_difference(quadVertices[1]!, quadVertices[2]!)));
                             triangles.push( ...normal, ...normal, ...normal);
@@ -79,7 +79,7 @@ export class Parser {
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 1 0 3
                         if (quadNormals[1] && quadNormals[0] && quadNormals[3]){
-                            triangles.push( ...quadNormals[1]!, ...quadNormals[0]!, ...quadNormals[3]);
+                            triangles.push( ...normalize(quadNormals[1]!), ...normalize(quadNormals[0]!), ...normalize(quadNormals[3]));
                         } else {
                             const normal = normalize(cross(vector_difference(quadVertices[3]!, quadVertices[1]!), vector_difference(quadVertices[3]!, quadVertices[0]!)));
                             triangles.push( ...normal, ...normal, ...normal);
@@ -107,7 +107,7 @@ export class Parser {
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 2 1 0
                         if (triangleNormals[2] && triangleNormals[1] && triangleNormals[0]) {
-                            triangles.push( ...triangleNormals[2]!, ...triangleNormals[1]!, ...triangleNormals[0]);
+                            triangles.push( ...normalize(triangleNormals[2]!), ...normalize(triangleNormals[1]!), ...normalize(triangleNormals[0]));
                         } else {
                             const normal = normalize(cross(vector_difference(triangleVertices[0]!, triangleVertices[2]!), vector_difference(triangleVertices[0]!, triangleVertices[1]!)));
                             triangles.push( ...normal, ...normal, ...normal);

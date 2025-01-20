@@ -1,6 +1,7 @@
 const TRIANGLE_SIZE: u32 = 24u;
-const INSTANCE_SIZE: u32 = 11u;
-const TRANSFORM_SIZE: u32 = 28u;
+
+const INSTANCE_UINT_SIZE: u32 = 9u;
+const INSTANCE_FLOAT_SIZE: u32 = 31u;
 
 const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
@@ -15,34 +16,36 @@ const INV_255: f32 = 0.00392156862745098;
 
 struct Transform {
     rotation: mat3x3<f32>,
-    inverse_rotation: mat3x3<f32>,
-    shift: vec3<f32>,
+    shift: vec3<f32>
 };
 
-struct Uniforms {
+struct UniformFloat {
     view_matrix: mat3x3<f32>,
     view_matrix_jitter: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    render_size: vec2<f32>,
-    samples: f32,
-    max_reflections: f32,
-
     min_importancy: f32,
-    tonemapping_operator: f32,
-    is_temporal: f32,
-    temporal_target: f32,
+};
+
+struct UniformUint {
+    render_size: vec2<u32>,
+    temporal_target: u32,
+    temporal_max: u32,
+    is_temporal: u32,
+
+    samples: u32,
+    max_reflections: u32,
+
+    tonemapping_operator: u32,
 };
 
 struct VertexOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) absolute_position: vec3<f32>,
     @location(1) uv: vec2<f32>,
-    @location(2) clip_space: vec3<f32>,
-    @location(3) @interpolate(flat) instance_offset: u32,
-    @location(4) @interpolate(flat) triangle_offset: u32,
+    @location(2) clip_space: vec3<f32>
 };
 
 // DepthBindGroup
@@ -52,9 +55,10 @@ struct VertexOut {
 @group(1) @binding(0) var triangles: texture_2d_array<f32>;
 
 // RasterDynamicBindGroup
-@group(2) @binding(0) var<uniform> uniforms: Uniforms;
-@group(2) @binding(1) var<storage, read> transforms: array<Transform>;
-@group(2) @binding(2) var<storage, read> instances: array<u32>;
+@group(2) @binding(0) var<uniform> uniform_float: UniformFloat;
+@group(2) @binding(1) var<uniform> uniform_uint: UniformUint;
+@group(2) @binding(2) var<storage, read> instance_uint: array<u32>;
+@group(2) @binding(3) var<storage, read> instance_float: array<f32>;
 
 
 fn access_triangle(index: u32) -> f32 {
@@ -68,15 +72,15 @@ fn access_triangle(index: u32) -> f32 {
     return textureLoad(triangles, vec2<u32>(width, height), layer, 0).x;
 }
 
-fn binary_search_instance(triangle_number: u32) -> u32 {
+fn binary_search_instance(triangle_index: u32) -> u32 {
     var left: u32 = 0u;
-    var right: u32 = arrayLength(&instances) / INSTANCE_SIZE;
+    var right: u32 = arrayLength(&instance_uint) / INSTANCE_UINT_SIZE;
     
-    while (left < right - 1u) {
+    while (left + 1u < right) {
         let mid: u32 = left + (right - left) / 2u;
-        let start_number: u32 = instances[mid * INSTANCE_SIZE + 10u];
+        let start_index: u32 = instance_uint[mid * INSTANCE_UINT_SIZE + 8u];
         
-        if (start_number <= triangle_number) {
+        if (start_index <= triangle_index) {
             left = mid;
         } else {
             right = mid;
@@ -94,16 +98,14 @@ fn vertex(
     var out: VertexOut;
     let vertex_num: u32 = global_vertex_index % 3u;
 
-    let instance_offset: u32 = binary_search_instance(triangle_index) * INSTANCE_SIZE;
-    out.instance_offset = instance_offset;
+    let instance_index: u32 = binary_search_instance(triangle_index);
+    let instance_uint_offset: u32 = instance_index * INSTANCE_UINT_SIZE;
+    let instance_float_offset: u32 = instance_index * INSTANCE_FLOAT_SIZE;
 
-    let triangle_offset: u32 = instances[instance_offset];
-    let transform_offset: u32 = instances[instance_offset + 3u];
-    let triangle_index_offset: u32 = instances[instance_offset + 10u];
-    let internal_triangle_index: u32 = triangle_index - triangle_index_offset;
-    out.triangle_offset = internal_triangle_index;
-
-    let vertex_offset: u32 = triangle_offset + internal_triangle_index * TRIANGLE_SIZE + vertex_num * 3u;
+    let triangle_instance_offset: u32 = instance_uint[instance_uint_offset];
+    let triangle_index_offset: u32 = instance_uint[instance_uint_offset + 8u];
+    let triangle_offset: u32 = triangle_instance_offset + (triangle_index - triangle_index_offset) * TRIANGLE_SIZE;
+    let vertex_offset: u32 = triangle_offset + vertex_num * 3u;
 
     let relative_position: vec3<f32> = vec3<f32>(
         access_triangle(vertex_offset),
@@ -111,8 +113,16 @@ fn vertex(
         access_triangle(vertex_offset + 2u)
     );
     // Trasform position
-    let transform: Transform = transforms[transform_offset / TRANSFORM_SIZE];
-    out.absolute_position = relative_position + transform.shift;
+    let transform: Transform = Transform (
+        mat3x3<f32>(
+            instance_float[instance_float_offset     ], instance_float[instance_float_offset + 1u], instance_float[instance_float_offset + 2u],
+            instance_float[instance_float_offset + 3u], instance_float[instance_float_offset + 4u], instance_float[instance_float_offset + 5u],
+            instance_float[instance_float_offset + 6u], instance_float[instance_float_offset + 7u], instance_float[instance_float_offset + 8u],
+        ),
+        vec3<f32>(instance_float[instance_float_offset + 18u], instance_float[instance_float_offset + 19u], instance_float[instance_float_offset + 20u])
+    );
+
+    out.absolute_position = transform.rotation * relative_position + transform.shift;
     // Set uv to vertex uv and let the vertex interpolation generate the values in between
     switch (vertex_num) {
         case 0u: {
@@ -133,7 +143,7 @@ fn vertex(
         }
     }
 
-    out.clip_space = uniforms.view_matrix_jitter * (out.absolute_position - uniforms.camera_position);
+    out.clip_space = uniform_float.view_matrix_jitter * (out.absolute_position - uniform_float.camera_position);
     // Set triangle position in clip space
     out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
     
@@ -146,19 +156,17 @@ fn vertex(
 fn fragment(
     @location(0) absolute_position: vec3<f32>,
     @location(1) uv: vec2<f32>,
-    @location(2) clip_space: vec3<f32>,
-    @location(3) @interpolate(flat) instance_index: u32,
-    @location(4) @interpolate(flat) triangle_index: u32
+    @location(2) clip_space: vec3<f32>
 ) -> @location(0) vec4<f32> {
 
     // Get canvas size
     let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
     let coord: vec2<u32> = vec2<u32>(
-        u32(uniforms.render_size.x * screen_space.x),
-        u32(uniforms.render_size.y  * (1.0 - screen_space.y))
+        u32(f32(uniform_uint.render_size.x) * screen_space.x),
+        u32(f32(uniform_uint.render_size.y)  * (1.0 - screen_space.y))
     );
 
-    let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
+    let buffer_index: u32 = coord.x + uniform_uint.render_size.x * coord.y;
     // Only save if texel is closer to camera then previously
     let current_depth: u32 = POW23M1U - u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
     // Store in texture

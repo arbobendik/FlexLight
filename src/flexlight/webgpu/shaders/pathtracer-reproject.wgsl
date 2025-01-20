@@ -2,32 +2,34 @@ const POW32U: u32 = 4294967295u;
 const POW24F: f32 = 16777216.0f;
 const SQRT2: f32 = 1.4142135623730951f;
 
-struct Uniforms {
+struct UniformFloat {
     view_matrix: mat3x3<f32>,
     view_matrix_jitter: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    texture_size: vec2<f32>,
-    render_size: vec2<f32>,
-
-    samples: f32,
-    max_reflections: f32,
     min_importancy: f32,
-    use_filter: f32,
+};
 
-    tonemapping_operator: f32,
-    is_temporal: f32,
-    temporal_count: f32,
-    temporal_max: f32
+struct UniformUint {
+    render_size: vec2<u32>,
+    temporal_target: u32,
+    temporal_max: u32,
+    is_temporal: u32,
+
+    samples: u32,
+    max_reflections: u32,
+
+    tonemapping_operator: u32,
 };
 
 @group(0) @binding(0) var accumulated: texture_2d_array<f32>;
 @group(0) @binding(1) var canvas_in: texture_storage_2d<rgba32float, write>;
 // @group(0) @binding(1) var<storage, read_write> buffer_out: array<atomic<u32>>;
 
-@group(1) @binding(0) var<uniform> uniforms: Uniforms;
+@group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
+@group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
 
 // atomicStore(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T)
 
@@ -94,7 +96,7 @@ fn compute(
     @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
     // Skip if texel is out of bounds
-    if (global_invocation_id.x > u32(uniforms.render_size.x) || global_invocation_id.y > u32(uniforms.render_size.y)) {
+    if (global_invocation_id.x > uniforms_uint.render_size.x || global_invocation_id.y > uniforms_uint.render_size.y) {
         return;
     }
     
@@ -105,19 +107,19 @@ fn compute(
     // Extract 3d position value
     let position_cur: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
     // If data is not from last frame write ambient color
-    if (position_cur.w != (uniforms.temporal_count + 1.0f) % uniforms.temporal_max) {
-        textureStore(canvas_in, screen_pos, vec4<f32>(uniforms.ambient, 1.0f));
+    if (position_cur.w != f32((uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max)) {
+        textureStore(canvas_in, screen_pos, vec4<f32>(uniforms_float.ambient, 1.0f));
         return;
     }
 
-    if (uniforms.is_temporal == 1.0f) {
+    if (uniforms_uint.is_temporal == 1u) {
         // Reproject position to jitter if temporal is enabled
-        let clip_space: vec3<f32> = uniforms.view_matrix_jitter * (position_cur.xyz - uniforms.camera_position);
+        let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (position_cur.xyz - uniforms_float.camera_position);
         let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
 
         let canvas_pos: vec2<u32> = vec2<u32>(
-            u32(uniforms.render_size.x * screen_space.x),
-            u32(uniforms.render_size.y * (1.0f - screen_space.y))
+            u32(f32(uniforms_uint.render_size.x) * screen_space.x),
+            u32(f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y))
         );
 
         textureStore(canvas_in, canvas_pos, color);

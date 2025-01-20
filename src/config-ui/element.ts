@@ -44,7 +44,6 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
 
     connectedCallback() {
         this.appendChild(this.label);
-        console.log(this.label);
     }
 
     private createInput(): void {
@@ -133,21 +132,21 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
     set step(step: IsRange<IT, string>) { if (this.input) this.input.step = step; }
     get step() { return this.input?.step as IsRange<IT, string>; }
 
-    get value() { return this._value; }
-    set value(value: ValidInputType<IT, O, K> | undefined) { 
+    get value(): ValidInputType<IT, O, K> | undefined { return this._value; }
+    set value(value: ValidInputType<IT, O, K>) { 
         this._value = value;
         
-        if (value) {
+        if (value !== undefined) {
             this.hook(this.name ?? "", value);
             TypeScriptAssign(this.object, this.key, value);
         }
 
         let stringValue = (value ?? "").toString();
-        if (this.input) this.input.value = stringValue;
+        if (this.input) {
+            if (this.type === "checkbox") this.input.checked = stringValue === "true";
+            else this.input.value = stringValue;
+        }
         if (this.rangeDisplay) this.rangeDisplay.textContent = stringValue;
         if (this.select) this.select.value = stringValue;
-
-        if (this.input) console.log(this.name, this.input.value, value);
-        if (this.select) console.log(this.name, this.select.value, value);
     }
 }
