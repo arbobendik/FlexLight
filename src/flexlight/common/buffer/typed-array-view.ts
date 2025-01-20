@@ -111,6 +111,10 @@ class TypedArrayReimplementation<T extends TypedArray> {
 
     private setArrayView(arrayView: T) {
         this.arrayView = arrayView;
+        this.offset = arrayView.byteOffset / arrayView.BYTES_PER_ELEMENT;
+        this.byteOffset = arrayView.byteOffset;
+        this.length = arrayView.length;
+        this.byteLength = arrayView.byteLength;
         // Redifine array methods for new array view
         this.every = functionWrapper(arrayView, "every", arrayView.every);
         this.filter = functionWrapper(arrayView, "filter", arrayView.filter);
@@ -133,16 +137,15 @@ class TypedArrayReimplementation<T extends TypedArray> {
         this.values = functionWrapper(arrayView, "values", arrayView.values);
         this.entries = functionWrapper(arrayView, "entries", arrayView.entries);
         this.keys = functionWrapper(arrayView, "keys", arrayView.keys);
-
-        this.offset = arrayView.byteOffset / arrayView.BYTES_PER_ELEMENT;
-        this.byteOffset = arrayView.byteOffset;
-        this.length = arrayView.length;
-        this.byteLength = arrayView.byteLength;
     }
 
     // Custom methods
     shift (byteOffset: number, length: number) {
         this.setArrayView(new this.TypedArrayConstructor(this.buffer, byteOffset, length));
+    }
+
+    swapBuffer(buffer: ArrayBuffer) {
+        this.setArrayView(new this.TypedArrayConstructor(buffer, this.byteOffset, this.length));
     }
 
     writeValueAt(index: number, value: number): boolean {
