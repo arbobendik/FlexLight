@@ -25,7 +25,6 @@ var ConfigElement = class extends HTMLElement {
   }
   connectedCallback() {
     this.appendChild(this.label);
-    console.log(this.label);
   }
   createInput() {
     let input = document.createElement("input");
@@ -110,16 +109,17 @@ var ConfigElement = class extends HTMLElement {
   }
   set value(value) {
     this._value = value;
-    if (value) {
+    if (value !== void 0) {
       this.hook(this.name ?? "", value);
       TypeScriptAssign(this.object, this.key, value);
     }
     let stringValue = (value ?? "").toString();
-    if (this.input) this.input.value = stringValue;
+    if (this.input) {
+      if (this.type === "checkbox") this.input.checked = stringValue === "true";
+      else this.input.value = stringValue;
+    }
     if (this.rangeDisplay) this.rangeDisplay.textContent = stringValue;
     if (this.select) this.select.value = stringValue;
-    if (this.input) console.log(this.name, this.input.value, value);
-    if (this.select) console.log(this.name, this.select.value, value);
   }
 };
 
@@ -129,7 +129,6 @@ var ConfigForm = class {
   _config;
   _hook;
   static classConstructor = function() {
-    console.log("Defining custom element");
     customElements.define("config-element", ConfigElement);
   }();
   constructor(form, config, hook = () => {
@@ -139,7 +138,6 @@ var ConfigForm = class {
     this._hook = hook;
   }
   addCheckbox(name, key, val = void 0) {
-    console.log("Adding checkbox");
     const checkbox = new ConfigElement(this._config, key, name, "checkbox", this._hook);
     if (val) checkbox.value = val;
     this._form.appendChild(checkbox);
@@ -185,14 +183,13 @@ function createConfigUI(engine) {
     localStorage.setItem(name, value.toString());
   };
   const flexLightForm = new ConfigForm(form, engine, localStorageHook);
-  flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"], getStartValueSelect({ name: "Backend", defaultValue: "webgl2" }));
   flexLightForm.addSelect("Renderer", "rendererType", ["rasterizer", "pathtracer"], getStartValueSelect({ name: "Renderer", defaultValue: "rasterizer" }));
   const configForm = new ConfigForm(form, engine.config, localStorageHook);
   configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"], getStartValueSelect({ name: "Antialiasing", defaultValue: "fxaa" }));
-  configForm.addCheckbox("Temporal averaging", "temporal", true);
+  configForm.addCheckbox("Temporal averaging", "temporal", getStartValueCheckbox({ name: "Temporal averaging", defaultValue: true }));
   configForm.addCheckbox("HDR", "hdr", getStartValueCheckbox({ name: "HDR", defaultValue: true }));
   configForm.addSlider("Render quality", "renderQuality", 0.1, 2, 0.1, getStartValueSlider({ name: "Render quality", defaultValue: 1 }));
-  configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "samplesPerRay", defaultValue: 1 }));
+  configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "Samples per ray", defaultValue: 1 }));
   configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 5 }));
   configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.3 }));
   return form;

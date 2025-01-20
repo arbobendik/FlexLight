@@ -1,33 +1,35 @@
 const POW32U: u32 = 4294967295u;
-const POW23M1: f32 = 8388607.0;
-const INV_255: f32 = 1.0f / 255.0f;
+const POW23M1: f32 = 8388607.0f;
+const INV_255: f32 = 0.00392156862745098f;
 
-struct Uniforms {
+struct UniformFloat {
     view_matrix: mat3x3<f32>,
     view_matrix_jitter: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    texture_size: vec2<f32>,
-    render_size: vec2<f32>,
-
-    samples: f32,
-    max_reflections: f32,
     min_importancy: f32,
-    use_filter: f32,
+};
 
-    tonemapping_operator: f32,
-    is_temporal: f32,
-    temporal_count: f32,
-    temporal_max: f32
+struct UniformUint {
+    render_size: vec2<u32>,
+    temporal_target: u32,
+    temporal_max: u32,
+    is_temporal: u32,
+
+    samples: u32,
+    max_reflections: u32,
+
+    tonemapping_operator: u32,
 };
 
 @group(0) @binding(0) var accumulated: texture_2d_array<f32>;
 @group(0) @binding(1) var shift_out: texture_storage_2d_array<rgba32float, write>;
 @group(0) @binding(2) var<storage, read_write> shift_lock: array<atomic<u32>>;
 
-@group(1) @binding(0) var<uniform> uniforms: Uniforms;
+@group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
+@group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
 
 @compute
 @workgroup_size(8, 8)
@@ -41,7 +43,7 @@ fn compute(
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
     
-    if (screen_pos.x > u32(uniforms.render_size.x) || screen_pos.y > u32(uniforms.render_size.y)) {
+    if (screen_pos.x > uniforms_uint.render_size.x || screen_pos.y > uniforms_uint.render_size.y) {
         return;
     }
     
@@ -54,23 +56,23 @@ fn compute(
     let position_old: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
     
     // Map postion according to current camera positon and view matrix to clip space
-    let relative_position: vec3<f32> = position_old.xyz - uniforms.camera_position;
-    let clip_space: vec3<f32> = uniforms.view_matrix * relative_position;
+    let relative_position: vec3<f32> = position_old.xyz - uniforms_float.camera_position;
+    let clip_space: vec3<f32> = uniforms_float.view_matrix * relative_position;
     // Project onto screen and shift origin to the corner
     let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
     // Translate to texel value
     let coord: vec2<u32> = vec2<u32>(
-        u32((uniforms.render_size.x * screen_space.x)),
-        u32((uniforms.render_size.y * (1.0f - screen_space.y)))
+        u32((f32(uniforms_uint.render_size.x) * screen_space.x)),
+        u32((f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y)))
     );
 
-    let last_frame = position_old.w == uniforms.temporal_count;
+    let last_frame = position_old.w == f32(uniforms_uint.temporal_target);
     // Skip if data is not from last frame
     if (!last_frame) {
         return;
     }
 
-    let buffer_index: u32 = coord.x + u32(uniforms.render_size.x) * coord.y;
+    let buffer_index: u32 = coord.x + uniforms_uint.render_size.x * coord.y;
     // Attempt to acquire lock.
     let lock: u32 = atomicOr(&shift_lock[buffer_index], 1u);
     if (lock == 1u) {
