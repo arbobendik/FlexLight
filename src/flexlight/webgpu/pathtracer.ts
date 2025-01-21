@@ -139,8 +139,6 @@ export class PathTracerWGPU extends RendererWGPU {
     this.canvas.width = width;
     this.canvas.height = height;
 
-    console.log("RESIZE", width, height, this.canvas.width, this.canvas.height);
-
     // Free old textures and buffers if they exist
     if (this.canvasSizeDependentResources) for (let [_key, resource] of Object.entries(this.canvasSizeDependentResources)) try { resource.destroy(); } catch {}
 
@@ -618,6 +616,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // sceneNumbers.triangleCount,
     ]));
 
+    
 
     if (uniformUintBuffer) device.queue.writeBuffer(uniformUintBuffer, 0, new Uint32Array([
       // Render size
