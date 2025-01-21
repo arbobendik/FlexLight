@@ -5,7 +5,7 @@ import { Vector, vector_add, vector_scale } from "../lib/math";
 import { TRIANGLE_LENGTH } from "./prototype";
 
 
-const BVH_MAX_LEAVES_PER_NODE = 4;
+const BVH_MAX_LEAVES_PER_NODE = 3;
 
 export class Triangle {
     a: Vector<3>;
@@ -57,16 +57,16 @@ export class TriangleBVH extends BVH<Triangle> {
     private static fillFlatTree(triangles: Array<Triangle>, startingId: number): BVHNode<Triangle> | BVHLeaf<Triangle> {
         // Tighten bounding
         const bounding = TriangleBVH.tightenBounding(triangles);
-        // Base case: if there are less than 4 triangles, return a leaf
+        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE triangles, return a leaf
         if (triangles.length <= BVH_MAX_LEAVES_PER_NODE) return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
 
-        const oneThirdCeil: number = Math.ceil(triangles.length / 3);
+        const oneOverLeaves: number = 1 / BVH_MAX_LEAVES_PER_NODE;
 
         const children: Array<BVHNode<Triangle> | BVHLeaf<Triangle>> = [];
         // Assign ids to children
         let nextId = startingId + 1;
-        for (let i = 0; i < triangles.length; i += oneThirdCeil) {
-            const childTriangles = triangles.slice(i, Math.min(i + oneThirdCeil, triangles.length));
+        for (let i = 0; i < triangles.length; i += oneOverLeaves) {
+            const childTriangles = triangles.slice(i, Math.min(i + oneOverLeaves, triangles.length));
             const child = TriangleBVH.fillFlatTree(childTriangles, nextId);
             children.push(child);
             nextId = child.nextId;
@@ -108,7 +108,7 @@ export class TriangleBVH extends BVH<Triangle> {
     private static subdivideTree(triangles: Array<Triangle>, maxDepth: number = Infinity, depth: number = 0, startingId: number = 0): BVHNode<Triangle> | BVHLeaf<Triangle> {
         // Tighten bounding
         const bounding = TriangleBVH.tightenBounding(triangles);
-        // Base case: if there are less than 4 triangles, return a leaf
+        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE triangles, return a leaf
         if (triangles.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxDepth) return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of triangle split

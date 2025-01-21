@@ -5,7 +5,7 @@ import { Vector, matrix_vector_mul, vector_add, vector_scale } from "../lib/math
 import { Instance } from "./instance";
 import { Transform } from "./transform";
 
-const BVH_MAX_LEAVES_PER_NODE = 4;
+const BVH_MAX_LEAVES_PER_NODE = 3;
 
 export class IndexedInstance {
     instance: Instance;
@@ -22,7 +22,8 @@ export class IndexedInstance {
 // Indexed Instance BVH class for constructing dynamic BVHs for instances
 export class IndexedInstanceBVH extends BVH<IndexedInstance> {
     constructor(instances: Array<IndexedInstance>) {
-        super(IndexedInstanceBVH.subdivideTree(instances));
+        const bvh = IndexedInstanceBVH.subdivideTree(instances);
+        super(bvh);
     }
 
     private static isInstanceInBounding(instance: IndexedInstance, bound: Bounding): boolean {
@@ -49,16 +50,16 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
     private static fillFlatTree(instances: Array<IndexedInstance>, startingId: number): BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> {
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
-        // Base case: if there are less than 4 instances, return a leaf
+        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE instances, return a leaf
         if (instances.length <= BVH_MAX_LEAVES_PER_NODE) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
-        const oneFourthCeil: number = Math.ceil(instances.length / 4);
+        const oneOverLeaves: number = 1 / BVH_MAX_LEAVES_PER_NODE;
 
         const children: Array<BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance>> = [];
         // Assign ids to children
         let nextId = startingId + 1;
-        for (let i = 0; i < instances.length; i += oneFourthCeil) {
-            const childInstances = instances.slice(i, Math.min(i + oneFourthCeil, instances.length));
+        for (let i = 0; i < instances.length; i += oneOverLeaves) {
+            const childInstances = instances.slice(i, Math.min(i + oneOverLeaves, instances.length));
             const child = IndexedInstanceBVH.fillFlatTree(childInstances, nextId);
             children.push(child);
             nextId = child.nextId;
@@ -99,7 +100,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
     private static subdivideTree(instances: Array<IndexedInstance>, maxDepth: number = Infinity, depth: number = 0, startingId: number = 0): BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> {
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
-        // Base case: if there are less than 4 instances, return a leaf
+        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE instances, return a leaf
         if (instances.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxDepth) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of instance split
