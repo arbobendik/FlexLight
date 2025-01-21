@@ -82,7 +82,7 @@ export class BVH<T extends Triangle | IndexedInstance> {
                 bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1, node.children[2]?.id ?? POW32M1);
             },
             (leaf: BVHLeaf<T>) => {
-                boundingVertices.push(0, 0, 0, 0, 0, 0);
+                boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
                 bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1, leaf.children[2]?.id ?? POW32M1);
             }
         );

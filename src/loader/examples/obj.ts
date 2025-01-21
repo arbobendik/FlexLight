@@ -43,7 +43,7 @@ let scene: Scene = engine.scene;
 */
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-50, 50, 50];
+[camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.8];
 
 let light1 = new PointLight(new Vector(100, 100, 100), new Vector(1, 0, 0), 20000, 0);
@@ -54,7 +54,7 @@ scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
 
-scene.ambientLight = new Vector(0.01, 0.01, 0.01);
+scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 
 // scene.queue.push(plane);
 
@@ -62,7 +62,7 @@ console.log(canvas.clientWidth, canvas.clientHeight);
 // Start render engine.
 engine.renderer.render();
 console.log(canvas.clientWidth, canvas.clientHeight);
-// engine.renderer.fpsLimit = 100;
+// engine.renderer.fpsLimit = 1;
 
 // const search = new URLSearchParams(location.search);
 let urlParams = new URL(String(document.location)).searchParams;
@@ -84,13 +84,15 @@ const loadObj = async (model: string) => {
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
 let cube = await loadObj('cube');
-// let sphere = await loadObj('sphere');
 // let dragon = await loadObj('dragon');
-let dragon = await loadObj('monke');
+let monkey = await loadObj('monke');
+let sphere = await loadObj('sphere');
 // let bike = await loadObj('bike');
 
 const cube1 = scene.instance(cube);
-const dragon1 = scene.instance(dragon);
+const monkey1 = scene.instance(monkey);
+const sphere1 = scene.instance(sphere);
+const sphere2 = scene.instance(sphere);
 // const dragon1 = new Instance(dragon);
 // const dragon2 = new Instance(dragon);
 
@@ -100,6 +102,11 @@ const dragon1 = scene.instance(dragon);
 
 cube1.transform.position = new Vector(0, -102, 0);
 cube1.transform.scaleFactor = 100;
+cube1.material.roughness = 1.0;
+cube1.material.metallic = 0.0;
+
+sphere1.transform.position = new Vector(10, 0, 0);
+sphere2.transform.position = new Vector(-10, 0, 0);
 // instance2.transform.position = new Vector(-30, 0, 0);
 
 // sphere1.transform.position = new Vector(0, 10, 0);
