@@ -70,8 +70,14 @@ export class Scene {
 
         // Generate BVH
         const bvh: IndexedInstanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
+
+        // console.log("BVH", bvh);
         // Generate bounding vertices and BVH structure
         const bvhArrays: BVHArrays = bvh.toArrays();
+        // console.log(bvhArrays);
+        // console.log("BVHArray", bvhArrays.bvh);
+        // console.log("Bounding Vertices", bvhArrays.boundingVertices);
+        // console.log("Instance Uint Array", instanceUintArray);
         // Allocate BVH buffers
         this._instanceBVHManager.overwriteAll(bvhArrays.bvh);
         this._instanceBoundingVertexManager.overwriteAll(bvhArrays.boundingVertices);
