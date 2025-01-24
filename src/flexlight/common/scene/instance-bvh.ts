@@ -1,11 +1,13 @@
 "use strict";
 
-import { BVH, BVHLeaf, BVHNode, Bounding } from "./bvh";
-import { Vector, matrix_vector_mul, vector_add, vector_scale } from "../lib/math";
+import { BVH, BVHArrays, BVHLeaf, BVHNode, Bounding } from "./bvh";
+import { POW32M1, Vector, matrix_vector_mul, vector_add, vector_scale } from "../lib/math";
 import { Instance } from "./instance";
 import { Transform } from "./transform";
 
-const BVH_MAX_LEAVES_PER_NODE = 3;
+
+export const BVH_MAX_INSTANCES_PER_LEAF = 2;
+
 
 export class IndexedInstance {
     instance: Instance;
@@ -24,6 +26,26 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
     constructor(instances: Array<IndexedInstance>) {
         const bvh = IndexedInstanceBVH.subdivideTree(instances);
         super(bvh);
+    }
+
+    toArrays(): BVHArrays {
+        const boundingVertices: Array<number> = [];
+        const bvh: Array<number> = [];
+        // Traverse tree using depth first search starting from root
+        this.dfsTraverse(this.root, 
+            (node: BVHNode<IndexedInstance>) => {
+                // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
+                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
+                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+                bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
+            },
+            (leaf: BVHLeaf<IndexedInstance>) => {
+                // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
+                boundingVertices.push(... new Vector({vector_length: 12}));
+                bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1);
+            }
+        );
+        return { boundingVertices, bvh };
     }
 
     private static isInstanceInBounding(instance: IndexedInstance, bound: Bounding): boolean {
@@ -50,16 +72,16 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
     private static fillFlatTree(instances: Array<IndexedInstance>, startingId: number): BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> {
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
-        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE instances, return a leaf
-        if (instances.length <= BVH_MAX_LEAVES_PER_NODE) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
+        // Base case: if there are less than BVH_MAX_INSTANCES_PER_LEAF instances, return a leaf
+        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
-        const oneOverLeaves: number = 1 / BVH_MAX_LEAVES_PER_NODE;
+        const instancesPerChild: number = Math.ceil(instances.length / BVH_MAX_INSTANCES_PER_LEAF);
 
         const children: Array<BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance>> = [];
         // Assign ids to children
         let nextId = startingId + 1;
-        for (let i = 0; i < instances.length; i += oneOverLeaves) {
-            const childInstances = instances.slice(i, Math.min(i + oneOverLeaves, instances.length));
+        for (let i = 0; i < instances.length; i += instancesPerChild) {
+            const childInstances = instances.slice(i, Math.min(i + instancesPerChild, instances.length));
             const child = IndexedInstanceBVH.fillFlatTree(childInstances, nextId);
             children.push(child);
             nextId = child.nextId;
@@ -87,21 +109,28 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             const in1 = IndexedInstanceBVH.isInstanceInBounding(instance, bounding1);
             if (in0 && !in1) instancesIn0++;
             else if (!in0 && in1) instancesIn1++;
-            else instancesOnCutoff++;
+            else instancesIn0++;
         }
 
-        const instanceCount = instances.length;
+        // const instanceCount = instances.length;
+        /*
+        console.log("Instances in 0", instancesIn0);
+        console.log("Instances in 1", instancesIn1);
+        console.log("Instances on cutoff", instancesOnCutoff);
+        */
         // If one box contains all instances, the cost is Infinity as no subdivision is happening
-        if (instancesIn0 === instanceCount || instancesIn1 === instanceCount || instancesOnCutoff === instanceCount) return Infinity;
+        // if (instancesIn0 === instanceCount || instancesIn1 === instanceCount || instancesOnCutoff === instanceCount) return Infinity;
+        if (instancesIn0 === 0 || instancesIn1 === 0) return Infinity;
         // Minimize for minimum instances on cutoff and equal distribution of instances across bounding0 and bounding1
         return instancesOnCutoff + Math.abs(instancesIn0 - instancesIn1);
     }
 
     private static subdivideTree(instances: Array<IndexedInstance>, maxDepth: number = Infinity, depth: number = 0, startingId: number = 0): BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> {
+        // console.log("Subdividing tree", instances.length, depth, maxDepth);
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
-        // Base case: if there are less than BVH_MAX_LEAVES_PER_NODE instances, return a leaf
-        if (instances.length <= BVH_MAX_LEAVES_PER_NODE || depth > maxDepth) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
+        // Base case: if there are less than BVH_MAX_INSTANCES_PER_LEAF instances, return a leaf
+        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF || depth > maxDepth) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of instance split
         const centerOfMass = vector_scale(vector_add(bounding.min, bounding.max), 0.5);
@@ -115,10 +144,10 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
                 splitAlongAxis = axis;
             }
         }
-
+        // console.log("Split along axis", splitAlongAxis, minCost);
         // If no subdivision is happening, return flat tree to avoid infinite recursion
         if (minCost === Infinity) {
-            console.warn("No spatial subdivision possible for", instances.length, "instances.");
+            // console.warn("No spatial subdivision possible for", instances.length, "instances.");
             return IndexedInstanceBVH.fillFlatTree(instances, startingId);
         }
 
@@ -138,10 +167,15 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         for (let instance of instances) {
             const in0 = IndexedInstanceBVH.isInstanceInBounding(instance, bounding0);
             const in1 = IndexedInstanceBVH.isInstanceInBounding(instance, bounding1);
-            if (in0 && in1) instancesOnCutoff.push(instance);
-            else if (in0) instancesInBound0.push(instance);
-            else instancesInBound1.push(instance);
+            if (in0 && !in1) instancesInBound0.push(instance);
+            else if (!in0 && in1) instancesInBound1.push(instance);
+            else instancesInBound0.push(instance);
         }
+        /*
+        console.log("Instances in bound 0", instancesInBound0.length);
+        console.log("Instances in bound 1", instancesInBound1.length);
+        console.log("Instances on cutoff", instancesOnCutoff.length);
+        */
 
         let children: Array<BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance>> = [];
         // Assign ids to children
@@ -152,12 +186,14 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             children.push(child);
             nextId = child.nextId;
         }
+        /*
 
         if (instancesOnCutoff.length > 0) {
             const child = IndexedInstanceBVH.subdivideTree(instancesOnCutoff, maxDepth, depth + 1, nextId);
             children.push(child);
             nextId = child.nextId;
         }
+        */
 
         if (instancesInBound1.length > 0) {
             const child = IndexedInstanceBVH.subdivideTree(instancesInBound1, maxDepth, depth + 1, nextId);
@@ -173,10 +209,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         let id: number = 0;
         // Iterate over instances, assigning ids and calculate boundings
         for (let instance of instances) {
-            const untransformedBounding: Bounding = {
-                min: new Vector(instance.prototype.boundingVertices[0]!, instance.prototype.boundingVertices[1]!, instance.prototype.boundingVertices[2]!),
-                max: new Vector(instance.prototype.boundingVertices[3]!, instance.prototype.boundingVertices[4]!, instance.prototype.boundingVertices[5]!)
-            };
+            const untransformedBounding: Bounding = instance.prototype.bounding;
             // Get all corners of bounding volume
             const corners: Array<Vector<3>> = [
                 new Vector(untransformedBounding.min.x, untransformedBounding.min.y, untransformedBounding.min.z),

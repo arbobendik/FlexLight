@@ -72,23 +72,6 @@ export class BVH<T extends Triangle | IndexedInstance> {
         }
     }
 
-    toArrays(): BVHArrays {
-        const boundingVertices: Array<number> = [];
-        const bvh: Array<number> = [];
-        // Traverse tree using depth first search starting from root
-        this.dfsTraverse(this.root, 
-            (node: BVHNode<T>) => {
-                boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
-                bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1, node.children[2]?.id ?? POW32M1);
-            },
-            (leaf: BVHLeaf<T>) => {
-                boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
-                bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1, leaf.children[2]?.id ?? POW32M1);
-            }
-        );
-        return { boundingVertices, bvh };
-    }
-
     protected static isVertexInBounding(vertex: Vector<3>, bound: Bounding): boolean {
         return bound.min.x - BIAS <= vertex.x && bound.min.y - BIAS <= vertex.y && bound.min.z - BIAS <= vertex.z &&
                bound.max.x + BIAS >= vertex.x && bound.max.y + BIAS >= vertex.y && bound.max.z + BIAS >= vertex.z;
