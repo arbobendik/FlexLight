@@ -98,6 +98,13 @@ export class Vector<N extends number> extends Float32Array {
 }
 
 /*
+let v: Vector<3> = new Vector(1, 2, 3);
+let v2: Vector<3> = new Vector(1, 2, 3);
+
+let v3: Vector<3> = vector_add(v, v2);
+*/
+
+/*
 // Vector class with operations
 export class Vector<N extends number> extends VectorData<N> {
     constructor(... args: Tuple<number, N> | [ VectorDimensions<N> ] | [ Tuple<number, N> ]) { super(... args) }
