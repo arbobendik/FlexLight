@@ -71,7 +71,7 @@ export class Scene {
         // Generate BVH
         const bvh: IndexedInstanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
 
-        // console.log("BVH", bvh);
+        //console.log("BVH", bvh);
         // Generate bounding vertices and BVH structure
         const bvhArrays: BVHArrays = bvh.toArrays();
         // console.log(bvhArrays);
