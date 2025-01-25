@@ -193,14 +193,6 @@ class TypedArrayReimplementation<T extends TypedArray> {
     }
 }
 
-/*
-let handler: ProxyHandler<TypedArrayReimplementation<T extends TypedArray>> = {
-    get(target: TypedArrayReimplementation<T>, prop: string, receiver: TypedArrayReimplementation<T>) {
-      return "world";
-    },
-};
-*/
-
 
 class Handler<T extends TypedArray> {
     private targetKeySet: Set<string>;
