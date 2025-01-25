@@ -6,8 +6,8 @@ const INSTANCE_FLOAT_SIZE: u32 = 31u;
 const BVH_TRIANGLE_SIZE: u32 = 3u;
 const BVH_INSTANCE_SIZE: u32 = 3u;
 
+const TRIANGLE_BOUNDING_VERTICES_SIZE: u32 = 18u;
 const INSTANCE_BOUNDING_VERTICES_SIZE: u32 = 12u;
-const TRIANGLE_BOUNDING_VERTICES_SIZE: u32 = 12u;
 
 const POINT_LIGHT_SIZE: u32 = 8u;
 
@@ -235,7 +235,7 @@ fn rayCuboid(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, l: f32) -> 
     return tmax >= max(tmin, BIAS) && tmin < l;
 }
 
-fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray) -> f32 {
+fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max_len: f32) -> f32 {
     let tmin: vec3<f32> = (min_corner - ray.origin) / ray.unit_direction;
     let tmax: vec3<f32> = (max_corner - ray.origin) / ray.unit_direction;
 
@@ -245,7 +245,7 @@ fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray) -> 
     let dst_far: f32 = min(t2.x, min(t2.y, t2.z));
     let dst_near: f32 = max(t1.x, max(t1.y, t1.z));
 
-    let is_hit: bool = dst_far >= max(dst_near, BIAS);
+    let is_hit: bool = dst_far >= max(dst_near, BIAS) && dst_near < max_len;
 
     if (is_hit) {
         return dst_near;
@@ -470,7 +470,7 @@ if (closest != UINT_MAX && closest_dist != POW32) {
     stack_index += 1u;
 }
 */
-
+/*
 fn shadowTestTriangle(triangle_instance_offset: u32, triangle_index: u32, ray: Ray, l: f32) -> bool {
     let triangle_offset: u32 = triangle_instance_offset + triangle_index * TRIANGLE_SIZE;
     let a = vec3<f32>(access_triangle(triangle_offset), access_triangle(triangle_offset + 1u), access_triangle(triangle_offset + 2u));
@@ -482,12 +482,28 @@ fn shadowTestTriangle(triangle_instance_offset: u32, triangle_index: u32, ray: R
     return moellerTrumboreCull(mat3x3<f32>(a, b, c), ray, l);
     // return true;
 }
+*/
+
+
+/*
+fn read_mask(bit_mask: u32, depth: u32) -> bool {
+    return (bit_mask & (1u << depth)) != 0u;
+}
+
+fn set_mask(bit_mask: u32, depth: u32) -> u32 {
+    return bit_mask | (1u << depth);
+}
+
+fn unset_mask(bit_mask: u32, depth: u32) -> u32 {
+    return bit_mask & ~(1u << depth);
+}
+*/
+
+
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowSubTest(instance_index: u32, ray: Ray, l: f32) -> bool {
-
+fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
     // Maximal distance a triangle can be away from the ray origin
-    let max_len: f32 = l;
     let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
     let instance_float_offset = instance_index * INSTANCE_FLOAT_SIZE;
 
@@ -500,21 +516,137 @@ fn shadowSubTest(instance_index: u32, ray: Ray, l: f32) -> bool {
         vec3<f32>(instance_float[instance_float_offset + 18u], instance_float[instance_float_offset + 19u], instance_float[instance_float_offset + 20u])
     );
 
+    let inverse_dir = inverse_transform.rotation * ray.unit_direction;
+
     let t_ray = Ray(
         inverse_transform.rotation * (ray.origin - inverse_transform.shift),
-        normalize(inverse_transform.rotation * ray.unit_direction)
+        normalize(inverse_dir)
     );
+    let max_len: f32 = length(inverse_dir) * l;
 
-
-    let instance_triangle_offset = instance_uint[instance_uint_offset];
-    let instance_bvh_offset = instance_uint[instance_uint_offset + 1u];
-    let instance_vertex_offset = instance_uint[instance_uint_offset + 2u];
+    let instance_triangle_offset: u32 = instance_uint[instance_uint_offset];
+    let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
+    let instance_vertex_offset: u32 = instance_uint[instance_uint_offset + 2u];
     
+    /*
+    var depth: u32 = 1u;
+    var stack: u32 = 0u;
+    
+    var next: u32 = 0u;
+    var up: bool = false;
 
-    var stack = array<u32, 24>();
+    while (depth > 0u) {
+        let bvh_offset: u32 = instance_bvh_offset + next * 5u;
+        let vertex_offset: u32 = instance_vertex_offset + next * 12u;
+
+        let indicator: u32 = access_triangle_bvh(bvh_offset);
+        let parent: u32 = access_triangle_bvh(bvh_offset + 1u);
+        let sibling: u32 = access_triangle_bvh(bvh_offset + 2u);
+        let child0: u32 = access_triangle_bvh(bvh_offset + 3u);
+        let child1: u32 = access_triangle_bvh(bvh_offset + 4u);
+        
+        // Get bounding vertices
+        let min0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset), access_triangle_bounding_vertices(vertex_offset + 1u), access_triangle_bounding_vertices(vertex_offset + 2u));
+        let max0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 3u), access_triangle_bounding_vertices(vertex_offset + 4u), access_triangle_bounding_vertices(vertex_offset + 5u));
+
+        let min1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 6u), access_triangle_bounding_vertices(vertex_offset + 7u), access_triangle_bounding_vertices(vertex_offset + 8u));
+        let max1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 9u), access_triangle_bounding_vertices(vertex_offset + 10u), access_triangle_bounding_vertices(vertex_offset + 11u));
+
+        // let mins = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 12u), access_triangle_bounding_vertices(vertex_offset + 13u), access_triangle_bounding_vertices(vertex_offset + 14u));
+        // let maxs = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 15u), access_triangle_bounding_vertices(vertex_offset + 16u), access_triangle_bounding_vertices(vertex_offset + 17u));
+
+        
+        if (depth > 31u) {
+            return true;
+        }
+        
+        if (!up) {
+            // Indicator = 0 => is leaf
+            if (indicator == 0u) {
+                // Do triangle intersection tests
+                if (child0 != UINT_MAX && shadowTestTriangle(instance_triangle_offset, child0, t_ray, max_len)) {
+                    return true;
+                }
+                if (child1 != UINT_MAX && shadowTestTriangle(instance_triangle_offset, child1, t_ray, max_len)) {
+                    return true;
+                }
+                // Flip up flag to go up to parent or check sibling
+                up = true;
+            }
+            // Indicator = 1 => is node
+            else {
+                let dist0: f32 = rayBoundingVolume(min0, max0, t_ray);
+                let dist1: f32 = rayBoundingVolume(min1, max1, t_ray);
+
+                if (dist0 < dist1) {
+                    if (child0 != UINT_MAX && dist0 != POW32) {
+                        // Go to child 0
+                        depth += 1u;
+                        next = child0;
+
+                        if (child1 == UINT_MAX || dist1 == POW32) {
+                            stack = set_mask(stack, depth);
+                        } else {
+                            stack = unset_mask(stack, depth);
+                        }
+                    } else if (child1 != UINT_MAX && dist1 != POW32) {
+                        // We know child0 doesn't hit, so skip child 0 immediately when going up later
+                        depth += 1u;
+                        next = child1;
+                        stack = set_mask(stack, depth);
+                    } else {
+                        // Both children miss
+                        // Flip up flag to go up to parent or check sibling
+                        up = true;
+                    }
+                } else {
+                    if (child1 != UINT_MAX && dist1 != POW32) {
+                        // Go to child 1
+                        depth += 1u;
+                        next = child1;
+
+                        if (child0 == UINT_MAX || dist0 == POW32) {
+                            stack = set_mask(stack, depth);
+                        } else {
+                            stack = unset_mask(stack, depth);
+                        }
+                    } else if (child0 != UINT_MAX && dist0 != POW32) {
+                        // We know child1 doesn't hit, so skip child 1 immediately when going up later
+                        depth += 1u;
+                        next = child0;
+                        stack = set_mask(stack, depth);
+                    } else {
+                        // Both children miss
+                        // Flip up flag to go up to parent or check sibling
+                        up = true;
+                    }
+                }
+            }
+        }
+
+
+        if (up) {
+            // If this is the second child, go up to parent.
+            let is_second_child: bool = read_mask(stack, depth);
+            if (is_second_child) {
+                // If this is the second child, go up to parent.
+                depth -= 1u;
+                next = parent;
+                up = true;
+            } else {
+                // Go to second sibling
+                stack = set_mask(stack, depth);
+                next = sibling;
+                up = false;
+            }
+        }
+
+    }
+    */
+    
+    var stack: array<u32, 24> = array<u32, 24>();
     var stack_index: u32 = 1u;
-
-
+    
     while (stack_index > 0u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
@@ -523,119 +655,60 @@ fn shadowSubTest(instance_index: u32, ray: Ray, l: f32) -> bool {
         let vertex_offset: u32 = instance_vertex_offset + node_index * TRIANGLE_BOUNDING_VERTICES_SIZE;
 
         let indicator: u32 = access_triangle_bvh(bvh_offset);
-        let index0: u32 = access_triangle_bvh(bvh_offset + 1u);
-        let index1: u32 = access_triangle_bvh(bvh_offset + 2u);
-        
-        let is_leaf: bool = indicator == 0u;
-        let is_node: bool = indicator == 1u;
 
-        if (is_leaf) {
-            if (index0 != UINT_MAX) {
-                if (shadowTestTriangle(instance_triangle_offset, index0, t_ray, max_len)) {
-                    return true;
-                }
+        if (indicator == 0u) {
+            let a0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset), access_triangle_bounding_vertices(vertex_offset + 1u), access_triangle_bounding_vertices(vertex_offset + 2u));
+            let b0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 3u), access_triangle_bounding_vertices(vertex_offset + 4u), access_triangle_bounding_vertices(vertex_offset + 5u));
+            let c0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 6u), access_triangle_bounding_vertices(vertex_offset + 7u), access_triangle_bounding_vertices(vertex_offset + 8u));
+            if (moellerTrumboreCull(mat3x3<f32>(a0, b0, c0), t_ray, max_len)) {
+                return true;
             }
-            if (index1 != UINT_MAX) {
-                if (shadowTestTriangle(instance_triangle_offset, index1, t_ray, max_len)) {
-                    return true;
-                }
+            let a1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 9u), access_triangle_bounding_vertices(vertex_offset + 10u), access_triangle_bounding_vertices(vertex_offset + 11u));
+            let b1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 12u), access_triangle_bounding_vertices(vertex_offset + 13u), access_triangle_bounding_vertices(vertex_offset + 14u));
+            let c1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 15u), access_triangle_bounding_vertices(vertex_offset + 16u), access_triangle_bounding_vertices(vertex_offset + 17u));
+            if (moellerTrumboreCull(mat3x3<f32>(a1, b1, c1), t_ray, max_len)) {
+                return true;
             }
-        } else if (is_node) {
+        } else {
+            let child0: u32 = access_triangle_bvh(bvh_offset + 1u);
+            let child1: u32 = access_triangle_bvh(bvh_offset + 2u);
 
-            if (index0 == UINT_MAX) {
-                let min1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 6u), access_triangle_bounding_vertices(vertex_offset + 7u), access_triangle_bounding_vertices(vertex_offset + 8u));
-                let max1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 9u), access_triangle_bounding_vertices(vertex_offset + 10u), access_triangle_bounding_vertices(vertex_offset + 11u));
-                let dist1: f32 = rayBoundingVolume(min1, max1, t_ray);
-                if (index1 != UINT_MAX && dist1 != POW32) {
-                    stack[stack_index] = index1;
-                    stack_index += 1u;
-                }
-            } else if (index1 == UINT_MAX) {
-                let min0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset), access_triangle_bounding_vertices(vertex_offset + 1u), access_triangle_bounding_vertices(vertex_offset + 2u));
-                let max0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 3u), access_triangle_bounding_vertices(vertex_offset + 4u), access_triangle_bounding_vertices(vertex_offset + 5u));
-                let dist0: f32 = rayBoundingVolume(min0, max0, t_ray);
-                if (index0 != UINT_MAX && dist0 != POW32) {
-                    stack[stack_index] = index0;
-                    stack_index += 1u;
-                }
-            } else {
-                let min0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset), access_triangle_bounding_vertices(vertex_offset + 1u), access_triangle_bounding_vertices(vertex_offset + 2u));
-                let max0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 3u), access_triangle_bounding_vertices(vertex_offset + 4u), access_triangle_bounding_vertices(vertex_offset + 5u));
-                let min1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 6u), access_triangle_bounding_vertices(vertex_offset + 7u), access_triangle_bounding_vertices(vertex_offset + 8u));
-                let max1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 9u), access_triangle_bounding_vertices(vertex_offset + 10u), access_triangle_bounding_vertices(vertex_offset + 11u));
-                let dist0: f32 = rayBoundingVolume(min0, max0, t_ray);
-                let dist1: f32 = rayBoundingVolume(min1, max1, t_ray);
-
-                if (dist0 < dist1) {
-                    if (index1 != UINT_MAX && dist1 != POW32) {
-                        stack[stack_index] = index1;
-                        stack_index += 1u;
-                    }
-                    if (index0 != UINT_MAX && dist0 != POW32) {
-                        stack[stack_index] = index0;
-                        stack_index += 1u;
-                    }
-                } else {
-                    if (index0 != UINT_MAX && dist0 != POW32) {
-                        stack[stack_index] = index0;
-                        stack_index += 1u;
-                    }
-                    if (index1 != UINT_MAX && dist1 != POW32) {
-                        stack[stack_index] = index1;
-                        stack_index += 1u;
-                    }
-                }
-            }
-            /*
-
-            
             let min0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset), access_triangle_bounding_vertices(vertex_offset + 1u), access_triangle_bounding_vertices(vertex_offset + 2u));
             let max0 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 3u), access_triangle_bounding_vertices(vertex_offset + 4u), access_triangle_bounding_vertices(vertex_offset + 5u));
-
+            let dist0: f32 = rayBoundingVolume(min0, max0, t_ray, max_len);
             let min1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 6u), access_triangle_bounding_vertices(vertex_offset + 7u), access_triangle_bounding_vertices(vertex_offset + 8u));
             let max1 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 9u), access_triangle_bounding_vertices(vertex_offset + 10u), access_triangle_bounding_vertices(vertex_offset + 11u));
+            let dist1: f32 = rayBoundingVolume(min1, max1, t_ray, max_len);
 
-            // let min2 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 12u), access_triangle_bounding_vertices(vertex_offset + 13u), access_triangle_bounding_vertices(vertex_offset + 14u));
-            // let max2 = vec3<f32>(access_triangle_bounding_vertices(vertex_offset + 15u), access_triangle_bounding_vertices(vertex_offset + 16u), access_triangle_bounding_vertices(vertex_offset + 17u));
-
-            
-            let dist0: f32 = rayBoundingVolume(min0, max0, t_ray);
-            let dist1: f32 = rayBoundingVolume(min1, max1, t_ray);
-            // let dist2: f32 = rayBoundingVolume(min2, max2, t_ray);
-            // let index2: u32 = access_triangle_bvh(bvh_offset + 3u);
-            
             if (dist0 < dist1) {
-                if (index1 != UINT_MAX && dist1 != POW32) {
-                    stack[stack_index] = index1;
+                if (child1 != UINT_MAX && dist1 != POW32) {
+                    stack[stack_index] = child1;
                     stack_index += 1u;
                 }
-                if (index0 != UINT_MAX && dist0 != POW32) {
-                    stack[stack_index] = index0;
+                if (dist0 != POW32) {
+                    stack[stack_index] = child0;
                     stack_index += 1u;
                 }
             } else {
-                if (index0 != UINT_MAX && dist0 != POW32) {
-                    stack[stack_index] = index0;
+                if (dist0 != POW32) {
+                    stack[stack_index] = child0;
                     stack_index += 1u;
                 }
-                if (index1 != UINT_MAX && dist1 != POW32) {
-                    stack[stack_index] = index1;
+                if (child1 != UINT_MAX && dist1 != POW32) {
+                    stack[stack_index] = child1;
                     stack_index += 1u;
                 }
             }
-            */
         }
     }
+    
     // If nothing was hit, return false (not in shadow)
     return false;
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTest(ray: Ray, l: f32) -> bool {
-    // return rayCuboid(vec3<f32>(0.0f, 0.1f, 0.0f), vec3<f32>(10.0f, 10.0f, 10.0f), ray, l);
+fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     
-    // Maximal distance a triangle can be away from the ray origin
-    var max_len: f32 = l;
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
@@ -648,66 +721,67 @@ fn shadowTest(ray: Ray, l: f32) -> bool {
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
         
         let indicator: u32 = instance_bvh[bvh_offset];
-        let index0: u32 = instance_bvh[bvh_offset + 1u];
-        let index1: u32 = instance_bvh[bvh_offset + 2u];
+        let child0: u32 = instance_bvh[bvh_offset + 1u];
+        let child1: u32 = instance_bvh[bvh_offset + 2u];
 
-        let is_leaf: bool = indicator == 0u;
-        let is_node: bool = indicator == 1u;
 
-        if (is_leaf) {
-            if (index0 != UINT_MAX) {
-                if (shadowSubTest(index0, ray, max_len)) {
-                    return true;
+        var dist0: f32 = POW32;
+        var dist1: f32 = POW32;
+
+        if (child0 != UINT_MAX) {
+            let min0 = vec3<f32>(instance_bounding_vertices[vertex_offset], instance_bounding_vertices[vertex_offset + 1u], instance_bounding_vertices[vertex_offset + 2u]);
+            let max0 = vec3<f32>(instance_bounding_vertices[vertex_offset + 3u], instance_bounding_vertices[vertex_offset + 4u], instance_bounding_vertices[vertex_offset + 5u]);
+            dist0 = rayBoundingVolume(min0, max0, ray, l);
+        }
+        
+        if (child1 != UINT_MAX) {
+            let min1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 6u], instance_bounding_vertices[vertex_offset + 7u], instance_bounding_vertices[vertex_offset + 8u]);
+            let max1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 9u], instance_bounding_vertices[vertex_offset + 10u], instance_bounding_vertices[vertex_offset + 11u]);
+            dist1 = rayBoundingVolume(min1, max1, ray, l);
+        }
+
+        if (indicator == 0u) {
+            if (dist0 < dist1) {
+                if (dist1 != POW32) {
+                    if (shadowTraverseTriangleBVH(child1, ray, l)) {
+                        return true;
+                    }
+                }
+                if (dist0 != POW32) {
+                    if (shadowTraverseTriangleBVH(child0, ray, l)) {
+                        return true;
+                    }
+                }
+            } else {
+                if (dist0 != POW32) {
+                    if (shadowTraverseTriangleBVH(child0, ray, l)) {
+                        return true;
+                    }
+                }
+                if (dist1 != POW32) {
+                    if (shadowTraverseTriangleBVH(child1, ray, l)) {
+                        return true;
+                    }
                 }
             }
-            if (index1 != UINT_MAX) {
-                if (shadowSubTest(index1, ray, max_len)) {
-                    return true;
-                }
-            }
-        } else if (is_node) {
-            if (index0 == UINT_MAX) {
-                let min1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 6u], instance_bounding_vertices[vertex_offset + 7u], instance_bounding_vertices[vertex_offset + 8u]);
-                let max1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 9u], instance_bounding_vertices[vertex_offset + 10u], instance_bounding_vertices[vertex_offset + 11u]);
-                let dist1: f32 = rayBoundingVolume(min1, max1, ray);
-                if (index1 != UINT_MAX && dist1 != POW32) {
-                    stack[stack_index] = index1;
+        } else {
+            if (dist0 < dist1) {
+                if (dist1 != POW32) {
+                    stack[stack_index] = child1;
                     stack_index += 1u;
                 }
-            } else if (index1 == UINT_MAX) {
-                let min0 = vec3<f32>(instance_bounding_vertices[vertex_offset], instance_bounding_vertices[vertex_offset + 1u], instance_bounding_vertices[vertex_offset + 2u]);
-                let max0 = vec3<f32>(instance_bounding_vertices[vertex_offset + 3u], instance_bounding_vertices[vertex_offset + 4u], instance_bounding_vertices[vertex_offset + 5u]);
-                let dist0: f32 = rayBoundingVolume(min0, max0, ray);
-                if (index0 != UINT_MAX && dist0 != POW32) {
-                    stack[stack_index] = index0;
+                if (dist0 != POW32) {
+                    stack[stack_index] = child0;
                     stack_index += 1u;
                 }
             } else {
-                let min0 = vec3<f32>(instance_bounding_vertices[vertex_offset], instance_bounding_vertices[vertex_offset + 1u], instance_bounding_vertices[vertex_offset + 2u]);
-                let max0 = vec3<f32>(instance_bounding_vertices[vertex_offset + 3u], instance_bounding_vertices[vertex_offset + 4u], instance_bounding_vertices[vertex_offset + 5u]);
-                let min1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 6u], instance_bounding_vertices[vertex_offset + 7u], instance_bounding_vertices[vertex_offset + 8u]);
-                let max1 = vec3<f32>(instance_bounding_vertices[vertex_offset + 9u], instance_bounding_vertices[vertex_offset + 10u], instance_bounding_vertices[vertex_offset + 11u]);
-                let dist0: f32 = rayBoundingVolume(min0, max0, ray);
-                let dist1: f32 = rayBoundingVolume(min1, max1, ray);
-
-                if (dist0 < dist1) {
-                    if (index1 != UINT_MAX && dist1 != POW32) {
-                        stack[stack_index] = index1;
-                        stack_index += 1u;
-                    }
-                    if (index0 != UINT_MAX && dist0 != POW32) {
-                        stack[stack_index] = index0;
-                        stack_index += 1u;
-                    }
-                } else {
-                    if (index0 != UINT_MAX && dist0 != POW32) {
-                        stack[stack_index] = index0;
-                        stack_index += 1u;
-                    }
-                    if (index1 != UINT_MAX && dist1 != POW32) {
-                        stack[stack_index] = index1;
-                        stack_index += 1u;
-                    }
+                if (dist0 != POW32) {
+                    stack[stack_index] = child0;
+                    stack_index += 1u;
+                }
+                if (dist1 != POW32) {
+                    stack[stack_index] = child1;
+                    stack_index += 1u;
                 }
             }
         }
@@ -868,7 +942,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, random_vec: vec4<f32>, r
 
     // return local_color + base_luminance;
     
-    if (shadowTest(light_ray, length(reservoir_dir))) {
+    if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
         return base_luminance;
     } else {
         return local_color + base_luminance;
