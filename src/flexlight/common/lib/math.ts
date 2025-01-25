@@ -86,41 +86,11 @@ export class Vector<N extends number> extends Float32Array {
         }
     }
 
-    /*
-    override toString(): string {
-        return "(" + this.join(", ") + ")";
-    }
-    */
-
     override *[Symbol.iterator](): IterableIterator<number> {
         for (let i = 0; i < this.length; i++) yield this[i]!;
     }
 }
 
-/*
-let v: Vector<3> = new Vector(1, 2, 3);
-let v2: Vector<3> = new Vector(1, 2, 3);
-
-let v3: Vector<3> = vector_add(v, v2);
-*/
-
-/*
-// Vector class with operations
-export class Vector<N extends number> extends VectorData<N> {
-    constructor(... args: Tuple<number, N> | [ VectorDimensions<N> ] | [ Tuple<number, N> ]) { super(... args) }
-
-    add = (v: Vector<N>): Vector<N> => vector_add(this, v);
-    sub = (v: Vector<N>): Vector<N> => vector_subtract(this, v);
-    distance = (v: Vector<N>): number => vector_distance(this, v);
-    hadamard = (v: Vector<N>): Vector<N> => vector_hadamard(this, v);
-    scale = (v: number): Vector<N> => vector_scale(this, v);
-    dot = (v: Vector<N>): number => dot(this, v);
-    normalize = (): Vector<N> => normalize(this);
-    outer = (v: Vector<N>): Matrix<N, N> => outer(this, v);
-
-    cross = (v: Vector<3>): Vector<3> => cross(this, v);
-}
-*/
 
 export class ZeroVector<N extends number> extends Vector<N> {
     constructor(n: N) {
@@ -176,12 +146,6 @@ export class Matrix<M extends number, N extends number> extends Array<Vector<N>>
             throw new Error('Invalid number of rows');
         }
     }
-
-    /*
-    override toString(): string {
-        return "[" + this.map(row => row.toString()).join("\n") + "]";
-    }
-    */
 
     override *[Symbol.iterator](): IterableIterator<Vector<N>> {
         // Iterate over row vectors

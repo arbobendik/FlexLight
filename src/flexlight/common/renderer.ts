@@ -21,7 +21,7 @@ export abstract class Renderer {
     protected _frameCounter: number = 0;
     get frameCounter () { return this._frameCounter; }
     // Performance metrics
-    private lastTimeStamp: number = performance.now();
+    protected lastTimeStamp: number = performance.now();
 
     private _fps: number = 0;
     get fps () { return this._fps; }
