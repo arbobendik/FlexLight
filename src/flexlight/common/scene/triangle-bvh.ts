@@ -6,6 +6,7 @@ import { TRIANGLE_LENGTH } from "./prototype";
 
 
 export const BVH_MAX_TRIANGLES_PER_LEAF = 2;
+export const BVH_MAX_CHILDREN_PER_NODE = 2;
 
 
 export class Triangle {
@@ -31,7 +32,7 @@ export class Triangle {
 // Triangle BVH class for constructing static BVHs for triangle meshes
 export class TriangleBVH extends BVH<Triangle> {
     constructor(triangles: Array<Triangle>) {
-        const root = TriangleBVH.subdivideTree(triangles);
+        const root = TriangleBVH.subdivideTree(triangles, 0, POW32M1);
         console.log(root);
         super(root);
     }
@@ -40,22 +41,50 @@ export class TriangleBVH extends BVH<Triangle> {
         const boundingVertices: Array<number> = [];
         const bvh: Array<number> = [];
         // Traverse tree using depth first search starting from root
-        this.dfsTraverse(this.root, 
-            (node: BVHNode<Triangle>) => {
+        /*
+        this.dfsTraverseBinary( 
+            (node: BVHNode<Triangle>, sibling: BVHNode<Triangle> | BVHLeaf<Triangle> | undefined) => {
                 // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
-                
+                console.log("NODE", node, "\n SIBLING", sibling);
                 boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
                                         ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+
+                // boundingVertices.push(  ...(sibling?.bounding.min ?? new Vector(0, 0, 0)), ...(sibling?.bounding.max ?? new Vector(0, 0, 0)));
                 
+                bvh.push(1, node.parentId, sibling?.id ?? POW32M1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
+            },
+            (leaf: BVHLeaf<Triangle>, sibling: BVHNode<Triangle> | BVHLeaf<Triangle> | undefined) => {
+                // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
+                boundingVertices.push(... new Vector({vector_length: 12}));
+                console.log("LEAF", leaf, "\n SIBLING", sibling);
+                // boundingVertices.push(  ...(sibling?.bounding.min ?? new Vector(0, 0, 0)), ...(sibling?.bounding.max ?? new Vector(0, 0, 0)));
+                bvh.push(0, leaf.parentId, sibling?.id ?? POW32M1, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1);
+            },
+            this.root
+        );
+        */
+        
+        this.dfsTraverse(
+            (node: BVHNode<Triangle>) => {
+                // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
+                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
+                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)),
+                                        ... new Vector({vector_length: 6}));
+                
+                // boundingVertices.push(  ...(sibling?.bounding.min ?? new Vector(0, 0, 0)), ...(sibling?.bounding.max ?? new Vector(0, 0, 0)));
                 
                 bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
             },
             (leaf: BVHLeaf<Triangle>) => {
                 // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
-                boundingVertices.push(... new Vector({vector_length: 12}));
+                boundingVertices.push(  ...(leaf.children[0]?.a ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.b ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.c ?? new Vector(0, 0, 0)),
+                                        ...(leaf.children[1]?.a ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.b ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.c ?? new Vector(0, 0, 0)));
+
                 bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1);
-            }
+            },
+            this.root
         );
+        
         return { boundingVertices, bvh };
     }
 
@@ -78,27 +107,28 @@ export class TriangleBVH extends BVH<Triangle> {
         return bounding;
     }
 
-    private static fillFlatTree(triangles: Array<Triangle>, startingId: number): BVHNode<Triangle> | BVHLeaf<Triangle> {
+    private static fillFlatTree(triangles: Array<Triangle>, startingId: number, parentId: number): BVHNode<Triangle> | BVHLeaf<Triangle> {
         // Tighten bounding
         let vertices: Array<Vector<3>> = [];
         for (let triangle of triangles) for (let vertex of triangle) vertices.push(vertex);
         const bounding = TriangleBVH.tightenBounding(triangles);
         // Base case: if there are less than BVH_MAX_TRIANGLES_PER_LEAF triangles, return a leaf
-        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
+        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) return new BVHLeaf(triangles, parentId, bounding, startingId, startingId + 1);
 
-        const trianglesPerChild: number = Math.ceil(triangles.length / BVH_MAX_TRIANGLES_PER_LEAF);
+        const trianglesPerChild: number = Math.ceil(triangles.length / BVH_MAX_CHILDREN_PER_NODE);
 
         const children: Array<BVHNode<Triangle> | BVHLeaf<Triangle>> = [];
         // Assign ids to children
         let nextId = startingId + 1;
         for (let i = 0; i < triangles.length; i += trianglesPerChild) {
             const childTriangles = triangles.slice(i, Math.min(i + trianglesPerChild, triangles.length + 1));
-            const child = TriangleBVH.fillFlatTree(childTriangles, nextId);
+            // const child = TriangleBVH.fillFlatTree(childTriangles, nextId, startingId);
+            const child = TriangleBVH.subdivideTree(childTriangles, nextId, startingId);
             children.push(child);
             nextId = child.nextId;
         }
 
-        return new BVHNode(children, bounding, startingId, nextId);
+        return new BVHNode(children, parentId, bounding, startingId, nextId);
     }
 
 
@@ -121,7 +151,7 @@ export class TriangleBVH extends BVH<Triangle> {
             const in1 = TriangleBVH.isTriangleInBounding(triangle, bounding1);
             if (in0 && !in1) trianglesIn0++;
             else if (!in0 && in1) trianglesIn1++;
-            else trianglesIn0++;
+            // else trianglesOnCutoff++;
         }
 
         // const triangleCount = triangles.length;
@@ -132,13 +162,13 @@ export class TriangleBVH extends BVH<Triangle> {
         return trianglesOnCutoff + Math.abs(trianglesIn0 - trianglesIn1);
     }
 
-    private static subdivideTree(triangles: Array<Triangle>, maxDepth: number = Infinity, depth: number = 0, startingId: number = 0): BVHNode<Triangle> | BVHLeaf<Triangle> {
+    private static subdivideTree(triangles: Array<Triangle>, startingId: number = 0, parentId: number = 0): BVHNode<Triangle> | BVHLeaf<Triangle> {
         // Tighten bounding
         const bounding = TriangleBVH.tightenBounding(triangles);
-        // Base case: if there are less than BVH_MAX_TRIANGLES_PER_LEAF triangles, return a leaf
-        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF || depth > maxDepth) {
+        // Base case: if there are less than BVH_MAX_CHILDREN_PER_NODE triangles, return a leaf
+        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) {
             // console.log("LEAF", triangles.length, depth, maxDepth);
-            return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
+            return new BVHLeaf(triangles, parentId, bounding, startingId, startingId + 1);
         }
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of triangle split
@@ -162,7 +192,7 @@ export class TriangleBVH extends BVH<Triangle> {
         // If no subdivision is happening, return flat tree to avoid infinite recursion and unnecessary 
         if (minCost === Infinity) {
             // console.warn("No spacial subdivision possible for", triangles.length, "triangles.");
-            return TriangleBVH.fillFlatTree(triangles, startingId);
+            return TriangleBVH.fillFlatTree(triangles, startingId, parentId);
         }
 
         const bounding0Max = new Vector(bounding.max);
@@ -174,9 +204,9 @@ export class TriangleBVH extends BVH<Triangle> {
         const bounding1 = { min: bounding1Min, max: bounding.max };
 
         // Sort triangles into bounding volumes
-        const trianglesOnCutoff = [];
         const trianglesInBound0 = [];
         const trianglesInBound1 = [];
+        // const trianglesOnCutoff = [];
 
         for (let triangle of triangles) {
             const in0 = TriangleBVH.isTriangleInBounding(triangle, bounding0);
@@ -194,25 +224,25 @@ export class TriangleBVH extends BVH<Triangle> {
         let nextId = startingId + 1;
         // Recursively subdivide bounding volumes if respective bounding volumes contain triangles
         if (trianglesInBound0.length > 0) {
-            const child = TriangleBVH.subdivideTree(trianglesInBound0, maxDepth, depth + 1, nextId);
+            const child = TriangleBVH.subdivideTree(trianglesInBound0, nextId, startingId);
             children.push(child);
             nextId = child.nextId;
         }
         /*
         if (trianglesOnCutoff.length > 0) {
-            const child = TriangleBVH.subdivideTree(trianglesOnCutoff, maxDepth, depth + 1, nextId);
+            const child = TriangleBVH.subdivideTree(trianglesOnCutoff, maxDepth, depth + 1, nextId, startingId);
             children.push(child);
             nextId = child.nextId;
         }
         */
 
         if (trianglesInBound1.length > 0) {
-            const child = TriangleBVH.subdivideTree(trianglesInBound1, maxDepth, depth + 1, nextId);
+            const child = TriangleBVH.subdivideTree(trianglesInBound1, nextId, startingId);
             children.push(child);
             nextId = child.nextId;
         }
 
-        return new BVHNode<Triangle>(children, bounding, startingId, nextId);
+        return new BVHNode<Triangle>(children, parentId, bounding, startingId, nextId);
     }
 
     static fromPrototypeArray(prototypeArray: Array<number>): TriangleBVH {
