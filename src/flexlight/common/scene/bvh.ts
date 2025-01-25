@@ -14,13 +14,17 @@ export class BVHLeaf<T extends Triangle | IndexedInstance> {
     children: Array<T>;
     bounding: Bounding;
     id: number;
+    parentId: number;
     nextId: number;
+    siblingId: number | undefined;
     
-    constructor(children: Array<T>, bounding: Bounding, id: number, nextId: number) {
+    constructor(children: Array<T>, parentId: number, bounding: Bounding, id: number, nextId: number, siblingId: number | undefined = undefined) {
         this.children = children;
+        this.parentId = parentId;
         this.bounding = bounding;
         this.id = id;
         this.nextId = nextId;
+        this.siblingId = siblingId ?? undefined;
     }
 
     *[Symbol.iterator]() {
@@ -34,13 +38,17 @@ export class BVHNode<T extends Triangle | IndexedInstance> {
     children: Array<BVHNode<T> | BVHLeaf<T>>;
     bounding: Bounding;
     id: number;
+    parentId: number;
     nextId: number;
+    siblingId: number | undefined;
 
-    constructor(children: Array<BVHNode<T> | BVHLeaf<T>>, bounding: Bounding, id: number, nextId: number) {
+    constructor(children: Array<BVHNode<T> | BVHLeaf<T>>, parentId: number, bounding: Bounding, id: number, nextId: number, siblingId: number | undefined = undefined) {
         this.children = children;
+        this.parentId = parentId;
         this.bounding = bounding;
         this.id = id;
         this.nextId = nextId;
+        this.siblingId = siblingId;
     }
 
     *[Symbol.iterator]() {
@@ -63,12 +71,27 @@ export class BVH<T extends Triangle | IndexedInstance> {
         this.root = root;
     }
 
-    dfsTraverse(node: BVHNode<T> | BVHLeaf<T>, callbackNode: (node: BVHNode<T>) => void, callbackLeaf: (leaf: BVHLeaf<T>) => void) {
-        if (node instanceof BVHLeaf) {
-            callbackLeaf(node);
-        } else if (node instanceof BVHNode) {
-            callbackNode(node);
-            for (let child of node.children) this.dfsTraverse(child, callbackNode, callbackLeaf);
+    dfsTraverseBinary(
+        callbackNode: (node: BVHNode<T>, sibling: BVHNode<T> | BVHLeaf<T> | undefined) => void,
+        callbackLeaf: (leaf: BVHLeaf<T>, sibling: BVHNode<T> | BVHLeaf<T> | undefined) => void,
+        root: BVHNode<T> | BVHLeaf<T>,
+        sibling: BVHNode<T> | BVHLeaf<T> | undefined = undefined
+    ) {
+        if (root instanceof BVHLeaf) {
+            callbackLeaf(root, sibling);
+        } else if (root instanceof BVHNode) {
+            callbackNode(root, sibling);
+            if (root.children[0]) this.dfsTraverseBinary(callbackNode, callbackLeaf, root.children[0], root.children[1]);
+            if (root.children[1]) this.dfsTraverseBinary(callbackNode, callbackLeaf, root.children[1], root.children[0]);
+        }
+    }
+
+    dfsTraverse(callbackNode: (node: BVHNode<T>) => void, callbackLeaf: (leaf: BVHLeaf<T>) => void, root: BVHNode<T> | BVHLeaf<T>) {
+        if (root instanceof BVHLeaf) {
+            callbackLeaf(root);
+        } else if (root instanceof BVHNode) {
+            callbackNode(root);
+            for (let child of root.children) this.dfsTraverse(callbackNode, callbackLeaf, child);
         }
     }
 
