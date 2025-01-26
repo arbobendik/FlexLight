@@ -57,39 +57,39 @@ export class Parser {
                         }
 
                         // Triangle 3 2 1
-                        triangles.push( ...quadVertices[3]!, ...quadVertices[2]!, ...quadVertices[1]);
+                        triangles.push( ...quadVertices[3]!, 0, ...quadVertices[2]!, 0, ...quadVertices[1], 0);
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 3 2 1
                         if (quadNormals[3] && quadNormals[2] && quadNormals[1]) {
-                            triangles.push( ...normalize(quadNormals[3]!), ...normalize(quadNormals[2]!), ...normalize(quadNormals[1]));
+                            triangles.push( ...normalize(quadNormals[3]!), 0, ...normalize(quadNormals[2]!), 0, ...normalize(quadNormals[1]), 0);
                         } else {
                             const normal = normalize(cross(vector_difference(quadVertices[1]!, quadVertices[3]!), vector_difference(quadVertices[1]!, quadVertices[2]!)));
-                            triangles.push( ...normal, ...normal, ...normal);
+                            triangles.push( ...normal, 0, ...normal, 0, ...normal, 0);
                         }
 
                         // Test if uvs are defined, otherwise use default uvs for triangle 3 2 1
                         if (quadUvs[3] && quadUvs[2] && quadUvs[1]) {
-                            triangles.push( ...quadUvs[3]!, ...quadUvs[2]!, ...quadUvs[1]);
+                            triangles.push( ...quadUvs[3]!, 0, 0, ...quadUvs[2]!, 0, 0, ...quadUvs[1], 0, 0);
                         } else {
-                            triangles.push(0,0, 0,1, 1,1);
+                            triangles.push(0,0,0,0, 0,1,0,0, 1,1,0,0);
                         }
 
                         // Triangle 1 0 3
-                        triangles.push( ...quadVertices[1]!, ...quadVertices[0]!, ...quadVertices[3]);
+                        triangles.push( ...quadVertices[1]!, 0, ...quadVertices[0]!, 0, ...quadVertices[3], 0);
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 1 0 3
                         if (quadNormals[1] && quadNormals[0] && quadNormals[3]){
-                            triangles.push( ...normalize(quadNormals[1]!), ...normalize(quadNormals[0]!), ...normalize(quadNormals[3]));
+                            triangles.push( ...normalize(quadNormals[1]!), 0, ...normalize(quadNormals[0]!), 0, ...normalize(quadNormals[3]), 0);
                         } else {
                             const normal = normalize(cross(vector_difference(quadVertices[3]!, quadVertices[1]!), vector_difference(quadVertices[3]!, quadVertices[0]!)));
-                            triangles.push( ...normal, ...normal, ...normal);
+                            triangles.push( ...normal, 0, ...normal, 0, ...normal, 0);
                         }
 
                         // Test if uvs are defined, otherwise use default uvs for triangle 1 0 3
                         if (quadUvs[1] && quadUvs[0] && quadUvs[3]) {
-                            triangles.push( ...quadUvs[1]!, ...quadUvs[0]!, ...quadUvs[3]);
+                            triangles.push( ...quadUvs[1]!, 0, 0, ...quadUvs[0]!, 0, 0, ...quadUvs[3], 0, 0);
                         } else {
-                            triangles.push(1,1, 1,0, 0,0);
+                            triangles.push(1,1,0,0, 1,0,0,0, 0,0,0,0);
                         }
                     } else if (data.length === 3 && data[0] && data[1] && data[2]) {
                         // Triangle case
@@ -103,21 +103,21 @@ export class Parser {
                         }
 
                         // Triangle 2 1 0
-                        triangles.push( ...triangleVertices[2]!, ...triangleVertices[1]!, ...triangleVertices[0]);
+                        triangles.push( ...triangleVertices[2]!, 0, ...triangleVertices[1]!, 0, ...triangleVertices[0], 0);
 
                         // Test if normals are defined, otherwise compute from vertices for triangle 2 1 0
                         if (triangleNormals[2] && triangleNormals[1] && triangleNormals[0]) {
-                            triangles.push( ...normalize(triangleNormals[2]!), ...normalize(triangleNormals[1]!), ...normalize(triangleNormals[0]));
+                            triangles.push( ...normalize(triangleNormals[2]!), 0, ...normalize(triangleNormals[1]!), 0, ...normalize(triangleNormals[0]), 0);
                         } else {
                             const normal = normalize(cross(vector_difference(triangleVertices[0]!, triangleVertices[2]!), vector_difference(triangleVertices[0]!, triangleVertices[1]!)));
-                            triangles.push( ...normal, ...normal, ...normal);
+                            triangles.push( ...normal, 0, ...normal, 0, ...normal, 0);
                         }
 
                         // Test if uvs are defined, otherwise use default uvs for triangle 2 1 0
                         if (triangleUvs[2] && triangleUvs[1] && triangleUvs[0]) {
-                            triangles.push( ...triangleUvs[2]!, ...triangleUvs[1]!, ...triangleUvs[0]);
+                            triangles.push( ...triangleUvs[2]!, 0, 0, ...triangleUvs[1]!, 0, 0, ...triangleUvs[0], 0, 0);
                         } else {
-                            triangles.push(0,0, 0,1, 1,1);
+                            triangles.push(0,0,0,0, 0,1,0,0, 1,1,0,0);
                         }
                     } else {
                         console.warn('Invalid face data:', data);

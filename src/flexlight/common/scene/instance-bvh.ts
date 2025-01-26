@@ -59,14 +59,14 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         this.dfsTraverse(
             (node: BVHNode<IndexedInstance>) => {
                 // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
-                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
-                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)), 0,
+                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)), 0);
                 bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
             },
             (leaf: BVHLeaf<IndexedInstance>) => {
                 // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
-                boundingVertices.push(  ...(leaf.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
-                                        ...(leaf.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+                boundingVertices.push(  ...(leaf.children[0]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(leaf.children[0]?.bounding.max ?? new Vector(0, 0, 0)), 0,
+                                        ...(leaf.children[1]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(leaf.children[1]?.bounding.max ?? new Vector(0, 0, 0)), 0);
                 bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1);
             },
             this.root
@@ -187,7 +187,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         const bounding1 = { min: bounding1Min, max: bounding.max };
 
         // Sort instances into bounding volumes
-        const instancesOnCutoff: Array<IndexedInstance> = [];
+        // const instancesOnCutoff: Array<IndexedInstance> = [];
         const instancesInBound0: Array<IndexedInstance> = [];
         const instancesInBound1: Array<IndexedInstance> = [];
 

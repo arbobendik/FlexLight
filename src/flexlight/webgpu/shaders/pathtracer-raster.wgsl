@@ -1,4 +1,4 @@
-const TRIANGLE_SIZE: u32 = 24u;
+const TRIANGLE_SIZE: u32 = 9u;
 
 const INSTANCE_UINT_SIZE: u32 = 9u;
 const INSTANCE_FLOAT_SIZE: u32 = 31u;
@@ -65,7 +65,7 @@ struct VertexOut {
 @group(2) @binding(3) var<storage, read> instance_float: array<f32>;
 
 
-fn access_triangle(index: u32) -> f32 {
+fn access_triangle(index: u32) -> vec4<f32> {
     // Divide triangle index by 2048 * 2048 to get layer
     let layer: u32 = index >> 22u;
     // Get height of triangle
@@ -73,7 +73,7 @@ fn access_triangle(index: u32) -> f32 {
     // Get width of triangle
     let width: u32 = index & 0x7FFu;
     // Return triangle
-    return textureLoad(triangles, vec2<u32>(width, height), layer, 0).x;
+    return textureLoad(triangles, vec2<u32>(width, height), layer, 0);
 }
 
 fn binary_search_instance(triangle_number: u32) -> u32 {
@@ -115,14 +115,9 @@ fn vertex(
     // Add 1 to have 0 as invalid index
     out.triangle_index = triangle_offset / TRIANGLE_SIZE;
 
-    let vertex_offset: u32 = triangle_offset + vertex_num * 3u;
+    let vertex_offset: u32 = triangle_offset + vertex_num;
 
-    let relative_position: vec3<f32> = vec3<f32>(
-        access_triangle(vertex_offset),
-        access_triangle(vertex_offset + 1u),
-        access_triangle(vertex_offset + 2u)
-    );
-    // Trasform position
+    let relative_position: vec3<f32> = access_triangle(vertex_offset).xyz;
     // Trasform position
     let transform: Transform = Transform (
         mat3x3<f32>(

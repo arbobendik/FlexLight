@@ -29,7 +29,7 @@ export class BufferToRGBA8Uint extends BufferToGPU {
         bufferManager.bindGPUBuffer(this);
 
         // Update gpuTextureSize
-        this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(bufferManager.length / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
+        this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(bufferManager.length / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
         // Create GPUBuffer
         this._gpuTexture = this.device.createTexture({
             // dimension: "3d",
@@ -60,7 +60,7 @@ export class BufferToRGBA8Uint extends BufferToGPU {
             // Destroy old GPUTexture
             this._gpuTexture.destroy();
             // Update gpuTextureSize
-            this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(this.bufferManager.length / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
+            this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(this.bufferManager.length / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
             // Rereate GPUTexture
             this._gpuTexture = this.device.createTexture({
                 // dimension: "3d",

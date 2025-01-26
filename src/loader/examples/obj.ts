@@ -50,7 +50,7 @@ scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
 
-scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+scene.ambientLight = new Vector(0.01, 0.01, 0.01);
 
 // Start render engine.
 engine.renderer.render();
@@ -87,10 +87,12 @@ const cube1 = scene.instance(cube);
 /*
 const monkey1 = scene.instance(monkey);
 */
+
 const sphere_metallic = scene.instance(sphere);
 const sphere_diffuse = scene.instance(sphere);
 const sphere_rough_metal = scene.instance(sphere);
 const sphere_rough_diffuse = scene.instance(sphere);
+
 /*
 */
 // const dragon2 = new Instance(dragon);
@@ -138,8 +140,8 @@ sphere_rough_metal.material.metallic = 0.5;
 sphere_rough_diffuse.material.roughness = 1.0;
 sphere_rough_diffuse.material.metallic = 0.0;
 
-/*
 
+/*
 for (let i = 0; i < 5; i++) {
 	for (let j = 0; j < 5; j++) {
 		let dragon_instance = scene.instance(dragon);
@@ -162,8 +164,12 @@ for (let i = 0; i < 5; i++) {
 }
 */
 
+
 let dragon_instance = scene.instance(dragon);
 dragon_instance.transform.position = new Vector(0, 0, -20);
+// dragon_instance.transform.scaleFactor = 0.02;
+dragon_instance.material.roughness = 0.5;
+dragon_instance.material.metallic = 1.0;
 
 
 // instance2.transform.position = new Vector(-30, 0, 0);
@@ -194,5 +200,5 @@ setInterval(() => {
 
 // Update Counter periodically.
 setInterval(() => {
-	fpsCounter.textContent = String(Math.round(engine.renderer.fps));
+	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
 }, 1000);
