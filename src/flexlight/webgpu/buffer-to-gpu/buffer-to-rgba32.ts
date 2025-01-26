@@ -10,7 +10,7 @@ export type TypedArrayR32Type = "float" | "uint" | "sint";
 const TEXTURE_SIZE_2D: Vector<2> = new Vector(2048, 2048);
 
 
-export class BufferToR32<T extends TypedArrayR32> extends BufferToGPU {
+export class BufferToRGBA32<T extends TypedArrayR32> extends BufferToGPU {
     protected bufferManager: BufferManager<T>;
     
     readonly BYTES_PER_ELEMENT: number = 4;
@@ -36,18 +36,18 @@ export class BufferToR32<T extends TypedArrayR32> extends BufferToGPU {
         bufferManager.bindGPUBuffer(this);
 
         // Update gpuTextureSize
-        this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(bufferManager.length / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
+        this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(bufferManager.length / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
         // Create GPUBuffer
         // console.log(label, "r32" + type);
         this._gpuTexture = this.device.createTexture({
             // dimension: "3d",
             size: this.gpuTextureSize,
-            format: ("r32" + type) as GPUTextureFormat,
+            format: ("rgba32" + type) as GPUTextureFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
             label: label
         });
 
-        const bytesPerRow = this.gpuTextureSize.x * this.BYTES_PER_ELEMENT;
+        const bytesPerRow = 4 * this.gpuTextureSize.x * this.BYTES_PER_ELEMENT;
         const bytesPerLayer = bytesPerRow * this.gpuTextureSize.y;
         const arrayBuffer = new ArrayBuffer(bytesPerLayer * this.gpuTextureSize.z);
         const fullView = new this.bufferManager.viewConstructor(arrayBuffer, 0, arrayBuffer.byteLength / this.BYTES_PER_ELEMENT);
@@ -64,23 +64,23 @@ export class BufferToR32<T extends TypedArrayR32> extends BufferToGPU {
     // Reconstruct GPUBuffer from BufferManager, necessary if BufferManager is resized
     reconstruct = () => {
         // Only reconstruct if gpuTexture needs to be recreated
-        if (this.gpuTextureSize.x * this.gpuTextureSize.y * this.gpuTextureSize.z <= this.bufferManager.length) {
+        if (4 * this.gpuTextureSize.x * this.gpuTextureSize.y * this.gpuTextureSize.z <= this.bufferManager.length) {
             // Destroy old GPUTexture
             this._gpuTexture.destroy();
             // Update gpuTextureSize
-            this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(this.bufferManager.length / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
+            this.gpuTextureSize = new Vector(TEXTURE_SIZE_2D.x, TEXTURE_SIZE_2D.y, Math.max(1, Math.ceil(this.bufferManager.length / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y))));
             // Rereate GPUTexture
             this._gpuTexture = this.device.createTexture({
                 // dimension: "3d",
                 size: this.gpuTextureSize,
-                format: ("r32" + this.type) as GPUTextureFormat,
+                format: ("rgba32" + this.type) as GPUTextureFormat,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
                 label: this.label
             });
 
         }
 
-        const bytesPerRow = this.gpuTextureSize.x * this.BYTES_PER_ELEMENT;
+        const bytesPerRow = 4 * this.gpuTextureSize.x * this.BYTES_PER_ELEMENT;
         const bytesPerLayer = bytesPerRow * this.gpuTextureSize.y;
         const arrayBuffer = new ArrayBuffer(bytesPerLayer * this.gpuTextureSize.z);
         const fullView = new this.bufferManager.viewConstructor(arrayBuffer, 0, arrayBuffer.byteLength / this.BYTES_PER_ELEMENT);
@@ -97,9 +97,9 @@ export class BufferToR32<T extends TypedArrayR32> extends BufferToGPU {
     // Update GPUBuffer partially or fully from BufferManager if data has changed
     update = (byteOffset: number = 0, length: number = this.bufferManager.length) => {
 
-        const firstAffectedLayer = Math.floor(byteOffset / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT));
-        const firstAffectedLayerByteOffset = firstAffectedLayer * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT;
-        const lastAffectedLayer = Math.floor((byteOffset + length) / (TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT));
+        const firstAffectedLayer = Math.floor(byteOffset / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT));
+        const firstAffectedLayerByteOffset = firstAffectedLayer * 4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT;
+        const lastAffectedLayer = Math.floor((byteOffset + length) / (4 * TEXTURE_SIZE_2D.x * TEXTURE_SIZE_2D.y * this.BYTES_PER_ELEMENT));
         const layerLength = lastAffectedLayer - firstAffectedLayer + 1;
         // Copy data from buffer manager to GPUBuffer
         this.device.queue.writeTexture(
