@@ -8,7 +8,7 @@ import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
 
-export const TRIANGLE_LENGTH = 9 + 9 + 6;
+export const TRIANGLE_LENGTH = (3 + 3 + 3) * 4;
 
 export class Prototype {
     // Buffer managers

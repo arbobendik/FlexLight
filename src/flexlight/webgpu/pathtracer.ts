@@ -7,7 +7,7 @@ import { Camera } from "../common/scene/camera.js";
 import { Config } from "../common/config.js";
 import { Prototype } from "../common/scene/prototype.js";
 import { BufferToGPUBuffer } from "./buffer-to-gpu/buffer-to-gpubuffer.js";
-import { BufferToR32 } from "./buffer-to-gpu/buffer-to-r32.js";
+import { BufferToRGBA32 } from "./buffer-to-gpu/buffer-to-rgba32.js";
 import { BufferToRGBA8Uint } from "./buffer-to-gpu/buffer-to-rgba8uint.js";
 import { Texture } from "../common/scene/texture.js";
 // import { AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../common/scene/texture.js";
@@ -81,9 +81,9 @@ interface PathTracerBindGroupLayouts {
 
 interface PathTracerGPUBufferManagers {
   // Pototype GPU Buffer Managers
-  triangleGPUManager: BufferToR32<Float32Array>;
-  BVHGPUManager: BufferToR32<Uint32Array>;
-  boundingVertexGPUManager: BufferToR32<Float32Array>;
+  triangleGPUManager: BufferToRGBA32<Float32Array>;
+  BVHGPUManager: BufferToRGBA32<Uint32Array>;
+  boundingVertexGPUManager: BufferToRGBA32<Float32Array>;
   // Light GPU Managers
   pointLightGPUManager: BufferToGPUBuffer<Float32Array>;
   // Texture GPU Managers
@@ -359,9 +359,9 @@ export class PathTracerWGPU extends RendererWGPU {
     // Link GPUBufferManagers to BufferManagers
     const gpuManagers: PathTracerGPUBufferManagers = {
       // Prototype GPU Managers
-      triangleGPUManager: new BufferToR32<Float32Array>(Prototype.triangleManager, device, "float", "triangle buffer"),
-      BVHGPUManager: new BufferToR32<Uint32Array>(Prototype.BVHManager, device, "uint", "bvh buffer"),
-      boundingVertexGPUManager: new BufferToR32<Float32Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
+      triangleGPUManager: new BufferToRGBA32<Float32Array>(Prototype.triangleManager, device, "float", "triangle buffer"),
+      BVHGPUManager: new BufferToRGBA32<Uint32Array>(Prototype.BVHManager, device, "uint", "bvh buffer"),
+      boundingVertexGPUManager: new BufferToRGBA32<Float32Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
       // Texture GPU Managers
       textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
       textureDataGPUManager: new BufferToRGBA8Uint(Texture.textureDataBufferManager, device, "texture data buffer"),
@@ -692,6 +692,7 @@ export class PathTracerWGPU extends RendererWGPU {
     depthEncoder.draw(3, totalTriangleCount);
     // End the render pass
     depthEncoder.end();
+
     
     // All rendering commands happen in a render pass
     let renderEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
@@ -705,6 +706,7 @@ export class PathTracerWGPU extends RendererWGPU {
     renderEncoder.draw(3, totalTriangleCount);
     // End the render pass
     renderEncoder.end();
+    
     
     
     // Run compute shader
@@ -764,8 +766,10 @@ export class PathTracerWGPU extends RendererWGPU {
     // End compute pass
     canvasEncoder.end();
     
+    
     // Finish recording commands, which creates a command buffer.
     let commandBuffer = commandEncoder.finish();
     device.queue.submit([commandBuffer]);
+
   }
 }
