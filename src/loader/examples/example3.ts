@@ -42,9 +42,9 @@ let scene: Scene = engine.scene;
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
-let light1 = new PointLight(new Vector(100, 100, 100), new Vector(1, 0, 0), 20000, 0);
-let light2 = new PointLight(new Vector(-100, 100, -100), new Vector(0, 1, 1), 50000, 0);
-let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(0, 0, 1), 50000, 0);
+let light1 = new PointLight(new Vector(100, 100, 100), new Vector(1, 0, 0), 20000, 15);
+let light2 = new PointLight(new Vector(-100, 100, -100), new Vector(0, 1, 1), 50000, 10);
+let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 50000, 5);
 
 scene.addPointLight(light1);
 scene.addPointLight(light2);
@@ -124,11 +124,15 @@ bike1.transform.scaleFactor = 2;
 
 //sphere1.transform.position = new Vector(10, 0, 0);
 sphere_metallic.transform.position = new Vector(10, 0, 0);
-sphere_diffuse.transform.position = new Vector(13, 0, 0);
-sphere_rough_metal.transform.position = new Vector(16, 0, 0);
-sphere_rough_diffuse.transform.position = new Vector(19, 0, 0);
+sphere_metallic.transform.scaleFactor = 2;
+sphere_diffuse.transform.position = new Vector(15, 0, 0);
+sphere_diffuse.transform.scaleFactor = 2;
+sphere_rough_metal.transform.position = new Vector(20, 0, 0);
+sphere_rough_metal.transform.scaleFactor = 2;
+sphere_rough_diffuse.transform.position = new Vector(25, 0, 0);
+sphere_rough_diffuse.transform.scaleFactor = 2;
 
-sphere_metallic.material.roughness = 0.1;
+sphere_metallic.material.roughness = 0.05;
 sphere_metallic.material.metallic = 1.0;
 
 sphere_diffuse.material.roughness = 0.5;
@@ -171,5 +175,5 @@ setInterval(() => {
 
 // Update Counter periodically.
 setInterval(() => {
-	fpsCounter.textContent = String(Math.round(engine.renderer.fps));
+	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
 }, 1000);
