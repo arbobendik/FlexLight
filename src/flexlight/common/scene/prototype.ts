@@ -8,7 +8,7 @@ import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
 import { ObjectPrototype } from "./obj-parser";
-import { Float16Array } from "../buffer/float-16-array";
+// import { Float16Array } from "../buffer/float-16-array";
 
 export const TRIANGLE_SIZE = 24;
 
