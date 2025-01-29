@@ -30,9 +30,9 @@ let scene = engine.scene;
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(110, 100, 110), new Vector(1, 0, 0), 20000, 0);
-let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 1), 50000, 0);
-let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 50000, 0);
+let light1 = new PointLight(new Vector(110, 100, 110), new Vector(1, 0, 0), 20000, 10);
+let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 1), 50000, 10);
+let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 50000, 10);
 scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
@@ -55,7 +55,7 @@ const loadObj = async (model) => {
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
 let cube = await loadObj('cube');
-let dragon = await loadObj('dragon_lp');
+let dragon = await loadObj('robot');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
 // let bike = await loadObj('bike');
@@ -128,8 +128,8 @@ for (let i = 0; i < 5; i++) {
 }
 */
 let dragon_instance = scene.instance(dragon);
-dragon_instance.transform.position = new Vector(0, 0, -20);
-// dragon_instance.transform.scaleFactor = 0.02;
+dragon_instance.transform.position = new Vector(0, -2, -20);
+dragon_instance.transform.scaleFactor = 0.02;
 dragon_instance.material.roughness = 0.5;
 dragon_instance.material.metallic = 1.0;
 // instance2.transform.position = new Vector(-30, 0, 0);

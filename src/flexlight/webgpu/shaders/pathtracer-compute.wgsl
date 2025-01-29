@@ -862,8 +862,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), random_spheare_vec, roughness_brdf));
         }
         
+        let offset_ray = Ray(ray.origin + geometry_offset * smooth_n, ray.unit_direction);
         // Calculate next intersection
-        hit = traverseInstanceBVH(ray);
+        hit = traverseInstanceBVH(offset_ray);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.instance_index == UINT_MAX) {
             break;
