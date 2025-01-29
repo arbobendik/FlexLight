@@ -2,7 +2,7 @@
 
 import { BufferManager } from "../buffer/buffer-manager";
 import { TypedArrayView } from "../buffer/typed-array-view";
-import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix } from "../lib/math";
+import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale } from "../lib/math";
 
 
 
@@ -26,14 +26,16 @@ export class Transform {
     const inverse: Matrix<3, 3> = moore_penrose(matrix);
     // Set transform array
     this.transformArray.set(matrix[0]!, 0);
-    this.transformArray.set(matrix[1]!, 3);
-    this.transformArray.set(matrix[2]!, 6);
+    this.transformArray.set(matrix[1]!, 4);
+    this.transformArray.set(matrix[2]!, 8);
     // Set inverse rotation matrix
-    this.transformArray.set(inverse[0]!, 9);
-    this.transformArray.set(inverse[1]!, 12);
-    this.transformArray.set(inverse[2]!, 15);
+    this.transformArray.set(inverse[0]!, 16);
+    this.transformArray.set(inverse[1]!, 20);
+    this.transformArray.set(inverse[2]!, 24);
     // Update gpu buffer if it exists
-    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset, 18);
+    // For matrix and inverse matrix
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset, 12);
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 16 * this.transformArray.BYTES_PER_ELEMENT, 12);
   }
   
   set rotationMatrix(matrix: Matrix<3, 3>) {
@@ -52,17 +54,21 @@ export class Transform {
 
   set position(position: Vector<3> ) {
     this._position = position;
-    this.transformArray.set(this._position, 18);
+    this.transformArray.set(this._position, 12);
+    this.transformArray.set(vector_scale(this._position, - 1), 28);
     // console.log("TRANSFORM ARRAY", Array.from(... this.transformArray));
-    // Update gpu buffer if it exists
-    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 18 * this.transformArray.BYTES_PER_ELEMENT, 3);
+    // Update gpu buffer if it exists for position and negative position
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 12 * this.transformArray.BYTES_PER_ELEMENT, 4);
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 28 * this.transformArray.BYTES_PER_ELEMENT, 4);
   }
 
   move (x: number, y: number, z: number): void {
     this._position = new Vector(x, y, z);
-    this.transformArray.set(this._position, 18);
-    // Update gpu buffer if it exists
-    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 18 * this.transformArray.BYTES_PER_ELEMENT, 3);
+    this.transformArray.set(this._position, 12);
+    this.transformArray.set(vector_scale(this._position, - 1), 28);
+    // Update gpu buffer if it exists for position and negative position
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 12 * this.transformArray.BYTES_PER_ELEMENT, 4);
+    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset + 28 * this.transformArray.BYTES_PER_ELEMENT, 4);
   }
 
   get position(): Vector<3> {
@@ -109,19 +115,20 @@ export class Transform {
     // Assign next larger available number.
     this.transformArray = this._instanceFloatManager.allocateArray([
       // rotation matrix
-      1, 0, 0,
-      0, 1, 0,
-      0, 0, 1,
-      // inverse rotation matrix
-      1, 0, 0,
-      0, 1, 0,
-      0, 0, 1,
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
       // position
-      0, 0, 0,
+      0, 0, 0, 0,
+      // inverse rotation matrix
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      // negative position
+      0, 0, 0, 0
     ]);
-    // console.log("NEW TRANSFORM", this.transformArray);
     // Update gpu buffer if it exists
-    this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset, 21);
+    // this._instanceFloatManager.gpuBufferManager?.update(this.transformArray.byteOffset, 32);
   }
   
   destroy (): void {

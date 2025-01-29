@@ -6,10 +6,7 @@ import { BufferManager } from "../buffer/buffer-manager.js";
 import { Instance } from "./instance.js";
 import { PointLight } from "./point-light.js";
 import { POW32M1, Vector } from "../lib/math.js";
-import { Prototype } from "./prototype.js";
-
-// 36 (3 vertices per triangle * 4, 3 normals per triangle * 4, 3 UVs per triangle * 4)
-const TRIANGLE_SIZE = 36;
+import { Prototype, TRIANGLE_SIZE } from "./prototype.js";
 
 export class Scene {
     // Triangle Offset, Vertex Offset, BVH Offset, Bounding Vertex Offset, Normal Offset, UV Offset, Transform Offset, Material Offset,
@@ -17,9 +14,12 @@ export class Scene {
     // Global Triangle Offset
     private _instanceUintManager: BufferManager<Uint32Array>;
     get instanceUintManager () { return this._instanceUintManager; }
-    // Transform, Material
-    private _instanceFloatManager: BufferManager<Float32Array>;
-    get instanceFloatManager () { return this._instanceFloatManager; }
+    // Transform: Rotation, Shift
+    private _instanceTransformManager: BufferManager<Float32Array>;
+    get instanceTransformManager () { return this._instanceTransformManager; }
+    // Material: Albedo, Roughness, Metallic, Emissive, Translucency, IOR
+    private _instanceMaterialManager: BufferManager<Float32Array>;
+    get instanceMaterialManager () { return this._instanceMaterialManager; }
     // BVH structure: 0|1 BV BV B|I B|I B|I B|I
     private _instanceBVHManager: BufferManager<Uint32Array>;
     get instanceBVHManager () { return this._instanceBVHManager; }
@@ -44,7 +44,8 @@ export class Scene {
     constructor(instances: Array<Instance> = []) {
         for (const instance of instances) this.instances.add(instance);
         this._instanceUintManager = new BufferManager(Uint32Array);
-        this._instanceFloatManager = new BufferManager(Float32Array);
+        this._instanceTransformManager = new BufferManager(Float32Array);
+        this._instanceMaterialManager = new BufferManager(Float32Array);
         this._instanceBVHManager = new BufferManager(Uint32Array);
         this._instanceBoundingVertexManager = new BufferManager(Float32Array);
         this._pointLightManager = new BufferManager(Float32Array);

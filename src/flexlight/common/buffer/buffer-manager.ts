@@ -65,17 +65,17 @@ export class BufferManager<T extends TypedArray> {
         const newBufferLength = arrayByteOffset + arrayByteLength;
         // Resize buffer
         this.resizeBuffer(newBufferLength);
-        // Get buffer view
-        const bufferView = this.bufferView;
+        // Get typed array view
+        const bufferView = this.bufferView;//TypedArrayView<T>(this._buffer, arrayByteOffset, arrayByteLength / BYTES_PER_ELEMENT, this._viewConstructor);
         // Insert array into buffer
         if (array instanceof this._viewConstructor) {
             // Insert array into buffer by copying
             bufferView.set(array, arrayByteOffset / BYTES_PER_ELEMENT);
         } else if (array instanceof Array) {
-            // Insert array into buffer iteratively
-            let i: number = arrayByteOffset / BYTES_PER_ELEMENT;
-            // console.log(i);
-            for (let value of array) bufferView[i++] = value;
+            // Insert array into buffer by creating new typed array view
+            let tempView = new this._viewConstructor(array);
+            // Copy temp view to buffer view
+            bufferView.set(tempView, arrayByteOffset / BYTES_PER_ELEMENT);
         } else {
             throw new Error("BufferManager.allocateArray(): Argument is neither a view nor an array");
         }

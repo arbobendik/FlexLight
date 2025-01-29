@@ -5,6 +5,7 @@ import { Scene } from "../common/scene/scene";
 import { Camera } from "../common/scene/camera";
 import { Config } from "../common/config";
 import { Vector } from "../common/lib/math";
+import { WebIO } from "../common/io";
 
 
 export interface WebGPUReferences {

@@ -15,7 +15,7 @@ const translationMap: Map<string, Vector<3>> = new Map([
 ]);
 
 // Generate a new io object
-export class WebIo {
+export class WebIO {
 	private isListening: boolean = false;
 	// time stamp to measure time since last frame in milliseconds
 	private lastTimeMillis: number = 0;
@@ -42,7 +42,7 @@ export class WebIo {
 		this.registerKey("ShiftLeft", "down");
 		this.camera = camera;
 		this.setupForCanvas(canvas);
-		requestAnimationFrame(this.frame);
+		this.frame();
 	}
 
 	private registerKey = (key: string, value: string) => {
@@ -50,22 +50,29 @@ export class WebIo {
 		this.pressedKeys.set(key, false);
 	}
 
-	private frame = () => {
-		this.updatePosition(performance.now());
-		requestAnimationFrame(this.frame);
+	frame = () => {
+		requestAnimationFrame(() => {
+			this.updatePosition();
+			this.frame();
+		});
 	}
 
-	private updatePosition = (time: number) => {
+	private updatePosition = () => {
+		// If not listening, do nothing
 		if (!this.isListening) return;
+		// Get time
+		const time: number = performance.now();
+		// Calculate time difference
+		const difference = (time - this.lastTimeMillis) * this.movementSpeed;
+		// Update last time stamp
+		this.lastTimeMillis = time;
+		// Update position
 		const position: Vector<3> = this.camera.position;
 		const direction: Vector<2> = this.camera.direction;
-		const difference = (time - this.lastTimeMillis) * this.movementSpeed;
 		position.x += difference * (this.movement.x * Math.cos(direction.x) - this.movement.z * Math.sin(direction.x));
 		position.y += difference * this.movement.y;
 		position.z += difference * (this.movement.z * Math.cos(direction.x) + this.movement.x * Math.sin(direction.x));
 		// console.log(this.movement.x, this.movement.y, this.movement.z);
-		// Update last time stamp
-		this.lastTimeMillis = time;
 	}
 
 	// Reset all pressed keys
@@ -97,7 +104,7 @@ export class WebIo {
 			// If key is already pressed, do nothing
 			if (this.pressedKeys.get(event.code)) return;
 			// Update position
-			this.updatePosition(event.timeStamp);
+			this.updatePosition();
 			// Set key pressed state
 			this.pressedKeys.set(event.code, true);
 			// Update movement vector
@@ -108,7 +115,7 @@ export class WebIo {
 			// If key is not pressed, do nothing
 			if (!this.pressedKeys.get(event.code)) return;
 			// Update position
-			this.updatePosition(event.timeStamp);
+			this.updatePosition();
 			// Set key pressed state
 			this.pressedKeys.set(event.code, false);
 			// Update movement vector
