@@ -42,13 +42,16 @@ let scene: Scene = engine.scene;
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
+// for (let i = 0; i < 10; i++) {
 let light1 = new PointLight(new Vector(110, 100, 110), new Vector(1, 0, 0), 20000, 0);
 let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 1), 50000, 0);
 let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 50000, 0);
 
+
 scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
+// }
 
 scene.ambientLight = new Vector(0.01, 0.01, 0.01);
 
@@ -68,7 +71,7 @@ const loadObj = async (model: string) => {
 	console.log('loading ' + model);
 	const objPath = staticPath + 'objects/' + model + '.obj';
 	// const mtlPath = staticPath + 'objects/' + model + '.mtl';
-	const prototype = await Prototype.fromObj(objPath);
+	const prototype = await Prototype.fromObjStatic(objPath);
 	console.log("Loaded prototype", prototype);
 	return prototype;
 }

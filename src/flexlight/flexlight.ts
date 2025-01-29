@@ -11,7 +11,7 @@ import { ApiType, RendererType } from "./common/renderer.js";
 import { PathTracerWGPU } from "./webgpu/pathtracer.js";
 // import { RasterizerWGL2 } from "./webgl2/rasterizer.js";
 // import { RasterizerWGPU } from "./webgpu/rasterizer.js";
-import { IoType, WebIo } from "./common/io.js";
+import { IoType, WebIO } from "./common/io.js";
 import { UI } from "./common/ui.js";
 
 export class FlexLight {
@@ -24,7 +24,7 @@ export class FlexLight {
   private _renderer: Renderer;
 
   private _ui: UI;
-  private _io: WebIo;
+  private _io: WebIO;
 
   constructor (canvas: HTMLCanvasElement) {
     this._api = "webgpu";
@@ -32,8 +32,8 @@ export class FlexLight {
     this._camera = new Camera();
     this._config = new Config();
     this._scene = new Scene();
+    this._io = new WebIO(canvas, this._camera);
     this._renderer = new PathTracerWGPU(canvas, this._scene, this._camera, this._config);
-    this._io = new WebIo(canvas, this._camera);
     this._ui = new UI(this._scene, this._camera);
   }
 
@@ -44,7 +44,7 @@ export class FlexLight {
   get scene (): Scene { return this._scene; }
   get renderer (): Renderer { return this._renderer; }
   get rendererType (): RendererType { return this._renderer.type; }
-  get io (): WebIo { return this._io; }
+  get io (): WebIO { return this._io; }
 
 
   private recreateRenderer(rendererType: RendererType): void {
@@ -73,7 +73,7 @@ export class FlexLight {
   private recreateIo(io: IoType): void {
     switch (io) {
       case "web":
-        this._io = new WebIo(this._canvas, this._camera);
+        this._io = new WebIO(this._canvas, this._camera);
         break;
       default:
         throw new Error("Io option" + io + "doesn't exist.");
@@ -170,7 +170,7 @@ export {
 
   Transform,
   Prototype, Material, Instance, PointLight,
-  Scene, Camera, Config, UI, WebIo,
+  Scene, Camera, Config, UI, WebIO,
   // Renderer
   Renderer, RendererWGPU, PathTracerWGPU,
 }

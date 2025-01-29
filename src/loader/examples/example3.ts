@@ -68,7 +68,7 @@ const loadObj = async (model: string) => {
 	console.log('loading ' + model);
 	const objPath = staticPath + 'objects/' + model + '.obj';
 	// const mtlPath = staticPath + 'objects/' + model + '.mtl';
-	const prototype = await Prototype.fromObj(objPath);
+	const prototype = await Prototype.fromObjStatic(objPath);
 	console.log("Loaded prototype", prototype);
 	return prototype;
 }
