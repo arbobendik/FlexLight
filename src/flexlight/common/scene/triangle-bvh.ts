@@ -2,7 +2,7 @@
 
 import { BVH, BVHLeaf, BVHNode, Bounding, BVHArrays } from "./bvh";
 import { POW32M1, Vector, vector_add, vector_scale } from "../lib/math";
-import { TRIANGLE_LENGTH } from "./prototype";
+import { TRIANGLE_SIZE } from "./prototype";
 
 
 export const BVH_MAX_TRIANGLES_PER_LEAF = 2;
@@ -33,7 +33,6 @@ export class Triangle {
 export class TriangleBVH extends BVH<Triangle> {
     constructor(triangles: Array<Triangle>) {
         const root = TriangleBVH.subdivideTree(triangles, 0, POW32M1);
-        console.log(root);
         super(root);
     }
 
@@ -66,21 +65,17 @@ export class TriangleBVH extends BVH<Triangle> {
         
         this.dfsTraverse(
             (node: BVHNode<Triangle>) => {
-                // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
-                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)), 0,
-                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), 0, ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)), 0,
+                boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
+                                        ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)),
                                         ... new Vector({ vector_length: 8 }));
-                
-                // boundingVertices.push(  ...(sibling?.bounding.min ?? new Vector(0, 0, 0)), ...(sibling?.bounding.max ?? new Vector(0, 0, 0)));
-                
-                bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1, 0);
+                bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1, POW32M1);
             },
             (leaf: BVHLeaf<Triangle>) => {
-                // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
-                boundingVertices.push(  ...(leaf.children[0]?.a ?? new Vector(0, 0, 0)), 0, ...(leaf.children[0]?.b ?? new Vector(0, 0, 0)), 0, ...(leaf.children[0]?.c ?? new Vector(0, 0, 0)), 0,
-                                        ...(leaf.children[1]?.a ?? new Vector(0, 0, 0)), 0, ...(leaf.children[1]?.b ?? new Vector(0, 0, 0)), 0, ...(leaf.children[1]?.c ?? new Vector(0, 0, 0)), 0);
+                boundingVertices.push(  ...(leaf.children[0]?.a ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.b ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.c ?? new Vector(0, 0, 0)),
+                                        ...(leaf.children[1]?.a ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.b ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.c ?? new Vector(0, 0, 0)),
+                                        ... new Vector({ vector_length: 2 }));
 
-                bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1, 0);
+                bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1, POW32M1);
             },
             this.root
         );
@@ -248,7 +243,7 @@ export class TriangleBVH extends BVH<Triangle> {
     static fromPrototypeArray(prototypeArray: Array<number>): TriangleBVH {
         let triangles: Array<Triangle> = [];
         // Iterate over triangles in format V V V N N N UV UV UV
-        for (let i = 0; i < prototypeArray.length; i += TRIANGLE_LENGTH) {
+        for (let i = 0; i < prototypeArray.length; i += TRIANGLE_SIZE) {
             /*
             console.log(prototypeArray[i], prototypeArray[i + 1], prototypeArray[i + 2], prototypeArray[i + 3]);
             console.log(prototypeArray[i + 4], prototypeArray[i + 5], prototypeArray[i + 6], prototypeArray[i + 7]);
@@ -261,19 +256,23 @@ export class TriangleBVH extends BVH<Triangle> {
                     prototypeArray[i + 2]!
                 ),
                 new Vector(
+                    prototypeArray[i + 3]!,
                     prototypeArray[i + 4]!,
-                    prototypeArray[i + 5]!,
-                    prototypeArray[i + 6]!
+                    prototypeArray[i + 5]!
                 ),
                 new Vector(
-                    prototypeArray[i + 8]!,
-                    prototypeArray[i + 9]!,
-                    prototypeArray[i + 10]!
+                    prototypeArray[i + 6]!,
+                    prototypeArray[i + 7]!,
+                    prototypeArray[i + 8]!
                 ),
-                i / TRIANGLE_LENGTH
+                i / TRIANGLE_SIZE
             ));
         }
         // Subdivide tree
         return new TriangleBVH(triangles);
+    }
+
+    destroy() {
+        this.root.destroy();
     }
 }
