@@ -1,7 +1,6 @@
-const TRIANGLE_SIZE: u32 = 9u;
+const TRIANGLE_SIZE: u32 = 6u;
 
 const INSTANCE_UINT_SIZE: u32 = 9u;
-const INSTANCE_FLOAT_SIZE: u32 = 31u;
 
 const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
@@ -58,7 +57,7 @@ struct VertexOut {
 @group(2) @binding(0) var<uniform> uniform_float: UniformFloat;
 @group(2) @binding(1) var<uniform> uniform_uint: UniformUint;
 @group(2) @binding(2) var<storage, read> instance_uint: array<u32>;
-@group(2) @binding(3) var<storage, read> instance_float: array<f32>;
+@group(2) @binding(3) var<storage, read> instance_transform: array<Transform>;
 
 
 fn access_triangle(index: u32) -> vec4<f32> {
@@ -100,44 +99,30 @@ fn vertex(
 
     let instance_index: u32 = binary_search_instance(triangle_index);
     let instance_uint_offset: u32 = instance_index * INSTANCE_UINT_SIZE;
-    let instance_float_offset: u32 = instance_index * INSTANCE_FLOAT_SIZE;
 
     let triangle_instance_offset: u32 = instance_uint[instance_uint_offset];
     let triangle_index_offset: u32 = instance_uint[instance_uint_offset + 8u];
     let triangle_offset: u32 = triangle_instance_offset + (triangle_index - triangle_index_offset) * TRIANGLE_SIZE;
-    let vertex_offset: u32 = triangle_offset + vertex_num;
 
-    let relative_position: vec3<f32> = access_triangle(vertex_offset).xyz;
-    // Trasform position
-    let transform: Transform = Transform (
-        mat3x3<f32>(
-            instance_float[instance_float_offset     ], instance_float[instance_float_offset + 1u], instance_float[instance_float_offset + 2u],
-            instance_float[instance_float_offset + 3u], instance_float[instance_float_offset + 4u], instance_float[instance_float_offset + 5u],
-            instance_float[instance_float_offset + 6u], instance_float[instance_float_offset + 7u], instance_float[instance_float_offset + 8u],
-        ),
-        vec3<f32>(instance_float[instance_float_offset + 18u], instance_float[instance_float_offset + 19u], instance_float[instance_float_offset + 20u])
-    );
-
-    out.absolute_position = transform.rotation * relative_position + transform.shift;
+    var relative_position: vec3<f32>;
     // Set uv to vertex uv and let the vertex interpolation generate the values in between
     switch (vertex_num) {
         case 0u: {
-            // out.absolute_position = vec3<f32>(0.0f, 1.0f, 1.0f);
+            relative_position = access_triangle(triangle_offset).xyz;
             out.uv = vec2<f32>(1.0f, 0.0f);
         }
         case 1u: {
-            // out.absolute_position = vec3<f32>(1.0f, 0.0f, 1.0f);
+            relative_position = vec3<f32>(access_triangle(triangle_offset).w, access_triangle(triangle_offset + 1u).xy);
             out.uv = vec2<f32>(0.0f, 1.0f);
         }
-        case 2u: {
-            // out.absolute_position = vec3<f32>(0.0f, 0.0f, 1.0f);
-            out.uv = vec2<f32>(0.0f, 0.0f);
-        }
         default: {
-            // out.absolute_position = vec3<f32>(0.0f, 0.0f, 1.0f);
+            relative_position = vec3<f32>(access_triangle(triangle_offset + 1u).zw, access_triangle(triangle_offset + 2u).x);
             out.uv = vec2<f32>(0.0f, 0.0f);
         }
     }
+    // Trasform position
+    let transform: Transform = instance_transform[instance_index * 2u];
+    out.absolute_position = transform.rotation * relative_position + transform.shift;
 
     out.clip_space = uniform_float.view_matrix_jitter * (out.absolute_position - uniform_float.camera_position);
     // Set triangle position in clip space

@@ -1,13 +1,24 @@
 "use strict";
 
-export type TypedArray = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
+import { Float16Array } from "./float-16-array";
+export type TypedArray = Uint8Array | Uint16Array | Float16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
 
 
 const TypedArray = Object.getPrototypeOf(Uint8Array);
 
-export interface Constructor<T extends TypedArray> {
-    new (buffer: ArrayBuffer, byteOffset: number, length: number): T;
+export interface ConstructorByBuffer<T extends TypedArray> {
+    new (buffer: ArrayBuffer, byteOffset?: number, length?: number): T;
 }
+
+export interface ConstructorByArray<T extends TypedArray> {
+    new (array: Array<number> | T): T;
+}
+
+export interface ConstructorByNumber<T extends TypedArray> {
+    new (length: number): T;
+}
+
+export type Constructor<T extends TypedArray> = ConstructorByBuffer<T> & ConstructorByArray<T> & ConstructorByNumber<T>;
 
 const TypeScriptAssign = <O extends Object, K extends keyof O> (obj: O, key: K, val: O[K]) => obj[key] = val;
 
@@ -21,6 +32,7 @@ const functionWrapper = <
 type StringTag<T extends TypedArray> = 
     T extends Uint8Array ? "Uint8Array" :
     T extends Uint16Array ? "Uint16Array" :
+    T extends Float16Array ? "Float16Array" :
     T extends Uint32Array ? "Uint32Array" :
     T extends Int8Array ? "Int8Array" :
     T extends Int16Array ? "Int16Array" :
@@ -232,4 +244,3 @@ export function TypedArrayView<T extends TypedArray>(buffer: ArrayBuffer, byteOf
     return new Proxy(target, new Handler<T>(target));
 }
 // export const Float32ArrayView = (buffer: ArrayBuffer, byteOffset: number, length: number) =>  TypedArrayView<Float32Array>(buffer, byteOffset, length, Float32Array);
-

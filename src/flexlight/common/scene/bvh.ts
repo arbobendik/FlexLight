@@ -27,6 +27,12 @@ export class BVHLeaf<T extends Triangle | IndexedInstance> {
         this.siblingId = siblingId ?? undefined;
     }
 
+
+    destroy() {
+        // Dereference children
+        this.children = [];
+    }
+
     *[Symbol.iterator]() {
         for (let child of this.children) {
             yield child;
@@ -49,6 +55,12 @@ export class BVHNode<T extends Triangle | IndexedInstance> {
         this.id = id;
         this.nextId = nextId;
         this.siblingId = siblingId;
+    }
+
+    destroy() {
+        // Dereference children
+        for (let child of this.children) child.destroy();
+        this.children = [];
     }
 
     *[Symbol.iterator]() {
