@@ -31,6 +31,7 @@ struct UniformFloat {
 struct UniformUint {
     render_size: vec2<u32>,
     temporal_target: u32,
+    temporal_max: u32,
     is_temporal: u32,
 
     samples: u32,

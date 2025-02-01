@@ -58,10 +58,12 @@ interface CanvasSizeDependentResources {
   uvTexture: GPUTexture;
 
   canvasIn: GPUTexture;
-  shiftTarget: GPUTexture | undefined;
-  temporalIn: GPUTexture | undefined;
-  accumulatedTarget: GPUTexture | undefined;
+  shiftTargetFloat: GPUTexture | undefined;
+  shiftTargetUint: GPUTexture | undefined;
+  accumulatedTargetFloat: GPUTexture | undefined;
+  accumulatedTargetUint: GPUTexture | undefined;
   shiftLock: GPUBuffer | undefined;
+  temporalIn: GPUTexture | undefined;
 }
 
 
@@ -77,6 +79,7 @@ interface PathTracerBindGroupLayouts {
   shiftGroupLayout: GPUBindGroupLayout | undefined;
   selectiveAverageGroupLayout: GPUBindGroupLayout | undefined;
   reprojectGroupLayout: GPUBindGroupLayout | undefined;
+  temporalDynamicGroupLayout: GPUBindGroupLayout | undefined;
   postDynamicGroupLayout: GPUBindGroupLayout;
   canvasGroupLayout: GPUBindGroupLayout;
 }
@@ -156,23 +159,28 @@ export class PathTracerWGPU extends RendererWGPU {
     const canvasIn = device.createTexture({ size: [width, height], format: "rgba32float", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
 
     let temporalIn: GPUTexture | undefined = undefined;
-    let shiftTarget: GPUTexture | undefined = undefined;
-    let accumulatedTarget: GPUTexture | undefined = undefined;
+    let shiftTargetFloat: GPUTexture | undefined = undefined;
+    let shiftTargetUint: GPUTexture | undefined = undefined;
+    let accumulatedTargetFloat: GPUTexture | undefined = undefined;
+    let accumulatedTargetUint: GPUTexture | undefined = undefined;
     let shiftLock: GPUBuffer | undefined = undefined;
 
     if (this.config.temporal) {
       // Init canvas render texture
       temporalIn = device.createTexture({ size: [width, height, this.config.temporal ? 2 : 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init temporal screen space correction render target
-      shiftTarget = device.createTexture({ size: [width, height, 5], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      shiftTargetFloat = device.createTexture({ size: [width, height, 2], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      shiftTargetUint = device.createTexture({ size: [width, height, 4], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init temporal screen space correction render target
-      accumulatedTarget = device.createTexture({ size: [width, height, 5], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      accumulatedTargetFloat = device.createTexture({ size: [width, height, 2], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      accumulatedTargetUint = device.createTexture({ size: [width, height, 4], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init shift lock buffer
       shiftLock = device.createBuffer({ size: width * height * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
       device.queue.writeBuffer(shiftLock, 0, new Uint32Array(new Array(width * height).fill(POW32M1)));
     } else {
       // Create dummy shift target texture for compute shader pass
-      shiftTarget = device.createTexture({ size: [1, 1, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      shiftTargetFloat = device.createTexture({ size: [1, 1, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      shiftTargetUint = device.createTexture({ size: [1, 1, 1], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
     }
 
     // Init antialiasing module texture if antialiasing module exists
@@ -181,7 +189,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // Create new canvas size dependent resources
     this.canvasSizeDependentResources = {
       depthBuffer, offsetBuffer, absolutePositionTexture, uvTexture, canvasIn,
-      temporalIn, shiftTarget, accumulatedTarget, shiftLock
+      temporalIn, shiftTargetFloat, shiftTargetUint, accumulatedTargetFloat, accumulatedTargetUint, shiftLock
     }
   }
   
@@ -265,20 +273,23 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },                                                      // offset texture
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },                                              // 3d positions
         { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },                                              // uvs
-        { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } }                    // shift target
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },                   // shift target float
+        { binding: 5, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } }                                  // shift target uint
       ]
     });
 
     let shiftGroupLayout: GPUBindGroupLayout | undefined = undefined;
     let selectiveAverageGroupLayout: GPUBindGroupLayout | undefined = undefined;
     let reprojectGroupLayout: GPUBindGroupLayout | undefined = undefined;
-
+    let temporalDynamicGroupLayout: GPUBindGroupLayout | undefined = undefined;
     if (this.config.temporal) {
       shiftGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
-          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32uint", viewDimension: "2d-array" } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }
         ]
       });
 
@@ -286,14 +297,25 @@ export class PathTracerWGPU extends RendererWGPU {
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },
           { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } }
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32uint", viewDimension: "2d-array" } }
         ]
       });
 
       reprojectGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },
-          { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d" } }
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d" } }
+        ]
+      });
+
+      temporalDynamicGroupLayout = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },          // uniforms
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },          // uniforms
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } } // instance transforms
         ]
       });
     }
@@ -315,7 +337,7 @@ export class PathTracerWGPU extends RendererWGPU {
     return {
       depthGroupLayout, rasterRenderGroupLayout, rasterGeometryGroupLayout, rasterDynamicGroupLayout,
       computeGeometryGroupLayout, computeTextureGroupLayout, computeDynamicGroupLayout, computeRenderGroupLayout,
-      shiftGroupLayout, selectiveAverageGroupLayout, reprojectGroupLayout,
+      shiftGroupLayout, selectiveAverageGroupLayout, reprojectGroupLayout, temporalDynamicGroupLayout,
       postDynamicGroupLayout, canvasGroupLayout
     }
   }
@@ -333,11 +355,11 @@ export class PathTracerWGPU extends RendererWGPU {
 
     if (this.config.temporal) {
       // Pipeline for screen space correction of motion before accumulation
-      shiftPipeline = this.createComputePipeline(device, PathtracerShiftShader, "shift pipeline", bindGroupLayouts.shiftGroupLayout!, bindGroupLayouts.postDynamicGroupLayout);
+      shiftPipeline = this.createComputePipeline(device, PathtracerShiftShader, "shift pipeline", bindGroupLayouts.shiftGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
       // Pipeline for temporal accumulation
-      selectiveAveragePipeline = this.createComputePipeline(device, PathtracerSelectiveAverageShader, "selective average pipeline", bindGroupLayouts.selectiveAverageGroupLayout!, bindGroupLayouts.postDynamicGroupLayout);
+      selectiveAveragePipeline = this.createComputePipeline(device, PathtracerSelectiveAverageShader, "selective average pipeline", bindGroupLayouts.selectiveAverageGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
       // Pipeline for temporal reprojection
-      reprojectPipeline = this.createComputePipeline(device, PathtracerReprojectShader, "reproject pipeline", bindGroupLayouts.reprojectGroupLayout!, bindGroupLayouts.postDynamicGroupLayout);
+      reprojectPipeline = this.createComputePipeline(device, PathtracerReprojectShader, "reproject pipeline", bindGroupLayouts.reprojectGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
     }
 
     // Pipeline for rendering to canvas
@@ -506,7 +528,8 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: { buffer: this.canvasSizeDependentResources!.offsetBuffer } },
         { binding: 2, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
         { binding: 3, resource: this.canvasSizeDependentResources!.uvTexture.createView() },
-        { binding: 4, resource: this.canvasSizeDependentResources!.shiftTarget!.createView({ dimension: "2d-array", arrayLayerCount: this.config.temporal ? 5 : 1 }) }
+        { binding: 4, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: this.config.temporal ? 2 : 1 }) },
+        { binding: 5, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: this.config.temporal ? 4 : 1 }) },
       ]
     });
     
@@ -514,6 +537,7 @@ export class PathTracerWGPU extends RendererWGPU {
     let shiftGroup: GPUBindGroup | undefined;
     let selectiveAverageGroup: GPUBindGroup | undefined;
     let reprojectGroup: GPUBindGroup | undefined;
+    let temporalDynamicGroup: GPUBindGroup | undefined;
     
     if (this.config.temporal) {
       let temporalTargetView = this.antialiasingModule ? this.antialiasingModule.textureInView : this.canvasSizeDependentResources!.canvasIn.createView({ dimension: "2d" });
@@ -523,9 +547,11 @@ export class PathTracerWGPU extends RendererWGPU {
       shiftGroup = device.createBindGroup({ 
         label: "bind group for motion correction pass", layout: bindGroupLayouts.shiftGroupLayout!, 
         entries: [
-          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTarget!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-          { binding: 1, resource: this.canvasSizeDependentResources!.shiftTarget!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-          { binding: 2, resource: { buffer: this.canvasSizeDependentResources!.shiftLock! } }
+          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 1, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
+          { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 3, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
+          { binding: 4, resource: { buffer: this.canvasSizeDependentResources!.shiftLock! } }
         ]
       });
       // Create selective average group with array views
@@ -533,17 +559,29 @@ export class PathTracerWGPU extends RendererWGPU {
         label: "bind group accumulation pass", layout: bindGroupLayouts.selectiveAverageGroupLayout!, 
         entries: [
           { binding: 0, resource: this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
-          { binding: 1, resource: this.canvasSizeDependentResources!.shiftTarget!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-          { binding: 2, resource: this.canvasSizeDependentResources!.accumulatedTarget!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) }
+          { binding: 1, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
+          { binding: 3, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 4, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) }
         ] 
       });
 
       reprojectGroup = device.createBindGroup({ 
         label: "bind group for reprojection pass", layout: bindGroupLayouts.reprojectGroupLayout!, 
         entries: [
-          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTarget!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) },
-          { binding: 1, resource: temporalTargetView }
+          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
+          { binding: 1, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
+          { binding: 2, resource: temporalTargetView }
         ] 
+      });
+
+      temporalDynamicGroup = device.createBindGroup({
+        label: "dynamic binding group for temporal pass", layout: bindGroupLayouts.temporalDynamicGroupLayout!,
+        entries: [
+          { binding: 0, resource: { buffer: uniformFloatBuffer } },
+          { binding: 1, resource: { buffer: uniformUintBuffer } },
+          { binding: 2, resource: { buffer: gpuBufferManagers.instanceTransformGPUManager.gpuResource } }
+        ]
       });
     }
 
@@ -731,7 +769,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Set the storage buffers and textures for compute pass
       shiftEncoder.setPipeline(pipelines.shiftPipeline!);
       shiftEncoder.setBindGroup(0, shiftGroup);
-      shiftEncoder.setBindGroup(1, postDynamicGroup);
+      shiftEncoder.setBindGroup(1, temporalDynamicGroup);
       shiftEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
       // End motion correction pass
       shiftEncoder.end();
@@ -756,7 +794,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Set the storage buffers and textures for compute pass
       selectiveAverageEncoder.setPipeline(pipelines.selectiveAveragePipeline!);
       selectiveAverageEncoder.setBindGroup(0, selectiveAverageGroup);
-      selectiveAverageEncoder.setBindGroup(1, postDynamicGroup);
+      selectiveAverageEncoder.setBindGroup(1, temporalDynamicGroup);
       selectiveAverageEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
 
       selectiveAverageEncoder.end();
@@ -765,7 +803,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Set the storage buffers and textures for compute pass
       reprojectEncoder.setPipeline(pipelines.reprojectPipeline!);
       reprojectEncoder.setBindGroup(0, reprojectGroup);
-      reprojectEncoder.setBindGroup(1, postDynamicGroup);
+      reprojectEncoder.setBindGroup(1, temporalDynamicGroup);
       reprojectEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
       // End reproject pass
       reprojectEncoder.end();
