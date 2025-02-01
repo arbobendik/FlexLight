@@ -2,6 +2,11 @@ const POW32U: u32 = 4294967295u;
 const POW24F: f32 = 16777216.0f;
 const SQRT2: f32 = 1.4142135623730951f;
 
+struct Transform {
+    rotation: mat3x3<f32>,
+    shift: vec3<f32>,
+};
+
 struct UniformFloat {
     view_matrix: mat3x3<f32>,
     view_matrix_jitter: mat3x3<f32>,
@@ -24,13 +29,14 @@ struct UniformUint {
     tonemapping_operator: u32,
 };
 
-@group(0) @binding(0) var accumulated: texture_2d_array<f32>;
-@group(0) @binding(1) var canvas_in: texture_storage_2d<rgba32float, write>;
+@group(0) @binding(0) var accumulated_float: texture_2d_array<f32>;
+@group(0) @binding(1) var accumulated_uint: texture_2d_array<u32>;
+@group(0) @binding(2) var canvas_in: texture_storage_2d<rgba32float, write>;
 // @group(0) @binding(1) var<storage, read_write> buffer_out: array<atomic<u32>>;
 
 @group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
 @group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
-
+@group(1) @binding(2) var<storage, read> instance_transform: array<Transform>;
 // atomicStore(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T)
 
 /*
@@ -102,19 +108,32 @@ fn compute(
     
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
+
+    let accumulated_float_0: vec4<f32> = textureLoad(accumulated_float, screen_pos, 0, 0);
+    let accumulated_float_1: vec4<f32> = textureLoad(accumulated_float, screen_pos, 1, 0);
+    let accumulated_uint_0: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 0, 0);
+    let accumulated_uint_2: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 2, 0);
     // Extract color value from old position
-    var color: vec4<f32> = textureLoad(accumulated, screen_pos, 0, 0);
+    var color: vec4<f32> = vec4<f32>(unpack2x16float(accumulated_uint_0.x), unpack2x16float(accumulated_uint_0.y));
     // Extract 3d position value
-    let position_cur: vec4<f32> = textureLoad(accumulated, screen_pos, 4, 0);
+    let rel_position_cur: vec3<f32> = accumulated_float_0.xyz;
+    let abs_position_cur: vec3<f32> = accumulated_float_1.xyz;
+    // let abs_position_cur: vec4<f32> = vec4<f32>(unpack2x16float(accumulated_2.z), unpack2x16float(accumulated_2.w));
+    // Extract instance index
+    let next_temporal_target: u32 = accumulated_uint_2.x;
+    let instance_index: u32 = accumulated_uint_2.y;
     // If data is not from last frame write ambient color
-    if (position_cur.w != f32((uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max)) {
+    
+    if (next_temporal_target != (uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max) {
         textureStore(canvas_in, screen_pos, vec4<f32>(uniforms_float.ambient, 1.0f));
         return;
     }
-
+    
     if (uniforms_uint.is_temporal == 1u) {
         // Reproject position to jitter if temporal is enabled
-        let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (position_cur.xyz - uniforms_float.camera_position);
+        // let transform: Transform = instance_transform[instance_index * 2u];
+        // let absolute_position: vec3<f32> = transform.rotation * rel_position_cur.xyz + transform.shift;
+        let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (abs_position_cur - uniforms_float.camera_position);
         let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
 
         let canvas_pos: vec2<u32> = vec2<u32>(
