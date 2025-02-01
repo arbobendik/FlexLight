@@ -1,10 +1,9 @@
 "use strict";
 
-// @ts-ignore
 import { createConfigUI } from "../../config-ui/config-ui.js";
 import { FlexLight, PointLight, Prototype, Vector, Camera, Scene } from "../../flexlight/flexlight.js";
 
-const staticPath = './static/';
+export const staticPath = './static/';
 // Create new canvas
 const canvas = document.createElement("canvas");
 // Append it to body
@@ -43,9 +42,9 @@ let scene: Scene = engine.scene;
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(110, 100, 110), new Vector(1, 0, 0), 20000, 10);
-let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 1), 50000, 10);
-let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 50000, 10);
+let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0, 0), 20000, 10);
+let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0, 1, 1), 50000, 10);
+let light3 = new PointLight(new Vector(-110, 110, 110), new Vector(1, 1, 1), 100000, 10);
 
 
 scene.addPointLight(light1);
@@ -79,7 +78,7 @@ const loadObj = async (model: string) => {
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
 let cube = await loadObj('cube');
-let dragon = await loadObj('robot');
+let dragon = await loadObj('dragon_lp');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
 // let bike = await loadObj('bike');
@@ -105,11 +104,17 @@ const sphere_rough_diffuse = scene.instance(sphere);
 // const monkey1 = scene.instance(monkey);
 
 cube1.transform.position = new Vector(0, -102, 0);
-
-
 cube1.transform.scaleFactor = 100;
 cube1.material.roughness = 1.0;
 cube1.material.metallic = 0.0;
+
+/*
+cube2.transform.position = new Vector(100, 0, -100);
+cube2.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+cube2.transform.scaleFactor = 100;
+cube2.material.roughness = 0.0;
+cube2.material.metallic = 0.5;
+
 
 /*
 fullScene1.transform.position = new Vector(-5, -10, 0);
@@ -120,7 +125,7 @@ fullScene1.material.metallic = 0.0;
 
 
 cube2.transform.position = new Vector(0, 0, 10);
-
+ * POINT_LIGHT_SIZE
 bike1.transform.position = new Vector(0, -10, -30);
 bike1.transform.scaleFactor = 2;
 */
@@ -169,11 +174,23 @@ for (let i = 0; i < 5; i++) {
 
 
 let dragon_instance = scene.instance(dragon);
-dragon_instance.transform.position = new Vector(0, -2, -20);
-dragon_instance.transform.scaleFactor = 0.02;
+dragon_instance.transform.position = new Vector(0, 0, -20);
+dragon_instance.transform.scaleFactor = 1;
 dragon_instance.material.roughness = 0.5;
 dragon_instance.material.metallic = 1.0;
 
+
+// init iterator variable for simple animations
+let iterator = 0;
+
+setInterval(() => {
+	// increase iterator
+	iterator += 0.005;
+	// precalculate sin and cos
+	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
+	dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
+	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
+}, 100/6);
 
 // instance2.transform.position = new Vector(-30, 0, 0);
 
@@ -185,22 +202,6 @@ dragon_instance.material.metallic = 1.0;
 const fpsCounter = document.createElement("div");
 // Append it to body.
 document.body.appendChild(fpsCounter);
-// setTimeout(() => engine.renderer.freeze = true, 1000);
-
-/*
-// init iterator variable for simple animations
-let iterator = 0;
-
-setInterval(() => {
-	// increase iterator
-	iterator += 0.002;
-	// precalculate sin and cos
-	dragon1.transform.rotateAxis(new Vector(0, 1, 0), iterator);
-	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
-}, 100/6);
-*/
-
-
 // Update Counter periodically.
 setInterval(() => {
 	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
