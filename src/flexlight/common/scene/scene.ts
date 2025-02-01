@@ -92,9 +92,9 @@ export class Scene {
         // Construct point light buffer
         const pointLightArray: Array<number> = [];
         for (let pointLight of this.pointLights) pointLightArray.push(
-            pointLight.position.x, pointLight.position.y, pointLight.position.z,
-            pointLight.color.x, pointLight.color.y, pointLight.color.z,
-            pointLight.intensity, pointLight.variance
+            pointLight.position.x, pointLight.position.y, pointLight.position.z, 0,
+            pointLight.color.x, pointLight.color.y, pointLight.color.z, pointLight.intensity,
+            pointLight.variance, 0, 0, 0
         );
         // Allocate point light buffer
         this._pointLightManager.overwriteAll(pointLightArray);
