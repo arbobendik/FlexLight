@@ -205,6 +205,43 @@ fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -
     }
 }
 
+fn moellerTrumboreVectorized(
+    a: mat2x3<f32>, b: mat2x3<f32>, c: mat2x3<f32>,
+    ray: Ray, l: f32
+) -> vec3<f32> {
+    // let r_ud_x2 = mat2x3<f32>(ray.unit_direction, ray.unit_direction);
+    let r_o_x2 = mat2x3<f32>(ray.origin, ray.origin);
+
+    let edge1: mat2x3<f32> = b - a;
+    let edge2: mat2x3<f32> = c - a;
+    let pvec: mat2x3<f32> = mat2x3<f32>(cross(ray.unit_direction, edge2[0]), cross(ray.unit_direction, edge2[1]));
+    let det: vec2<f32> = vec2<f32>(dot(edge1[0], pvec[0]), dot(edge1[1], pvec[1]));
+    let inv_det: vec2<f32> = 1.0f / det;
+    let tvec: mat2x3<f32> = r_o_x2 - a;
+    let u: vec2<f32> = vec2<f32>(dot(tvec[0], pvec[0]), dot(tvec[1], pvec[1])) * inv_det;
+    let qvec: mat2x3<f32> = mat2x3<f32>(cross(tvec[0], edge1[0]), cross(tvec[1], edge1[1]));
+    
+    let v: vec2<f32> = vec2<f32>(dot(ray.unit_direction, qvec[0]), dot(ray.unit_direction, qvec[1])) * inv_det;
+    let s: vec2<f32> = vec2<f32>(dot(edge2[0], qvec[0]), dot(edge2[1], qvec[1])) * inv_det;
+
+    let valid: vec2<bool> = vec2<bool>(
+        v.x >= BIAS && u.x >= BIAS && u.x + v.x <= 1.0f && s.x <= l && s.x > BIAS,
+        v.y >= BIAS && u.y >= BIAS && u.y + v.y <= 1.0f && s.y <= l && s.y > BIAS
+    );
+
+    if (valid.x && (!valid.y || s.x < s.y)) {
+        return vec3<f32>(s.x, u.x, v.x);
+    } else if (valid.y) {
+        return vec3<f32>(s.y, u.y, v.y);
+    } else {
+        return vec3<f32>(0.0f);
+    }
+}
+
+
+
+/*
+
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
     let edge1 = b - a;
@@ -228,9 +265,13 @@ fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f3
     let s: f32 = dot(edge2, qvec) * inv_det;
     return (s <= l && s > BIAS);
 }
+*/
+
+
+
 
 /*
-fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> vec3<f32> {
+fn moellerTrumboreShort(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> vec3<f32> {
     let edge1: vec3<f32> = b - a;
     let edge2: vec3<f32> = c - a;
     let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
@@ -247,7 +288,6 @@ fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -
         return vec3<f32>(0.0f);
     }
 }
-
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
     let edge1: vec3<f32> = b - a;
@@ -331,8 +371,15 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             let b1 = bv3.xyz;
             let c1 = vec3<f32>(bv3.w, bv4.xy);
             // Run Moeller-Trumbore algorithm for both triangles
+            /*
+            let intersection: vec3<f32> = moellerTrumboreVectorized(mat2x3<f32>(a0, a1), mat2x3<f32>(b0, b1), mat2x3<f32>(c0, c1), t_ray, hit.suv.x * len_factor);
+            if (intersection.x != 0.0f) {
+                hit = Hit(vec3<f32>(intersection.x / len_factor, intersection.yz), instance_index, triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y);
+            }
+            */
             let intersection0: vec3<f32> = moellerTrumbore(a0, b0, c0, t_ray, hit.suv.x * len_factor);
             let intersection1: vec3<f32> = moellerTrumbore(a1, b1, c1, t_ray, hit.suv.x * len_factor);
+            
             // Test if ray even intersects
             if(intersection0.x != 0.0) {
                 // Calculate intersection point
@@ -343,6 +390,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
                 // Calculate intersection point
                 hit = Hit(vec3<f32>(intersection1.x / len_factor, intersection1.yz), instance_index, triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z);
             }
+            
         } else {
             let min0 = bv0.xyz;
             let max0 = vec3<f32>(bv0.w, bv1.xy);
