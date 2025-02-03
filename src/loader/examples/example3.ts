@@ -10,21 +10,14 @@ const canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-
-
-
 const engine = new FlexLight (canvas);
 engine.io = 'web';
-
-
 
 const controlPanel = document.getElementById("controlPanel");
 if (!controlPanel) throw new Error("Control panel not found");
 
 const configUI = createConfigUI(engine);
 controlPanel.appendChild(configUI);
-
-
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
