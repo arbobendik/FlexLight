@@ -1,7 +1,7 @@
 "use strict";
 
 import { BVH, BVHLeaf, BVHNode, Bounding, BVHArrays } from "./bvh";
-import { POW32M1, Vector, vector_add, vector_scale } from "../lib/math";
+import { cross, POW32M1, Vector, vector_add, vector_difference, vector_length, vector_scale } from "../lib/math";
 import { TRIANGLE_SIZE } from "./prototype";
 
 
@@ -14,12 +14,15 @@ export class Triangle {
     b: Vector<3>;
     c: Vector<3>;
     id: number;
+    readonly area: number;
 
     constructor(a: Vector<3>, b: Vector<3>, c: Vector<3>, id: number) {
         this.a = a;
         this.b = b;
         this.c = c;
         this.id = id;
+
+        this.area = vector_length(cross(vector_difference(this.b, this.a), vector_difference(this.c, this.a))) * 0.5;
     }
 
     *[Symbol.iterator]() {
@@ -127,25 +130,22 @@ export class TriangleBVH extends BVH<Triangle> {
     }
 
 
-    private static evaluateSplitCost(triangles: Array<Triangle>, bounding: Bounding, center: Vector<3>, axis: "x" | "y" | "z"): number {
-        // Calculate new corner points that are not part of bounding
-        const bounding0Max = new Vector(bounding.max);
-        const bounding1Min = new Vector(bounding.min);
-        bounding0Max[axis] = center[axis];
-        bounding1Min[axis] = center[axis];
-        // Define two bounding volumes
-        const bounding0 = { min: bounding.min, max: bounding0Max };
-        const bounding1 = { min: bounding1Min, max: bounding.max };
-
+    private static evaluateSplitCost(triangles: Array<Triangle>, bounding0: Bounding, bounding1: Bounding): number {
         // Calculate the number of triangles that are in both bounding volumes
         let trianglesIn0 = 0;
+        let trianglesIn0Area = 0;
         let trianglesIn1 = 0;
-        let trianglesOnCutoff = 0;
+        let trianglesIn1Area = 0;
         for (let triangle of triangles) {
             const in0 = TriangleBVH.isTriangleInBounding(triangle, bounding0);
             const in1 = TriangleBVH.isTriangleInBounding(triangle, bounding1);
-            if (in0 && !in1) trianglesIn0++;
-            else if (!in0 && in1) trianglesIn1++;
+            if (in1) {
+                trianglesIn1++;
+                trianglesIn1Area += triangle.area;
+            } else {
+                trianglesIn0++;
+                trianglesIn0Area += triangle.area;
+            }
             // else trianglesOnCutoff++;
         }
 
@@ -154,7 +154,7 @@ export class TriangleBVH extends BVH<Triangle> {
         // if (trianglesIn0 === triangleCount || trianglesIn1 === triangleCount || trianglesOnCutoff === triangleCount) return Infinity;
         if (trianglesIn0 === 0 || trianglesIn1 === 0) return Infinity;
         // Minimize for minimum triangles on cutoff and equal distribution of triangles across bounding0 and bounding1.
-        return trianglesOnCutoff + Math.abs(trianglesIn0 - trianglesIn1);
+        return Math.abs(trianglesIn0Area - trianglesIn1Area);
     }
 
     private static subdivideTree(triangles: Array<Triangle>, startingId: number = 0, parentId: number = 0): BVHNode<Triangle> | BVHLeaf<Triangle> {
@@ -172,16 +172,32 @@ export class TriangleBVH extends BVH<Triangle> {
             vertexSum = vector_add(vertexSum, vertex);
         }
         
-        const centerOfMass = vector_scale(vector_add(bounding.min, bounding.max), 0.5); //vector_scale(vertexSum, 1 / (triangles.length * 3));
+        // const centerOfMass = vector_scale(vector_add(bounding.min, bounding.max), 0.5); //vector_scale(vertexSum, 1 / (triangles.length * 3));
+
+        const intervals = 2;
 
         let splitAlongAxis: "x" | "y" | "z" = "x";
+        let splitAt: number = 0;
         let minCost: number = Infinity;
         for (let axis of ["x", "y", "z"] as Array<"x" | "y" | "z">) {
-            const cost = TriangleBVH.evaluateSplitCost(triangles, bounding, centerOfMass, axis);
-            // console.log(cost);
-            if (cost < minCost) {
-                minCost = cost;
-                splitAlongAxis = axis;
+            let splitDistIncrement = (bounding.max[axis] - bounding.min[axis]) / intervals;
+
+            for (let i = 1; i < intervals; i++) {
+                const bounding0Max = new Vector(bounding.max);
+                const bounding1Min = new Vector(bounding.min);
+                bounding0Max[axis] = bounding.min[axis] + i * splitDistIncrement;
+                bounding1Min[axis] = bounding.min[axis] + i * splitDistIncrement;
+                // Define two bounding volumes
+                const bounding0 = { min: bounding.min, max: bounding0Max };
+                const bounding1 = { min: bounding1Min, max: bounding.max };
+
+                const cost = TriangleBVH.evaluateSplitCost(triangles, bounding0, bounding1);
+                // console.log(cost);
+                if (cost < minCost) {
+                    minCost = cost;
+                    splitAlongAxis = axis;
+                    splitAt = bounding.min[axis] + i * splitDistIncrement;
+                }
             }
         }
         // If no subdivision is happening, return flat tree to avoid infinite recursion and unnecessary 
@@ -192,8 +208,8 @@ export class TriangleBVH extends BVH<Triangle> {
 
         const bounding0Max = new Vector(bounding.max);
         const bounding1Min = new Vector(bounding.min);
-        bounding0Max[splitAlongAxis] = centerOfMass[splitAlongAxis];
-        bounding1Min[splitAlongAxis] = centerOfMass[splitAlongAxis];
+        bounding0Max[splitAlongAxis] = splitAt;
+        bounding1Min[splitAlongAxis] = splitAt;
 
         const bounding0 = { min: bounding.min, max: bounding0Max };
         const bounding1 = { min: bounding1Min, max: bounding.max };
@@ -207,11 +223,11 @@ export class TriangleBVH extends BVH<Triangle> {
             const in0 = TriangleBVH.isTriangleInBounding(triangle, bounding0);
             const in1 = TriangleBVH.isTriangleInBounding(triangle, bounding1);
             // Triangle is solely in bounding0
-            if (in0 && !in1) trianglesInBound0.push(triangle);
+            if (in1) trianglesInBound1.push(triangle);
             // Triangle is solely in bounding1
-            else if (!in0 && in1) trianglesInBound1.push(triangle);
             // Triangle is neither fully in bounding0 nor bounding1
             else trianglesInBound0.push(triangle);
+            // else trianglesInBound0.push(triangle);
         }
 
         let children: Array<BVHNode<Triangle> | BVHLeaf<Triangle>> = [];

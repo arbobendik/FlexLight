@@ -5,27 +5,20 @@ import { createConfigUI } from "../../config-ui/config-ui.js";
 // import { vector_difference, vector_length } from "../../flexlight/common/lib/math.js";
 import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, vector_difference, vector_length } from "../../flexlight/flexlight.js";
 
-const staticPath = './static/';
+export const staticPath = './static/';
 // Create new canvas
 const canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-
-
-
 const engine = new FlexLight (canvas);
 engine.io = 'web';
-
-
 
 const controlPanel = document.getElementById("controlPanel");
 if (!controlPanel) throw new Error("Control panel not found");
 
 const configUI = createConfigUI(engine);
 controlPanel.appendChild(configUI);
-
-
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;

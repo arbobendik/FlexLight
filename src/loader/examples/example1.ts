@@ -1,8 +1,9 @@
 /*
 "use strict";
 
-import { FlexLight, Vector } from 'flexlight/flexlight.js';
+import { Camera, FlexLight, Prototype, Scene, Vector } from 'flexlight/flexlight.js';
 import { createConfigUI } from 'config-ui/config-ui.js';
+import { staticPath } from './dragon';
 
 const staticPath = './static/';
 // Create new canvas
@@ -13,17 +14,14 @@ document.body.appendChild(canvas);
 const engine = new FlexLight (canvas);
 engine.io = 'web';
 
-
 const controlPanel = document.getElementById("controlPanel");
 if (!controlPanel) throw new Error("Control panel not found");
 
 const configUI = createConfigUI(engine);
 controlPanel.appendChild(configUI);
 
-console.log(configUI);
-
-let camera = engine.camera;
-let scene = engine.scene;
+let camera: Camera = engine.camera;
+let scene: Scene = engine.scene;
 // Set Textures 0, 1, 2, 3, 4
 [
 	staticPath + "textures/dirt_side.jpg",	// 0
@@ -35,6 +33,8 @@ let scene = engine.scene;
 	let img = new Image();
 	img.src = item;
 	scene.textures.push(img);
+
+
 });
 
 [
@@ -45,6 +45,16 @@ let scene = engine.scene;
 	img.src = item;
 	scene.pbrTextures.push(img);
 });
+
+
+const loadObj = async (model: string) => {	
+	console.log('loading ' + model);
+	const objPath = staticPath + 'objects/' + model + '.obj';
+	// const mtlPath = staticPath + 'objects/' + model + '.mtl';
+	const prototype = await Prototype.fromObjStatic(objPath);
+	console.log("Loaded prototype", prototype);
+	return prototype;
+}
 
 // Set camera perspective and position
 camera.position = new Vector(8, 7, -11);
@@ -159,5 +169,4 @@ document.body.appendChild(fpsCounter);
 setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
-
 */
