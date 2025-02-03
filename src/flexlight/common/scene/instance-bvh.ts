@@ -1,9 +1,10 @@
 "use strict";
 
 import { BVH, BVHArrays, BVHLeaf, BVHNode, Bounding } from "./bvh";
-import { POW32M1, Vector, matrix_vector_mul, vector_add, vector_scale } from "../lib/math";
+import { POW32M1, Vector, matrix_vector_mul, vector_add, vector_difference, vector_scale } from "../lib/math";
 import { Instance } from "./instance";
 import { Transform } from "./transform";
+import { Triangle } from "./triangle-bvh";
 
 
 export const BVH_MAX_INSTANCES_PER_LEAF = 2;
@@ -14,10 +15,16 @@ export class IndexedInstance {
     bounding: Bounding;
     id: number;
 
+    area: number;
+
     constructor(instance: Instance, bounding: Bounding, id: number) {
         this.instance = instance;
         this.bounding = bounding;
         this.id = id;
+
+        // Calculate area of instance
+        let boundingDiff = vector_difference(bounding.max, bounding.min);
+        this.area = boundingDiff.x * boundingDiff.y + boundingDiff.y * boundingDiff.z + boundingDiff.z * boundingDiff.x * 2;
     }
 }
 
@@ -116,16 +123,8 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
 
         return new BVHNode(children, parentId, bounding, startingId, nextId);
     }
-
-    private static evaluateSplitCost(instances: Array<IndexedInstance>, bounding: Bounding, center: Vector<3>, axis: "x" | "y" | "z"): number {
-        // Calculate new corner points that are not part of bounding
-        const bounding0Max = new Vector(bounding.max);
-        const bounding1Min = new Vector(bounding.min);
-        bounding0Max[axis] = center[axis];
-        bounding1Min[axis] = center[axis];
-        // Define two bounding volumes
-        const bounding0 = { min: bounding.min, max: bounding0Max };
-        const bounding1 = { min: bounding1Min, max: bounding.max };
+    /*
+    private static evaluateSplitCost(instances: Array<IndexedInstance>, bounding0: Bounding, bounding1: Bounding): number {
 
         // Calculate the number of instances that are in both bounding volumes
         let instancesIn0 = 0;
@@ -140,17 +139,46 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         }
 
         // const instanceCount = instances.length;
-        /*
+        
         console.log("Instances in 0", instancesIn0);
         console.log("Instances in 1", instancesIn1);
         console.log("Instances on cutoff", instancesOnCutoff);
-        */
+        
         // If one box contains all instances, the cost is Infinity as no subdivision is happening
         // if (instancesIn0 === instanceCount || instancesIn1 === instanceCount || instancesOnCutoff === instanceCount) return Infinity;
         if (instancesIn0 === 0 || instancesIn1 === 0) return Infinity;
         // Minimize for minimum instances on cutoff and equal distribution of instances across bounding0 and bounding1
         return instancesOnCutoff + Math.abs(instancesIn0 - instancesIn1);
     }
+    */
+
+    private static evaluateSplitCost(instances: Array<IndexedInstance>, bounding0: Bounding, bounding1: Bounding): number {
+        // Calculate the number of instances that are in both bounding volumes
+        let instancesIn0 = 0;
+        let instancesIn0Area = 0;
+        let instancesIn1 = 0;
+        let instancesIn1Area = 0;
+        for (let instance of instances) {
+            const in0 = IndexedInstanceBVH.isInstanceInBounding(instance, bounding0);
+            const in1 = IndexedInstanceBVH.isInstanceInBounding(instance, bounding1);
+            if (in1) {
+                instancesIn1++;
+                instancesIn1Area += instance.area;
+            } else {
+                instancesIn0++;
+                instancesIn0Area += instance.area;
+            }
+            // else trianglesOnCutoff++;
+        }
+
+        // const triangleCount = triangles.length;
+        // If one box contains all triangles, the cost is Infinity as no subdivision is happening.
+        // if (trianglesIn0 === triangleCount || trianglesIn1 === triangleCount || trianglesOnCutoff === triangleCount) return Infinity;
+        if (instancesIn0 === 0 || instancesIn1 === 0) return Infinity;
+        // Minimize for minimum triangles on cutoff and equal distribution of triangles across bounding0 and bounding1.
+        return Math.abs(instancesIn0Area - instancesIn1Area);
+    }
+
 
     private static subdivideTree(instances: Array<IndexedInstance>, maxDepth: number = Infinity, depth: number = 0, startingId: number = 0, parentId: number = 0): BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> {
         // console.log("Subdividing tree", instances.length, depth, maxDepth);
@@ -161,7 +189,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of instance split
         const centerOfMass = vector_scale(vector_add(bounding.min, bounding.max), 0.5);
-
+        /*
         let splitAlongAxis: "x" | "y" | "z" = "x";
         let minCost: number = Infinity;
         for (let axis of ["x", "y", "z"] as Array<"x" | "y" | "z">) {
@@ -177,11 +205,51 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             // console.warn("No spatial subdivision possible for", instances.length, "instances.");
             return IndexedInstanceBVH.fillFlatTree(instances, startingId, parentId);
         }
+        */
 
+        const intervals = 2;
+
+        let splitAlongAxis: "x" | "y" | "z" = "x";
+        let splitAt: number = 0;
+        let minCost: number = Infinity;
+        for (let axis of ["x", "y", "z"] as Array<"x" | "y" | "z">) {
+            let splitDistIncrement = (bounding.max[axis] - bounding.min[axis]) / intervals;
+
+            for (let i = 1; i < intervals; i++) {
+                const bounding0Max = new Vector(bounding.max);
+                const bounding1Min = new Vector(bounding.min);
+                bounding0Max[axis] = bounding.min[axis] + i * splitDistIncrement;
+                bounding1Min[axis] = bounding.min[axis] + i * splitDistIncrement;
+                // Define two bounding volumes
+                const bounding0 = { min: bounding.min, max: bounding0Max };
+                const bounding1 = { min: bounding1Min, max: bounding.max };
+
+                const cost = IndexedInstanceBVH.evaluateSplitCost(instances, bounding0, bounding1);
+                // console.log(cost);
+                if (cost < minCost) {
+                    minCost = cost;
+                    splitAlongAxis = axis;
+                    splitAt = bounding.min[axis] + i * splitDistIncrement;
+                }
+            }
+        }
+        // If no subdivision is happening, return flat tree to avoid infinite recursion and unnecessary 
+        if (minCost === Infinity) {
+            // console.warn("No spacial subdivision possible for", triangles.length, "triangles.");
+            return IndexedInstanceBVH.fillFlatTree(instances, startingId, parentId);
+        }
+
+        const bounding0Max = new Vector(bounding.max);
+        const bounding1Min = new Vector(bounding.min);
+        bounding0Max[splitAlongAxis] = splitAt;
+        bounding1Min[splitAlongAxis] = splitAt;
+
+        /*
         const bounding0Max = new Vector(bounding.max);
         const bounding1Min = new Vector(bounding.min);
         bounding0Max[splitAlongAxis] = centerOfMass[splitAlongAxis];
         bounding1Min[splitAlongAxis] = centerOfMass[splitAlongAxis];
+        */
 
         const bounding0 = { min: bounding.min, max: bounding0Max };
         const bounding1 = { min: bounding1Min, max: bounding.max };

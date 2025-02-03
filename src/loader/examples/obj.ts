@@ -188,7 +188,7 @@ setInterval(() => {
 	iterator += 0.005;
 	// precalculate sin and cos
 	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
-	dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
+	// dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
 	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
 }, 100/6);
 
