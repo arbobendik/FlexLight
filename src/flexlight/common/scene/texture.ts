@@ -23,7 +23,7 @@ export class Texture {
     private _textureInstanceBuffer: TypedArrayView<Uint32Array> | undefined;
     get textureInstanceBuffer () { return this._textureInstanceBuffer; }
 
-    private static async getTextureData(texture: HTMLImageElement, width: number, height: number, channels: Channels): Promise<Uint8Array> {
+    private static async getTextureData(texture: HTMLImageElement, channels: Channels, width: number, height: number): Promise<Uint8Array> {
         // Create canvas, draw image and return bitmap
         const canvas = document.createElement("canvas");
         const ctx: CanvasRenderingContext2D | null = canvas.getContext("2d"); 
@@ -43,12 +43,12 @@ export class Texture {
         return new Uint8Array(array);
     }
 
-    constructor (channels: Channels, texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+    constructor (texture: HTMLImageElement, channels: Channels, width: number | undefined = undefined, height: number | undefined = undefined) {
         this.texture = texture;
         this.width = width ?? texture.width;
         this.height = height ?? texture.height;
         // Get texture data
-        Texture.getTextureData(texture, this.width, this.height, channels).then((array: Uint8Array) => {
+        Texture.getTextureData(texture, channels, this.width, this.height).then((array: Uint8Array) => {
             this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
             this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray(new Uint32Array([this.width, this.height, channels, this.textureDataBuffer.offset]));
         });
