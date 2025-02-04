@@ -87,9 +87,9 @@ interface PathTracerBindGroupLayouts {
 
 interface PathTracerGPUBufferManagers {
   // Pototype GPU Buffer Managers
-  triangleGPUManager: BufferToRGBA32<Float32Array>;
+  triangleGPUManager: BufferToRGBA16<Float16Array>;
   BVHGPUManager: BufferToRGBA32<Uint32Array>;
-  boundingVertexGPUManager: BufferToRGBA32<Float32Array>;
+  boundingVertexGPUManager: BufferToRGBA16<Float16Array>;
   // Light GPU Managers
   pointLightGPUManager: BufferToGPUBuffer<Float32Array>;
   // Texture GPU Managers
@@ -390,9 +390,9 @@ export class PathTracerWGPU extends RendererWGPU {
     // Link GPUBufferManagers to BufferManagers
     const gpuManagers: PathTracerGPUBufferManagers = {
       // Prototype GPU Managers
-      triangleGPUManager: new BufferToRGBA32<Float32Array>(Prototype.triangleManager, device, "float", "triangle buffer"),
+      triangleGPUManager: new BufferToRGBA16<Float16Array>(Prototype.triangleManager, device, "float", "triangle buffer"),
       BVHGPUManager: new BufferToRGBA32<Uint32Array>(Prototype.BVHManager, device, "uint", "bvh buffer"),
-      boundingVertexGPUManager: new BufferToRGBA32<Float32Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
+      boundingVertexGPUManager: new BufferToRGBA16<Float16Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
       // Texture GPU Managers
       textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
       textureDataGPUManager: new BufferToRGBA8Uint(Texture.textureDataBufferManager, device, "texture data buffer"),
@@ -775,6 +775,8 @@ export class PathTracerWGPU extends RendererWGPU {
       shiftEncoder.end();
     }
     
+
+    let computeClusterDims: Vector<2> = new Vector(Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8));
     
     // Run compute shader
     let computeEncoder = commandEncoder.beginComputePass();
@@ -784,7 +786,7 @@ export class PathTracerWGPU extends RendererWGPU {
     computeEncoder.setBindGroup(1, computeTextureGroup);
     computeEncoder.setBindGroup(2, computeGeometryGroup);
     computeEncoder.setBindGroup(3, computeDynamicGroup);
-    computeEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
+    computeEncoder.dispatchWorkgroups(computeClusterDims.x, computeClusterDims.y);
     // End compute pass
     computeEncoder.end();
 

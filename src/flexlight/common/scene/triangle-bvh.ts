@@ -91,15 +91,18 @@ export class TriangleBVH extends BVH<Triangle> {
     }
 
     private static tightenBounding(triangles: Array<Triangle>): Bounding {
+
+        const BIASFP16 = 0.0009765625;
+
         let bounding: Bounding = { min: new Vector(Infinity, Infinity, Infinity), max: new Vector(-Infinity, -Infinity, -Infinity) };
         for (let triangle of triangles) {
             for (let vertex of triangle) {
-                bounding.min.x = Math.min(bounding.min.x, vertex.x);
-                bounding.min.y = Math.min(bounding.min.y, vertex.y);
-                bounding.min.z = Math.min(bounding.min.z, vertex.z);
-                bounding.max.x = Math.max(bounding.max.x, vertex.x);
-                bounding.max.y = Math.max(bounding.max.y, vertex.y);
-                bounding.max.z = Math.max(bounding.max.z, vertex.z);
+                bounding.min.x = Math.min(bounding.min.x, vertex.x - BIASFP16);
+                bounding.min.y = Math.min(bounding.min.y, vertex.y - BIASFP16);
+                bounding.min.z = Math.min(bounding.min.z, vertex.z - BIASFP16);
+                bounding.max.x = Math.max(bounding.max.x, vertex.x + BIASFP16);
+                bounding.max.y = Math.max(bounding.max.y, vertex.y + BIASFP16);
+                bounding.max.z = Math.max(bounding.max.z, vertex.z + BIASFP16);
             }
         }
         return bounding;

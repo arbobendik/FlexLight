@@ -8,7 +8,7 @@ import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
 import { ObjectPrototype } from "./obj-parser";
-// import { Float16Array } from "../buffer/float-16-array";
+import { Float16Array } from "../buffer/float-16-array";
 
 export const TRIANGLE_SIZE = 24;
 
@@ -16,29 +16,29 @@ export class Prototype {
     // Buffer managers
 
     // Triangle data: V V V N N N UV UV UV
-    private static _triangleManager = new BufferManager(Float32Array);
+    private static _triangleManager = new BufferManager(Float16Array);
     static get triangleManager () { return this._triangleManager; }
     // BVH structure: 0|1 B|T B|T B|T
     private static _BVHManager = new BufferManager(Uint32Array);
     static get BVHManager () { return this._BVHManager; }
     // Bounding vertices: Bx By Bz
-    private static _boundingVertexManager = new BufferManager(Float32Array);
+    private static _boundingVertexManager = new BufferManager(Float16Array);
     static get boundingVertexManager () { return this._boundingVertexManager; }
 
     // Default material
     static readonly DEFAULT_MATERIAL = new Material();
 
     // Buffers
-    readonly triangles: TypedArrayView<Float32Array>;
+    readonly triangles: TypedArrayView<Float16Array>;
     readonly bvh: TypedArrayView<Uint32Array>;
-    readonly boundingVertices: TypedArrayView<Float32Array>;
+    readonly boundingVertices: TypedArrayView<Float16Array>;
     readonly bounding: Bounding;
     readonly material: Material;
     // Construct using arrays
     constructor(
-        triangles: Float32Array | Array<number>,
+        triangles: Float16Array | Array<number>,
         bvh: Uint32Array | Array<number>,
-        boundingVertices: Float32Array | Array<number>,
+        boundingVertices: Float16Array | Array<number>,
         bounding: Bounding,
         material: Material
     ) {
