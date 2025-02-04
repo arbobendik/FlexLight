@@ -29,8 +29,13 @@ export abstract class RendererWGPU extends Renderer {
         let context = this.canvas.getContext("webgpu");
         if (!context) throw new Error("Failed to get webgpu context");
         let adapter = await navigator.gpu.requestAdapter();
+        /*
+        for (let feature of adapter!.features) {
+            console.log(feature);
+        }
+        */
         if (!adapter) throw new Error("Failed to request adapter");
-        let device = await adapter.requestDevice(/*{ requiredLimits: { maxBufferSize: 1024 * 1024 * 1024 * 4 }}*/);
+        let device = await adapter.requestDevice(/*{requiredFeatures: ["float16"]}*//*{ requiredLimits: { maxBufferSize: 1024 * 1024 * 1024 * 4 }}*/);
         return { context, device };
     }
 
