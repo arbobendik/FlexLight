@@ -115,11 +115,11 @@ fn compute(
 
     var fine_color: vec4<f32> = color_cur;
     var fine_color_low: vec4<f32> = croped_cur_color;
-    var fine_count: u32 = 0u;
+    var fine_count: u32 = 1u;
 
     var coarse_color: vec4<f32> = color_cur;
     var coarse_color_low: vec4<f32> = croped_cur_color;
-    var coarse_count: u32 = 0u;
+    var coarse_count: u32 = 1u;
 
 
     let is_pos = rel_position_cur.x != 0.0f || rel_position_cur.y != 0.0f || rel_position_cur.z != 0.0f;
