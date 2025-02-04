@@ -6,10 +6,12 @@ const INSTANCE_UINT_SIZE: u32 = 9u;
 // const INSTANCE_MATERIAL_SIZE: u32 = 11u;
 
 const BVH_TRIANGLE_SIZE: u32 = 1u;
-const BVH_INSTANCE_SIZE: u32 = 1u;
+const BVH_INSTANCE_SIZE: u32 = 3u;
 
 const TRIANGLE_BOUNDING_VERTICES_SIZE: u32 = 5u;
-const INSTANCE_BOUNDING_VERTICES_SIZE: u32 = 4u;
+const INSTANCE_BOUNDING_VERTICES_SIZE: u32 = 3u;
+
+// const ZERO_FLOAT: f16 = 0.0;
 
 const POINT_LIGHT_SIZE: u32 = 3u;
 
@@ -21,6 +23,7 @@ const MAX_SAFE_INTEGER_FOR_F32: f32 = 8388607.0;
 const MAX_SAFE_INTEGER_FOR_F32_U: u32 = 8388607u;
 const UINT_MAX: u32 = 4294967295u;
 const BIAS: f32 = 0.0000152587890625;
+// const BIAS: f32 = 0.0009765625;
 const INV_PI: f32 = 0.3183098861837907;
 const INV_255: f32 = 0.00392156862745098;
 
@@ -75,8 +78,8 @@ struct UniformUint {
 @group(3) @binding(3) var<storage, read> instance_uint: array<u32>;
 @group(3) @binding(4) var<storage, read> instance_transform: array<Transform>;
 @group(3) @binding(5) var<storage, read> instance_material: array<Material>;
-@group(3) @binding(6) var<storage, read> instance_bvh: array<vec3<u32>>;
-@group(3) @binding(7) var<storage, read> instance_bounding_vertices: array<vec3<f32>>;
+@group(3) @binding(6) var<storage, read> instance_bvh: array<u32>;
+@group(3) @binding(7) var<storage, read> instance_bounding_vertices: array<vec4<f32>>;
 
 struct Ray {
     origin: vec3<f32>,
@@ -135,16 +138,43 @@ fn access_triangle_bvh(index: u32) -> vec4<u32> {
     return textureLoad(triangle_bvh, vec2<u32>(width, height), layer, 0);
 }
 
+
+
 fn access_triangle_bounding_vertices(index: u32) -> vec4<f32> {
+    // Fetch from texture
     // Divide triangle index by 2048 * 2048 to get layer
     let layer: u32 = index >> 22u;
     // Get height of triangle
     let height: u32 = (index >> 11u) & 0x7FFu;
     // Get width of triangle
     let width: u32 = index & 0x7FFu;
-    // Return triangle
     return textureLoad(triangle_bounding_vertices, vec2<u32>(width, height), layer, 0);
 }
+
+
+/*
+const INSTANCE_BVH_CACHE_SIZE: u32 = 100u;
+var<workgroup> instance_bvh_cache: array<vec3<u32>, INSTANCE_BVH_CACHE_SIZE>;
+
+fn access_instance_bvh(index: u32) -> vec3<u32> {
+    if (index < INSTANCE_BVH_CACHE_SIZE) {
+        return instance_bvh_cache[index];
+    } else {
+        return instance_bvh[index];
+    }
+}
+
+const INSTANCE_BOUNDING_VERTICES_CACHE_SIZE: u32 = 100u;
+var<workgroup> instance_bounding_vertices_cache: array<vec3<f32>, INSTANCE_BOUNDING_VERTICES_CACHE_SIZE>;
+
+fn access_instance_bounding_vertices(index: u32) -> vec4<f32> {
+    if (index < INSTANCE_BOUNDING_VERTICES_CACHE_SIZE) {
+        return instance_bounding_vertices_cache[index];
+    } else {
+        return instance_bounding_vertices[index];
+    }
+}
+*/
 
 // var render_id: vec4<f32> = vec4<f32>(0.0f);
 // var render_original_id: vec4<f32> = vec4<f32>(0.0f);
@@ -205,42 +235,71 @@ fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -
     }
 }
 
-fn moellerTrumboreVectorized(
-    a: mat2x3<f32>, b: mat2x3<f32>, c: mat2x3<f32>,
-    ray: Ray, l: f32
-) -> vec3<f32> {
-    // let r_ud_x2 = mat2x3<f32>(ray.unit_direction, ray.unit_direction);
-    let r_o_x2 = mat2x3<f32>(ray.origin, ray.origin);
-
+/*
+fn moellerTrumboreVectorized(a: mat2x3<f32>, b: mat2x3<f32>, c: mat2x3<f32>, ray: Ray, l: f32) -> vec3<f32> {
+    // Compute edges for both triangles.
     let edge1: mat2x3<f32> = b - a;
     let edge2: mat2x3<f32> = c - a;
-    let pvec: mat2x3<f32> = mat2x3<f32>(cross(ray.unit_direction, edge2[0]), cross(ray.unit_direction, edge2[1]));
-    let det: vec2<f32> = vec2<f32>(dot(edge1[0], pvec[0]), dot(edge1[1], pvec[1]));
-    let inv_det: vec2<f32> = 1.0f / det;
-    let tvec: mat2x3<f32> = r_o_x2 - a;
-    let u: vec2<f32> = vec2<f32>(dot(tvec[0], pvec[0]), dot(tvec[1], pvec[1])) * inv_det;
-    let qvec: mat2x3<f32> = mat2x3<f32>(cross(tvec[0], edge1[0]), cross(tvec[1], edge1[1]));
     
-    let v: vec2<f32> = vec2<f32>(dot(ray.unit_direction, qvec[0]), dot(ray.unit_direction, qvec[1])) * inv_det;
-    let s: vec2<f32> = vec2<f32>(dot(edge2[0], qvec[0]), dot(edge2[1], qvec[1])) * inv_det;
-
-    let valid: vec2<bool> = vec2<bool>(
-        v.x >= BIAS && u.x >= BIAS && u.x + v.x <= 1.0f && s.x <= l && s.x > BIAS,
-        v.y >= BIAS && u.y >= BIAS && u.y + v.y <= 1.0f && s.y <= l && s.y > BIAS
-    );
-
-    if (valid.x && (!valid.y || s.x < s.y)) {
-        return vec3<f32>(s.x, u.x, v.x);
-    } else if (valid.y) {
-        return vec3<f32>(s.y, u.y, v.y);
+    // Compute pvec for both triangles by crossing the ray direction with each edge2.
+    let pvec0: vec3<f32> = cross(ray.unit_direction, edge2[0]);
+    let pvec1: vec3<f32> = cross(ray.unit_direction, edge2[1]);
+    
+    // Compute determinants for both triangles.
+    let det0: f32 = dot(edge1[0], pvec0);
+    let det1: f32 = dot(edge1[1], pvec1);
+    
+    // Compute inverse determinants.
+    let inv_det0: f32 = 1.0 / det0;
+    let inv_det1: f32 = 1.0 / det1;
+    
+    // Compute t vectors for both triangles.
+    let tvec0: vec3<f32> = ray.origin - a[0];
+    let tvec1: vec3<f32> = ray.origin - a[1];
+    
+    // Compute u parameters for both triangles.
+    let u0: f32 = dot(tvec0, pvec0) * inv_det0;
+    let u1: f32 = dot(tvec1, pvec1) * inv_det1;
+    
+    // Compute q vectors for both triangles.
+    let qvec0: vec3<f32> = cross(tvec0, edge1[0]);
+    let qvec1: vec3<f32> = cross(tvec1, edge1[1]);
+    
+    // Compute v parameters for both triangles.
+    let v0: f32 = dot(ray.unit_direction, qvec0) * inv_det0;
+    let v1: f32 = dot(ray.unit_direction, qvec1) * inv_det1;
+    
+    // Compute s values for both triangles.
+    let s0: f32 = dot(edge2[0], qvec0) * inv_det0;
+    let s1: f32 = dot(edge2[1], qvec1) * inv_det1;
+    
+    // Determine validity of each triangle's intersection.
+    // A triangle is valid if its determinant is large enough,
+    // u and v are within the allowed barycentrics, and s is within (BIAS, l].
+    let valid0: bool = abs(det0) >= BIAS && u0 >= BIAS && u0 <= 1.0 &&
+                         v0 >= BIAS && (u0 + v0) <= 1.0 &&
+                         s0 > BIAS && s0 <= l;
+    let valid1: bool = abs(det1) >= BIAS && u1 >= BIAS && u1 <= 1.0 &&
+                         v1 >= BIAS && (u1 + v1) <= 1.0 &&
+                         s1 > BIAS && s1 <= l;
+    
+    // Define a huge value to represent an invalid intersection.
+    let huge: f32 = l + 1.0;
+    let s0_eff: f32 = select(huge, s0, valid0);
+    let s1_eff: f32 = select(huge, s1, valid1);
+    
+    // Choose the triangle with the shorter s value.
+    if (s0_eff >= huge && s1_eff >= huge) {
+        // Return zero vector if neither triangle is hit.
+        return vec3<f32>(0.0, 0.0, 0.0);
+    }
+    if (s0_eff <= s1_eff) {
+        return vec3<f32>(s0, u0, v0);
     } else {
-        return vec3<f32>(0.0f);
+        return vec3<f32>(s1, u1, v1);
     }
 }
-
-
-
-
+*/
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
@@ -347,7 +406,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
     var stack = array<u32, 20>();
     var stack_index: u32 = 1u;
     
-    while (stack_index > 0u) {
+    while (stack_index > 0u && stack_index < 20u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
 
@@ -423,33 +482,35 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
     // stack[0u] = 0u;
     var stack_index: u32 = 1u;
 
-    while (stack_index > 0u) {
+    while (stack_index > 0u && stack_index < 16u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
 
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
         
-        let indicator_and_children: vec3<u32> = instance_bvh[bvh_offset];
+        // let indicator_and_children: vec3<u32> = instance_bvh[bvh_offset];
+        let indicator = instance_bvh[bvh_offset];
+        let child0 = instance_bvh[bvh_offset + 1u];
+        let child1 = instance_bvh[bvh_offset + 2u];
 
-        let min0 = instance_bounding_vertices[vertex_offset];
-        let max0 = instance_bounding_vertices[vertex_offset + 1u];
-        let min1 = instance_bounding_vertices[vertex_offset + 2u];
-        let max1 = instance_bounding_vertices[vertex_offset + 3u];
+        let bv0 = instance_bounding_vertices[vertex_offset];
+        let bv1 = instance_bounding_vertices[vertex_offset + 1u];
+        let bv2 = instance_bounding_vertices[vertex_offset + 2u];
 
-        let dist0 = rayBoundingVolume(min0, max0, ray, hit.suv.x);
+        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, hit.suv.x);
         
         var dist1: f32 = POW32;
-        if (indicator_and_children.z != UINT_MAX) {
-            dist1 = rayBoundingVolume(min1, max1, ray, hit.suv.x);
+        if (child1 != UINT_MAX) {
+            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, hit.suv.x);
         }
 
         let dist_near = min(dist0, dist1);
         let dist_far = max(dist0, dist1);
-        let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
-        let far_child = select(indicator_and_children.y, indicator_and_children.z, dist0 < dist1);
+        let near_child = select(child1, child0, dist0 < dist1);
+        let far_child = select(child0, child1, dist0 < dist1);
 
-        if (indicator_and_children.x == 0u) {
+        if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
                 let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.suv.x);
@@ -499,7 +560,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
     var stack: array<u32, 20> = array<u32, 20>();
     var stack_index: u32 = 1u;
     
-    while (stack_index > 0u) {
+    while (stack_index > 0u && stack_index < 20u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
 
@@ -555,32 +616,34 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
 
-    while (stack_index > 0u) {
+    while (stack_index > 0u && stack_index < 16u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
 
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
         
-        let indicator_and_children: vec3<u32> = instance_bvh[bvh_offset];
+        let indicator = instance_bvh[bvh_offset];
+        let child0 = instance_bvh[bvh_offset + 1u];
+        let child1 = instance_bvh[bvh_offset + 2u];
 
-        let min0 = instance_bounding_vertices[vertex_offset];
-        let max0 = instance_bounding_vertices[vertex_offset + 1u];
-        let min1 = instance_bounding_vertices[vertex_offset + 2u];
-        let max1 = instance_bounding_vertices[vertex_offset + 3u];
-        let dist0 = rayBoundingVolume(min0, max0, ray, l);
+        let bv0 = instance_bounding_vertices[vertex_offset];
+        let bv1 = instance_bounding_vertices[vertex_offset + 1u];
+        let bv2 = instance_bounding_vertices[vertex_offset + 2u];
+
+        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, l);
         
         var dist1: f32 = POW32;
-        if (indicator_and_children.z != UINT_MAX) {
-            dist1 = rayBoundingVolume(min1, max1, ray, l);
+        if (child1 != UINT_MAX) {
+            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, l);
         }
 
         let dist_near = min(dist0, dist1);
         let dist_far = max(dist0, dist1);
-        let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
-        let far_child = select(indicator_and_children.y, indicator_and_children.z, dist0 < dist1);
+        let near_child = select(child1, child0, dist0 < dist1);
+        let far_child = select(child0, child1, dist0 < dist1);
 
-        if (indicator_and_children.x == 0u) {
+        if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
                 if (shadowTraverseTriangleBVH(near_child, ray, l)) {
@@ -853,6 +916,19 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     return final_color + importancy_factor * uniforms_float.ambient;
 }
 
+/*
+fn write_no_hit(screen_pos: vec2<u32>) {
+    // If there is no triangle render ambient color 
+    textureStore(compute_out, screen_pos, 0, vec4<f32>(uniforms_float.ambient, 1.0f));
+    // And overwrite position with 0 0 0 0
+    if (uniforms_uint.is_temporal == 1u) {
+        // Store position in target
+        textureStore(compute_out, screen_pos, 1, vec4<f32>(0.0f));
+    }
+}
+
+var<workgroup> workgroup_any_hit: bool;
+*/
 
 @compute
 @workgroup_size(8, 8)
@@ -873,6 +949,18 @@ fn compute(
     let instance_index: u32 = texture_offset[buffer_index * 2u] - 1u;
     let triangle_index: u32 = texture_offset[buffer_index * 2u + 1u] - 1u;
 
+    /*
+    let no_hit: bool = instance_index == UINT_MAX && triangle_index == UINT_MAX;
+    if (!no_hit) {
+        workgroup_any_hit = true;
+    }
+    // Terminate if entire workgroup desn't contain any hit.
+    if (!workgroupUniformLoad(&workgroup_any_hit)) {
+        write_no_hit(screen_pos);
+        return;
+    }
+    */
+    
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
         // If there is no triangle render ambient color 
         textureStore(compute_out, screen_pos, 0, vec4<f32>(uniforms_float.ambient, 1.0f));
@@ -922,9 +1010,9 @@ fn compute(
         if (fine_count == 0u || !last_frame) {
             sampleFactor = 2u;
         }
-        
+
         /*
-        let temporal_target_mod: u32 = (uniforms_uint.temporal_target + (workgroup_id.x * 8u) / (uniforms_uint.render_size.x / 2u)) % 2u;
+        let temporal_target_mod: u32 = (uniforms_uint.temporal_target + (workgroup_id.x * 8u) / (uniforms_uint.render_size.x / 2u)) % 3u;
         if (
             dist <= cur_depth * 8.0f / f32(uniforms_uint.render_size.x)
             && last_frame
@@ -941,7 +1029,31 @@ fn compute(
         */
         
     }
+
+    // Load bounding vertices
+    /*
+
+    let is_leader: bool = local_invocation_id.x == 0u && local_invocation_id.y == 0u;
+
+    if (is_leader) {
+        for (var i: u32 = 0u; i < INSTANCE_BVH_CACHE_SIZE; i++) {
+            instance_bvh_cache[i] = instance_bvh[i];
+        }
+
+        for (var i: u32 = 0u; i < INSTANCE_BOUNDING_VERTICES_CACHE_SIZE; i++) {
+            instance_bounding_vertices_cache[i] = instance_bounding_vertices[i];
+        }
+    }
+
+    workgroupBarrier();
+
+    // BREAK UNIFORM CONTROL FLOW
+    if (no_hit) {
+        write_no_hit(screen_pos);
+        return;
+    }
     
+    */
 
     var final_color = vec3<f32>(0.0f);
     // Generate multiple samples
