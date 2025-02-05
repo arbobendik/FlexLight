@@ -103,7 +103,7 @@ cube1.material.metallic = 0.0;
 */
 
 fullScene1.transform.position = new Vector(-5, -10, 0);
-fullScene1.transform.scaleFactor = 2;
+fullScene1.transform.scale(2);
 fullScene1.material.roughness = 1.0;
 fullScene1.material.metallic = 0.0;
 
@@ -112,18 +112,18 @@ fullScene1.material.metallic = 0.0;
 cube2.transform.position = new Vector(0, 0, 10);
 
 bike1.transform.position = new Vector(0, -10, -30);
-bike1.transform.scaleFactor = 2;
+bike1.transform.scale(2);
 
 
 //sphere1.transform.position = new Vector(10, 0, 0);
 sphere_metallic.transform.position = new Vector(10, 0, 0);
-sphere_metallic.transform.scaleFactor = 2;
+sphere_metallic.transform.scale(2);
 sphere_diffuse.transform.position = new Vector(15, 0, 0);
-sphere_diffuse.transform.scaleFactor = 2;
+sphere_diffuse.transform.scale(2);
 sphere_rough_metal.transform.position = new Vector(20, 0, 0);
-sphere_rough_metal.transform.scaleFactor = 2;
+sphere_rough_metal.transform.scale(2);
 sphere_rough_diffuse.transform.position = new Vector(25, 0, 0);
-sphere_rough_diffuse.transform.scaleFactor = 2;
+sphere_rough_diffuse.transform.scale(2);
 
 sphere_metallic.material.roughness = 0.05;
 sphere_metallic.material.metallic = 1.0;
@@ -139,19 +139,12 @@ sphere_rough_diffuse.material.metallic = 0.0;
 
 
 dragon1.transform.position = new Vector(-30, -9, -20);
-dragon1.transform.scaleFactor = 0.5;
+dragon1.transform.scale(0.5);
 
 // instance2.transform.position = new Vector(-30, 0, 0);
 
 // sphere1.transform.position = new Vector(0, 10, 0);
 
-
-
-// Add FPS counter to top-right corner
-const fpsCounter = document.createElement("div");
-// Append it to body.
-document.body.appendChild(fpsCounter);
-// setTimeout(() => engine.renderer.freeze = true, 1000);
 
 
 // init iterator variable for simple animations
@@ -166,6 +159,10 @@ setInterval(() => {
 }, 100/6);
 
 
+// Add FPS counter to top-right corner
+const fpsCounter = document.createElement("div");
+// Append it to body.
+document.body.appendChild(fpsCounter);
 // Update Counter periodically.
 setInterval(() => {
 	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
