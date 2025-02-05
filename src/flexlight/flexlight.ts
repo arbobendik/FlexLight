@@ -143,8 +143,7 @@ export class FlexLight {
 import { 
   Vector, ZeroVector,
   Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
-  vector_difference,
-  vector_length,
+  vector_difference, vector_length, vector_scale,
 } from "./common/lib/math.js";
 
 import { Transform } from "./common/scene/transform.js";
@@ -166,7 +165,7 @@ import { WebGPUAntialiasingType } from "./webgpu/antialiasing/antialiasing-modul
 export {
   // Math
   Vector, ZeroVector,
-  vector_difference, vector_length,
+  vector_difference, vector_length, vector_scale,
   Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
   // Textures
   NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture,

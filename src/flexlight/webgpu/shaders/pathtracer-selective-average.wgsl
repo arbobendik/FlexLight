@@ -107,7 +107,7 @@ fn compute(
     let old_coarse_count: u32 = shift_out_uint_2.w;
     
     // If absolute position is all zeros then there is nothing to do
-    let dist: f32 = distance(rel_position_cur, rel_position_old);
+    let dist: f32 = distance(abs_position_cur, abs_position_old);
     let cur_depth: f32 = distance(abs_position_cur, uniforms_float.camera_position.xyz + inverse_transform.shift);
     // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
 

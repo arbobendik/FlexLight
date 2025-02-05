@@ -1,9 +1,8 @@
-/*
 "use strict";
 
-import { Camera, FlexLight, Prototype, Scene, Vector } from 'flexlight/flexlight.js';
-import { createConfigUI } from 'config-ui/config-ui.js';
-import { staticPath } from './dragon';
+import { Camera, FlexLight, Prototype, Scene, Vector, AlbedoTexture, PointLight, Instance, vector_scale } from '../../flexlight/flexlight.js';
+import { createConfigUI } from '../../config-ui/config-ui.js';
+// import { vector_scale } from 'flexlight/common/lib/math';
 
 const staticPath = './static/';
 // Create new canvas
@@ -22,6 +21,9 @@ controlPanel.appendChild(configUI);
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
+
+
+let textures: AlbedoTexture[] = [];
 // Set Textures 0, 1, 2, 3, 4
 [
 	staticPath + "textures/dirt_side.jpg",	// 0
@@ -31,12 +33,16 @@ let scene: Scene = engine.scene;
 	staticPath + "textures/lamp.jpg"		// 4
 ].forEach((item, i) => {
 	let img = new Image();
+	img.onload = () => {
+		console.log("Loading texture", img, img.width, img.height);
+		textures.push(new AlbedoTexture(img));
+	}
 	img.src = item;
-	scene.textures.push(img);
-
-
+	// console.log("Loading texture", img, img.width, img.height);
+	// textures.push(new AlbedoTexture(img));
 });
 
+/*
 [
 	staticPath + "textures/redstone_pbr.png",	// 0
 	staticPath + "textures/normal.png"			// 1
@@ -45,7 +51,7 @@ let scene: Scene = engine.scene;
 	img.src = item;
 	scene.pbrTextures.push(img);
 });
-
+*/
 
 const loadObj = async (model: string) => {	
 	console.log('loading ' + model);
@@ -56,10 +62,28 @@ const loadObj = async (model: string) => {
 	return prototype;
 }
 
+const planePrototype = await loadObj('plane');
+const cubePrototype = await loadObj('cube');
+
+const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: number, zmax: number) => {
+	let cuboid = scene.instance(cubePrototype);
+	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5);
+	cuboid.transform.position = new Vector(xmin + diff_half.x, ymin + diff_half.y, zmin + diff_half.z);
+	cuboid.transform.scale(diff_half);
+	return cuboid;
+}
+
 // Set camera perspective and position
 camera.position = new Vector(8, 7, -11);
 camera.direction = new Vector(0.440, 0.55);
 
+
+let pointLightTop = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 400, 0.2);
+let pointLightCenter = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
+scene.addPointLight(pointLightTop);
+scene.addPointLight(pointLightCenter);
+scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+/*
 scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 // Make light dimmer (default = 200)
 scene.primaryLightSources[0].intensity = 400;
@@ -68,24 +92,50 @@ scene.primaryLightSources[1].intensity = 300;
 // Set ambient illumination
 scene.ambientLight = [0.1, 0.1, 0.1];
 
+
+
 // Set texture Sizes
 scene.standardTextureSizes = [16, 16];
+*/
 
 // Create large ground plane
-let groundPlane = scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
-groundPlane.textureNums = [-1, 1, -1];
-scene.queue.push(groundPlane);
+let groundPlane = scene.instance(planePrototype);
+// scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
+groundPlane.transform.position = new Vector(0, -1, 0);
+groundPlane.transform.scale(10);
+
+
+// groundPlane.textureNums = [-1, 1, -1];
+// scene.queue.push(groundPlane);
+/*
+let cuboids: Array<Instance> = [
+	scene.instance(cubePrototype),
+	scene.instance(cubePrototype),
+	scene.instance(cubePrototype),
+	scene.instance(cubePrototype)
+];
+
+cuboids[0]!.transform.position = new Vector(3.75, 0.5, 2);
+cuboids[1]!.transform.position = new Vector(0, 0.5, -1.5);
+cuboids[2]!.transform.position = new Vector(1, 0.5, -0.5);
+cuboids[3]!.transform.position = new Vector(-1, 0.5, -0.5);
+
+cuboids[0]!.transform.scale(new Vector(3, 1.5, 0.5));
+cuboids[1]!.transform.scale(new Vector(1.5, 1.5, 0.5));
+cuboids[2]!.transform.scale(new Vector(0.5, 1.5, 0.5));
+cuboids[3]!.transform.scale(new Vector(0.5, 1.5, 0.5));
+*/
 
 // Generate a few translucent cuboids on surface
 let cuboids = [
-	scene.Cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
-	scene.Cuboid(-1.5, 1.5, -1, 2, -2, -1),
-	scene.Cuboid(0.5, 1.5, -1, 2, -1, 0),
-	scene.Cuboid(-1.5, -0.5, -1, 2, - 1, 0)
+	cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
+	cuboid(-1.5, 1.5, -1, 2, -2, -1),
+	cuboid(0.5, 1.5, -1, 2, -1, 0),
+	cuboid(-1.5, -0.5, -1, 2, - 1, 0)
 ];
 
+
 let cuboidColors = [
-	// [255, 255, 255],
 	[230, 170, 0],
 	[0, 150, 150],
 	[150, 0, 100],
@@ -94,41 +144,46 @@ let cuboidColors = [
 
 // Color all cuboid in center
 cuboids.forEach((cuboid, i) => {
-	cuboid.roughness = 0;
-	cuboid.metallicity = .5;
-	cuboid.translucency = 1;
-	cuboid.ior = 1.3;
-	cuboid.color = cuboidColors[i];
+	cuboid.material.roughness = 0;
+	cuboid.material.metallic = 0.5;
+	cuboid.material.transmission = 1;
+	cuboid.material.ior = 1.3;
+	cuboid.material.color = new Vector(cuboidColors[i]![0]! / 255, cuboidColors[i]![1]! / 255, cuboidColors[i]![2]! / 255);
 	// Append to render-queue
-	scene.queue.push(cuboid);
+	// scene.queue.push(cuboid);
 });
 
 
 let grassCubes = [
-	scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8),
-	scene.Cuboid(-3, -2, -1, 0, -5.2, -4.2)
+	cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8),
+	cuboid(-3, -2, -1, 0, -5.2, -4.2)
 ];
 
 
+/*
 grassCubes.forEach(cube => {
 	cube.textureNums = [0, -1, -1];
 	cube.top.textureNums = [1, -1, -1];
 	cube.bottom.textureNums = [2, -1, -1];
-	scene.queue.push(cube);
+	// scene.queue.push(cube);
 });
+*/
 
 // Create diffuse white "wall" cuboid
-scene.queue.push(scene.Cuboid(2.5, 7.5, -1, 1.5, 5, 7));
+let wall = cuboid(2.5, 7.5, -1, 1.5, 5, 7);
 // Spawn red cube on top of "wall"
-let redCube = scene.Cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
-redCube.textureNums = [3, 0, -1];
-scene.queue.push(redCube);
+let redCube = cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
+// redCube.textureNums = [3, 0, -1];
+// scene.queue.push(redCube);
 // Spawn lantern on the floor
-let lantern = scene.Cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
-lantern.textureNums = [4, -1, -1];
-lantern.metallicity = 1;
-lantern.emissiveness = 2;
-scene.queue.push(lantern);
+let lantern = cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
+// lantern.textureNums = [4, -1, -1];
+lantern.material.metallic = 1;
+lantern.material.emissive = new Vector(2, 2, 2);
+
+
+engine.renderer.render();
+// scene.queue.push(lantern);
 /*
 let recreateBVH = (subTree) => {
 	let list = [];
@@ -170,3 +225,11 @@ setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
 */
+// Add FPS counter to top-right corner
+const fpsCounter = document.createElement("div");
+// Append it to body.
+document.body.appendChild(fpsCounter);
+// Update Counter periodically.
+setInterval(() => {
+	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
+}, 1000);

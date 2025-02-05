@@ -81,14 +81,14 @@ let cube = await loadObj('cube');
 let dragon = await loadObj('dragon_lp');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
-// let bike = await loadObj('bike');
+// let monkey = await loadObj('monke');
 
 // const fullScene1 = scene.instance(fullScene);
 const cube1 = scene.instance(cube);
-// const cube2 = scene.instance(cube);
-/*
-const monkey1 = scene.instance(monkey);
-*/
+const cube2 = scene.instance(cube);
+
+const monkey1 = scene.instance(cube);
+
 
 const sphere_metallic = scene.instance(sphere);
 const sphere_diffuse = scene.instance(sphere);
@@ -104,16 +104,16 @@ const sphere_rough_diffuse = scene.instance(sphere);
 // const monkey1 = scene.instance(monkey);
 
 cube1.transform.position = new Vector(0, -102, 0);
-cube1.transform.scaleFactor = 100;
+cube1.transform.scale(100);
 cube1.material.roughness = 1.0;
 cube1.material.metallic = 0.0;
 
-/*
 cube2.transform.position = new Vector(100, 0, -100);
 cube2.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
-cube2.transform.scaleFactor = 100;
+cube2.transform.scale(100);
 cube2.material.roughness = 0.0;
 cube2.material.metallic = 0.5;
+/*
 
 
 /*
@@ -124,11 +124,19 @@ fullScene1.material.metallic = 0.0;
 
 
 
+
 cube2.transform.position = new Vector(0, 0, 10);
  * POINT_LIGHT_SIZE
 bike1.transform.position = new Vector(0, -10, -30);
 bike1.transform.scaleFactor = 2;
 */
+
+monkey1.transform.position = new Vector(5, 1, 0);
+monkey1.transform.scale(new Vector(3, 1.8, 0.5));
+monkey1.material.roughness = 0.0;
+monkey1.material.metallic = 1.0;
+monkey1.material.transmission = 0;
+monkey1.material.ior = 1;
 
 //sphere1.transform.position = new Vector(10, 0, 0);
 sphere_metallic.transform.position = new Vector(10, 0, 0);
@@ -175,7 +183,7 @@ for (let i = 0; i < 5; i++) {
 
 let dragon_instance = scene.instance(dragon);
 dragon_instance.transform.position = new Vector(0, 0, -20);
-dragon_instance.transform.scaleFactor = 1;
+dragon_instance.transform.scale(1);
 dragon_instance.material.roughness = 0.5;
 dragon_instance.material.metallic = 1.0;
 

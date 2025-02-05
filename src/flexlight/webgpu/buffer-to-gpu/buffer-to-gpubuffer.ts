@@ -30,7 +30,8 @@ export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
         bufferManager.bindGPUBuffer(this);
         // Create GPUBuffer
         this.size = Math.max(bufferManager.length, this.MIN_BUFFER_LENGTH);
-        this._gpuBuffer = device.createBuffer({ size: this.size * this.bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT, 
+        this._gpuBuffer = device.createBuffer({
+            size: this.size * this.bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT, 
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: label
         });
@@ -51,7 +52,8 @@ export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
             // Destroy old GPUBuffer
             this._gpuBuffer.destroy();
             // Create GPUBuffer
-            this._gpuBuffer = this.device.createBuffer({ size: newByteLength, 
+            this._gpuBuffer = this.device.createBuffer({
+                size: newByteLength, 
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 label: this.label
             });
