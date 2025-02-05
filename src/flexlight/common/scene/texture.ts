@@ -30,6 +30,7 @@ export class Texture {
         if (!ctx) throw new Error("Failed to get canvas context");
         canvas.width = width;
         canvas.height = height;
+        console.log("Drawing texture", texture, width, height);
         // Disable image smoothing to get non-blury pixel values in given resolution
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(texture, 0, 0, width, height);
@@ -50,7 +51,7 @@ export class Texture {
         // Get texture data
         Texture.getTextureData(texture, channels, this.width, this.height).then((array: Uint8Array) => {
             this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
-            this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray(new Uint32Array([this.width, this.height, channels, this.textureDataBuffer.offset]));
+            this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray([this.textureDataBuffer.offset, channels, this.width, this.height]);
         });
 
         Texture.instances.add(this);
@@ -73,37 +74,37 @@ export class Texture {
 
 
 export class NormalTexture extends Texture {
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(3, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 3, width, height);
     }
 }
 
 export class AlbedoTexture extends Texture {
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(3, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 3, width, height);
     }
 }
 
 export class EmissiveTexture extends Texture {
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(3, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 3, width, height);
     }
 }
 
 export class RoughnessTexture extends Texture {
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(1, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 1, width, height);
     }
 }
 
 export class MetallicTexture extends Texture {
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(1, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 1, width, height);
     }
 }
 
 export class HeightTexture extends Texture {    
-    constructor(texture: HTMLImageElement, width: number, height: number) {
-        super(1, texture, width, height);
+    constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
+        super(texture, 1, width, height);
     }
 }
