@@ -14,20 +14,24 @@ export class BVHLeaf<T extends Triangle | IndexedInstance> {
     children: Array<T>;
     bounding: Bounding;
     id: number;
-    parentId: number;
     nextId: number;
-    siblingId: number | undefined;
+    private _offset: number | undefined;
     
-    constructor(children: Array<T>, parentId: number, bounding: Bounding, id: number, nextId: number, siblingId: number | undefined = undefined) {
+    constructor(children: Array<T>, bounding: Bounding, id: number, nextId: number) {
         this.children = children;
-        this.parentId = parentId;
         this.bounding = bounding;
         this.id = id;
         this.nextId = nextId;
-        this.siblingId = siblingId ?? undefined;
     }
 
+    set offset(offset: number) {
+        this._offset = offset;
+    }
 
+    get offset(): number {
+        if (this._offset) return this._offset;
+        else throw new Error("Offset not set for BVHLeaf with id: " + this.id);
+    }
     destroy() {
         // Dereference children
         this.children = [];
@@ -44,17 +48,23 @@ export class BVHNode<T extends Triangle | IndexedInstance> {
     children: Array<BVHNode<T> | BVHLeaf<T>>;
     bounding: Bounding;
     id: number;
-    parentId: number;
     nextId: number;
-    siblingId: number | undefined;
+    private _offset: number | undefined;
 
-    constructor(children: Array<BVHNode<T> | BVHLeaf<T>>, parentId: number, bounding: Bounding, id: number, nextId: number, siblingId: number | undefined = undefined) {
+    constructor(children: Array<BVHNode<T> | BVHLeaf<T>>, bounding: Bounding, id: number, nextId: number) {
         this.children = children;
-        this.parentId = parentId;
         this.bounding = bounding;
         this.id = id;
         this.nextId = nextId;
-        this.siblingId = siblingId;
+    }
+
+    set offset(offset: number) {
+        this._offset = offset;
+    }
+
+    get offset(): number {
+        if (this._offset) return this._offset;
+        else throw new Error("Offset not set for BVHNode with id: " + this.id);
     }
 
     destroy() {
