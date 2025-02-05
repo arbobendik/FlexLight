@@ -1,7 +1,7 @@
 "use strict";
 
 import { BVH, BVHArrays, BVHLeaf, BVHNode, Bounding } from "./bvh";
-import { POW32M1, Vector, matrix_vector_mul, vector_add, vector_difference, vector_scale } from "../lib/math";
+import { BIAS, POW32M1, Vector, matrix_vector_mul, vector_add, vector_difference, vector_scale } from "../lib/math";
 import { Instance } from "./instance";
 import { Transform } from "./transform";
 import { Triangle } from "./triangle-bvh";
@@ -107,7 +107,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
         // Base case: if there are less than BVH_MAX_INSTANCES_PER_LEAF instances, return a leaf
-        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF) return new BVHLeaf(instances, parentId, bounding, startingId, startingId + 1);
+        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
         const instancesPerChild: number = Math.ceil(instances.length / BVH_MAX_INSTANCES_PER_LEAF);
 
@@ -121,7 +121,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             nextId = child.nextId;
         }
 
-        return new BVHNode(children, parentId, bounding, startingId, nextId);
+        return new BVHNode(children, bounding, startingId, nextId);
     }
     /*
     private static evaluateSplitCost(instances: Array<IndexedInstance>, bounding0: Bounding, bounding1: Bounding): number {
@@ -185,7 +185,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         // Tighten bounding
         const bounding = IndexedInstanceBVH.tightenBoundingInstances(instances);
         // Base case: if there are less than BVH_MAX_INSTANCES_PER_LEAF instances, return a leaf
-        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF || depth > maxDepth) return new BVHLeaf(instances, parentId, bounding, startingId, startingId + 1);
+        if (instances.length <= BVH_MAX_INSTANCES_PER_LEAF || depth > maxDepth) return new BVHLeaf(instances, bounding, startingId, startingId + 1);
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of instance split
         const centerOfMass = vector_scale(vector_add(bounding.min, bounding.max), 0.5);
@@ -296,7 +296,7 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             nextId = child.nextId;
         }
 
-        return new BVHNode(children, parentId, bounding, startingId, nextId);
+        return new BVHNode(children, bounding, startingId, nextId);
     }
 
     static fromInstances(instances: Array<Instance> | Set<Instance>): IndexedInstanceBVH {
@@ -323,12 +323,12 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
             // Transform all corners
             for (let corner of corners) {
                 const transformedCorner = vector_add(matrix_vector_mul(transform.matrix, corner), transform.position);
-                transformedBounding.min.x = Math.min(transformedBounding.min.x, transformedCorner.x);
-                transformedBounding.min.y = Math.min(transformedBounding.min.y, transformedCorner.y);
-                transformedBounding.min.z = Math.min(transformedBounding.min.z, transformedCorner.z);
-                transformedBounding.max.x = Math.max(transformedBounding.max.x, transformedCorner.x);
-                transformedBounding.max.y = Math.max(transformedBounding.max.y, transformedCorner.y);
-                transformedBounding.max.z = Math.max(transformedBounding.max.z, transformedCorner.z);
+                transformedBounding.min.x = Math.min(transformedBounding.min.x, transformedCorner.x) - BIAS;
+                transformedBounding.min.y = Math.min(transformedBounding.min.y, transformedCorner.y) - BIAS;
+                transformedBounding.min.z = Math.min(transformedBounding.min.z, transformedCorner.z) - BIAS;
+                transformedBounding.max.x = Math.max(transformedBounding.max.x, transformedCorner.x) + BIAS;
+                transformedBounding.max.y = Math.max(transformedBounding.max.y, transformedCorner.y) + BIAS;
+                transformedBounding.max.z = Math.max(transformedBounding.max.z, transformedCorner.z) + BIAS;
             }
             // Push indexed instance
             indexedInstances.push(new IndexedInstance(instance, transformedBounding, id ++));

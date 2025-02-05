@@ -103,7 +103,8 @@ struct Light {
 };
 
 struct Hit {
-    suv: vec3<f32>,
+    distance: f32,
+    uv: u32,
     instance_index: u32,
     triangle_index: u32
 };
@@ -207,31 +208,32 @@ fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
 
 }
 
-fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> vec3<f32> {
+fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Hit {
+    let no_hit: Hit = Hit(0.0f, 0u, UINT_MAX, UINT_MAX);
     let edge1: vec3<f32> = b - a;
     let edge2: vec3<f32> = c - a;
     let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
     let det: f32 = dot(edge1, pvec);
     if(abs(det) < BIAS) {
-        return vec3<f32>(0.0f);
+        return no_hit;
     }
     let inv_det: f32 = 1.0f / det;
     let tvec: vec3<f32> = ray.origin - a;
     let u: f32 = dot(tvec, pvec) * inv_det;
     if(u < BIAS || u > 1.0f) {
-        return vec3<f32>(0.0f);
+        return no_hit;
     }
     let qvec: vec3<f32> = cross(tvec, edge1);
     let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
     let uv_sum: f32 = u + v;
     if(v < BIAS || uv_sum > 1.0f) {
-        return vec3<f32>(0.0f);
+        return no_hit;
     }
     let s: f32 = dot(edge2, qvec) * inv_det;
     if(s <= l && s > BIAS) {
-        return vec3<f32>(s, u, v);
+        return Hit(s, pack2x16float(vec2<f32>(u, v)), UINT_MAX, UINT_MAX);
     } else {
-        return vec3<f32>(0.0f);
+        return no_hit;
     }
 }
 
@@ -401,14 +403,25 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
 
     // Hit object
     // First element of vector is current closest intersection point
-    var hit: Hit = Hit(vec3<f32>(max_len, 0.0f, 0.0f), UINT_MAX, UINT_MAX);
+    var hit: Hit = Hit(max_len, 0u, UINT_MAX, UINT_MAX);
     // Stack for BVH traversal
+    // var distance_stack = array<f32, 20>();
+    // distance_stack[0u] = max_len;
     var stack = array<u32, 20>();
     var stack_index: u32 = 1u;
     
     while (stack_index > 0u && stack_index < 20u) {
         stack_index -= 1u;
-        let node_index: u32 = stack[stack_index];
+        var node_index: u32 = stack[stack_index];
+
+        /*
+        let distance = distance_stack[stack_index];
+        if (distance > hit.suv.x) {
+            stack_index -= 1u;
+            node_index = stack[stack_index];
+            // continue;
+        }
+        */
 
         let bvh_offset: u32 = instance_bvh_offset + node_index * BVH_TRIANGLE_SIZE;
         let vertex_offset: u32 = instance_vertex_offset + node_index * TRIANGLE_BOUNDING_VERTICES_SIZE;
@@ -432,26 +445,33 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             */
             
             // Test if ray even intersects
-            let intersection0: vec3<f32> = moellerTrumbore(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, hit.suv.x * len_factor);
-            if (intersection0.x != 0.0) {
+            let hit0: Hit = moellerTrumbore(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, hit.distance * len_factor);
+            if (hit0.distance != 0.0) {
                 // Calculate intersection point
-                hit = Hit(vec3<f32>(intersection0.x / len_factor, intersection0.yz), instance_index, triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y);
+                // hit = hit0;
+                hit.distance = hit0.distance / len_factor;
+                hit.uv = hit0.uv;
+                hit.instance_index = instance_index;
+                hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 // Test if ray even intersects
-                let intersection1: vec3<f32> = moellerTrumbore(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, hit.suv.x * len_factor);
-                if (intersection1.x != 0.0) {
+                let hit1: Hit = moellerTrumbore(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, hit.distance * len_factor);
+                if (hit1.distance != 0.0) {
                     // Calculate intersection point
-                    hit = Hit(vec3<f32>(intersection1.x / len_factor, intersection1.yz), instance_index, triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z);
+                    hit.distance = hit1.distance / len_factor;
+                    hit.uv = hit1.uv;
+                    hit.instance_index = instance_index;
+                    hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z;
                 }
             }
             
         } else {
-            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, hit.suv.x * len_factor);
+            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, hit.distance * len_factor);
             var dist1: f32 = POW32;
             if (indicator_and_children.z != UINT_MAX) {
-                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray, hit.suv.x * len_factor);
+                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray, hit.distance * len_factor);
             }
 
             let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
@@ -460,10 +480,12 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             // If node is an AABB, push children to stack, furthest first
             if (max(dist0, dist1) != POW32) {
                 stack[stack_index] = far_child;
+                // distance_stack[stack_index] = max(dist0, dist1);
                 stack_index += 1u;
             }
             if (min(dist0, dist1) != POW32) {
                 stack[stack_index] = near_child;
+                // distance_stack[stack_index] = min(dist0, dist1);
                 stack_index += 1u;
             }
         }
@@ -476,15 +498,23 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
 fn traverseInstanceBVH(ray: Ray) -> Hit {
     // Hit object
     // Maximal distance a triangle can be away from the ray origin is POW32 at initialisation
-    var hit: Hit = Hit(vec3<f32>(POW32, 0.0f, 0.0f), UINT_MAX, UINT_MAX);
+    var hit: Hit = Hit(POW32, 0u, UINT_MAX, UINT_MAX);
     // Stack for BVH traversal
     var stack = array<u32, 16>();
+    // var distance_stack = array<f32, 16>();
     // stack[0u] = 0u;
     var stack_index: u32 = 1u;
 
     while (stack_index > 0u && stack_index < 16u) {
         stack_index -= 1u;
-        let node_index: u32 = stack[stack_index];
+        var node_index: u32 = stack[stack_index];
+        /*
+        let distance = distance_stack[stack_index];
+        if (distance > hit.suv.x) {
+            continue;
+        }
+        */
+        
 
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
@@ -498,11 +528,11 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
         let bv1 = instance_bounding_vertices[vertex_offset + 1u];
         let bv2 = instance_bounding_vertices[vertex_offset + 2u];
 
-        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, hit.suv.x);
+        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, hit.distance);
         
         var dist1: f32 = POW32;
         if (child1 != UINT_MAX) {
-            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, hit.suv.x);
+            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, hit.distance);
         }
 
         let dist_near = min(dist0, dist1);
@@ -513,14 +543,14 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.suv.x);
-                if (new_hit.suv.x < hit.suv.x) {
+                let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.distance);
+                if (new_hit.distance < hit.distance) {
                     hit = new_hit;
                 }
             }
-            if (dist_far != POW32) {
-                let new_hit: Hit = traverseTriangleBVH(far_child, ray, hit.suv.x);
-                if (new_hit.suv.x < hit.suv.x) {
+            if (dist_far != POW32 && dist_far < hit.distance) {
+                let new_hit: Hit = traverseTriangleBVH(far_child, ray, hit.distance);
+                if (new_hit.distance < hit.distance) {
                     hit = new_hit;
                 }
             }
@@ -528,10 +558,12 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
             // If node is an AABB, push children to stack, furthest first
             if (dist_far != POW32) {
                 stack[stack_index] = far_child;
+                // distance_stack[stack_index] = dist_far;
                 stack_index += 1u;
             }
             if (dist_near != POW32) {
                 stack[stack_index] = near_child;
+                // distance_stack[stack_index] = dist_near;
                 stack_index += 1u;
             }
         }
@@ -572,8 +604,6 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
         let bv0 = access_triangle_bounding_vertices(vertex_offset);
         let bv1 = access_triangle_bounding_vertices(vertex_offset + 1u);
         let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
-        let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
-        let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
 
         if (indicator_and_children.x == 0u) {
             if (moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len)) {
@@ -581,6 +611,8 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
             }
 
             if (indicator_and_children.z != UINT_MAX) {
+                let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
+                let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
                 if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len)) {
                     return true;
                 }   
@@ -807,16 +839,13 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let t4: vec4<f32> = access_triangle(triangle_offset + 4u);
         let t5: vec4<f32> = access_triangle(triangle_offset + 5u);
         // Fetch triangle coordinates from scene graph texture
-        let relative_t: mat3x3<f32> = mat3x3<f32>(
-            t0.xyz, vec3<f32>(t0.w, t1.xy),
-            vec3<f32>(t1.zw, t2.x)
-        );
+        let relative_t: mat3x3<f32> = mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x));
 
         let transform: Transform = instance_transform[hit.instance_index * 2u];
         // Transform triangle
         let t: mat3x3<f32> = transform.rotation * relative_t;
         // Transform hit point
-        ray.origin = hit.suv.x * ray.unit_direction + ray.origin;
+        ray.origin = hit.distance * ray.unit_direction + ray.origin;
         let offset_ray_target: vec3<f32> = ray.origin - transform.shift;
         
         let geometry_n: vec3<f32> = normalize(cross(t[0] - t[1], t[0] - t[2]));
@@ -826,16 +855,19 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             distance(offset_ray_target, t[2])
         );
         // Pull normals
-        let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(
-            t2.yzw, t3.xyz,
-            vec3<f32>(t3.w, t4.xy)
-        );
+        let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
         // Calculate barycentric coordinates
-        let uvw: vec3<f32> = vec3<f32>(1.0f - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
+        let uv = unpack2x16float(hit.uv);
+        let uvw: vec3<f32> = vec3<f32>(1.0f - uv.x - uv.y, uv.x, uv.y);
         // Interpolate smooth normal
         var smooth_n: vec3<f32> = normalize(normals * uvw);
         // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-        let angles: vec3<f32> = acos(abs(geometry_n * normals));
+        let angles: vec3<f32> = acos(abs(vec3<f32>(
+            dot(geometry_n, normalize(normals[0])),
+            dot(geometry_n, normalize(normals[1])),
+            dot(geometry_n, normalize(normals[2]))
+        )));
+        
         let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
         let geometry_offset: f32 = dot(diffs * angle_tan, uvw);
         // Interpolate final barycentric texture coordinates between UV's of the respective vertices
@@ -884,6 +916,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let is_solid: bool = material.transmission * fresnel_reflect <= abs(random_vec.w);
         // Determine local color considering PBR attributes and lighting
         let local_color: vec3<f32> = reservoirSample(material, ray, random_vec, - sign_dir * smooth_n, geometry_offset);
+        // let local_color: vec3<f32> = angles;
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_color * importancy_factor;
 
@@ -978,7 +1011,7 @@ fn compute(
     let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
-    let init_hit: Hit = Hit(vec3<f32>(distance(absolute_position, uniforms_float.camera_position), uvw.yz), instance_index, triangle_index);
+    let init_hit: Hit = Hit(distance(absolute_position, uniforms_float.camera_position), pack2x16float(uvw.yz), instance_index, triangle_index);
     // let camera_ray: Ray = Ray(absolute_position, - normalize(uniforms_float.camera_position - absolute_position));
 
     // Determine if additional samples are needed
