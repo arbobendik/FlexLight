@@ -114,7 +114,7 @@ export class TriangleBVH extends BVH<Triangle> {
         for (let triangle of triangles) for (let vertex of triangle) vertices.push(vertex);
         const bounding = TriangleBVH.tightenBounding(triangles);
         // Base case: if there are less than BVH_MAX_TRIANGLES_PER_LEAF triangles, return a leaf
-        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) return new BVHLeaf(triangles, parentId, bounding, startingId, startingId + 1);
+        if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
 
         const trianglesPerChild: number = Math.ceil(triangles.length / BVH_MAX_CHILDREN_PER_NODE);
 
@@ -129,7 +129,7 @@ export class TriangleBVH extends BVH<Triangle> {
             nextId = child.nextId;
         }
 
-        return new BVHNode(children, parentId, bounding, startingId, nextId);
+        return new BVHNode(children, bounding, startingId, nextId);
     }
 
 
@@ -166,7 +166,7 @@ export class TriangleBVH extends BVH<Triangle> {
         // Base case: if there are less than BVH_MAX_CHILDREN_PER_NODE triangles, return a leaf
         if (triangles.length <= BVH_MAX_TRIANGLES_PER_LEAF) {
             // console.log("LEAF", triangles.length, depth, maxDepth);
-            return new BVHLeaf(triangles, parentId, bounding, startingId, startingId + 1);
+            return new BVHLeaf(triangles, bounding, startingId, startingId + 1);
         }
 
         // Split bounding into two sub bounding volumes along the axis minimizing the cost of triangle split
@@ -256,7 +256,7 @@ export class TriangleBVH extends BVH<Triangle> {
             nextId = child.nextId;
         }
 
-        return new BVHNode<Triangle>(children, parentId, bounding, startingId, nextId);
+        return new BVHNode<Triangle>(children, bounding, startingId, nextId);
     }
 
     static fromPrototypeArray(prototypeArray: Array<number>): TriangleBVH {
