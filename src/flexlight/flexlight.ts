@@ -149,7 +149,7 @@ import {
 import { Transform } from "./common/scene/transform.js";
 
 import {
-  NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture
+  Texture, NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture
 } from "./common/scene/texture.js";
 
 import { Prototype } from "./common/scene/prototype.js";
@@ -168,7 +168,7 @@ export {
   vector_difference, vector_length, vector_scale,
   Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
   // Textures
-  NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture,
+  Texture, NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture,
 
   Transform,
   Prototype, Material, Instance, PointLight,

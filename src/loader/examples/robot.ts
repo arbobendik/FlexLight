@@ -2,7 +2,7 @@
 
 // @ts-ignore
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../../flexlight/flexlight.js";
 
 const staticPath = './static/';
 // Create new canvas
@@ -43,15 +43,38 @@ let scene: Scene = engine.scene;
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(110, 100, 110), new Vector(1, 0, 0), 20000, 10);
-let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 1), 50000, 10);
-let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 50000, 10);
+let light1 = new PointLight(new Vector(110, 100, 110), new Vector(0, 0, 1), 5000, 50);
+let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 0), 5000, 50);
+let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 250000, 10);
 
 
 scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
 // }
+
+
+const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" |  "emissive" | "roughness" | "metallic"): Promise<Texture> => {
+	let promise = new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.src = textureUrl;
+	});
+
+	let img = await promise;
+	switch (textureType) {
+		case "normal":
+			return new NormalTexture(img);
+		case "albedo":
+			return new AlbedoTexture(img);
+		case "emissive":
+			return new EmissiveTexture(img);
+		case "roughness":
+			return new RoughnessTexture(img);
+		case "metallic":
+			return new MetallicTexture(img);
+	}
+}
 
 scene.ambientLight = new Vector(0.01, 0.01, 0.01);
 
@@ -78,14 +101,13 @@ const loadObj = async (model: string) => {
 
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
-let cube = await loadObj('cube');
-let dragon = await loadObj('robot');
+let plane = await loadObj('plane');
+let robot = await loadObj('robot');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
 // let bike = await loadObj('bike');
 
 // const fullScene1 = scene.instance(fullScene);
-const cube1 = scene.instance(cube);
 // const cube2 = scene.instance(cube);
 /*
 const monkey1 = scene.instance(monkey);
@@ -104,12 +126,14 @@ const sphere_rough_diffuse = scene.instance(sphere);
 // const sphere1 = scene.instance(sphere);
 // const monkey1 = scene.instance(monkey);
 
-cube1.transform.position = new Vector(0, -102, 0);
-
-
-cube1.transform.scaleFactor = 100;
-cube1.material.roughness = 1.0;
-cube1.material.metallic = 0.0;
+let groundPlane = scene.instance(plane);
+// scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
+groundPlane.transform.position = new Vector(0, -2, 0);
+groundPlane.transform.scale(20);
+groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+groundPlane.material.metallic = 0;
 
 /*
 fullScene1.transform.position = new Vector(-5, -10, 0);
@@ -168,11 +192,14 @@ for (let i = 0; i < 5; i++) {
 */
 
 
-let dragon_instance = scene.instance(dragon);
-dragon_instance.transform.position = new Vector(0, -2, -20);
-dragon_instance.transform.scaleFactor = 0.02;
-dragon_instance.material.roughness = 0.5;
-dragon_instance.material.metallic = 1.0;
+let robot_instance = scene.instance(robot);
+robot_instance.transform.position = new Vector(0, -2, -10);
+
+robot_instance.material.color = new Vector(1.0, 0.784, 0.392);
+robot_instance.transform.scale(0.005);
+robot_instance.normal = await loadTexture(staticPath + "textures/worn-metal/normal.png", "normal");
+robot_instance.material.roughness = 0.1;
+robot_instance.material.metallic = 1.0;
 
 
 // instance2.transform.position = new Vector(-30, 0, 0);

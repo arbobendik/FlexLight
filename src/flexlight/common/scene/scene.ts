@@ -62,11 +62,11 @@ export class Scene {
                 instance.prototype.triangles.offset / 4,
                 instance.prototype.bvh.offset / 4,
                 instance.prototype.boundingVertices.offset / 4,
-                instance.normal?.textureInstanceBuffer?.offset ?? POW32M1,
-                instance.albedo?.textureInstanceBuffer?.offset ?? POW32M1,
-                instance.emissive?.textureInstanceBuffer?.offset ?? POW32M1,
-                instance.roughness?.textureInstanceBuffer?.offset ?? POW32M1,
-                instance.metallic?.textureInstanceBuffer?.offset ?? POW32M1,
+                instance.albedo?.textureInstanceBufferId ?? POW32M1,
+                instance.normal?.textureInstanceBufferId ?? POW32M1,
+                instance.emissive?.textureInstanceBufferId ?? POW32M1,
+                instance.roughness?.textureInstanceBufferId ?? POW32M1,
+                instance.metallic?.textureInstanceBufferId ?? POW32M1,
                 globalTriangleIndexOffset  // Store first triangle index
             );
             globalTriangleIndexOffset += triangleCount;

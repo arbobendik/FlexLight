@@ -4,5 +4,5 @@ src/config-ui/node_modules
 src/flexlight/node_modules
 src/loader/node_modules
 
-
+# public/static/textures
 public/static/objects/local

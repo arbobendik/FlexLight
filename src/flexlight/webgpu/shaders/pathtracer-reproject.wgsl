@@ -117,11 +117,18 @@ fn compute(
     var color: vec4<f32> = vec4<f32>(unpack2x16float(accumulated_uint_0.x), unpack2x16float(accumulated_uint_0.y));
     // Extract 3d position value
     let rel_position_cur: vec3<f32> = accumulated_float_0.xyz;
-    let abs_position_cur: vec3<f32> = accumulated_float_1.xyz;
+    
+    
+    let debug_color: vec4<f32> = accumulated_float_1;
     // let abs_position_cur: vec4<f32> = vec4<f32>(unpack2x16float(accumulated_2.z), unpack2x16float(accumulated_2.w));
     // Extract instance index
     let next_temporal_target: u32 = accumulated_uint_2.x;
     let instance_index: u32 = accumulated_uint_2.y;
+
+
+
+    let transform: Transform = instance_transform[instance_index * 2u];
+    let abs_position_cur: vec3<f32> = transform.rotation * rel_position_cur.xyz + transform.shift;
     // If data is not from last frame write ambient color
     
     if (next_temporal_target != (uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max) {
@@ -141,7 +148,7 @@ fn compute(
             u32(f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y))
         );
 
-        textureStore(canvas_in, canvas_pos, color);
+        textureStore(canvas_in, screen_pos, debug_color);
     } else {
         // Write straight to canvas.
         textureStore(canvas_in, screen_pos, color);

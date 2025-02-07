@@ -2,6 +2,8 @@ const TRIANGLE_SIZE: u32 = 6u;
 
 const INSTANCE_UINT_SIZE: u32 = 9u;
 
+const TEXTURE_INSTANCE_SIZE: u32 = 4u;
+
 // const INSTANCE_TRANSFORM_SIZE: u32 = 1u;
 // const INSTANCE_MATERIAL_SIZE: u32 = 11u;
 
@@ -63,7 +65,7 @@ struct UniformUint {
 @group(0) @binding(5) var shift_out_uint: texture_2d_array<u32>;
 // ComputeTextureBindGroup
 @group(1) @binding(0) var texture_data: texture_2d_array<u32>;
-@group(1) @binding(1) var<storage, read> texture_instance_buffer: array<u32>;
+@group(1) @binding(1) var<storage, read> texture_instance: array<u32>;
 
 // ComputeGeometryBindGroup
 @group(2) @binding(0) var triangles: texture_2d_array<f32>;
@@ -103,8 +105,8 @@ struct Light {
 };
 
 struct Hit {
+    uv: vec2<f32>,
     distance: f32,
-    uv: u32,
     instance_index: u32,
     triangle_index: u32
 };
@@ -152,6 +154,91 @@ fn access_triangle_bounding_vertices(index: u32) -> vec4<f32> {
     return textureLoad(triangle_bounding_vertices, vec2<u32>(width, height), layer, 0);
 }
 
+
+fn access_texture_data(index: u32) -> vec4<u32> {
+    // Divide triangle index by 2048 * 2048 to get layer
+    let layer: u32 = index >> 22u;
+    // Get height of triangle
+    let height: u32 = (index >> 11u) & 0x7FFu;
+    // Get width of triangle
+    let width: u32 = index & 0x7FFu;
+    return textureLoad(texture_data, vec2<u32>(width, height), layer, 0);
+    // return vec4<u32>(255u, 255u, 255u, 1u);
+}
+
+fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
+    
+    let texture_instance_offset: u32 = index * TEXTURE_INSTANCE_SIZE;
+    // Fetch data from texture instance buffer
+    let texture_data_offset: u32 = texture_instance[texture_instance_offset];
+    let width: u32 = texture_instance[texture_instance_offset + 2u];
+    let height: u32 = texture_instance[texture_instance_offset + 3u];
+
+    // WebGPU quirk of having upsidedown height for textures
+    let texel_position: vec2<f32> = uv * vec2<f32>(f32(width), f32(height));
+
+    let texel_pos_00: vec2<f32> = floor(texel_position);
+    let texel_pos_10: vec2<f32> = floor(texel_position + vec2<f32>(1.0f, 0.0f));
+    let texel_pos_01: vec2<f32> = floor(texel_position + vec2<f32>(0.0f, 1.0f));
+    let texel_pos_11: vec2<f32> = floor(texel_position + vec2<f32>(1.0f, 1.0f));
+
+    let difference_00: vec2<f32> = abs(texel_pos_00 - texel_position);
+    let difference_10: vec2<f32> = abs(texel_pos_10 - texel_position);
+    let difference_01: vec2<f32> = abs(texel_pos_01 - texel_position);
+    let difference_11: vec2<f32> = abs(texel_pos_11 - texel_position);
+
+    var texel_weights: vec4<f32> = vec4<f32>(
+        difference_00.x * difference_00.y,
+        difference_10.x * difference_10.y,
+        difference_01.x * difference_01.y,
+        difference_11.x * difference_11.y,
+    );
+    
+    // Convert to index
+    let texel_index_00: u32 = texture_data_offset + u32(texel_pos_00.x) + u32(texel_pos_00.y) * width;
+    let texel_index_10: u32 = texture_data_offset + u32(texel_pos_10.x) + u32(texel_pos_10.y) * width;
+    let texel_index_01: u32 = texture_data_offset + u32(texel_pos_01.x) + u32(texel_pos_01.y) * width;
+    let texel_index_11: u32 = texture_data_offset + u32(texel_pos_11.x) + u32(texel_pos_11.y) * width;
+    //return vec4<f32>(texel_position / 1024.0f, 0.0f, 0.0f);
+    
+    // Fetch texel and return result
+    let uint_data_00: vec4<u32> = access_texture_data(texel_index_00);
+    let uint_data_10: vec4<u32> = access_texture_data(texel_index_10);
+    let uint_data_01: vec4<u32> = access_texture_data(texel_index_01);
+    let uint_data_11: vec4<u32> = access_texture_data(texel_index_11);
+
+    let float_data_00: vec4<f32> = vec4<f32>(f32(uint_data_00.x), f32(uint_data_00.y), f32(uint_data_00.z), f32(uint_data_00.w));   
+    let float_data_10: vec4<f32> = vec4<f32>(f32(uint_data_10.x), f32(uint_data_10.y), f32(uint_data_10.z), f32(uint_data_10.w));
+    let float_data_01: vec4<f32> = vec4<f32>(f32(uint_data_01.x), f32(uint_data_01.y), f32(uint_data_01.z), f32(uint_data_01.w));
+    let float_data_11: vec4<f32> = vec4<f32>(f32(uint_data_11.x), f32(uint_data_11.y), f32(uint_data_11.z), f32(uint_data_11.w));
+
+    // Convert to normalized float
+    // let float_data: vec4<f32> = vec4<f32>(f32(uint_data.x), f32(uint_data.y), f32(uint_data.z), f32(uint_data.w));
+    return float_data_00 * texel_weights.w + float_data_10 * texel_weights.z + float_data_01 * texel_weights.y + float_data_11 * texel_weights.x;
+}
+
+
+/*
+fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val: vec3<f32>) -> vec3<f32> {
+    // Return default value if no texture is set
+    if (tex_num == - 1.0f) {
+        return default_val;
+    }
+    // Get dimensions of texture atlas
+    let atlas_size: vec2<f32> = vec2<f32>(textureDimensions(atlas));
+    let width: f32 = tex_num * uniforms.texture_size.x;
+    let offset: vec2<f32> = vec2<f32>(
+        width % atlas_size.x,
+        atlas_size.y - floor(width / atlas_size.x) * uniforms.texture_size.y
+    );
+    // WebGPU quirk of having upsidedown height for textures
+    let atlas_texel: vec2<i32> = vec2<i32>(offset + uv * uniforms.texture_size * vec2<f32>(1.0f, -1.0f));
+    // Fetch texel on requested coordinate
+    let tex_val: vec3<f32> = textureLoad(atlas, atlas_texel, 0).xyz;
+    return tex_val;
+}
+
+*/
 
 /*
 const INSTANCE_BVH_CACHE_SIZE: u32 = 100u;
@@ -209,7 +296,7 @@ fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
 }
 
 fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Hit {
-    let no_hit: Hit = Hit(0.0f, 0u, UINT_MAX, UINT_MAX);
+    let no_hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), 0.0f, UINT_MAX, UINT_MAX);
     let edge1: vec3<f32> = b - a;
     let edge2: vec3<f32> = c - a;
     let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
@@ -231,7 +318,7 @@ fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -
     }
     let s: f32 = dot(edge2, qvec) * inv_det;
     if(s <= l && s > BIAS) {
-        return Hit(s, pack2x16float(vec2<f32>(u, v)), UINT_MAX, UINT_MAX);
+        return Hit(vec2<f32>(u, v), s, UINT_MAX, UINT_MAX);
     } else {
         return no_hit;
     }
@@ -403,7 +490,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
 
     // Hit object
     // First element of vector is current closest intersection point
-    var hit: Hit = Hit(max_len, 0u, UINT_MAX, UINT_MAX);
+    var hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), max_len, UINT_MAX, UINT_MAX);
     // Stack for BVH traversal
     // var distance_stack = array<f32, 20>();
     // distance_stack[0u] = max_len;
@@ -498,7 +585,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
 fn traverseInstanceBVH(ray: Ray) -> Hit {
     // Hit object
     // Maximal distance a triangle can be away from the ray origin is POW32 at initialisation
-    var hit: Hit = Hit(POW32, 0u, UINT_MAX, UINT_MAX);
+    var hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), POW32, UINT_MAX, UINT_MAX);
     // Stack for BVH traversal
     var stack = array<u32, 16>();
     // var distance_stack = array<f32, 16>();
@@ -857,8 +944,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         // Pull normals
         let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
         // Calculate barycentric coordinates
-        let uv = unpack2x16float(hit.uv);
-        let uvw: vec3<f32> = vec3<f32>(1.0f - uv.x - uv.y, uv.x, uv.y);
+        // let uv = unpack2x16float(hit.uv);
+        let uvw: vec3<f32> = vec3<f32>(1.0f - hit.uv.x - hit.uv.y, hit.uv.x, hit.uv.y);
         // Interpolate smooth normal
         var smooth_n: vec3<f32> = normalize(normals * uvw);
         // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
@@ -871,25 +958,54 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
         let geometry_offset: f32 = dot(diffs * angle_tan, uvw);
         // Interpolate final barycentric texture coordinates between UV's of the respective vertices
-        
-        let barycentric: vec2<f32> = mat3x2<f32>(t4.zw, t5.xy, t5.zw) * uvw;
-        
-        // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, particel density and optical density aka. IOR) out of world texture
-        /*
-        let tex_num: vec3<f32>          = vec3<f32>(scene[index_s + 15], scene[index_s + 16], scene[index_s + 17]);
+        let uvs: mat3x2<f32> = mat3x2<f32>(t4.zw, t5.xy, t5.zw);
+        let barycentric: vec2<f32> = uvs * uvw;
 
-        let albedo_default: vec3<f32>   = vec3<f32>(scene[index_s + 18], scene[index_s + 19], scene[index_s + 20]);
-        let rme_default: vec3<f32>      = vec3<f32>(scene[index_s + 21], scene[index_s + 22], scene[index_s + 23]);
-        let tpo_default: vec3<f32>      = vec3<f32>(scene[index_s + 24], scene[index_s + 25], scene[index_s + 26]);
-
-        let material: Material = Material (
-            fetchTexVal(texture_atlas, barycentric, tex_num.x, albedo_default),
-            fetchTexVal(pbr_atlas, barycentric, tex_num.y, rme_default),
-            fetchTexVal(translucency_atlas, barycentric, tex_num.z, tpo_default),
-        );
-        */
         // Sample material
-        let material: Material = instance_material[hit.instance_index];
+        var material: Material = instance_material[hit.instance_index];
+        // Read material textures
+        let albedo_texture_id: u32 = instance_uint[instance_uint_offset + 3u];
+        let normal_texture_id: u32 = instance_uint[instance_uint_offset + 4u];
+        let emissive_texture_id: u32 = instance_uint[instance_uint_offset + 5u];
+        let roughness_texture_id: u32 = instance_uint[instance_uint_offset + 6u];
+        let metallic_texture_id: u32 = instance_uint[instance_uint_offset + 7u];
+
+        if (albedo_texture_id != UINT_MAX) {
+            material.albedo = textureSample(albedo_texture_id, barycentric).xyz * INV_255;
+        }
+
+        if (normal_texture_id != UINT_MAX) {
+            let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * 2.0f - 255.0f);
+            let edge1: vec3<f32> = t[1] - t[0];
+            let edge2: vec3<f32> = t[2] - t[0];
+            let deltaUV1: vec2<f32> = uvs[1] - uvs[0];
+            let deltaUV2: vec2<f32> = uvs[2] - uvs[0];  
+            // With the required data for calculating tangents and bitangents we can start following the equation from the previous section:
+            let f: f32 = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+            let tangent: vec3<f32> = f * (deltaUV2.y * edge1 - deltaUV1.y * edge2);
+            let bitangent: vec3<f32> = f * (deltaUV1.x * edge2 - deltaUV2.x * edge1);
+
+            let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(smooth_n, tangent)), smooth_n);
+
+            smooth_n = normalize(tbn * normal_data);
+        }
+        
+        if (emissive_texture_id != UINT_MAX) {
+            material.emissive = textureSample(emissive_texture_id, barycentric).xyz * INV_255;
+        }
+
+        if (roughness_texture_id != UINT_MAX) {
+            material.roughness = textureSample(roughness_texture_id, barycentric).x * INV_255;
+        }
+
+        if (metallic_texture_id != UINT_MAX) {
+            material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
+        }
+        
+
+        // material.albedo = textureSample(0u, barycentric).xyz;
+
+
         ray = Ray(ray.origin, normalize(ray.origin - last_hit_point));
         // If ray reflects from inside or onto an transparent object,
         // the surface faces in the opposite direction as usual
@@ -1011,11 +1127,12 @@ fn compute(
     let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
-    let init_hit: Hit = Hit(distance(absolute_position, uniforms_float.camera_position), pack2x16float(uvw.yz), instance_index, triangle_index);
+    let init_hit: Hit = Hit(uvw.yz, distance(absolute_position, uniforms_float.camera_position), instance_index, triangle_index);
     // let camera_ray: Ray = Ray(absolute_position, - normalize(uniforms_float.camera_position - absolute_position));
 
     // Determine if additional samples are needed
     var sampleFactor: u32 = 1u;
+    
     
     if (uniforms_uint.is_temporal == 1u) {
         // Get count of shifted texture
@@ -1062,6 +1179,7 @@ fn compute(
         */
         
     }
+    
 
     // Load bounding vertices
     /*
