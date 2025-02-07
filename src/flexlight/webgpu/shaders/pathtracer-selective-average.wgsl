@@ -69,80 +69,155 @@ fn compute(
     let color_cur: vec4<f32> = textureLoad(compute_out, screen_pos, 0, 0);
     let geometry_context: vec4<f32> = textureLoad(compute_out, screen_pos, 1, 0);
     // Current instance index is stored in the last channel of position
-    let abs_position_cur: vec3<f32> = geometry_context.xyz;  
+    var abs_position_cur: vec3<f32> = geometry_context.xyz;  
     let instance_index: u32 = u32(geometry_context.w);
 
     // Calculate relative position
     let inverse_transform: Transform = instance_transform[instance_index * 2u + 1u];
-    let rel_position_cur: vec3<f32> = inverse_transform.rotation * (abs_position_cur.xyz + inverse_transform.shift);
+    var rel_position_cur: vec3<f32> = inverse_transform.rotation * (abs_position_cur.xyz + inverse_transform.shift);
     // Map postion according to current camera positon and view matrix to clip space
     // Reproject position to jitter if temporal is enabled
     let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (abs_position_cur - uniforms_float.camera_position);
     // Project onto screen and shift origin to the corner
     let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
     // Translate to texel value
-    let coord: vec2<u32> = vec2<u32>(
+    let coord: vec2<u32> = screen_pos;/*vec2<u32>(
         u32((f32(uniforms_uint.render_size.x) * screen_space.x)),
         u32((f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y)))
+    );*/
+
+    var neighs: array<vec2<i32>, 4u> = array<vec2<i32>, 4u>(
+        vec2<i32>(0, 0), 
+        // vec2<i32>(-1, -1), vec2<i32>(0, -1),vec2<i32>(1, -1),
+        vec2<i32>(1, 0),
+        vec2<i32>(0, 1), vec2<i32>(1, 1)
     );
 
-    let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, coord, 0, 0);
-    let shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, coord, 1, 0);
+    /*
+    var shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, coord, 0, 0);
+    var shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, coord, 1, 0);
 
-    let shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, coord, 0, 0);
-    let shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, coord, 1, 0);
-    let shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, coord, 2, 0);
-    // Extract color values
-    let fine_color_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
-    let fine_color_low_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
-    let coarse_color_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
-    let coarse_color_low_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
-    // Extract 3d position value
-    let rel_position_old: vec3<f32> = shift_out_float_0.xyz;
-    let abs_position_old: vec3<f32> = shift_out_float_1.xyz;
+    var shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, coord, 0, 0);
+    var shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, coord, 1, 0);
+    var shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, coord, 2, 0);
+    */
 
-    let old_temporal_target: u32 = shift_out_uint_2.x;
-    let old_instance_index: u32 = shift_out_uint_2.y;
-    let old_fine_count: u32 = shift_out_uint_2.z;
-    let old_coarse_count: u32 = shift_out_uint_2.w;
-    
-    // If absolute position is all zeros then there is nothing to do
-    let dist: f32 = distance(abs_position_cur, abs_position_old);
-    let cur_depth: f32 = distance(abs_position_cur, uniforms_float.camera_position.xyz + inverse_transform.shift);
-    // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
+    // var coarse_color_fill : array<vec4<f32>, 2u>;
+    // var fine_color_fill : array<vec4<f32>, 2u>;
+
+    // var fill_count : array<u32, 2u>;
+    var fine_color_acc: vec4<f32> = vec4<f32>(0.0f);
+    var fine_color_low_acc: vec4<f32> = vec4<f32>(0.0f);
+    var coarse_color_acc: vec4<f32> = vec4<f32>(0.0f);
+    var coarse_color_low_acc: vec4<f32> = vec4<f32>(0.0f);
+    var rel_position_old: vec3<f32> = vec3<f32>(0.0f);
+    var old_fine_count: f32 = 0.0f;
+    var old_coarse_count: f32 = 0.0f;
+
+    var sum: f32 = 0.0f;
+
+    for(var i: i32 = 0; i < 4; i++) {
+        let neigh_coord: vec2<i32> = vec2<i32>(coord) + neighs[i];
+
+        var shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 0, 0);
+        var shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 1, 0);
+
+        var shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 0, 0);
+        var shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 1, 0);
+        var shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 2, 0);
+
+        // Extract color values
+        let fine_color_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
+        let fine_color_low_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
+        let coarse_color_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
+        let coarse_color_low_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
+        // Extract 3d position value
+        let rel_position_old_i: vec3<f32> = shift_out_float_0.xyz;
+        // let abs_position_old_i: vec3<f32> = shift_out_float_1.xyz;
+
+        let old_temporal_target_i: u32 = shift_out_uint_2.x;
+        let old_instance_index_i: u32 = shift_out_uint_2.y;
+        let old_fine_count_i: u32 = shift_out_uint_2.z;
+        let old_coarse_count_i: u32 = shift_out_uint_2.w;
+        
+        // If absolute position is all zeros then there is nothing to do
+        let dist_i: f32 = distance(rel_position_cur, rel_position_old_i);
+        let cur_depth_i: f32 = distance(rel_position_cur, inverse_transform.rotation * (uniforms_float.camera_position.xyz + inverse_transform.shift));
+        // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
+
+       
+
+        let is_center = i == 0;
+
+        if (
+            // Still on the same instance
+            old_instance_index_i == instance_index
+            // Pixel are close enough to each other
+            && dist_i <= cur_depth_i * 8.0f / f32(uniforms_uint.render_size.x)
+            // Pixel is from last frame
+            && old_temporal_target_i == uniforms_uint.temporal_target
+        ) {
+            fine_color_acc += fine_color_acc_i;
+            fine_color_low_acc += fine_color_low_acc_i;
+            coarse_color_acc += coarse_color_acc_i;
+            coarse_color_low_acc += coarse_color_low_acc_i;
+            rel_position_old += rel_position_old_i;
+            old_fine_count += f32(old_fine_count_i);
+            old_coarse_count += f32(old_coarse_count_i);
+            sum += 1.0f;
+
+            if(is_center) {
+                break;
+            }
+        }    
+    }
+
+    fine_color_acc /= sum;
+    fine_color_low_acc /= sum;
+    coarse_color_acc /= sum;
+    coarse_color_low_acc /= sum;
+    rel_position_old /= sum;
+    old_fine_count /= sum;
+    old_coarse_count /= sum;
+
+    // let center_valid = fill_count[1] > 0u;
+
+    // coarse_color = coarse_color_fill[center_valid] / fill_count[center_valid];
+    // fine_color = fine_color_fill[center_valid] / fill_count[center_valid];
+
+    // var debug_color: vec4<f32>;
+
 
     let croped_cur_color: vec4<f32> = min(color_cur, vec4<f32>(1.0f));
 
     var fine_color: vec4<f32> = color_cur;
     var fine_color_low: vec4<f32> = croped_cur_color;
-    var fine_count: u32 = 1u;
+    var fine_count: f32 = 31.0f;
 
     var coarse_color: vec4<f32> = color_cur;
     var coarse_color_low: vec4<f32> = croped_cur_color;
-    var coarse_count: u32 = 1u;
+    var coarse_count: f32 = 31.0f;
 
 
     let is_pos = rel_position_cur.x != 0.0f || rel_position_cur.y != 0.0f || rel_position_cur.z != 0.0f;
 
-    
+    var debug_color: vec4<f32> = vec4<f32>(0.0f);
     if (
-        // Still on the same instance
-        old_instance_index == instance_index
-        // Pixel are close enough to each other
-        && dist <= cur_depth * 8.0f / f32(uniforms_uint.render_size.x)
-        // Pixel is from last frame
-        && old_temporal_target == uniforms_uint.temporal_target
-        // Pixel is valid and not in void
-        && is_pos 
+        sum > 0.0f
+
+
     ) {
         // Add color to total and increase counter by one
-        fine_count = min(old_fine_count + 1u, 32u);
-        fine_color = mix(fine_color_acc, color_cur, 1.0f / f32(fine_count));
-        fine_color_low = mix(fine_color_low_acc, croped_cur_color, 1.0f / f32(fine_count));
+        fine_count = min(old_fine_count + 1.0f, 32.0f);
+        fine_color = mix(fine_color_acc, color_cur, 1.0f / fine_count);
+        fine_color_low = mix(fine_color_low_acc, croped_cur_color, 1.0f / fine_count);
 
-        coarse_count = min(old_coarse_count + 1u, 4u);
-        coarse_color = mix(coarse_color_acc, color_cur, 1.0f / f32(coarse_count));
-        coarse_color_low = mix(coarse_color_low_acc, croped_cur_color, 1.0f / f32(coarse_count));
+        rel_position_cur = mix(rel_position_old, rel_position_cur, 1.0f / fine_count);
+        // abs_position_cur = mix(abs_position_old, abs_position_cur, 1.0f / f32(fine_count));
+
+        coarse_count = min(old_coarse_count + 1.0f, 4.0f);
+        coarse_color = mix(coarse_color_acc, color_cur, 1.0f / coarse_count);
+        coarse_color_low = mix(coarse_color_low_acc, croped_cur_color, 1.0f / coarse_count);
 
 
         let low_variance_color_length: f32 = (length(fine_color_low) + length(coarse_color_low)) * 0.5f;
@@ -157,12 +232,16 @@ fn compute(
             fine_color_low = coarse_color_low;
             fine_count = coarse_count;
         }
+
+
+        debug_color = vec4<f32>(fine_color.xyz, 1.0f);
+    } else {
+        debug_color = vec4<f32>(fine_color.xyz, 1.0f);
     }
     
-
     // Write to accumulate buffer
     textureStore(accumulated_float, coord, 0, vec4<f32>(rel_position_cur, 1.0f));
-    textureStore(accumulated_float, coord, 1, vec4<f32>(abs_position_cur, 1.0f));
+    textureStore(accumulated_float, coord, 1, debug_color);
 
     textureStore(accumulated_uint, coord, 0, vec4<u32>(
         pack2x16float(fine_color.xy), pack2x16float(fine_color.zw),
@@ -176,6 +255,6 @@ fn compute(
 
     textureStore(accumulated_uint, coord, 2, vec4<u32>(
         (uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max, instance_index,
-        fine_count, coarse_count
+        u32(fine_count), u32(coarse_count)
     ));
 }

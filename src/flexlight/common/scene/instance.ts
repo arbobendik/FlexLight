@@ -14,8 +14,8 @@ export class Instance {
     _material: InstanceMaterial;
 
     // Texture instances
-    normal: NormalTexture | undefined = undefined;
     albedo: AlbedoTexture | undefined = undefined;
+    normal: NormalTexture | undefined = undefined;
     emissive: EmissiveTexture | undefined = undefined;
     roughness: RoughnessTexture | undefined = undefined;
     metallic: MetallicTexture | undefined = undefined;
