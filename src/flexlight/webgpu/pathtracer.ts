@@ -36,6 +36,7 @@ import PathtracerReprojectShader from './shaders/pathtracer-reproject.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
 import { WebIO } from "../common/io.js";
+import { BufferToRGBA8 } from "./buffer-to-gpu/buffer-to-rgba8.js";
 
 
 
@@ -94,7 +95,7 @@ interface PathTracerGPUBufferManagers {
   pointLightGPUManager: BufferToGPUBuffer<Float32Array>;
   // Texture GPU Managers
   textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array>;
-  textureDataGPUManager: BufferToRGBA8Uint;
+  textureDataGPUManager: BufferToRGBA8<Uint8Array>;
   // Scene GPU Managers
   instanceUintGPUManager: BufferToGPUBuffer<Uint32Array>;
   instanceTransformGPUManager: BufferToGPUBuffer<Float32Array>;
@@ -289,7 +290,10 @@ export class PathTracerWGPU extends RendererWGPU {
           { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32float", viewDimension: "2d-array" } },
           { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32uint", viewDimension: "2d-array" } },
-          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d" } }, 
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+          { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }
         ]
       });
 
@@ -395,7 +399,7 @@ export class PathTracerWGPU extends RendererWGPU {
       boundingVertexGPUManager: new BufferToRGBA16<Float16Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
       // Texture GPU Managers
       textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
-      textureDataGPUManager: new BufferToRGBA8Uint(Texture.textureDataBufferManager, device, "texture data buffer"),
+      textureDataGPUManager: new BufferToRGBA8<Uint8Array>(Texture.textureDataBufferManager, device, "uint", "texture data buffer"),
       // Scene GPU Managers
       instanceUintGPUManager: new BufferToGPUBuffer<Uint32Array>(this.scene.instanceUintManager, device, "instance uint buffer"),
       instanceTransformGPUManager: new BufferToGPUBuffer<Float32Array>(this.scene.instanceTransformManager, device, "instance transform buffer"),
@@ -551,7 +555,10 @@ export class PathTracerWGPU extends RendererWGPU {
           { binding: 1, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
           { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
           { binding: 3, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
-          { binding: 4, resource: { buffer: this.canvasSizeDependentResources!.shiftLock! } }
+          { binding: 4, resource: { buffer: this.canvasSizeDependentResources!.depthBuffer } },
+          { binding: 5, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
+          { binding: 6, resource: { buffer: this.canvasSizeDependentResources!.offsetBuffer } },
+          { binding: 7, resource: { buffer: this.canvasSizeDependentResources!.shiftLock! } }
         ]
       });
       // Create selective average group with array views
@@ -735,6 +742,7 @@ export class PathTracerWGPU extends RendererWGPU {
 
     commandEncoder.clearBuffer(this.canvasSizeDependentResources.depthBuffer);
     commandEncoder.clearBuffer(this.canvasSizeDependentResources.offsetBuffer);
+    // if (this.canvasSizeDependentResources.shiftLock) commandEncoder.clearBuffer(this.canvasSizeDependentResources.shiftLock);
 
     // All rendering commands happen in a render pass
     let depthEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);

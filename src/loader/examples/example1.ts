@@ -1,6 +1,6 @@
 "use strict";
 
-import { Camera, FlexLight, Prototype, Scene, Vector, AlbedoTexture, PointLight, Instance, vector_scale } from '../../flexlight/flexlight.js';
+import { Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
 import { createConfigUI } from '../../config-ui/config-ui.js';
 // import { vector_scale } from 'flexlight/common/lib/math';
 
@@ -20,38 +20,30 @@ const configUI = createConfigUI(engine);
 controlPanel.appendChild(configUI);
 
 let camera: Camera = engine.camera;
-let scene: Scene = engine.scene;
+export let scene: Scene = engine.scene;
 
 
-let textures: AlbedoTexture[] = [];
-// Set Textures 0, 1, 2, 3, 4
-[
-	staticPath + "textures/dirt_side.jpg",	// 0
-	staticPath + "textures/grass.jpg",		// 1
-	staticPath + "textures/dirt.jpeg",		// 2
-	staticPath + "textures/redstone.png",	// 3
-	staticPath + "textures/lamp.jpg"		// 4
-].forEach((item, i) => {
-	let img = new Image();
-	img.onload = () => {
-		console.log("Loading texture", img, img.width, img.height);
-		textures.push(new AlbedoTexture(img));
+const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" |  "emissive" | "roughness" | "metallic"): Promise<Texture> => {
+	let promise = new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.src = textureUrl;
+	});
+
+	let img = await promise;
+	switch (textureType) {
+		case "normal":
+			return new NormalTexture(img);
+		case "albedo":
+			return new AlbedoTexture(img);
+		case "emissive":
+			return new EmissiveTexture(img);
+		case "roughness":
+			return new RoughnessTexture(img);
+		case "metallic":
+			return new MetallicTexture(img);
 	}
-	img.src = item;
-	// console.log("Loading texture", img, img.width, img.height);
-	// textures.push(new AlbedoTexture(img));
-});
-
-/*
-[
-	staticPath + "textures/redstone_pbr.png",	// 0
-	staticPath + "textures/normal.png"			// 1
-].forEach((item, i) => {
-	let img = new Image();
-	img.src = item;
-	scene.pbrTextures.push(img);
-});
-*/
+}
 
 const loadObj = async (model: string) => {	
 	console.log('loading ' + model);
@@ -62,12 +54,12 @@ const loadObj = async (model: string) => {
 	return prototype;
 }
 
-const planePrototype = await loadObj('plane');
+export const planePrototype = await loadObj('plane');
 const cubePrototype = await loadObj('cube');
 
 const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: number, zmax: number) => {
 	let cuboid = scene.instance(cubePrototype);
-	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5);
+	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.001);
 	cuboid.transform.position = new Vector(xmin + diff_half.x, ymin + diff_half.y, zmin + diff_half.z);
 	cuboid.transform.scale(diff_half);
 	return cuboid;
@@ -78,8 +70,8 @@ camera.position = new Vector(8, 7, -11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightTop = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 400, 0.2);
-let pointLightCenter = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
+let pointLightCenter = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 1000, 0.2);
+let pointLightTop = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
@@ -103,6 +95,13 @@ let groundPlane = scene.instance(planePrototype);
 // scene.Plane([-10,-1,-10],[10,-1,-10],[10,-1,10],[-10,-1,10],[0,1,0]);
 groundPlane.transform.position = new Vector(0, -1, 0);
 groundPlane.transform.scale(10);
+// groundPlane.roughness = roughnessTextures[1]!;
+groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+groundPlane.material.metallic = 0;
+// groundPlane.emissive = await loadTexture(textureUrls.get("lamp")!, "emissive");
+// groundPlane.metallic = await loadTexture(textureUrls.get("redstone")!, "metallic");
 
 
 // groundPlane.textureNums = [-1, 1, -1];
@@ -225,6 +224,11 @@ setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
 */
+
+setTimeout(() => {
+	console.log(Texture.textureDataBufferManager.bufferView);
+}, 1000);
+
 // Add FPS counter to top-right corner
 const fpsCounter = document.createElement("div");
 // Append it to body.
