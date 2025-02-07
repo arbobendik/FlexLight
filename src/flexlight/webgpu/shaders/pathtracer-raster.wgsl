@@ -11,7 +11,7 @@ const POW23M1U: u32 = 8388607u;
 const BIAS: f32 = 0.0000152587890625;
 const INV_PI: f32 = 0.3183098861837907;
 const INV_255: f32 = 0.00392156862745098;
-
+const UINT_MAX: u32 = 4294967295u;
 
 struct Transform {
     rotation: mat3x3<f32>,
@@ -163,7 +163,7 @@ fn fragment(
     let buffer_index: u32 = coord.x + uniform_uint.render_size.x * coord.y;
     // Only save if texel is closer to camera then previously
     // let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
-    let current_depth: u32 = POW23M1U - u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
+    let current_depth: u32 = UINT_MAX - bitcast<u32>(clip_space.z); //POW23M1U - u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
 
     if (current_depth == depth_buffer[buffer_index]) {
         // Save values for compute pass
