@@ -1,13 +1,13 @@
 #!/bin/bash
-function minify (
-    set -e
-    cd -- "$1"
-    for file in $(find -name "*.js"); do
-        uglifyjs "$file" -c -m -o "$file"
-        echo minified: "$file"
-    done
-    exit
-)
+# function minify (
+#    set -e
+#    cd -- "$1"
+#    for file in $(find -name "*.js"); do
+#        uglifyjs "$file" -c -m -o "$file"
+#        echo minified: "$file"
+#    done
+#    exit
+#)
 
 function bundle (
     set -e
@@ -44,16 +44,16 @@ rm -rf ./tmp
 # compile ./src/loader
 
 
-while getopts "m" flag; do
-    case $flag in
-        m)
+# while getopts "m" flag; do
+    # case $flag in
+        # m)
         # Minify all js files in build folders.
-        minify ./public/build
-        ;;
-        \?)
+        # minify ./public/build
+        # ;;
+        # \?)
         # Handle invalid options
-        echo "Invalid option: -$OPTARG" >&2
-        ;;
-    esac
-done
+        # echo "Invalid option: -$OPTARG" >&2
+        # ;;
+    # esac
+# done
 
