@@ -23,6 +23,11 @@ export class Texture {
     private _textureInstanceBuffer: TypedArrayView<Uint32Array> | undefined;
     get textureInstanceBuffer () { return this._textureInstanceBuffer; }
 
+    private static _textureInstanceBufferCounter: number = 0;
+
+    private _textureInstanceBufferId: number = 0;
+    get textureInstanceBufferId () { return this._textureInstanceBufferId; }
+
     private static async getTextureData(texture: HTMLImageElement, channels: Channels, width: number, height: number): Promise<Uint8Array> {
         // Create canvas, draw image and return bitmap
         const canvas = document.createElement("canvas");
@@ -51,9 +56,11 @@ export class Texture {
         // Get texture data
         Texture.getTextureData(texture, channels, this.width, this.height).then((array: Uint8Array) => {
             this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
-            this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray([this.textureDataBuffer.offset, channels, this.width, this.height]);
+            console.log("Texture data buffer", this.textureDataBuffer);
+            this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray([this.textureDataBuffer.offset / 4, channels, this.width, this.height]);
         });
 
+        this._textureInstanceBufferId = Texture._textureInstanceBufferCounter++;
         Texture.instances.add(this);
     }
 
@@ -63,9 +70,13 @@ export class Texture {
         // Substract length of this texture from all saved offsets of textures after this one
         for (let instance of Texture.instances) {
             if (instance.textureInstanceBuffer && this._textureInstanceBuffer && instance.textureInstanceBuffer.offset > this._textureInstanceBuffer.offset) {
-                instance.textureInstanceBuffer[3]! -= this._textureInstanceBuffer.length;   
+                instance.textureInstanceBuffer[0]! -= this._textureInstanceBuffer.length;   
+                // Decrement texture instance buffer id
+                instance._textureInstanceBufferId--;
             }
         }
+        // Decrement texture instance buffer counter by one
+        Texture._textureInstanceBufferCounter--;
         // Free buffers if they exist
         if (this.textureDataBuffer) Texture.textureDataBufferManager.freeArray(this.textureDataBuffer);
         if (this._textureInstanceBuffer) Texture.textureInstanceBufferManager.freeArray(this._textureInstanceBuffer);
