@@ -1,20 +1,28 @@
 "use strict";
 
-import express from 'express';
+import express from "express"; // Import Express module.
+import path from "path"; // Import Path module.
+import { fileURLToPath } from "url"; // Import fileURLToPath from URL module.
 
-const app = express(); // Create Express app instance.
+// Determine file and directory paths in ES modules.
+const __filename = fileURLToPath(import.meta.url); // Get current file name.
+const __dirname = path.dirname(__filename); // Get current directory.
 
-// Set up static middleware to serve files from the "/public" directory.
-app.use("/public", express.static("/public"));
+// Create Express app instance.
+const app = express();
+
+// Serve static files from the public directory.
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Define the root route.
+app.get("/", (_req, res) => {
+  res.sendFile("loader.html", { root: path.join(__dirname, 'public') });
+});
 
 // Define the port on which the server will listen.
-const PORT = 3000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000; // Use environment variable if defined, otherwise default to 3000.
 
 // Start the server.
 app.listen(PORT, () => {
-  console.log("Server is running on port " + PORT);
-});
-
-app.get("/", (_req, res) => {
-  res.sendFile(__dirname + "/index.html");
+  console.log("Server is running on port " + PORT + "."); // Log a message indicating that the server has started.
 });
