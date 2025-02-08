@@ -44,11 +44,22 @@ struct UniformUint {
 @group(0) @binding(2) var shift_out_uint: texture_2d_array<u32>;
 @group(0) @binding(3) var accumulated_float: texture_storage_2d_array<rgba32float, write>;
 @group(0) @binding(4) var accumulated_uint: texture_storage_2d_array<rgba32uint, write>;
-
+@group(0) @binding(5) var canvas_in: texture_storage_2d<rgba32float, write>;
 
 @group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
 @group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
 @group(1) @binding(2) var<storage, read> instance_transform: array<Transform>;
+
+
+var<workgroup> preload_data_float0: array<vec4<f32>, 81u>;
+var<workgroup> preload_data_float1: array<vec4<f32>, 81u>;
+
+var<workgroup> preload_data_uint0: array<vec4<u32>, 81u>;
+var<workgroup> preload_data_uint1: array<vec4<u32>, 81u>;
+var<workgroup> preload_data_uint2: array<vec4<u32>, 81u>;
+
+
+
 
 @compute
 @workgroup_size(8, 8)
@@ -59,6 +70,30 @@ fn compute(
     @builtin(local_invocation_index) local_invocation_index: u32,
     @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
+
+    var neighs: array<vec2<u32>, 4u> = array<vec2<u32>, 4u>(
+        vec2<u32>(0u, 0u),
+        vec2<u32>(1u, 0u),
+        vec2<u32>(0u, 1u), vec2<u32>(1u, 1u)
+    );
+    /*
+    // Preload all data required for workgroup
+    if (local_invocation_id.x % 2u == 0u && local_invocation_id.y % 2u == 0u) {
+        for(var i: u32 = 0u; i < 4u; i++) {
+            let global_coord: vec2<u32> = global_invocation_id.xy + neighs[i];
+            let neigh_coord: vec2<u32> = local_invocation_id.xy + neighs[i];
+            let neigh_index: u32 = neigh_coord.y * 9u + neigh_coord.x;
+            preload_data_float0[neigh_index] = textureLoad(shift_out_float, global_coord, 0, 0);
+            preload_data_float1[neigh_index] = textureLoad(shift_out_float, global_coord, 1, 0);
+            preload_data_uint0[neigh_index] = textureLoad(shift_out_uint, global_coord, 0, 0);
+            preload_data_uint1[neigh_index] = textureLoad(shift_out_uint, global_coord, 1, 0);
+            preload_data_uint2[neigh_index] = textureLoad(shift_out_uint, global_coord, 2, 0);
+        }
+    }
+    // storageBarrier();
+    // workgroupBarrier();
+    */
+    
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
     if (screen_pos.x > uniforms_uint.render_size.x || screen_pos.y > uniforms_uint.render_size.y) {
@@ -77,35 +112,10 @@ fn compute(
     var rel_position_cur: vec3<f32> = inverse_transform.rotation * (abs_position_cur.xyz + inverse_transform.shift);
     // Map postion according to current camera positon and view matrix to clip space
     // Reproject position to jitter if temporal is enabled
-    let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (abs_position_cur - uniforms_float.camera_position);
+    // let clip_space: vec3<f32> = uniforms_float.view_matrix_jitter * (abs_position_cur - uniforms_float.camera_position);
     // Project onto screen and shift origin to the corner
-    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
+    // let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
     // Translate to texel value
-    let coord: vec2<u32> = screen_pos;/*vec2<u32>(
-        u32((f32(uniforms_uint.render_size.x) * screen_space.x)),
-        u32((f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y)))
-    );*/
-
-    var neighs: array<vec2<i32>, 4u> = array<vec2<i32>, 4u>(
-        vec2<i32>(0, 0), 
-        // vec2<i32>(-1, -1), vec2<i32>(0, -1),vec2<i32>(1, -1),
-        vec2<i32>(1, 0),
-        vec2<i32>(0, 1), vec2<i32>(1, 1)
-    );
-
-    /*
-    var shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, coord, 0, 0);
-    var shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, coord, 1, 0);
-
-    var shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, coord, 0, 0);
-    var shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, coord, 1, 0);
-    var shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, coord, 2, 0);
-    */
-
-    // var coarse_color_fill : array<vec4<f32>, 2u>;
-    // var fine_color_fill : array<vec4<f32>, 2u>;
-
-    // var fill_count : array<u32, 2u>;
     var fine_color_acc: vec4<f32> = vec4<f32>(0.0f);
     var fine_color_low_acc: vec4<f32> = vec4<f32>(0.0f);
     var coarse_color_acc: vec4<f32> = vec4<f32>(0.0f);
@@ -117,15 +127,27 @@ fn compute(
     var sum: f32 = 0.0f;
 
     for(var i: i32 = 0; i < 4; i++) {
-        let neigh_coord: vec2<i32> = vec2<i32>(coord) + neighs[i];
+        /*
+        let neigh_coord: vec2<u32> = vec2<u32>(local_invocation_id.x, local_invocation_id.y) + neighs[i];
+        let neigh_index: u32 = neigh_coord.y * 9u + neigh_coord.x;
 
-        var shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 0, 0);
-        var shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 1, 0);
+        var shift_out_float_0: vec4<f32> = preload_data_float0[neigh_index];//textureLoad(shift_out_float, neigh_coord, 0, 0);
+        var shift_out_float_1: vec4<f32> = preload_data_float1[neigh_index];//textureLoad(shift_out_float, neigh_coord, 1, 0);
 
-        var shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 0, 0);
-        var shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 1, 0);
-        var shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 2, 0);
+        var shift_out_uint_0: vec4<u32> = preload_data_uint0[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 0, 0);
+        var shift_out_uint_1: vec4<u32> = preload_data_uint1[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 1, 0);
+        var shift_out_uint_2: vec4<u32> = preload_data_uint2[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 2, 0);
+        */
+        
+        let neigh_coord: vec2<u32> = global_invocation_id.xy + neighs[i];
+         
+        let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 0, 0);
+        // let shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 1, 0);
 
+        let shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 0, 0);
+        let shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 1, 0);
+        let shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 2, 0);
+        
         // Extract color values
         let fine_color_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
         let fine_color_low_acc_i: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
@@ -143,11 +165,6 @@ fn compute(
         // If absolute position is all zeros then there is nothing to do
         let dist_i: f32 = distance(rel_position_cur, rel_position_old_i);
         let cur_depth_i: f32 = distance(rel_position_cur, inverse_transform.rotation * (uniforms_float.camera_position.xyz + inverse_transform.shift));
-        // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
-
-       
-
-        let is_center = i == 0;
 
         if (
             // Still on the same instance
@@ -165,8 +182,8 @@ fn compute(
             old_fine_count += f32(old_fine_count_i);
             old_coarse_count += f32(old_coarse_count_i);
             sum += 1.0f;
-
-            if(is_center) {
+            // If center is a valid pixel only use center values
+            if(i == 0) {
                 break;
             }
         }    
@@ -180,33 +197,21 @@ fn compute(
     old_fine_count /= sum;
     old_coarse_count /= sum;
 
-    // let center_valid = fill_count[1] > 0u;
-
-    // coarse_color = coarse_color_fill[center_valid] / fill_count[center_valid];
-    // fine_color = fine_color_fill[center_valid] / fill_count[center_valid];
-
-    // var debug_color: vec4<f32>;
-
-
     let croped_cur_color: vec4<f32> = min(color_cur, vec4<f32>(1.0f));
 
     var fine_color: vec4<f32> = color_cur;
     var fine_color_low: vec4<f32> = croped_cur_color;
-    var fine_count: f32 = 31.0f;
+    var fine_count: f32 = 1.0f;
 
     var coarse_color: vec4<f32> = color_cur;
     var coarse_color_low: vec4<f32> = croped_cur_color;
-    var coarse_count: f32 = 31.0f;
+    var coarse_count: f32 = 1.0f;
 
 
     let is_pos = rel_position_cur.x != 0.0f || rel_position_cur.y != 0.0f || rel_position_cur.z != 0.0f;
 
     var debug_color: vec4<f32> = vec4<f32>(0.0f);
-    if (
-        sum > 0.0f
-
-
-    ) {
+    if (sum > 0.0f) {
         // Add color to total and increase counter by one
         fine_count = min(old_fine_count + 1.0f, 32.0f);
         fine_color = mix(fine_color_acc, color_cur, 1.0f / fine_count);
@@ -232,29 +237,25 @@ fn compute(
             fine_color_low = coarse_color_low;
             fine_count = coarse_count;
         }
-
-
-        debug_color = vec4<f32>(fine_color.xyz, 1.0f);
-    } else {
-        debug_color = vec4<f32>(fine_color.xyz, 1.0f);
     }
     
     // Write to accumulate buffer
-    textureStore(accumulated_float, coord, 0, vec4<f32>(rel_position_cur, 1.0f));
-    textureStore(accumulated_float, coord, 1, debug_color);
+    textureStore(accumulated_float, screen_pos, 0, vec4<f32>(rel_position_cur, 1.0f));
 
-    textureStore(accumulated_uint, coord, 0, vec4<u32>(
+    textureStore(accumulated_uint, screen_pos, 0, vec4<u32>(
         pack2x16float(fine_color.xy), pack2x16float(fine_color.zw),
         pack2x16float(fine_color_low.xy), pack2x16float(fine_color_low.zw)
     ));
 
-    textureStore(accumulated_uint, coord, 1, vec4<u32>(
+    textureStore(accumulated_uint, screen_pos, 1, vec4<u32>(
         pack2x16float(coarse_color.xy), pack2x16float(coarse_color.zw),
         pack2x16float(coarse_color_low.xy), pack2x16float(coarse_color_low.zw)
     ));
 
-    textureStore(accumulated_uint, coord, 2, vec4<u32>(
+    textureStore(accumulated_uint, screen_pos, 2, vec4<u32>(
         (uniforms_uint.temporal_target + 1u) % uniforms_uint.temporal_max, instance_index,
         u32(fine_count), u32(coarse_count)
     ));
+
+    textureStore(canvas_in, screen_pos, vec4<f32>(fine_color.xyz, 1.0f));
 }

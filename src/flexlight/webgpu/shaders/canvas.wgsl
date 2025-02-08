@@ -45,6 +45,8 @@ fn compute(
         return;
     }
 
+    
+
     // Sample a square neighborhood (KERNEL_SIZE x KERNEL_SIZE).
     var samples: array<vec3<f32>, NUM_SAMPLES>;
     var idx: u32 = 0u;
@@ -61,22 +63,26 @@ fn compute(
     }
 
     // Get the median color from the square neighborhood for each channel.
-    var r_vals: array<f32, NUM_SAMPLES>;
-    var g_vals: array<f32, NUM_SAMPLES>;
-    var b_vals: array<f32, NUM_SAMPLES>;
+    // var r_vals: array<f32, NUM_SAMPLES>;
+    // var g_vals: array<f32, NUM_SAMPLES>;
+    // var b_vals: array<f32, NUM_SAMPLES>;
+    var gray_vals: array<f32, NUM_SAMPLES>;
     for (var i: u32 = 0u; i < NUM_SAMPLES; i = i + 1u) {
-        r_vals[i] = samples[i].x;
-        g_vals[i] = samples[i].y;
-        b_vals[i] = samples[i].z;
+        // r_vals[i] = samples[i].x;
+        // g_vals[i] = samples[i].y;
+        // b_vals[i] = samples[i].z;
+        gray_vals[i] = length(samples[i].xyz);
     }
     // let med_r: f32 = median(r_vals);
     // let med_g: f32 = median(g_vals);
     // let med_b: f32 = median(b_vals);
+    let med_gray: u32 = median(gray_vals);
     // Get the alpha value from the central texel.
-
+    
 
     let center_texel: vec4<f32> = textureLoad(compute_out, screen_pos, 0);
-    var median_color: vec3<f32> = center_texel.xyz;
+    var median_color: vec3<f32> = samples[med_gray].xyz;//vec3<f32>(med_r, med_g, med_b);
+    /*
 
     let delta = (median_color - center_texel.xyz);
     let delta_length = length(delta);
@@ -87,6 +93,8 @@ fn compute(
         median_color = center_texel.xyz;
     }
 
+    */
+
     let alpha: f32 = center_texel.w;
 
     // Apply tone mapping if required.
@@ -95,13 +103,16 @@ fn compute(
         median_color = median_color / (median_color + vec3<f32>(1.0));
     }
 
-
+    /*
     if (abs(screen_pos.x - 1280u) < 10u) {
         median_color = vec3<f32>(1.0, 0.0, 0.0);
     }
+    */
+
     // Write the final color to canvas.
     textureStore(canvas_out, screen_pos, vec4<f32>(median_color, alpha));
 }
+
 
 // Helper function to load a neighbor texel with clamping.
 fn loadNeighbour(center: vec2<u32>, offset: vec2<i32>) -> vec4<f32> {
@@ -112,7 +123,7 @@ fn loadNeighbour(center: vec2<u32>, offset: vec2<i32>) -> vec4<f32> {
 }
 
 // Helper function to compute the median of an array of NUM_SAMPLES floats using merge sort.
-fn median(values: array<f32, NUM_SAMPLES>) -> f32 {
+fn median(values: array<f32, NUM_SAMPLES>) -> u32 {
     // Copy the input values into an array to be sorted.
     var a: array<f32, NUM_SAMPLES> = values;
     var temp: array<f32, NUM_SAMPLES>;
@@ -163,5 +174,5 @@ fn median(values: array<f32, NUM_SAMPLES>) -> f32 {
     }
 
     // Return the median element.
-    return a[n / 2u];
+    return n / 2u;
 }

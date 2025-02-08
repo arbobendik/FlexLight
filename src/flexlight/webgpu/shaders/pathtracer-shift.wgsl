@@ -35,10 +35,9 @@ struct UniformUint {
 @group(0) @binding(1) var accumulated_uint: texture_2d_array<u32>;
 @group(0) @binding(2) var shift_out_float: texture_storage_2d_array<rgba32float, write>;
 @group(0) @binding(3) var shift_out_uint: texture_storage_2d_array<rgba32uint, write>;
-@group(0) @binding(4) var<storage, read> depth_buffer: array<u32>;
-@group(0) @binding(5) var texture_absolute_position: texture_2d<f32>;
-@group(0) @binding(6) var<storage, read> offset_buffer: array<u32>;
-@group(0) @binding(7) var<storage, read_write> shift_lock: array<atomic<u32>>;
+@group(0) @binding(4) var texture_absolute_position: texture_2d<f32>;
+@group(0) @binding(5) var<storage, read> offset_buffer: array<u32>;
+@group(0) @binding(6) var<storage, read_write> shift_lock: array<atomic<u32>>;
 
 @group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
 @group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
@@ -55,15 +54,9 @@ fn compute(
 ) {
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
-    
-    /*
-    if (screen_pos.x > uniforms_uint.render_size.x || screen_pos.y > uniforms_uint.render_size.y) {
-        return;
-    }
-    */
 
     let accumulated_float_0: vec4<f32> = textureLoad(accumulated_float, screen_pos, 0, 0);
-    let accumulated_float_1: vec4<f32> = textureLoad(accumulated_float, screen_pos, 1, 0);
+    // let accumulated_float_1: vec4<f32> = textureLoad(accumulated_float, screen_pos, 1, 0);
     let accumulated_uint_0: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 0, 0);
     let accumulated_uint_1: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 1, 0);
     let accumulated_uint_2: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 2, 0);
@@ -85,13 +78,13 @@ fn compute(
     // Map postion according to current camera positon and view matrix to clip space
     let transform: Transform = instance_transform[old_instance_index * 2u];
     let absolute_position_old: vec3<f32> = transform.rotation * rel_position_old.xyz + transform.shift;
-    let clip_space: vec3<f32> = uniforms_float.view_matrix * (absolute_position_old - uniforms_float.camera_position);
+    let clip_space_old: vec3<f32> = uniforms_float.view_matrix * (absolute_position_old - uniforms_float.camera_position);
     // Project onto screen and shift origin to the corner
-    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5 + 0.5;
+    let screen_space_old: vec2<f32> = (clip_space_old.xy / clip_space_old.z) * 0.5 + 0.5;
     // Translate to texel value
     let coord: vec2<u32> = vec2<u32>(
-        u32((f32(uniforms_uint.render_size.x) * screen_space.x)),
-        u32((f32(uniforms_uint.render_size.y) * (1.0f - screen_space.y)))
+        u32((f32(uniforms_uint.render_size.x) * screen_space_old.x)),
+        u32((f32(uniforms_uint.render_size.y) * (1.0f - screen_space_old.y)))
     );
 
     let inv_transform: Transform = instance_transform[old_instance_index * 2u + 1u];
@@ -101,62 +94,28 @@ fn compute(
     let buffer_index: u32 = coord.x + uniforms_uint.render_size.x * coord.y;
 
     let instance_index: u32 = offset_buffer[buffer_index * 2u] - 1u;//offset_buffer[buffer_index];
-    let cur_depth: f32 = bitcast<f32>(UINT_MAX - depth_buffer[buffer_index]);
-    let old_depth: f32 = clip_space.z;
-
-    /*
-    // Only save if texel is closer to camera then previously
-    let current_depth: u32 = u32(POW23M1 / (1.0f + exp(- clip_space.z * INV_255)));
-    // Store in texture
-    atomicMin(&shift_lock[buffer_index], current_depth);
-    */
-
-    // Only save if texel is closer to camera then previously
-
-    /*
-    if (last_frame) {
-        // Store in texture
-        atomicMax(&shift_lock[buffer_index], current_depth);
-    }
-    */
-
-    // textureBarrier();
-    // storageBarrier();
-    // workgroupBarrier();
-
-
+    // let cur_depth: f32 = bitcast<f32>(UINT_MAX - depth_buffer[buffer_index]);
+    let old_depth: f32 = clip_space_old.z;
     // If absolute position is all zeros then there is nothing to do
     let dist: f32 = distance(rel_position_cur, rel_position_old.xyz);
-        // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
-    
-    // Attempt to acquire lock.
-    /*
-    // let lock: u32 = atomicOr(&shift_lock[buffer_index], 1u);
-    if (atomicLoad(&shift_lock[buffer_index]) != current_depth) {
-        // If lock is already set then another thread is already working on this pixel
-        return;
-    }
-    */
 
     if (
         // Still on the same instance
         old_instance_index == instance_index
         // Pixel are close enough to each other
-        && dist <= cur_depth * 8.0f / f32(uniforms_uint.render_size.x)
+        && dist <= old_depth * 8.0f / f32(uniforms_uint.render_size.x)
         // Pixel is from last frame
         && old_temporal_target == uniforms_uint.temporal_target
     ) {
-
+        // Attempt to aquire lock.
         let lock: u32 = atomicOr(&shift_lock[buffer_index], 1u);
         if (lock == 1u) {
             // If lock is already set then another thread is already working on this pixel
             return;
         }
-
         // Write to shift buffer
         textureStore(shift_out_float, coord, 0, accumulated_float_0);
-        textureStore(shift_out_float, coord, 1, accumulated_float_1);
-
+        
         textureStore(shift_out_uint, coord, 0, accumulated_uint_0);
         textureStore(shift_out_uint, coord, 1, accumulated_uint_1);
         textureStore(shift_out_uint, coord, 2, accumulated_uint_2);
@@ -164,7 +123,4 @@ fn compute(
         // Release lock.
         atomicStore(&shift_lock[buffer_index], 0u);
     }
-
-    // Release lock.
-    // atomicStore(&shift_lock[buffer_index], 0u);
 }

@@ -22,6 +22,13 @@ function compile (
     exit
 )
 
+function install (
+    set -e
+    cd -- "$1"
+    npm install
+    exit
+)
+
 # Remove old build
 rm -rf ./public/build
 rm -rf ./tmp
@@ -34,6 +41,8 @@ bundle ./tmp/flexlight/flexlight.js ./public/build/flexlight/flexlight.js
 # Bundle config-ui
 bundle ./tmp/config-ui/config-ui.js ./public/build/config-ui/config-ui.js
 
+# Install dependencies
+install ./tmp/loader
 # Compile loader
 compile ./tmp/loader
 
