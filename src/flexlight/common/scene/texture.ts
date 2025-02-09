@@ -28,7 +28,7 @@ export class Texture {
     private _textureInstanceBufferId: number = 0;
     get textureInstanceBufferId () { return this._textureInstanceBufferId; }
 
-    private static async getTextureData(texture: HTMLImageElement, channels: Channels, width: number, height: number): Promise<Uint8Array> {
+    static async getTextureData(texture: HTMLImageElement, channels: Channels, width: number, height: number): Promise<HTMLCanvasElement> {
         // Create canvas, draw image and return bitmap
         const canvas = document.createElement("canvas");
         const ctx: CanvasRenderingContext2D | null = canvas.getContext("2d"); 
@@ -39,14 +39,8 @@ export class Texture {
         // Disable image smoothing to get non-blury pixel values in given resolution
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(texture, 0, 0, width, height);
-        // Read pixels from canvas
-        const imageData = ctx.getImageData(0, 0, width, height);
-        // Construct array of pixel values
-        // const array: Array<number> = [];
-        // for (let i = 0; i < imageData.data.length; i += 4) for (let j = 0; j < channels; j++) array.push(imageData.data[i + j]!);
-        const array = imageData.data;
-        // Return as Uint8Array view.
-        return new Uint8Array(array);
+        // Return canvas context
+        return canvas;
     }
 
     constructor (texture: HTMLImageElement, channels: Channels, width: number | undefined = undefined, height: number | undefined = undefined) {
@@ -54,9 +48,16 @@ export class Texture {
         this.width = width ?? texture.width;
         this.height = height ?? texture.height;
         // Get texture data
-        Texture.getTextureData(texture, channels, this.width, this.height).then((array: Uint8Array) => {
+        Texture.getTextureData(texture, channels, this.width, this.height).then((canvas: HTMLCanvasElement) => {
+            const ctx = canvas.getContext("2d")!;
+            const imageData = ctx.getImageData(0, 0, this.width, this.height);
+            // Construct data array of pixel values
+            const data = imageData.data;
+            // Return as Uint8Array view.
+            const array = new Uint8Array(data);
+
             this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
-            console.log("Texture data buffer", this.textureDataBuffer);
+            // console.log("Texture data buffer", this.textureDataBuffer);
             this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray([this.textureDataBuffer.offset / 4, channels, this.width, this.height]);
         });
 
