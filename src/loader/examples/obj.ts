@@ -1,7 +1,7 @@
 "use strict";
 
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -64,17 +64,53 @@ let scene: Scene = engine.scene;
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 30000, 10);
-let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
-let light3 = new PointLight(new Vector(-110, 110, 110), new Vector(1, 1, 1), 150000, 10);
+// let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 30000, 10);
+// let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
+let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
 
 
-scene.addPointLight(light1);
-scene.addPointLight(light2);
+// scene.addPointLight(light1);
+// scene.addPointLight(light2);
 scene.addPointLight(light3);
 // }
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+
+let environmentMapImages: Array<HTMLImageElement> = [];
+let environmentMapPromises = Array<Promise<HTMLImageElement>>();
+
+let environmentMapUrls = [
+	"textures/cube-map/px.png",
+	"textures/cube-map/nx.png",
+	"textures/cube-map/py.png",
+	"textures/cube-map/ny.png",
+	"textures/cube-map/pz.png",
+	"textures/cube-map/nz.png",
+];
+
+for (let i = 0; i < 6; i++) {
+	environmentMapPromises.push(new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => {
+			resolve(img);
+		};
+		img.src = staticPath + environmentMapUrls[i];
+	}));
+}
+
+
+for (let i = 0; i < 6; i++) {
+	let img = await environmentMapPromises[i];
+	if (img) {
+		environmentMapImages[i] = img;
+		console.log("Loaded environment map ", img);
+	} else {
+		console.error("Failed to load environment map " + environmentMapUrls[i]);
+	}
+}
+
+console.log("Environment map images: ", environmentMapImages);
+scene.environmentMap = new EnvironmentMap(environmentMapImages);
 
 // Start render engine.
 engine.renderer.render();
@@ -99,7 +135,7 @@ const loadObj = async (model: string) => {
 
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
-let cube = await loadObj('cube');
+// let cube = await loadObj('cube');
 let plane = await loadObj('plane');
 let dragon = await loadObj('dragon_lp');
 // let fullScene = await loadObj('sinan');
@@ -138,9 +174,11 @@ cube1.material.metallic = 0;
 groundPlane.transform.position = new Vector(0, -2, 0);
 groundPlane.transform.scale(30);
 
-groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
-groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
-groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+groundPlane.material.roughness = 1;
+groundPlane.material.metallic = 0;
+// groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+// groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+// groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
 /*
 cube2.transform.position = new Vector(100, 0, -100);
 cube2.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);

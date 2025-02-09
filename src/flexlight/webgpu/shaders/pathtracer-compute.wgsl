@@ -37,7 +37,7 @@ struct Transform {
 
 struct UniformFloat {
     view_matrix: mat3x3<f32>,
-    view_matrix_jitter: mat3x3<f32>,
+    inv_view_matrix: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -55,6 +55,7 @@ struct UniformUint {
     max_reflections: u32,
 
     tonemapping_operator: u32,
+    environment_map_size: vec2<u32>,
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
@@ -66,7 +67,9 @@ struct UniformUint {
 // ComputeTextureBindGroup
 @group(1) @binding(0) var texture_data: texture_2d_array<u32>;
 @group(1) @binding(1) var<storage, read> texture_instance: array<u32>;
-
+// textureSample(hdri_map, hdri_sampler, direction * vec3f(1, 1, -1));
+@group(1) @binding(2) var environment_map: texture_cube<f32>;
+@group(1) @binding(3) var environment_map_sampler: sampler;
 // ComputeGeometryBindGroup
 @group(2) @binding(0) var triangles: texture_2d_array<f32>;
 @group(2) @binding(1) var triangle_bvh: texture_2d_array<u32>;
@@ -884,7 +887,6 @@ fn reservoirSample(material: Material, camera_ray: Ray, random_vec: vec4<f32>, s
     // Apply emissive texture and ambient light
     let base_luminance: vec3<f32> = material.emissive;
     // Test if in shadow
-    
     if (show_color) {
         return local_color + base_luminance;
     }
@@ -913,11 +915,12 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     var hit: Hit = init_hit;
     var ray: Ray = Ray(camera, normalize(origin - camera));
     var last_hit_point: vec3<f32> = camera;
+
+    var add_ambient: bool = false;
     // Iterate over each bounce and modify color accordingly
-    for (var i: u32 = 0u; i < uniforms_uint.max_reflections && length(importancy_factor) >= uniforms_float.min_importancy * SQRT3; i++) {
+    for (var i: u32 = 0u; true; i++) {
         let instance_uint_offset: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
         let triangle_offset: u32 = hit.triangle_index * TRIANGLE_SIZE;
-
 
         let t0: vec4<f32> = access_triangle(triangle_offset);
         let t1: vec4<f32> = access_triangle(triangle_offset + 1u);
@@ -1001,10 +1004,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         if (metallic_texture_id != UINT_MAX) {
             material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
         }
-        
-
-        // material.albedo = textureSample(0u, barycentric).xyz;
-
 
         ray = Ray(ray.origin, normalize(ray.origin - last_hit_point));
         // If ray reflects from inside or onto an transparent object,
@@ -1038,10 +1037,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
         // Multiply albedo with either absorption value or filter color
         importancy_factor = importancy_factor * material.albedo;
-        // Test for early termination
-        if (i + 1u >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
-            break;
-        }
+        
         // Handle translucency and skip rest of light calculation
         if(is_solid) {
             // Calculate reflecting ray
@@ -1051,18 +1047,38 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             // Refract ray depending on IOR (material.tpo.z)
             ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), random_spheare_vec, roughness_brdf));
         }
+        // Test for early termination
+        if (i + 1u >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
+            add_ambient = false;
+            break;
+        }
         // Calculate next intersection
         ray.origin = geometry_offset * ray.unit_direction + ray.origin;
         hit = traverseInstanceBVH(ray);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.instance_index == UINT_MAX) {
+            add_ambient = true;
             break;
         }
         // Update other parameters
         last_hit_point = ray.origin;
     }
+
+
+    // Sample environment map if present
+    if (add_ambient) {
+        if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
+            
+            // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
+            let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
+            final_color += importancy_factor * pow(env_color * 1.5f, vec3<f32>(2.0f));
+        } else {
+            // If no environment map is present, use ambient color
+            final_color += importancy_factor * uniforms_float.ambient;
+        }
+    }
     // Return final pixel color
-    return final_color + importancy_factor * uniforms_float.ambient;
+    return final_color;
 }
 
 /*
@@ -1109,10 +1125,28 @@ fn compute(
         return;
     }
     */
+
+    // let view_inv_matrix: mat3x3<f32> = (uniforms_float.view_matrix);
+
+    let screen_space: vec2<f32> = vec2<f32>(f32(global_invocation_id.x) / f32(uniforms_uint.render_size.x), - f32(global_invocation_id.y) / f32(uniforms_uint.render_size.y)) * 2.0f + vec2<f32>(-1.0f, 1.0f);
+    // let clip_space: vec3<f32> = vec3<f32>(screen_space.x, - screen_space.y, 1.0f);
+    let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f) * vec3<f32>(1.0f, 1.0f, -1.0f));
     
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
+
+        var env_color: vec3<f32> = vec3<f32>(0.0f);
+        if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
+            
+            // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
+            env_color = textureSampleLevel(environment_map, environment_map_sampler, view_direction, 0.0f).xyz;
+            env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
+        } else {
+            // If no environment map is present, use ambient color
+            env_color = uniforms_float.ambient;
+        }
+
         // If there is no triangle render ambient color 
-        textureStore(compute_out, screen_pos, 0, vec4<f32>(uniforms_float.ambient, 1.0f));
+        textureStore(compute_out, screen_pos, 0, vec4<f32>(env_color, 1.0f));
         // And overwrite position with 0 0 0 0
         if (uniforms_uint.is_temporal == 1u) {
             // Store position in target
@@ -1124,7 +1158,7 @@ fn compute(
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
 
-    let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
+    // let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
     let init_hit: Hit = Hit(uvw.yz, distance(absolute_position, uniforms_float.camera_position), instance_index, triangle_index);
@@ -1211,7 +1245,7 @@ fn compute(
     for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
         // Use cosine as noise in random coordinate picker
         let cos_sample_n = cos(f32(i));
-        final_color += lightTrace(init_hit, absolute_position, uniforms_float.camera_position, clip_space, cos_sample_n);
+        final_color += lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, cos_sample_n);
     }
 
     // Average ray colors over samples.

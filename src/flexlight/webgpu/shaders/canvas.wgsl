@@ -4,7 +4,7 @@ const POW32U: u32 = 4294967295u;
 
 struct UniformFloat {
     view_matrix: mat3x3<f32>,
-    view_matrix_jitter: mat3x3<f32>,
+    inv_view_matrix: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
