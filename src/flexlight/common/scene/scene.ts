@@ -7,6 +7,7 @@ import { Instance } from "./instance.js";
 import { PointLight } from "./point-light.js";
 import { POW32M1, Vector } from "../lib/math.js";
 import { Prototype, TRIANGLE_SIZE } from "./prototype.js";
+import { EnvironmentMap, EnvironmentMapManager } from "./environment-map.js";
 
 export class Scene {
     // Triangle Offset, Vertex Offset, BVH Offset, Bounding Vertex Offset, Normal Offset, UV Offset, Transform Offset, Material Offset,
@@ -29,7 +30,10 @@ export class Scene {
     // Px Py Pz, intensity, variance
     private _pointLightManager: BufferManager<Float32Array>;
     get pointLightManager () { return this._pointLightManager; }
-
+    // Environment Map: Cube Side Images
+    private _environmentMapManager: EnvironmentMapManager = new EnvironmentMapManager();
+    get environmentMapManager () { return this._environmentMapManager; }
+    // Triangle Count
     get triangleCount () {
         let count = 0;
         for (let instance of this.instances) count += instance.prototype.triangles.length / TRIANGLE_SIZE;
@@ -39,6 +43,11 @@ export class Scene {
     private readonly instances: Set<Instance> = new Set();
 
     ambientLight: Vector<3> = new Vector(0.01, 0.01, 0.01);
+
+    set environmentMap (environmentMap: EnvironmentMap) { this._environmentMapManager.environmentMap = environmentMap; }
+    get environmentMap () { return this._environmentMapManager.environmentMap; }
+
+
     private readonly pointLights: Set<PointLight> = new Set();
 
     constructor(instances: Array<Instance> = []) {
