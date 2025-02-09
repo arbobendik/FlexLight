@@ -174,11 +174,11 @@ cube1.material.metallic = 0;
 groundPlane.transform.position = new Vector(0, -2, 0);
 groundPlane.transform.scale(30);
 
-groundPlane.material.roughness = 1;
+groundPlane.material.roughness = 0.6;
 groundPlane.material.metallic = 0;
-// groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
-// groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
-// groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
 /*
 cube2.transform.position = new Vector(100, 0, -100);
 cube2.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
