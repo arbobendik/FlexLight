@@ -121,6 +121,11 @@ struct Sample {
 }
 */
 
+struct SampledColor {
+    color: vec3<f32>,
+    random_state: u32
+}
+
 
 fn access_triangle(index: u32) -> vec4<f32> {
     // Divide triangle index by 2048 * 2048 to get layer
@@ -292,11 +297,106 @@ fn fetchTexVal(atlas: texture_2d<f32>, uv: vec2<f32>, tex_num: f32, default_val:
 }
 */
 
+struct Random {
+    state: u32,
+    value: f32
+};
+
+struct RandomSphere {
+    state: u32,
+    value: vec3<f32>
+};
+
+struct RandomHemisphere {
+    state: u32,
+    value: vec3<f32>
+};
+
+fn pcg(state: u32) -> Random {
+    // PCG random number generator
+    // Reference: http://www.pcg-random.org/
+    var new_state: u32 = state * 747796405u + 2891336453u;
+    let word: u32 = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
+    let result: u32 = (word >> 22u) ^ word;
+    // Return random f32 between 0 and 1
+    let random: f32 = f32(result) / f32(UINT_MAX);
+    return Random(new_state, random);
+}
+
+
+fn normal_distribution(state: u32) -> Random {
+    
+    let r1: Random = pcg(state);
+    let r2: Random = pcg(r1.state);
+    // Sample normal distribution
+    let theta: f32 = 2.0f * PI * r1.value;
+    let rho: f32 = sqrt(-2.0f * clamp(log(r2.value), - MAX_SAFE_INTEGER_FOR_F32, 0.0f));
+    return Random(r2.state, rho * cos(theta));
+    /*
+    let random: Random = pcg(state);
+    return random;
+    */
+}
+
+fn random_sphere(state: u32) -> RandomSphere {
+    let x: Random = normal_distribution(state);
+    let y: Random = normal_distribution(x.state);
+    let z: Random = normal_distribution(y.state);
+    return RandomSphere(z.state, normalize(vec3<f32>(x.value, y.value, z.value)));
+}
+
+fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
+    let random_sphere: RandomSphere = random_sphere(state);
+    // If the random sphere is in the same hemisphere as the normal, return it
+    if(dot(random_sphere.value, normal) > 0.0f) {
+        return RandomHemisphere(random_sphere.state, random_sphere.value);
+    } else {
+        // Otherwise, return the opposite direction
+        return RandomHemisphere(random_sphere.state, - random_sphere.value);
+    }
+}
+
+/*
+fn random_vec4_u32(state: u32, seed: u32) -> vec4<u32> {
+    var new_state: u32 = state;
+    let rn1: u32 = pcg(new_state);
+    new_state = new_state * 747796405u + 2891336453u;
+    let rn2: u32 = pcg(new_state);
+    new_state = new_state * 747796405u + 2891336453u;
+    let rn3: u32 = pcg(new_state);
+    new_state = new_state * 747796405u + 2891336453u;
+    let rn4: u32 = pcg(new_state);
+    return vec4<u32>(rn1, rn2, rn3, rn4);
+}
+
+fn random(seed: vec2<f32>, frame: u32) -> f32 {
+    // Convert 2D seed to integer
+    let x: u32 = u32(seed.x * 100000.0) + frame * 719393u;
+    let y: u32 = u32(seed.y * 100000.0) + frame * 233333u;
+    
+    // Generate random number using PCG
+    let rng: u32 = pcg(x + pcg(y));
+    
+    // Convert to float between 0 and 1
+    return f32(rng) / f32(0xFFFFFFFFu);
+}
+
+
+fn noise(seed: vec2<f32>, frame: u32) -> vec4<f32> {
+    return vec4<f32>(
+        random(seed, frame),
+        random(seed + vec2<f32>(1.234, 5.678), frame),
+        random(seed + vec2<f32>(9.012, 3.456), frame),
+        random(seed + vec2<f32>(7.890, 1.234), frame)
+    );
+}
+
 fn noise(n: vec2<f32>, seed: f32) -> vec4<f32> {
     // let temp_component: vec2<f32> = fract(vec2<f32>(uniforms.temporal_target * PHI, cos(uniforms.temporal_target) + PHI));
     return fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + f32(uniforms_uint.temporal_target) * PHI)) * 43758.5453f) * 2.0f - 1.0f;
 
 }
+*/
 
 fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Hit {
     let no_hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), 0.0f, UINT_MAX, UINT_MAX);
@@ -845,21 +945,31 @@ fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>
     return radiance * n_dot_l * brightness;
 }
 
-fn reservoirSample(material: Material, camera_ray: Ray, random_vec: vec4<f32>, smooth_n: vec3<f32>, geometry_offset: f32) -> vec3<f32> {
+
+
+fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32) -> SampledColor {
     var local_color: vec3<f32> = vec3<f32>(0.0f);
     var reservoir_length: f32 = 0.0f;
     var total_weight: f32 = 0.0f;
     var reservoir_num: u32 = 0u;
     var reservoir_weight: f32 = 0.0f;
     var reservoir_dir: vec3<f32>;
-    var last_random: vec2<f32> = noise(random_vec.zw, BIAS).xy;
+
+    var random_state: u32 = init_random_state;
+    //let r1: Random = pcg(random_state);
+    //let r2
+    //var last_random: vec2<f32> = noise(random_vec.zw).xy;
 
     let size: u32 = u32(arrayLength(&lights));
     for (var j: u32 = 0u; j < size; j++) {
         let light_offset: u32 = j;
         // Read light from storage buffer
         let light: Light = lights[light_offset];
-        let light_position = light.position + random_vec.xyz * light.variance;
+        // Yeild random sphere and update state
+        let random_sphere: RandomSphere = random_sphere(random_state);
+        random_state = random_sphere.state;
+
+        let light_position = light.position + random_sphere.value * light.variance;
         // Increment light weight
         reservoir_length += 1.0f;
         // Alter light source position according to variation.
@@ -871,13 +981,18 @@ fn reservoirSample(material: Material, camera_ray: Ray, random_vec: vec4<f32>, s
         let weight: f32 = length(color_for_light);
 
         total_weight += weight;
-        if (abs(last_random.y) * total_weight <= weight) {
+        // Yeild random value between 0 and 1 and update state
+        let random_value: Random = pcg(random_state);
+        random_state = random_value.state;
+
+
+        if (random_value.value * total_weight <= weight) {
             reservoir_num = j;
             reservoir_weight = weight;
             reservoir_dir = dir;
         }
         // Update pseudo random variable.
-        last_random = noise(last_random, BIAS + f32(uniforms_uint.temporal_target)).zw;
+        // last_random = noise(last_random).zw;
     }
 
     let unit_light_dir: vec3<f32> = normalize(reservoir_dir);
@@ -888,26 +1003,26 @@ fn reservoirSample(material: Material, camera_ray: Ray, random_vec: vec4<f32>, s
     let base_luminance: vec3<f32> = material.emissive;
     // Test if in shadow
     if (show_color) {
-        return local_color + base_luminance;
+        return SampledColor(local_color + base_luminance, random_state);
     }
 
     if (show_shadow) {
-        return base_luminance;
+        return SampledColor(base_luminance, random_state);
     }
     // Apply geometry offset
     let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
     
     if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
-        return base_luminance;
+        return SampledColor(base_luminance, random_state);
     } else {
-        return local_color + base_luminance;
+        return SampledColor(local_color + base_luminance, random_state);
     }
 }
 
 
 
-fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, cos_sample_n: f32) -> vec3<f32> {
+fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, init_random_state: u32) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
     var importancy_factor: vec3<f32> = vec3(1.0f);
@@ -915,6 +1030,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     var hit: Hit = init_hit;
     var ray: Ray = Ray(camera, normalize(origin - camera));
     var last_hit_point: vec3<f32> = camera;
+    var random_state: u32 = init_random_state;
 
     var add_ambient: bool = false;
     // Iterate over each bounce and modify color accordingly
@@ -1013,13 +1129,26 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
         // Generate pseudo random vector
         let fi: f32 = f32(i);
-        let random_vec: vec4<f32> = noise(clip_space.xy * length(ray.origin - last_hit_point), fi + cos_sample_n * PHI);
-        let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
+
+        // let random_sphere: RandomSphere = random_sphere(random_state);
+        // random_state = random_sphere.state;
+        // let random_vec: vec4<f32> = vec4<f32>(r1.value, r2.value, r3.value, r4.value);
+
+        let random_hemisphere: RandomHemisphere = random_hemisphere(random_state, smooth_n);
+        random_state = random_hemisphere.state;
+
+        // var diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
+
+        // if (clip_space.x < 0.0f) {
+        let diffuse_random_dir: vec3<f32> = random_hemisphere.value;
+        // }
+
+        // let random_spheare_vec: vec3<f32> = normalize(smooth_n + normalize(random_vec.xyz));
         let brdf: f32 = mix(1.0f, abs(dot(smooth_n, ray.unit_direction)), material.metallic);
 
         // Alter normal according to roughness value
         let roughness_brdf: f32 = material.roughness * brdf;
-        let rough_n: vec3<f32> = normalize(mix(smooth_n, random_spheare_vec, roughness_brdf));
+        let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
 
         let h: vec3<f32> = normalize(rough_n - ray.unit_direction);
         let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
@@ -1027,13 +1156,19 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let f: vec3<f32> = fresnel(f0, v_dot_h);
 
         let fresnel_reflect: f32 = max(f.x, max(f.y, f.z));
+
+        // Yeild random value between 0 and 1 and update state
+        let random_value: Random = pcg(random_state);
+        random_state = random_value.state;
+
         // object is solid or translucent by chance because of the fresnel effect
-        let is_solid: bool = material.transmission * fresnel_reflect <= abs(random_vec.w);
+        let is_solid: bool = material.transmission * fresnel_reflect <= abs(random_value.value);
         // Determine local color considering PBR attributes and lighting
-        let local_color: vec3<f32> = reservoirSample(material, ray, random_vec, - sign_dir * smooth_n, geometry_offset);
+        let local_sampled: SampledColor = reservoirSample(material, ray, random_state, - sign_dir * smooth_n, geometry_offset);
+        random_state = local_sampled.random_state;
         // let local_color: vec3<f32> = angles;
         // Calculate primary light sources for this pass if ray hits non translucent object
-        final_color += local_color * importancy_factor;
+        final_color += local_sampled.color * importancy_factor;
 
         // Multiply albedo with either absorption value or filter color
         importancy_factor = importancy_factor * material.albedo;
@@ -1041,17 +1176,19 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         // Handle translucency and skip rest of light calculation
         if(is_solid) {
             // Calculate reflecting ray
-            ray.unit_direction = normalize(mix(reflect(ray.unit_direction, smooth_n), random_spheare_vec, roughness_brdf));
+            ray.unit_direction = normalize(mix(reflect(ray.unit_direction, smooth_n), diffuse_random_dir, roughness_brdf));
         } else {
             let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
             // Refract ray depending on IOR (material.tpo.z)
-            ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), random_spheare_vec, roughness_brdf));
+            ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), diffuse_random_dir, roughness_brdf));
         }
         // Test for early termination
         if (i + 1u >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
             add_ambient = false;
             break;
         }
+
+        // Bias ray direction on material properties
         // Calculate next intersection
         ray.origin = geometry_offset * ray.unit_direction + ray.origin;
         hit = traverseInstanceBVH(ray);
@@ -1078,7 +1215,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         }
     }
     // Return final pixel color
-    return final_color;
+    return SampledColor(final_color, random_state);
 }
 
 /*
@@ -1241,11 +1378,16 @@ fn compute(
     */
 
     var final_color = vec3<f32>(0.0f);
+
+
+    var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
     // Generate multiple samples
     for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
         // Use cosine as noise in random coordinate picker
-        let cos_sample_n = cos(f32(i));
-        final_color += lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, cos_sample_n);
+        // let cos_sample_n = cos(f32(i));
+        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, random_state);
+        random_state = sampled_color.random_state;
+        final_color += sampled_color.color;
     }
 
     // Average ray colors over samples.

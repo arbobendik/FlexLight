@@ -1,7 +1,7 @@
 struct Uniforms {
     frame_index: f32,
     frames: f32,
-    random_vecs: vec2<f32>
+    random_vec: vec2<f32>
 };
 
 @group(0) @binding(0) var input_texture: texture_2d_array<f32>;
