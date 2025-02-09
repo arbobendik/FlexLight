@@ -160,6 +160,7 @@ import { PointLight } from "./common/scene/point-light.js";
 import { Renderer } from "./common/renderer.js";
 import { RendererWGPU } from "./webgpu/renderer-webgpu.js";
 import { WebGPUAntialiasingType } from "./webgpu/antialiasing/antialiasing-module.js";
+import { EnvironmentMap } from "./common/scene/environment-map.js";
 
 // Export classes
 export {
@@ -169,6 +170,7 @@ export {
   Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
   // Textures
   Texture, NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture,
+  EnvironmentMap,
 
   Transform,
   Prototype, Material, Instance, PointLight,
