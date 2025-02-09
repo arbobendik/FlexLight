@@ -20,7 +20,7 @@ struct Transform {
 
 struct UniformFloat {
     view_matrix: mat3x3<f32>,
-    view_matrix_jitter: mat3x3<f32>,
+    inv_view_matrix: mat3x3<f32>,
 
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
@@ -124,7 +124,7 @@ fn vertex(
     let transform: Transform = instance_transform[instance_index * 2u];
     out.absolute_position = transform.rotation * relative_position + transform.shift;
 
-    out.clip_space = uniform_float.view_matrix_jitter * (out.absolute_position - uniform_float.camera_position);
+    out.clip_space = uniform_float.view_matrix * (out.absolute_position - uniform_float.camera_position);
     // Set triangle position in clip space
     out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
     
