@@ -31,7 +31,7 @@ export class Texture {
     static async getTextureData(texture: HTMLImageElement, channels: Channels, width: number, height: number): Promise<HTMLCanvasElement> {
         // Create canvas, draw image and return bitmap
         const canvas = document.createElement("canvas");
-        const ctx: CanvasRenderingContext2D | null = canvas.getContext("2d"); 
+        const ctx: CanvasRenderingContext2D | null = canvas.getContext("2d", { willReadFrequently: true }); 
         if (!ctx) throw new Error("Failed to get canvas context");
         canvas.width = width;
         canvas.height = height;
@@ -49,7 +49,7 @@ export class Texture {
         this.height = height ?? texture.height;
         // Get texture data
         Texture.getTextureData(texture, channels, this.width, this.height).then((canvas: HTMLCanvasElement) => {
-            const ctx = canvas.getContext("2d")!;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
             const imageData = ctx.getImageData(0, 0, this.width, this.height);
             // Construct data array of pixel values
             const data = imageData.data;
@@ -57,6 +57,8 @@ export class Texture {
             const array = new Uint8Array(data);
 
             this.textureDataBuffer = Texture.textureDataBufferManager.allocateArray(array);
+
+            // console.log("Texture data buffer", array);
             // console.log("Texture data buffer", this.textureDataBuffer);
             this._textureInstanceBuffer = Texture.textureInstanceBufferManager.allocateArray([this.textureDataBuffer.offset / 4, channels, this.width, this.height]);
         });

@@ -50,7 +50,7 @@ engine.renderer.render();
 // engine.renderer.fpsLimit = 30;
 
 // const search = new URLSearchParams(location.search);
-let urlParams = new URL(String(document.location)).searchParams;
+// let urlParams = new URL(String(document.location)).searchParams;
 
 
 
@@ -118,10 +118,13 @@ bike1.transform.scale(2);
 //sphere1.transform.position = new Vector(10, 0, 0);
 sphere_metallic.transform.position = new Vector(10, 0, 0);
 sphere_metallic.transform.scale(2);
+
 sphere_diffuse.transform.position = new Vector(15, 0, 0);
 sphere_diffuse.transform.scale(2);
+
 sphere_rough_metal.transform.position = new Vector(20, 0, 0);
 sphere_rough_metal.transform.scale(2);
+
 sphere_rough_diffuse.transform.position = new Vector(25, 0, 0);
 sphere_rough_diffuse.transform.scale(2);
 
