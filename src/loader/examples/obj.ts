@@ -66,12 +66,12 @@ let scene: Scene = engine.scene;
 // for (let i = 0; i < 10; i++) {
 // let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 30000, 10);
 // let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
-let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
+// let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
 
 
 // scene.addPointLight(light1);
 // scene.addPointLight(light2);
-scene.addPointLight(light3);
+// scene.addPointLight(light3);
 // }
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
