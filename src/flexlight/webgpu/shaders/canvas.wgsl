@@ -1,5 +1,5 @@
-const KERNEL_SIZE: u32 = 3u;
-const NUM_SAMPLES: u32 = KERNEL_SIZE * KERNEL_SIZE;
+// const KERNEL_SIZE: u32 = 5u;
+// const NUM_SAMPLES: u32 = KERNEL_SIZE * KERNEL_SIZE;
 const POW32U: u32 = 4294967295u;
 
 struct UniformFloat {
@@ -44,56 +44,10 @@ fn compute(
     if (screen_pos.x > uniforms_uint.render_size.x || screen_pos.y > uniforms_uint.render_size.y) {
         return;
     }
-
-    
-
-    // Sample a square neighborhood (KERNEL_SIZE x KERNEL_SIZE).
-    var samples: array<vec3<f32>, NUM_SAMPLES>;
-    var idx: u32 = 0u;
-    let half: i32 = i32(KERNEL_SIZE) / 2;
-
-    for (var dy: i32 = -half; dy <= half; dy = dy + 1) {
-        for (var dx: i32 = -half; dx <= half; dx = dx + 1) {
-            // Load neighbor texel with clamping.
-            let offset: vec2<i32> = vec2<i32>(dx, dy);
-            let neighbor: vec4<f32> = loadNeighbour(screen_pos, offset);
-            samples[idx] = neighbor.xyz;
-            idx = idx + 1u;
-        }
-    }
-
-    // Get the median color from the square neighborhood for each channel.
-    // var r_vals: array<f32, NUM_SAMPLES>;
-    // var g_vals: array<f32, NUM_SAMPLES>;
-    // var b_vals: array<f32, NUM_SAMPLES>;
-    var gray_vals: array<f32, NUM_SAMPLES>;
-    for (var i: u32 = 0u; i < NUM_SAMPLES; i = i + 1u) {
-        // r_vals[i] = samples[i].x;
-        // g_vals[i] = samples[i].y;
-        // b_vals[i] = samples[i].z;
-        gray_vals[i] = length(samples[i].xyz);
-    }
-    // let med_r: f32 = median(r_vals);
-    // let med_g: f32 = median(g_vals);
-    // let med_b: f32 = median(b_vals);
-    let med_gray: u32 = median(gray_vals);
-    // Get the alpha value from the central texel.
     
 
     let center_texel: vec4<f32> = textureLoad(compute_out, screen_pos, 0);
-    var median_color: vec3<f32> = samples[med_gray].xyz;//vec3<f32>(med_r, med_g, med_b);
-    /*
-
-    let delta = (median_color - center_texel.xyz);
-    let delta_length = length(delta);
-    if(delta_length < 0.05) {
-        median_color = center_texel.xyz;
-    }
-    if (screen_pos.x >= 1280u) {
-        median_color = center_texel.xyz;
-    }
-
-    */
+    var median_color: vec3<f32> = center_texel.xyz;
 
     let alpha: f32 = center_texel.w;
 
@@ -113,7 +67,7 @@ fn compute(
     textureStore(canvas_out, screen_pos, vec4<f32>(median_color, alpha));
 }
 
-
+/*
 // Helper function to load a neighbor texel with clamping.
 fn loadNeighbour(center: vec2<u32>, offset: vec2<i32>) -> vec4<f32> {
     let renderSize: vec2<i32> = vec2<i32>(i32(uniforms_uint.render_size.x), i32(uniforms_uint.render_size.y));
@@ -176,3 +130,4 @@ fn median(values: array<f32, NUM_SAMPLES>) -> u32 {
     // Return the median element.
     return n / 2u;
 }
+*/
