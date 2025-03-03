@@ -61,7 +61,7 @@ export class FlexLight {
         // this._renderer = new RasterizerWGL2(this._canvas, this._scene, this._camera, this._config);
         break;
       case "rasterizerwebgpu":
-        // this._renderer = new RasterizerWGPU(this._canvas, this._scene, this._camera, this._config);
+        this._renderer = new RasterizerWGPU(this._canvas, this._scene, this._camera, this._config);
         break;
       default:
         throw new Error("Renderer option" + rendererType + "on api" + this._api + "doesn't exist.");
@@ -161,6 +161,7 @@ import { Renderer } from "./common/renderer.js";
 import { RendererWGPU } from "./webgpu/renderer-webgpu.js";
 import { WebGPUAntialiasingType } from "./webgpu/antialiasing/antialiasing-module.js";
 import { EnvironmentMap } from "./common/scene/environment-map.js";
+import { RasterizerWGPU } from "./webgpu/rasterizer.js";
 
 // Export classes
 export {

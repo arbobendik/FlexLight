@@ -7,7 +7,7 @@ import { WebGPUAntialiasingType } from '../../../flexlight';
 import TAAShader from '../shaders/taa.wgsl';
 
 const FRAMES: number = 4;
-//const GOLDEN_RATIO: number = 2.236067977499790; // sqrt(5)
+// const GOLDEN_RATIO: number = 2.236067977499790; // sqrt(5)
 
 export class TAA extends AntialiasingModule {
     readonly type: WebGPUAntialiasingType = "taa";
