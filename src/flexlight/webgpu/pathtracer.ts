@@ -767,8 +767,17 @@ export class PathTracerWGPU extends RendererWGPU {
     depthEncoder.setBindGroup(2, rasterDynamicGroup);
     // Draw vertices using the previously set pipeline
     depthEncoder.draw(3, totalTriangleCount);
+    if (this.frameCounter % 100 === 0) {
+      console.log("totalTriangleCount", totalTriangleCount);
+      // console.log(this.scene.instanceUintManager.bufferView);
+      // console.log(this.scene.instanceBVHManager.bufferView);
+      // console.log(this.scene.instanceBoundingVertexManager.bufferView);
+      // console.log(Prototype.triangleManager.bufferView);
+    }
     // End the render pass
     depthEncoder.end();
+
+    
 
     
     // All rendering commands happen in a render pass
@@ -821,18 +830,6 @@ export class PathTracerWGPU extends RendererWGPU {
       selectiveAverageEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
 
       selectiveAverageEncoder.end();
-
-      /*
-
-      let reprojectEncoder = commandEncoder.beginComputePass();
-      // Set the storage buffers and textures for compute pass
-      reprojectEncoder.setPipeline(pipelines.reprojectPipeline!);
-      reprojectEncoder.setBindGroup(0, reprojectGroup);
-      reprojectEncoder.setBindGroup(1, temporalDynamicGroup);
-      reprojectEncoder.dispatchWorkgroups(clusterDims.x, clusterDims.y);
-      // End reproject pass
-      reprojectEncoder.end();
-      */
     }
     
     if (this.antialiasingModule) {
@@ -850,9 +847,11 @@ export class PathTracerWGPU extends RendererWGPU {
     canvasEncoder.end();
     
     
+    
     // Finish recording commands, which creates a command buffer.
     let commandBuffer = commandEncoder.finish();
     device.queue.submit([commandBuffer]);
+    
 
   }
 }

@@ -139,19 +139,7 @@ export class FlexLight {
 
 
 
-// Import just to Export
-import { 
-  Vector, ZeroVector,
-  Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
-  vector_difference, vector_length, vector_scale,
-} from "./common/lib/math.js";
-
 import { Transform } from "./common/scene/transform.js";
-
-import {
-  Texture, NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture
-} from "./common/scene/texture.js";
-
 import { Prototype } from "./common/scene/prototype.js";
 import { Material } from "./common/scene/material.js";
 import { Instance } from "./common/scene/instance.js";
@@ -163,14 +151,11 @@ import { WebGPUAntialiasingType } from "./webgpu/antialiasing/antialiasing-modul
 import { EnvironmentMap } from "./common/scene/environment-map.js";
 import { RasterizerWGPU } from "./webgpu/rasterizer.js";
 
+export * from "./common/lib/math.js";
+export * from "./common/scene/texture.js";
 // Export classes
-export {
-  // Math
-  Vector, ZeroVector,
-  vector_difference, vector_length, vector_scale,
-  Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix,
-  // Textures
-  Texture, NormalTexture, AlbedoTexture, EmissiveTexture, RoughnessTexture, MetallicTexture,
+export{
+  // Texture
   EnvironmentMap,
 
   Transform,

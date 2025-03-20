@@ -109,7 +109,7 @@ export class Scene {
         this._pointLightManager.overwriteAll(pointLightArray);
 
         // Return total triangle count to dispatch renderer with right amount of triangles.
-        // console.log(globalTriangleIndexOffset);
+        // console.log(this._instanceBVHManager.bufferView);
         return globalTriangleIndexOffset;
     }
 

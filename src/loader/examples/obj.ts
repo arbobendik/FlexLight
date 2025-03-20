@@ -64,12 +64,12 @@ let scene: Scene = engine.scene;
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
 // for (let i = 0; i < 10; i++) {
-// let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 30000, 10);
+let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
 // let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
 // let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
 
 
-// scene.addPointLight(light1);
+scene.addPointLight(light1);
 // scene.addPointLight(light2);
 // scene.addPointLight(light3);
 // }
@@ -111,9 +111,6 @@ for (let i = 0; i < 6; i++) {
 
 console.log("Environment map images: ", environmentMapImages);
 scene.environmentMap = new EnvironmentMap(environmentMapImages);
-
-// Start render engine.
-engine.renderer.render();
 // engine.renderer.fpsLimit = 600;
 
 // const search = new URLSearchParams(location.search);
@@ -136,7 +133,7 @@ const loadObj = async (model: string) => {
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
 // let cube = await loadObj('cube');
-let plane = await loadObj('plane');
+let plane = await loadObj('plane2');
 let dragon = await loadObj('dragon_lp');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
@@ -144,7 +141,7 @@ let monkey = await loadObj('monke');
 
 // const fullScene1 = scene.instance(fullScene);
 // const cube1 = scene.instance(cube);
-let groundPlane = scene.instance(plane);
+const groundPlane = scene.instance(plane);
 // const cube2 = scene.instance(cube);
 
 const monkey1 = scene.instance(monkey);
@@ -177,7 +174,7 @@ groundPlane.transform.scale(30);
 groundPlane.material.roughness = 0.6;
 groundPlane.material.metallic = 0;
 groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
-groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+// groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
 groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
 /*
 cube2.transform.position = new Vector(100, 0, -100);
@@ -293,7 +290,8 @@ setInterval(() => {
 
 // sphere1.transform.position = new Vector(0, 10, 0);
 
-
+// Start render engine.
+engine.renderer.render();
 
 // Add FPS counter to top-right corner
 const fpsCounter = document.createElement("div");
