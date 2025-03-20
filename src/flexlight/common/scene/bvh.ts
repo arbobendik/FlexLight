@@ -300,7 +300,15 @@ export abstract class BVH<T extends Triangle | IndexedInstance> {
         return nodesMap.get(0)!;
     }
 
-    
+    dfsConcatArrays(nodeHook: (node: BVHNode<T>) => void, leafHook: (leaf: BVHLeaf<T>) => void, root: BVHNode<T> | BVHLeaf<T>) {
+        if (root instanceof BVHLeaf) {
+            leafHook(root);
+        } else if (root instanceof BVHNode) {
+            nodeHook(root);
+            for (let child of root.children) this.dfsConcatArrays(nodeHook, leafHook, child);
+        }
+    }
+
     dfsTraverse (nodeHook: (node: BVHNode<T>) => void, leafHook: (leaf: BVHLeaf<T>) => void, root: BVHNode<T> | BVHLeaf<T>) {
         if (root instanceof BVHLeaf) {
             leafHook(root);
