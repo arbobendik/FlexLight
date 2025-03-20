@@ -19,7 +19,7 @@ export class BufferToGPUBuffer<T extends TypedArray> extends BufferToGPU {
     constructor(bufferManager: BufferManager<T>, device: GPUDevice, label: string = "") {
         super();
 
-        this.MIN_BUFFER_LENGTH = 8 * bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT;
+        this.MIN_BUFFER_LENGTH = 1 * bufferManager.viewConstructor.prototype.BYTES_PER_ELEMENT;
         // Save device for future use
         this.device = device;
         // Save buffer manager for future use

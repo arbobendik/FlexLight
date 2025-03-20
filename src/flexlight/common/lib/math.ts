@@ -392,7 +392,7 @@ export function moore_penrose<M extends number, N extends number>(A: Matrix<M, N
 }
 
 export function ray_triangle(ray_origin: Vector<3>, ray_direction: Vector<3>, triangle: Matrix<3, 3>, normal: Vector<3>): number {
-    const BIAS = 2 ** (-12);
+    // const BIAS = 2 ** (-12);
     // Get distance to intersection point
     const s: number = dot(normal, vector_difference(triangle[0]!, ray_origin)) / dot(normal, normalize(ray_direction));
     // Ensure that ray triangle intersection is between light source and texture
