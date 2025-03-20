@@ -2,7 +2,7 @@
 
 import { BufferManager } from "../buffer/buffer-manager";
 import { TypedArrayView } from "../buffer/typed-array-view";
-import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul } from "../lib/math";
+import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul, normalize, BIAS } from "../lib/math";
 
 
 
@@ -117,6 +117,17 @@ export class Transform {
       [n.x * n.z * (1 - cT) - n.y * sT,    n.y * n.z * (1 - cT) + n.x * sT,    n.z * n.z * (1 - cT) + cT]
     );
     this.updateMatrix();
+  }
+
+  rotateDirection(direction: Vector<3>): void {
+    // Ensure the vector is normalized
+    const normalized = normalize(direction);
+    // Calculate yaw (horizontal angle, left/right)
+    const yaw = Math.atan2(normalized.x, - normalized.z) + Math.PI * Math.max(0, Math.sign(normalized.z + BIAS));
+    // Calculate pitch (vertical angle, up/down)
+    const pitch = Math.asin(normalized.y) - Math.PI / 2;
+
+    this.rotateSpherical(yaw, pitch);
   }
 
   rotateSpherical (theta: number, psi: number): void {
