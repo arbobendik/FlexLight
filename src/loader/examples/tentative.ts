@@ -1,7 +1,7 @@
 "use strict";
 
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -9,9 +9,6 @@ const canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
 // Create new engine object for canvas
-
-
-
 const engine = new FlexLight (canvas);
 engine.io = 'web';
 
@@ -49,73 +46,22 @@ const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" 
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
-/*
-[
-	staticPath + "textures/grass.jpg",     // 0
-].forEach(item => {
-	let img = new Image();
-	img.src = item;
-	scene.textures.push(img);
-});
-*/
 
 // Set camera perspective and position.
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
-// for (let i = 0; i < 10; i++) {
 let light1 = new PointLight(new Vector(0, -2, 0), new Vector(1, 0, 0), 5000, 10);
 let light2 = new PointLight(new Vector(0, -2, 50), new Vector(0, 0, 1), 5000, 10);
 let light3 = new PointLight(new Vector(0, 20, 100), new Vector(1, 1, 1), 10000, 20);
 let light4 = new PointLight(new Vector(0, 20, -70), new Vector(1, 1, 1), 10000, 20);
 
-
 scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
 scene.addPointLight(light4);
-// }
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
-/*
-
-let environmentMapImages: Array<HTMLImageElement> = [];
-let environmentMapPromises = Array<Promise<HTMLImageElement>>();
-
-let environmentMapUrls = [
-	"textures/cube-map/px.png",
-	"textures/cube-map/nx.png",
-	"textures/cube-map/py.png",
-	"textures/cube-map/ny.png",
-	"textures/cube-map/pz.png",
-	"textures/cube-map/nz.png",
-];
-
-for (let i = 0; i < 6; i++) {
-	environmentMapPromises.push(new Promise<HTMLImageElement>((resolve) => {
-		let img = new Image();
-		img.onload = () => {
-			resolve(img);
-		};
-		img.src = staticPath + environmentMapUrls[i];
-	}));
-}
-
-
-for (let i = 0; i < 6; i++) {
-	let img = await environmentMapPromises[i];
-	if (img) {
-		environmentMapImages[i] = img;
-		console.log("Loaded environment map ", img);
-	} else {
-		console.error("Failed to load environment map " + environmentMapUrls[i]);
-	}
-}
-
-console.log("Environment map images: ", environmentMapImages);
-scene.environmentMap = new EnvironmentMap(environmentMapImages);
-*/
-
 
 // Start render engine.
 engine.renderer.render();
@@ -152,13 +98,6 @@ monkeyInstanceBlue.transform.scale(5);
 monkeyInstanceBlue.material.roughness = 1;
 monkeyInstanceBlue.material.metallic = 0;
 monkeyInstanceBlue.material.emissive = new Vector(0, 0, 5);
-/*
-groundPlane.transform.position = new Vector(0, -2, 0);
-groundPlane.transform.scale(30);
-
-groundPlane.material.roughness = 0.6;
-groundPlane.material.metallic = 0;
-*/
 
 
 // Add FPS counter to top-right corner
