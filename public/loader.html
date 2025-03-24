@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<link href = "style.css" rel = "stylesheet"/>
+		<script defer type="module" src="./build/loader/load-script.js"></script>
+	</head>
+	<body>
+		<div id ="controlPanel">
+			<button id="screenshot">Screenshot</button>
+			<form id="scriptForm" action="." method="GET">
+				<label for="v">Scene</label>
+				<select name="v" id="scriptFormSelect">
+					<option value="example1">Example 1</option>
+					<option value="example2">Example 2</option>
+					<option value="example3">Example 3</option>
+					<option value="dragon">Dragon</option>
+					<option value="robot">Robot</option>
+					<!-- 
+						<option value="example2">Example 2</option>
+						<option value="cornell">Cornell</option>
+						<option value="emissive">Emissive</option>
+					 -->
+				</select>
+			</form>
+		</div>
+	</body>
+</html>
