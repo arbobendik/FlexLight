@@ -1,248 +1,303 @@
 "use strict";
-/*
-const staticPath = './static/';
-// Declare engine global.
-var engine;
-// Start scene buider
-buildScene();
-// Build example scene
-async function buildScene() {
-	// Create new canvas.
-	var canvas = document.createElement("canvas");
-  	// Append it to body.
-	document.body.appendChild(canvas);
-	engine = new FlexLight (canvas);
-	engine.io = 'web';
-
-	let camera = engine.camera;
-	let scene = engine.scene;
-	// Create pbr textures.
-	let normal_tex = await scene.textureFromRME([0.3, 1, 0], 1, 1);
-	scene.pbrTextures.push(normal_tex);
-
-	// Set camera perspective and position.
-	[camera.position.x, camera.position.y, camera.position.z] = [-12, 5, -18];
-	[camera.direction.x, camera.direction.y] = [-0.440, 0.235];
-
-	// Generate plane.
-	let thisPlane = scene.Plane([-100,-1,-100],[100,-1,-100],[100,-1,100],[-100,-1,100],[0,1,0]);
-  	thisPlane.textureNums = [-1, -1, -1];
-	// Generate a few cuboids on the planes with bounding box.
-	let r = [
-		scene.Cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
-		scene.Cuboid(-1.5, 1.5, -1, 2, -2, -1),
-		scene.Cuboid(0.5, 1.5, -1, 2, -1, 0),
-		scene.Cuboid(-1.5, -0.5, -1, 2, -1, 0)
-	];
-	// Color all cuboids in center.
-	for (let i = 0; i < 4; i++) {
-		r[i].color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
-		r[i].textureNums = [-1, 0, -1];
-	}
-	// Spawn cube.
-	let cube = scene.Cuboid(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
-	// Package cube and cuboids together in a shared bounding volume.
-	let objects = [r, cube];
-
-	scene.primaryLightSources = new Array(8);
-	scene.primaryLightSources[0] = [0, 10, 0];
-	scene.primaryLightSources[0].intensity = 50;
-	scene.primaryLightSources[2] = [10, 30, 10];
-	scene.primaryLightSources[3] = [-10, 30, 10];
-	scene.primaryLightSources[4] = [10, 30, -10];
-	scene.primaryLightSources[5] = [-10, 30, -10];
-	scene.primaryLightSources[6] = [30, 30, 30];
-	scene.primaryLightSources[7] = [-30, 30, -30];
-	// Set intensities
-	for (let i = 2; i < 8; i++) scene.primaryLightSources[i].intensity = 200;
-	// Test many lightsources
-	for (let i = 8; i < 8; i++) {
-		scene.primaryLightSources[i] = [-300 + i * 10, 300, -300];
-		scene.primaryLightSources[i].intensity = 50;
-	}
-	// Push both objects to render queue.
-	scene.queue.push(thisPlane, objects);
-	// Start render engine.
-	engine.renderer.render();
-
-	// Add FPS counter to top-right corner.
-	var fpsCounter = document.createElement("div");
-	// Append it to body.
-	document.body.appendChild(fpsCounter);
-  // Update Counter periodically.
-	setInterval(function(){
-		fpsCounter.textContent = engine.renderer.fps;
-	}, 100);
-
-	// init iterator variable for simple animations
-	let iterator = 0;
-
-	setInterval(() => {
-		// increase iterator
-		iterator += 0.01;
-		// precalculate sin and cos
-		let [sin, cos] = [Math.sin(iterator), Math.cos(iterator)];
-		// animate light sources
-		scene.primaryLightSources[1] = [20*sin, 8, 20*cos];
-		scene.primaryLightSources[1].intensity = 1000;
-		engine.renderer.updatePrimaryLightSources();
-		// move element
-		r[0].move(0.05*sin, 0, 0);
-	}, 100/6);
-}
-*/
 
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, NormalTexture, Instance } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
 
-export const staticPath: string = './static/';
-
+export const staticPath = './static/';
 // Create new canvas
-const canvas: HTMLCanvasElement = document.createElement("canvas");
+const canvas = document.createElement("canvas");
 // Append it to body
 document.body.appendChild(canvas);
-
 // Create new engine object for canvas
-const engine: FlexLight = new FlexLight(canvas);
+
+
+
+const engine = new FlexLight (canvas);
 engine.io = 'web';
 
-const controlPanel: HTMLElement | null = document.getElementById("controlPanel");
+
+
+const controlPanel = document.getElementById("controlPanel");
 if (!controlPanel) throw new Error("Control panel not found");
 
-const configUI: HTMLElement = createConfigUI(engine);
+const configUI = createConfigUI(engine);
 controlPanel.appendChild(configUI);
+
+
+const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" |  "emissive" | "roughness" | "metallic"): Promise<Texture> => {
+	let promise = new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.src = textureUrl;
+	});
+
+	let img = await promise;
+	switch (textureType) {
+		case "normal":
+			return new NormalTexture(img);
+		case "albedo":
+			return new AlbedoTexture(img);
+		case "emissive":
+			return new EmissiveTexture(img);
+		case "roughness":
+			return new RoughnessTexture(img);
+		case "metallic":
+			return new MetallicTexture(img);
+	}
+}
+
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
-
-// Create pbr textures
 /*
-const createNormalTexture = async (): Promise<NormalTexture> => {
-    const normalTex = new NormalTexture(new Vector(0.3, 1, 0));
-    return normalTex;
+[
+	staticPath + "textures/grass.jpg",     // 0
+].forEach(item => {
+	let img = new Image();
+	img.src = item;
+	scene.textures.push(img);
+});
+*/
+
+// Set camera perspective and position.
+[camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
+[camera.direction.x, camera.direction.y] = [-2.38, 0.4];
+
+// for (let i = 0; i < 10; i++) {
+let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
+// let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
+// let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
+
+
+scene.addPointLight(light1);
+// scene.addPointLight(light2);
+// scene.addPointLight(light3);
+// }
+
+scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+
+let environmentMapImages: Array<HTMLImageElement> = [];
+let environmentMapPromises = Array<Promise<HTMLImageElement>>();
+
+let environmentMapUrls = [
+	"textures/cube-map/px.png",
+	"textures/cube-map/nx.png",
+	"textures/cube-map/py.png",
+	"textures/cube-map/ny.png",
+	"textures/cube-map/pz.png",
+	"textures/cube-map/nz.png",
+];
+
+for (let i = 0; i < 6; i++) {
+	environmentMapPromises.push(new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => {
+			resolve(img);
+		};
+		img.src = staticPath + environmentMapUrls[i];
+	}));
+}
+
+
+for (let i = 0; i < 6; i++) {
+	let img = await environmentMapPromises[i];
+	if (img) {
+		environmentMapImages[i] = img;
+		console.log("Loaded environment map ", img);
+	} else {
+		console.error("Failed to load environment map " + environmentMapUrls[i]);
+	}
+}
+
+console.log("Environment map images: ", environmentMapImages);
+scene.environmentMap = new EnvironmentMap(environmentMapImages);
+// engine.renderer.fpsLimit = 600;
+
+// const search = new URLSearchParams(location.search);
+let urlParams = new URL(String(document.location)).searchParams;
+
+
+
+// console.log(search.getAll());
+
+
+const loadObj = async (model: string) => {	
+	console.log('loading ' + model);
+	const objPath = staticPath + 'objects/' + model + '.obj';
+	// const mtlPath = staticPath + 'objects/' + model + '.mtl';
+	const prototype = await Prototype.fromObjStatic(objPath);
+	console.log("Loaded prototype", prototype);
+	return prototype;
+}
+
+// let model = urlParams.get('model') ?? 'sphere';
+// let prototype = await loadObj(model);
+// let cube = await loadObj('cube');
+let plane = await loadObj('plane2');
+let dragon = await loadObj('dragon_lp');
+// let fullScene = await loadObj('sinan');
+let sphere = await loadObj('sphere');
+let monkey = await loadObj('monke');
+
+// const fullScene1 = scene.instance(fullScene);
+// const cube1 = scene.instance(cube);
+const groundPlane = scene.instance(plane);
+// const cube2 = scene.instance(cube);
+
+const monkey1 = scene.instance(monkey);
+
+
+const sphere_rusted = scene.instance(sphere);
+const sphere_metallic = scene.instance(sphere);
+const sphere_diffuse = scene.instance(sphere);
+const sphere_rough_metal = scene.instance(sphere);
+const sphere_rough_diffuse = scene.instance(sphere);
+
+/*
+*/
+// const dragon2 = new Instance(dragon);
+
+// const bike1 = scene.instance(bike);
+// const sphere1 = scene.instance(sphere);
+// const monkey1 = scene.instance(monkey);
+
+/*
+cube1.transform.position = new Vector(0, -102, 0);
+cube1.transform.scale(100);
+cube1.material.roughness = 1;
+cube1.material.metallic = 0;
+*/
+
+groundPlane.transform.position = new Vector(0, -2, 0);
+groundPlane.transform.scale(30);
+
+groundPlane.material.roughness = 0.6;
+groundPlane.material.metallic = 0;
+groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+// groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+/*
+cube2.transform.position = new Vector(100, 0, -100);
+cube2.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+cube2.transform.scale(100);
+cube2.material.roughness = 0;
+cube2.material.metallic = 0.5;
+*/
+
+/*
+
+
+/*
+fullScene1.transform.position = new Vector(-5, -10, 0);
+fullScene1.transform.scaleFactor = 2;
+fullScene1.material.roughness = 1.0;
+fullScene1.material.metallic = 0.0;
+
+
+
+
+cube2.transform.position = new Vector(0, 0, 10);
+ * POINT_LIGHT_SIZE
+bike1.transform.position = new Vector(0, -10, -30);
+bike1.transform.scaleFactor = 2;
+*/
+
+monkey1.transform.position = new Vector(5, 1, 0);
+// monkey1.transform.scale(new Vector(3, 1.8, 0.5));
+monkey1.material.roughness = 0;
+monkey1.material.metallic = 1;
+monkey1.material.transmission = 1;
+monkey1.material.ior = 1.5;
+
+//sphere1.transform.position = new Vector(10, 0, 0);
+sphere_metallic.transform.position = new Vector(10, 0, 0);
+sphere_diffuse.transform.position = new Vector(13, 0, 0);
+sphere_rough_metal.transform.position = new Vector(16, 0, 0);
+sphere_rough_diffuse.transform.position = new Vector(19, 0, 0);
+
+sphere_rusted.transform.position = new Vector(10, 0, -3);
+
+sphere_metallic.material.roughness = 0.1;
+sphere_metallic.material.metallic = 1.0;
+
+
+sphere_diffuse.material.roughness = 0.5;
+sphere_diffuse.material.metallic = 1.0;
+
+sphere_rough_metal.material.roughness = 0.7;
+sphere_rough_metal.material.metallic = 0.5;
+
+// sphere_rough_diffuse.material.roughness = 1.0;
+sphere_rough_diffuse.material.metallic = 0.0;
+sphere_rough_diffuse.material.roughness = 1.0;
+sphere_rough_diffuse.material.emissive = new Vector(10, 2, 2);
+/*
+sphere_rough_diffuse.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
+sphere_rough_diffuse.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
+sphere_rough_diffuse.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
+*/
+
+sphere_rusted.albedo = await loadTexture(staticPath + "textures/rusted/albedo.png", "albedo");
+sphere_rusted.roughness = await loadTexture(staticPath + "textures/rusted/roughness.png", "roughness");
+sphere_rusted.metallic = await loadTexture(staticPath + "textures/rusted/metallic.png", "metallic");
+sphere_rusted.normal = await loadTexture(staticPath + "textures/rusted/normal.png", "normal");
+
+
+/*
+for (let i = 0; i < 5; i++) {
+	for (let j = 0; j < 5; j++) {
+		let dragon_instance = scene.instance(dragon);
+		dragon_instance.transform.position = new Vector(20 * j, 0, -20 * i);
+		
+		dragon_instance.material.roughness = Math.max(0.1, j / 5);
+		dragon_instance.material.metallic = 1.0 - j / 5;
+
+		// init iterator variable for simple animations
+		let iterator = 0;
+
+		setInterval(() => {
+			// increase iterator
+			iterator += 0.001 + 0.0005 * j + 0.0007 * i;
+			// precalculate sin and cos
+			dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
+			// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
+		}, 100/6);
+	}
 }
 */
 
-const buildScene = async (): Promise<void> => {
-    // Create and add normal texture
-    // const normalTex = await createNormalTexture();
-    // scene.addTexture(normalTex);
 
-    // Set camera perspective and position
-    camera.position = new Vector(-12, 5, -18);
-    camera.direction = new Vector(-0.440, 0.235);
+let dragon_instance = scene.instance(dragon);
+dragon_instance.transform.position = new Vector(0, 0, -20);
+dragon_instance.transform.scale(1);
+dragon_instance.material.roughness = 0.5;
+dragon_instance.material.metallic = 1.0;
 
-    // Generate plane
-    const groundPlane = scene.instance(await loadObj('plane'));
-    groundPlane.transform.position = new Vector(-100, -1, -100);
-    groundPlane.transform.scale(200);
-    groundPlane.material.roughness = 0.3;
-    groundPlane.material.metallic = 1.0;
 
-    // Generate cuboids
-    const cuboids = await Promise.all([
-        createCuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
-        createCuboid(-1.5, 1.5, -1, 2, -2, -1),
-        createCuboid(0.5, 1.5, -1, 2, -1, 0),
-        createCuboid(-1.5, -0.5, -1, 2, -1, 0)
-    ]);
+// init iterator variable for simple animations
+let iterator = 0;
 
-    // Color all cuboids
-    cuboids.forEach(cuboid => {
-        cuboid.material.color = new Vector(
-            Math.random(),
-            Math.random(),
-            Math.random()
-        );
-		cuboid.material.roughness = 0.3;
-		cuboid.material.metallic = 1.0;
-        // cuboid.material.textureIndices = [-1, 0, -1];
-    });
+setInterval(() => {
+	// increase iterator
+	iterator += 0.005;
+	// precalculate sin and cos
+	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
+	// dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
+	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
+}, 100/6);
 
-    // Create cube
-    const cube = await createCuboid(5.5, 6.5, 1.5, 2.5, 5.5, 6.5);
+// instance2.transform.position = new Vector(-30, 0, 0);
 
-    // Setup light sources
-    const lightPositions: Array<Vector<3>> = [
-        new Vector(0, 10, 0),
-        new Vector(10, 30, 10),
-        new Vector(-10, 30, 10),
-        new Vector(10, 30, -10),
-        new Vector(-10, 30, -10),
-        new Vector(30, 30, 30),
-        new Vector(-30, 30, -30)
-    ];
+// sphere1.transform.position = new Vector(0, 10, 0);
 
-    lightPositions.forEach((position, index) => {
-        const intensity: number = index === 0 ? 50 : 200;
-        const light = new PointLight(position, new Vector(1, 1, 1), intensity, 0.1);
-        scene.addPointLight(light);
-    });
+// Start render engine.
+engine.renderer.render();
 
-    // Add objects to scene
-    // scene.queue.push(groundPlane);
-    // scene.queue.push([...cuboids, cube]);
-
-    // Start render engine
-    engine.renderer.render();
-
-    // Add FPS counter
-    const fpsCounter: HTMLDivElement = document.createElement("div");
-    document.body.appendChild(fpsCounter);
-    
-    setInterval(() => {
-        fpsCounter.textContent = String(Math.round(engine.renderer.fps));
-    }, 100);
-
-    // Animation loop
-    let iterator: number = 0;
-    setInterval(() => {
-        iterator += 0.01;
-        const sin: number = Math.sin(iterator);
-        const cos: number = Math.cos(iterator);
-        
-        // Animate light
-        const animatedLight = new PointLight(
-            new Vector(20 * sin, 8, 20 * cos),
-            new Vector(1, 1, 1),
-            1000,
-            0.1
-        );
-        scene.addPointLight(animatedLight);
-        
-        // Move first cuboid
-        cuboids[0].transform.position = new Vector(0.05 * sin, 0, 0);
-    }, 100/6);
-};
-
-const loadObj = async (model: string): Promise<Prototype> => {
-    console.log('loading ' + model);
-    const objPath: string = staticPath + 'objects/' + model + '.obj';
-    const prototype: Prototype = await Prototype.fromObjStatic(objPath);
-    return prototype;
-};
-
-const cubePrototype = await loadObj('cube');
-
-const createCuboid = async (
-    xmin: number, xmax: number,
-    ymin: number, ymax: number,
-    zmin: number, zmax: number
-): Promise<Instance> => {
-	let cuboid: Instance = scene.instance(cubePrototype);
-    const scale = new Vector<3>(
-        (xmax - xmin) * 0.5,
-        (ymax - ymin) * 0.5,
-        (zmax - zmin) * 0.5
-    );
-    cuboid.transform.position = new Vector(
-        xmin + scale.x,
-        ymin + scale.y,
-        zmin + scale.z
-    );
-    cuboid.transform.scale(scale);
-    return cuboid;
-};
-
-// Start scene builder
-buildScene();
+// Add FPS counter to top-right corner
+const fpsCounter = document.createElement("div");
+// Append it to body.
+document.body.appendChild(fpsCounter);
+// Update Counter periodically.
+setInterval(() => {
+	fpsCounter.textContent = String(Math.round(engine.renderer.fps)) + "\n" + String(scene.triangleCount);
+}, 1000);
