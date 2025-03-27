@@ -30,8 +30,7 @@ function install (
 )
 
 # Remove old build
-rm -rf ./public/build
-rm -rf ./tmp
+rm -rf ./public/build ./tmp
 
 # Copy source to build
 cp -r ./src/ ./tmp

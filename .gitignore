@@ -1,10 +1,10 @@
-public/build
-tmp
+#imports
+node_modules/
 
-node_modules
-src/config-ui/node_modules
-src/flexlight/node_modules
-src/loader/node_modules
+# build directories
+/public/build/
+/tmp/
 
-# public/static/textures
-public/static/objects/local
+# graphic includes
+# /public/static/textures/
+/public/static/objects/local/
