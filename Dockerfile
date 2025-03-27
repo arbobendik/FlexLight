@@ -1,30 +1,30 @@
 FROM node:bullseye
 LABEL maintainer="bendik@arbogast.dev"
 
-RUN apt update
-RUN apt install dos2unix
+RUN apt update && apt install dos2unix
 
 WORKDIR /app
-# Copy package.json and package-lock.json.
-COPY package* ./
-# Copy the rest of the application code.
 COPY . .
-# Web server.
-EXPOSE 3000
-# Install dependencies.
+
+# install global dependencies
+RUN npm install -g esbuild typescript
+
+# install local dependencies
 RUN npm install
-# Install dependencies for subproject.
+# subproject
 WORKDIR /app/src/loader
 RUN npm install
-# Go back to main directory.
+
 WORKDIR /app
-# Install sqlite3.
-RUN npm install -g esbuild
-# Install pm2 globally.
-RUN npm install -g typescript
-# RUN echo < $(ls)
+
+# platform independent directory listing
+# RUN if %OS%==Window_NT (dir /b /ogn /s) else (ls /r)
+
+# build the project
 RUN dos2unix ./build-script
-# Build the project.
 RUN bash ./build-script
-# Start the app.
-CMD [ "node", "index.js" ]
+
+# webserver
+EXPOSE 3000
+
+ENTRYPOINT [ "npm start" ]
