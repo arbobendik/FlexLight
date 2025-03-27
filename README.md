@@ -2,7 +2,7 @@
 
 ## TypeScript + WebGPU (WebGL 2 fallback planned)
 
-### [Live Demo]( https://arbogast.dev/FlexLight/exampleLoader.html?v=example2)
+### [Live Demo]( https://arbogast.dev/FlexLight/loader.html?v=example2)
 
 ### Description
 
