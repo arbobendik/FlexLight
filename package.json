@@ -10,14 +10,16 @@
     "type": "git",
     "url": "git+https://github.com/arbobendik/web-ray-tracer.git"
   },
-  "license": "ISC",
-  "author": "",
-  "type": "module",
-  "main": "index.js",
+  "author": "arbobendik",
+  "contributors": [
+    "5ubstitute"
+  ],
+  "main": "server.mjs",
   "scripts": {
-    "start": "docker compose up --build"
+    "start": "node ."
   },
   "dependencies": {
     "express": "^4.21.2"
-  }
+  },
+  "license": "ISC"
 }
