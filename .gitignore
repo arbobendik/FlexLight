@@ -1,10 +1,10 @@
 #imports
-node_modules
+node_modules/
 
 # build directories
-public/build
-tmp
+/public/build/
+/tmp/
 
 # graphic includes
-# public/static/textures
-public/static/objects/local
+# /public/static/textures/
+/public/static/objects/local/
