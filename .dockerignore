@@ -1,0 +1,8 @@
+# directories
+/.git/
+node_modules/
+
+# files
+.dockerignore
+.gitignore
+*.md
