@@ -1,6 +1,7 @@
 {
   "name": "flexlight",
   "version": "1.0.0",
+  "type": "module",
   "description": "Generates a canvas and scenery through JavaScript and traces the flow of light in real time. It is possible to manipulate the scenes to your heart's content in the scene folder. You can create triangles, planes and even cuboids with this library.",
   "homepage": "https://github.com/arbobendik/web-ray-tracer#readme",
   "bugs": {
@@ -14,7 +15,7 @@
   "contributors": [
     "5ubstitute"
   ],
-  "main": "server.mjs",
+  "main": "index.js",
   "scripts": {
     "start": "docker compose up --build",
     "dev": "node index.js"
