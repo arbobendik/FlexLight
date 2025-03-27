@@ -8,7 +8,6 @@ COPY . .
 
 # install global dependencies
 RUN npm install -g esbuild typescript
-
 # install local dependencies
 RUN npm install
 # subproject
@@ -16,15 +15,13 @@ WORKDIR /app/src/loader
 RUN npm install
 
 WORKDIR /app
-
 # platform independent directory listing
 # RUN if %OS%==Window_NT (dir /b /ogn /s) else (ls /r)
 
 # build the project
 RUN dos2unix ./build-script
 RUN bash ./build-script
-
 # webserver
 EXPOSE 3000
 
-ENTRYPOINT [ "npm start" ]
+ENTRYPOINT [ "node", "index.js" ]
