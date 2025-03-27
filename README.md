@@ -173,10 +173,10 @@ FlexLight uses several techniques to achieve high performance:
 
 ### Screenshots
 
-![](screenshots/screen0.png?raw=true)
-![](screenshots/screen1.png?raw=true)
-![](screenshots/screen2.png?raw=true)
-![](screenshots/screen3.png?raw=true)
-![](screenshots/screen4.png?raw=true)
+![](public/static/screenshots/screen0.png?raw=true)
+![](public/static/screenshots/screen1.png?raw=true)
+![](public/static/screenshots/screen2.png?raw=true)
+![](public/static/screenshots/screen3.png?raw=true)
+![](public/static/screenshots/screen4.png?raw=true)
 
 *(Note: Internet Explorer is unsupported due to a lack of WebGPU and WebGL 2 support.)*
