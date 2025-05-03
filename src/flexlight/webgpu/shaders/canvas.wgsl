@@ -63,6 +63,12 @@ fn compute(
     }
     */
 
+    let dist = distance(vec2<f32>(screen_pos), vec2<f32>(uniforms_uint.render_size) * 0.5f);
+
+    if (dist < 3.0f) {
+        median_color = vec3<f32>(0.0, 0.0, 0.0);
+    }
+
     // Write the final color to canvas.
     textureStore(canvas_out, screen_pos, vec4<f32>(median_color, alpha));
 }

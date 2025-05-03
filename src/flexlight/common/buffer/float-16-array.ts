@@ -1,5 +1,6 @@
 "use strict";
 
+/*
 export class Float16Array extends Uint16Array {
     from = (array: Float32Array | Array<number>) => {
         // Create view arrays to convert array
@@ -51,3 +52,4 @@ export class Float16Array extends Uint16Array {
         }
     }
 }
+*/
