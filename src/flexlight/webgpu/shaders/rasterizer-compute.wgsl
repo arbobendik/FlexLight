@@ -744,7 +744,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             outgoing_ray_dir = normalize(mix(outgoing_ray_dir, diffuse_random_dir, roughness_brdf));
             // Sample environment map if present
             let env_color: vec3<f32> = env_map_sample(outgoing_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f));
-            final_color += material.albedo * pow(env_color * 1.5f, vec3<f32>(2.0f)) * inv_samples;
+            final_color += material.albedo * env_color * inv_samples;
         }
     } else {
         // If no environment map is present, use ambient color
@@ -784,7 +784,6 @@ fn compute(
             
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
             env_color = env_map_sample(view_direction);
-            env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
         } else {
             // If no environment map is present, use ambient color
             env_color = uniforms_float.ambient;
