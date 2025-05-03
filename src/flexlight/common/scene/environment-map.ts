@@ -2,25 +2,44 @@
 
 import { BufferToGPU } from "../buffer/buffer-to-gpu";
 import { Vector } from "../lib/math";
+import { decodeRGBE } from "./hdri";
 
 
+export interface EnvironmentMap {
+    imageData: ImageData;
+    imageSize: Vector<2>;
+    gamma: number;
+    exposure: number;
+}
 
-export class EnvironmentMap {
-    cubeSideImages: Array<HTMLImageElement>;
-    cubeSideSize: Vector<2>;
+export class EnvironmentMap implements EnvironmentMap {
+    constructor(dataView: DataView, exposure: number = 1.0, gamma: number = 1.0 / 2.2) {
+        this.exposure = exposure;
+        this.gamma = gamma;
 
-    constructor(cubeSideImages: Array<HTMLImageElement> = []) {
-        if (cubeSideImages.length !== 6 && cubeSideImages.length !== 0) {
-            throw new Error("EnvironmentMap.constructor(): cubeSideImages must be an array of 6 HTMLImageElement");
+        const hdriData = decodeRGBE(dataView);
+        const imageArray = new Uint8ClampedArray(hdriData.data.length / 3 * 4);
+
+        for (let i = 0, j = 0; i < hdriData.data.length; i += 3, j += 4) {
+            imageArray[j] = Math.pow(hdriData.data[i]! * exposure, gamma) * 255;
+            imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * exposure, gamma) * 255;
+            imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * exposure, gamma) * 255;
+            imageArray[j + 3] = 255;
         }
 
-        this.cubeSideImages = cubeSideImages;
-        let firstImage = cubeSideImages[0];
-        if (firstImage) {
-            this.cubeSideSize = new Vector(firstImage.width, firstImage.height);
-        } else {
-            this.cubeSideSize = new Vector(1, 1);
-        }
+        this.imageData = new ImageData(imageArray, hdriData.width, hdriData.height);
+        this.imageSize = new Vector(hdriData.width, hdriData.height);
+
+        var canvas = document.createElement('canvas');
+        var ctx = canvas.getContext('2d')!;
+        canvas.width = this.imageData.width;
+        canvas.height = this.imageData.height;
+        ctx.putImageData(this.imageData, 0, 0);
+
+        var image = new Image();
+        image.src = canvas.toDataURL();
+        
+        console.log("Environment map image: ", image);
     }
 }
 
@@ -34,13 +53,11 @@ export class EnvironmentMapManager {
     }
 
     constructor(environmentMap: EnvironmentMap | undefined = undefined) {
-        this._environmentMap = environmentMap ?? new EnvironmentMap();
+        this._environmentMap = environmentMap ?? { imageData: new ImageData(1, 1), imageSize: new Vector(1, 1), gamma: 1, exposure: 1 };
     }
 
     bindGPUBuffer(gpuBuffer: BufferToGPU) {
-        if (this._gpuBuffer) {
-            throw new Error("EnvironmentMapManager.bindGPUBuffer(): GPUBuffer already bound");
-        }
+        if (this._gpuBuffer) throw new Error("EnvironmentMapManager.bindGPUBuffer(): GPUBuffer already bound");
         this._gpuBuffer = gpuBuffer;
     }
 
