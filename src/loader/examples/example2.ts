@@ -280,7 +280,7 @@ for (let i = 0; i < 5; i++) {
 let dragon_instance = scene.instance(dragon);
 dragon_instance.transform.position = new Vector(0, 0, -20);
 dragon_instance.transform.scale(1);
-dragon_instance.material.roughness = 0.5;
+dragon_instance.material.roughness = 0;
 dragon_instance.material.metallic = 1.0;
 
 
@@ -296,6 +296,8 @@ setInterval(() => {
 	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
 }, 100/6);
 
+
+/*
 
 let selected: Instance | null = null;
 let selectedAlbedoTexture: AlbedoTexture | null = null;
@@ -323,6 +325,7 @@ setInterval(() => {
 		}
 	}
 }, 10);
+*/
 
 // instance2.transform.position = new Vector(-30, 0, 0);
 
