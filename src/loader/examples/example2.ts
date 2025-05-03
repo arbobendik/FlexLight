@@ -1,7 +1,7 @@
 "use strict";
 
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap, Instance } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -76,6 +76,8 @@ scene.addPointLight(light1);
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 
+/*
+
 let environmentMapImages: Array<HTMLImageElement> = [];
 let environmentMapPromises = Array<Promise<HTMLImageElement>>();
 
@@ -111,10 +113,18 @@ for (let i = 0; i < 6; i++) {
 
 console.log("Environment map images: ", environmentMapImages);
 scene.environmentMap = new EnvironmentMap(environmentMapImages);
+*/
 // engine.renderer.fpsLimit = 600;
 
+let environmentMapURL = staticPath + "textures/house_8k.hdr";
+console.log("Environment map URL: ", environmentMapURL);
+fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => {
+	console.log("Array buffer: ", arrayBuffer);
+	scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.25, 0.5);
+});
+
 // const search = new URLSearchParams(location.search);
-let urlParams = new URL(String(document.location)).searchParams;
+// let urlParams = new URL(String(document.location)).searchParams;
 
 
 
@@ -279,12 +289,40 @@ let iterator = 0;
 
 setInterval(() => {
 	// increase iterator
-	iterator += 0.005;
+	iterator += 0.002;
 	// precalculate sin and cos
 	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
 	// dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
 	// transform3.rotateAxis(new Vector(0, 1, 0), iterator);
 }, 100/6);
+
+
+let selected: Instance | null = null;
+let selectedAlbedoTexture: AlbedoTexture | null = null;
+let selectedOriginalColor: Vector<3> = new Vector(0, 0, 0);
+setInterval(() => {
+	let newSelected = engine.ui.selected;
+	if (selected !== newSelected) {
+		if (selected) {
+			// Restore original color
+			selected.material.color = selectedOriginalColor;
+			// Restore original albedo texture
+			if (selectedAlbedoTexture) selected.albedo = selectedAlbedoTexture;
+		}
+		// Swap variables
+		selected = newSelected;
+		if (selected) {
+			// Save original color
+			selectedOriginalColor = selected.material.color;
+			// Save original albedo texture
+			selectedAlbedoTexture = selected.albedo ?? null;
+			// Set new color
+			selected.material.color = new Vector(1, 0, 0);
+			// Set albedo texture to undefined
+			selected.albedo = undefined;
+		}
+	}
+}, 10);
 
 // instance2.transform.position = new Vector(-30, 0, 0);
 

@@ -8,7 +8,7 @@ import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
 import { ObjectPrototype } from "./obj-parser";
-import { Float16Array } from "../buffer/float-16-array";
+// import { Float16Array } from "../buffer/float-16-array";
 
 export const TRIANGLE_SIZE = 24;
 
@@ -30,14 +30,14 @@ export class Prototype {
 
     // Buffers
     readonly triangles: TypedArrayView<Float16Array>;
-    readonly bvh: TypedArrayView<Uint32Array>;
+    readonly bvh: TypedArrayView<Uint32Array<ArrayBuffer>>;
     readonly boundingVertices: TypedArrayView<Float16Array>;
     readonly bounding: Bounding;
     readonly material: Material;
     // Construct using arrays
     constructor(
         triangles: Float16Array | Array<number>,
-        bvh: Uint32Array | Array<number>,
+        bvh: Uint32Array<ArrayBuffer> | Array<number>,
         boundingVertices: Float16Array | Array<number>,
         bounding: Bounding,
         material: Material

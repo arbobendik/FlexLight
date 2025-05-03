@@ -13,22 +13,22 @@ export class Scene {
     // Triangle Offset, Vertex Offset, BVH Offset, Bounding Vertex Offset, Normal Offset, UV Offset, Transform Offset, Material Offset,
     // Normal Texture Offset, Albedo Texture Offset, Emissive Texture Offset, Roughness Texture Offset, Metallic Texture Offset
     // Global Triangle Offset
-    private _instanceUintManager: BufferManager<Uint32Array>;
+    private _instanceUintManager: BufferManager<Uint32Array<ArrayBuffer>>;
     get instanceUintManager () { return this._instanceUintManager; }
     // Transform: Rotation, Shift
-    private _instanceTransformManager: BufferManager<Float32Array>;
+    private _instanceTransformManager: BufferManager<Float32Array<ArrayBuffer>>;
     get instanceTransformManager () { return this._instanceTransformManager; }
     // Material: Albedo, Roughness, Metallic, Emissive, Translucency, IOR
-    private _instanceMaterialManager: BufferManager<Float32Array>;
+    private _instanceMaterialManager: BufferManager<Float32Array<ArrayBuffer>>;
     get instanceMaterialManager () { return this._instanceMaterialManager; }
     // BVH structure: 0|1 BV BV B|I B|I B|I B|I
-    private _instanceBVHManager: BufferManager<Uint32Array>;
+    private _instanceBVHManager: BufferManager<Uint32Array<ArrayBuffer>>;
     get instanceBVHManager () { return this._instanceBVHManager; }
     // Bounding vertices: Bx By Bz
-    private _instanceBoundingVertexManager: BufferManager<Float32Array>;
+    private _instanceBoundingVertexManager: BufferManager<Float32Array<ArrayBuffer>>;
     get instanceBoundingVertexManager () { return this._instanceBoundingVertexManager; }
     // Px Py Pz, intensity, variance
-    private _pointLightManager: BufferManager<Float32Array>;
+    private _pointLightManager: BufferManager<Float32Array<ArrayBuffer>>;
     get pointLightManager () { return this._pointLightManager; }
     // Environment Map: Cube Side Images
     private _environmentMapManager: EnvironmentMapManager = new EnvironmentMapManager();
@@ -38,6 +38,12 @@ export class Scene {
         let count = 0;
         for (let instance of this.instances) count += instance.prototype.triangles.length / TRIANGLE_SIZE;
         return count;
+    }
+
+    private _instanceBVH: IndexedInstanceBVH | undefined = undefined;
+    get instanceBVH () {
+        if (!this._instanceBVH) this._instanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
+        return this._instanceBVH;
     }
     
     private readonly instances: Set<Instance> = new Set();
@@ -85,11 +91,11 @@ export class Scene {
         this._instanceUintManager.overwriteAll(instanceUintArray);
 
         // Generate BVH
-        const bvh: IndexedInstanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
+        this._instanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
 
         //console.log("BVH", bvh);
         // Generate bounding vertices and BVH structure
-        const bvhArrays: BVHArrays = bvh.toArrays();
+        const bvhArrays: BVHArrays = this._instanceBVH.toArrays();
         // console.log(bvhArrays);
         // console.log("BVHArray", bvhArrays.bvh);
         // console.log("Bounding Vertices", bvhArrays.boundingVertices);

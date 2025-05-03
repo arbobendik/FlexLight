@@ -86,6 +86,7 @@ export class Vector<N extends number> extends Float32Array {
         }
     }
 
+    // @ts-expect-error
     override *[Symbol.iterator](): IterableIterator<number> {
         for (let i = 0; i < this.length; i++) yield this[i]!;
     }
@@ -147,6 +148,7 @@ export class Matrix<M extends number, N extends number> extends Array<Vector<N>>
         }
     }
 
+    // @ts-expect-error
     override *[Symbol.iterator](): IterableIterator<Vector<N>> {
         // Iterate over row vectors
         for (let i = 0; i < this.length; i++) yield this[i]!;
@@ -391,18 +393,71 @@ export function moore_penrose<M extends number, N extends number>(A: Matrix<M, N
     return matrix_mul(matrix_mul(Rinv, transpose(QR.Q)), AT);
 }
 
-export function ray_triangle(ray_origin: Vector<3>, ray_direction: Vector<3>, triangle: Matrix<3, 3>, normal: Vector<3>): number {
+export interface Ray {
+    origin: Vector<3>;
+    unit_direction: Vector<3>;
+};
+
+export interface Bounding {
+    min: Vector<3>;
+    max: Vector<3>;
+}
+
+export function ray_bounding(ray: Ray, bounding: Bounding, max_len: number): number {
+    const inv_dir: Vector<3> = new Vector<3>(1 / ray.unit_direction.x, 1 / ray.unit_direction.y, 1 / ray.unit_direction.z);
+    const v0: Vector<3> = vector_hadamard(vector_difference(bounding.min, ray.origin), inv_dir);
+    const v1: Vector<3> = vector_hadamard(vector_difference(bounding.max, ray.origin), inv_dir);
+    const tmin: number = Math.max(Math.max(Math.min(v0.x, v1.x), Math.min(v0.y, v1.y)), Math.min(v0.z, v1.z));
+    const tmax: number = Math.min(Math.min(Math.max(v0.x, v1.x), Math.max(v0.y, v1.y)), Math.max(v0.z, v1.z));
+
+    if (tmax >= Math.max(tmin, 0.0) && tmin < max_len) {
+        return tmin;
+    } else {
+        return Infinity;
+    }
+}
+
+export function moellerTrumbore(a: Vector<3>, b: Vector<3>, c: Vector<3>, ray: Ray, l: number): number {
+    let edge1: Vector<3> = vector_difference(b, a);
+    let edge2: Vector<3> = vector_difference(c, a);
+    let pvec: Vector<3> = cross(ray.unit_direction, edge2);
+    let det: number = dot(edge1, pvec);
+    if(Math.abs(det) < BIAS) {
+        return Infinity;
+    }
+    let inv_det: number = 1.0 / det;
+    let tvec: Vector<3> = vector_difference(ray.origin, a);
+    let u: number = dot(tvec, pvec) * inv_det;
+    if(u < BIAS || u > 1) {
+        return Infinity;
+    }
+    let qvec: Vector<3> = cross(tvec, edge1);
+    let v: number = dot(ray.unit_direction, qvec) * inv_det;
+    let uv_sum: number = u + v;
+    if(v < BIAS || uv_sum > 1) {
+        return Infinity;
+    }
+    let s: number = dot(edge2, qvec) * inv_det;
+    if(s <= l && s > BIAS) {
+        return s;
+    } else {
+        return Infinity;
+    }
+}
+
+export function ray_triangle(ray: Ray, triangle: Matrix<3, 3>, max_len: number): number {
     // const BIAS = 2 ** (-12);
-    // Get distance to intersection point
-    const s: number = dot(normal, vector_difference(triangle[0]!, ray_origin)) / dot(normal, normalize(ray_direction));
-    // Ensure that ray triangle intersection is between light source and texture
-    if (s <= BIAS) return Infinity;
-    // Calculate intersection point
-    const d: Vector<3> = vector_add(vector_scale(normalize(ray_direction), s), ray_origin);
-    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     const v0: Vector<3> = vector_difference(triangle[1]!, triangle[0]!);
     const v1: Vector<3> = vector_difference(triangle[2]!, triangle[0]!);
+    const normal: Vector<3> = normalize(cross(v0, v1));
+    // Get distance to intersection point
+    const s: number = dot(normal, vector_difference(triangle[0]!, ray.origin)) / dot(normal, normalize(ray.unit_direction));
+    // Ensure that ray triangle intersection is between light source and texture
+    if (s <= BIAS || s > max_len) return Infinity;
+    // Calculate intersection point
+    const d: Vector<3> = vector_add(vector_scale(normalize(ray.unit_direction), s), ray.origin);
     const v2: Vector<3> = vector_difference(d, triangle[0]!);
+    // Test if point on plane is in Triangle by looking for each edge if point is in or outside
     const d00: number = dot(v0, v0);
     const d01: number = dot(v0, v1);
     const d11: number = dot(v1, v1);

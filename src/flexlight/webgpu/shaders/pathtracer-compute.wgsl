@@ -68,7 +68,7 @@ struct UniformUint {
 @group(1) @binding(0) var texture_data: texture_2d_array<u32>;
 @group(1) @binding(1) var<storage, read> texture_instance: array<u32>;
 // textureSample(hdri_map, hdri_sampler, direction * vec3f(1, 1, -1));
-@group(1) @binding(2) var environment_map: texture_cube<f32>;
+@group(1) @binding(2) var environment_map: texture_2d<f32>;
 @group(1) @binding(3) var environment_map_sampler: sampler;
 // ComputeGeometryBindGroup
 @group(2) @binding(0) var triangles: texture_2d_array<f32>;
@@ -486,7 +486,7 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
         let far_child = select(child0, child1, dist0 < dist1);
 
         if (indicator == 0u) {
-            // If node is a triangle, test for intersection, closest first
+            // If node is an instance, test for intersection, closest first
             if (dist_near != POW32) {
                 let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.distance);
                 if (new_hit.distance < hit.distance) {
@@ -927,8 +927,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     // Sample environment map if present
     if (add_ambient) {
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-            let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
-            final_color += importancy_factor * pow(env_color * 1.5f, vec3<f32>(2.0f));
+            let dir: vec3<f32> = ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f);
+            let env_color: vec3<f32> = env_map_sample(dir);
+            // let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
+            final_color += importancy_factor * env_color;
         } else {
             // If no environment map is present, use ambient color
             final_color += importancy_factor * uniforms_float.ambient;
@@ -936,6 +938,18 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     }
     // Return final pixel color
     return SampledColor(final_color, random_state);
+}
+
+fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
+    let len:f32 = sqrt (dir.x * dir.x + dir.z * dir.z);
+    var s:f32 = acos( dir.x / len);
+    if (dir.z < 0) {
+        s = 2.0 * PI - s;
+    }
+    s = s / (2.0 * PI);
+    var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
+    // return vec3<f32>(0.5f, 0.5f, 0.5f);
+    return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
 }
 
 /*
@@ -995,8 +1009,8 @@ fn compute(
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
-            env_color = textureSampleLevel(environment_map, environment_map_sampler, view_direction, 0.0f).xyz;
-            env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
+            env_color = env_map_sample(view_direction);
+            // env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
         } else {
             // If no environment map is present, use ambient color
             env_color = uniforms_float.ambient;

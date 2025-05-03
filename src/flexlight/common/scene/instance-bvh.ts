@@ -32,8 +32,15 @@ export class IndexedInstance {
 
 // Indexed Instance BVH class for constructing dynamic BVHs for instances
 export class IndexedInstanceBVH extends BVH<IndexedInstance> {
+    _instanceIDMap: Map<number, IndexedInstance> = new Map();
+
     constructor(instances: Array<IndexedInstance>) {
         super(instances, USE_BFS);
+        for (let instance of instances) this._instanceIDMap.set(instance.id, instance); 
+    }
+
+    getInstanceById(id: number): IndexedInstance | null {
+        return this._instanceIDMap.get(id) ?? null;
     }
 
     toArrays(): BVHArrays {
