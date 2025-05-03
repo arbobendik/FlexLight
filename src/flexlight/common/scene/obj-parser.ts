@@ -19,6 +19,7 @@ export type Triangle = [Vertex, Vertex, Vertex];
 
 
 export class Parser {
+    /*
     private static fanTriangulate(vertices: Array<Vertex>): Array<Triangle> {
         let triangles: Array<Triangle> = [];
         for (let i = 2; i < vertices.length; i++) {
@@ -26,6 +27,7 @@ export class Parser {
         }
         return triangles;
     }
+    */
 
     /**
      * Ear clipping triangulation algorithm for n-gons (both convex and concave).
@@ -387,20 +389,19 @@ export class Parser {
                             continue;
                         }
 
-                        let v0 = vector_difference(vertices[0].position, vertices[j]!.position);
-                        let v1 = vector_difference(vertices[0].position, vertices[j - 1]!.position);
+                        let v0 = vector_difference(vertices[0]!.position, vertices[j]!.position);
+                        let v1 = vector_difference(vertices[0]!.position, vertices[j - 1]!.position);
                         geometryNormal = normalize(cross(v0, v1));
                         // If all vectors are non-zero, break
                         if (vector_length(v0) > BIAS && vector_length(v1) > BIAS && vector_length(geometryNormal) > BIAS) break;
                     }
 
-                    if (geometryNormal.x === 0 && geometryNormal.y === 0 && geometryNormal.z === 0) {
+                    if (vector_length(geometryNormal) <= BIAS) {
                         console.warn("All vertices are on a line or polygon is degenerate.");
                         break;
                     }
 
-                    let invertedNormal: Vector<3> = vector_scale(geometryNormal, -1);
-
+                    
                     // Use ear clipping for potentially concave polygons
                     let triangulated = Parser.earClipTriangulate(vertices, geometryNormal);
                     // If success, add triangles
@@ -409,10 +410,11 @@ export class Parser {
                         break;
                     }
 
+                    let invertedNormal: Vector<3> = vector_scale(geometryNormal, -1);
                     // Try again to triangulate with invertedNormal
                     triangulated = Parser.earClipTriangulate(vertices, invertedNormal);
                     if (triangulated) {
-                        for (const triangle of triangulated) addTriangle(triangle[0], triangle[1], triangle[2], geometryNormal);
+                        for (const triangle of triangulated) addTriangle(triangle[0], triangle[1], triangle[2], invertedNormal);
                         break;
                     }
 

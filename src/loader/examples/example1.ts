@@ -1,6 +1,6 @@
 "use strict";
 
-import { Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
+import { Instance,Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
 import { createConfigUI } from '../../config-ui/config-ui.js';
 // import { vector_scale } from 'flexlight/common/lib/math';
 
@@ -224,6 +224,8 @@ setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
 */
+
+
 
 setTimeout(() => {
 	console.log(Texture.textureDataBufferManager.bufferView);
