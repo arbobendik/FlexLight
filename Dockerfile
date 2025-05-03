@@ -15,9 +15,6 @@ WORKDIR /app/src/loader
 RUN npm install
 
 WORKDIR /app
-# platform independent directory listing
-# RUN if %OS%==Window_NT (dir /b /ogn /s) else (ls /r)
-
 # build the project
 RUN dos2unix ./build-script
 RUN bash ./build-script

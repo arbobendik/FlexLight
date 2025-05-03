@@ -6,7 +6,7 @@ import { Scene } from "../common/scene/scene.js";
 import { Camera } from "../common/scene/camera.js";
 import { Config } from "../common/config.js";
 import { Prototype } from "../common/scene/prototype.js";
-import { Float16Array } from "../common/buffer/float-16-array.js";
+// import { Float16Array } from "../common/buffer/float-16-array.js";
 import { BufferToGPUBuffer } from "./buffer-to-gpu/buffer-to-gpubuffer.js";
 import { BufferToRGBA16 } from "./buffer-to-gpu/buffer-to-rgba16.js";
 import { BufferToRGBA32 } from "./buffer-to-gpu/buffer-to-rgba32.js";
@@ -68,20 +68,20 @@ interface RasterizerBindGroupLayouts {
 interface RasterizerGPUBufferManagers {
   // Pototype GPU Buffer Managers
   triangleGPUManager: BufferToRGBA16<Float16Array>;
-  BVHGPUManager: BufferToRGBA32<Uint32Array>;
+  BVHGPUManager: BufferToRGBA32<Uint32Array<ArrayBuffer>>;
   boundingVertexGPUManager: BufferToRGBA16<Float16Array>;
   // Light GPU Managers
-  pointLightGPUManager: BufferToGPUBuffer<Float32Array>;
+  pointLightGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
   // Texture GPU Managers
-  textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array>;
-  textureDataGPUManager: BufferToRGBA8<Uint8Array>;
+  textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array<ArrayBuffer>>;
+  textureDataGPUManager: BufferToRGBA8<Uint8Array<ArrayBuffer>>;
   environmentMapGPUManager: EnvironmentMapWebGPU;
   // Scene GPU Managers
-  instanceUintGPUManager: BufferToGPUBuffer<Uint32Array>;
-  instanceTransformGPUManager: BufferToGPUBuffer<Float32Array>;
-  instanceMaterialGPUManager: BufferToGPUBuffer<Float32Array>;
-  instanceBVHGPUManager: BufferToGPUBuffer<Uint32Array>;
-  instanceBoundingVertexGPUManager: BufferToGPUBuffer<Float32Array>;
+  instanceUintGPUManager: BufferToGPUBuffer<Uint32Array<ArrayBuffer>>;
+  instanceTransformGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
+  instanceMaterialGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
+  instanceBVHGPUManager: BufferToGPUBuffer<Uint32Array<ArrayBuffer>>;
+  instanceBoundingVertexGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
 }
 
 interface EngineState {
@@ -304,21 +304,21 @@ export class RasterizerWGPU extends RendererWGPU {
     const gpuManagers: RasterizerGPUBufferManagers = {
       // Prototype GPU Managers
       triangleGPUManager: new BufferToRGBA16<Float16Array>(Prototype.triangleManager, device, "float", "triangle buffer"),
-      BVHGPUManager: new BufferToRGBA32<Uint32Array>(Prototype.BVHManager, device, "uint", "bvh buffer"),
+      BVHGPUManager: new BufferToRGBA32<Uint32Array<ArrayBuffer>>(Prototype.BVHManager, device, "uint", "bvh buffer"),
       boundingVertexGPUManager: new BufferToRGBA16<Float16Array>(Prototype.boundingVertexManager, device, "float", "bounding vertex buffer"),
       // Texture GPU Managers
-      textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
-      textureDataGPUManager: new BufferToRGBA8<Uint8Array>(Texture.textureDataBufferManager, device, "uint", "texture data buffer"),
+      textureInstanceGPUManager: new BufferToGPUBuffer<Uint32Array<ArrayBuffer>>(Texture.textureInstanceBufferManager, device, "texture instance buffer"),
+      textureDataGPUManager: new BufferToRGBA8<Uint8Array<ArrayBuffer>>(Texture.textureDataBufferManager, device, "uint", "texture data buffer"),
       // Environment Map GPU Manager
       environmentMapGPUManager: new EnvironmentMapWebGPU(device, this.scene, "environment map"),
       // Scene GPU Managers
-      instanceUintGPUManager: new BufferToGPUBuffer<Uint32Array>(this.scene.instanceUintManager, device, "instance uint buffer"),
-      instanceTransformGPUManager: new BufferToGPUBuffer<Float32Array>(this.scene.instanceTransformManager, device, "instance transform buffer"),
-      instanceMaterialGPUManager: new BufferToGPUBuffer<Float32Array>(this.scene.instanceMaterialManager, device, "instance material buffer"),
+      instanceUintGPUManager: new BufferToGPUBuffer<Uint32Array<ArrayBuffer>>(this.scene.instanceUintManager, device, "instance uint buffer"),
+      instanceTransformGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.instanceTransformManager, device, "instance transform buffer"),
+      instanceMaterialGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.instanceMaterialManager, device, "instance material buffer"),
 
-      instanceBVHGPUManager: new BufferToGPUBuffer<Uint32Array>(this.scene.instanceBVHManager, device, "instance bvh buffer"),
-      instanceBoundingVertexGPUManager: new BufferToGPUBuffer<Float32Array>(this.scene.instanceBoundingVertexManager, device, "instance bounding vertex buffer"),
-      pointLightGPUManager: new BufferToGPUBuffer<Float32Array>(this.scene.pointLightManager, device, "point light buffer"),
+      instanceBVHGPUManager: new BufferToGPUBuffer<Uint32Array<ArrayBuffer>>(this.scene.instanceBVHManager, device, "instance bvh buffer"),
+      instanceBoundingVertexGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.instanceBoundingVertexManager, device, "instance bounding vertex buffer"),
+      pointLightGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.pointLightManager, device, "point light buffer"),
     }
     // Init canvas parameters and textures with resize
     this.resize(device);
@@ -525,8 +525,8 @@ export class RasterizerWGPU extends RendererWGPU {
       // sceneNumbers.triangleCount,
     ]));
 
-    let firstEnvMapSide: HTMLImageElement | undefined = this.scene.environmentMap.cubeSideImages[0];
-    let envMapSize: Vector<2> = new Vector(firstEnvMapSide ? firstEnvMapSide.width : 1, firstEnvMapSide ? firstEnvMapSide.height : 1);
+    //let firstEnvMapSide: HTMLImageElement | undefined = this.scene.environmentMap.cubeSideImages[0];
+    let envMapSize: Vector<2> = this.scene.environmentMap.imageSize;
 
     if (uniformUintBuffer) device.queue.writeBuffer(uniformUintBuffer, 0, new Uint32Array([
       // Render size
