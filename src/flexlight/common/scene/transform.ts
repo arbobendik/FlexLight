@@ -18,14 +18,15 @@ export class Transform {
 
   private _rotationMatrix: Matrix<3, 3>;
   private _position: Vector<3>;
-  private _scaleFactor: Vector<3>;
+  private _scaleVector: Vector<3>;
 
   private updateMatrix(): void {
-    const matrix: Matrix<3, 3> = matrix_mul(this._rotationMatrix, new Matrix(
-      [this._scaleFactor.x, 0, 0],
-      [0, this._scaleFactor.y, 0],
-      [0, 0, this._scaleFactor.z]
-    ));
+    // const matrix: Matrix<3, 3> = matrix_mul(this._rotationMatrix, new Matrix(
+    //   [this._scaleVector.x, 0, 0],
+    //   [0, this._scaleVector.y, 0],
+    //   [0, 0, this._scaleVector.z]
+    // ));
+    const matrix: Matrix<3, 3> = this.matrix;
     // Compute inverse matrix
     const inverse: Matrix<3, 3> = moore_penrose(matrix);
     // Set transform array
@@ -54,9 +55,9 @@ export class Transform {
 
   get matrix(): Matrix<3, 3> {
     return matrix_mul(this._rotationMatrix, new Matrix(
-      [this._scaleFactor.x, 0, 0],
-      [0, this._scaleFactor.y, 0],
-      [0, 0, this._scaleFactor.z]
+      [this._scaleVector.x, 0, 0],
+      [0, this._scaleVector.y, 0],
+      [0, 0, this._scaleVector.z]
     ));
   }
 
@@ -85,26 +86,34 @@ export class Transform {
 
   scale (s: number | Vector<3>): void {
     if (s instanceof Vector) {
-      this._scaleFactor = s;
+      this._scaleVector = s;
     } else {
-      this._scaleFactor = new Vector(s, s, s);
+      this._scaleVector = new Vector(s, s, s);
     }
     this.updateMatrix();
   }
 
   scaleX (x: number): void {
-    this._scaleFactor.x = x;
+    this._scaleVector.x = x;
     this.updateMatrix();
   }
 
   scaleY (y: number): void {
-    this._scaleFactor.y = y;
+    this._scaleVector.y = y;
     this.updateMatrix();
   }
 
   scaleZ (z: number): void {
-    this._scaleFactor.z = z;
+    this._scaleVector.z = z;
     this.updateMatrix();
+  }
+
+  get scaleVector(): Vector<3> {
+    return this._scaleVector;
+  }
+
+  set scaleVector(scaleVector: Vector<3>) {
+    this.scale(scaleVector);
   }
 
   rotateAxis (normal: Vector<3>, theta: number): void {
@@ -140,7 +149,7 @@ export class Transform {
     // Default to identity matrix.
     this._rotationMatrix = new IdentityMatrix(3);
     this._position = new ZeroVector(3);
-    this._scaleFactor = new Vector(1, 1, 1);
+    this._scaleVector = new Vector(1, 1, 1);
     // Assign next larger available number.
     this.transformArray = this._instanceFloatManager.allocateArray([
       // rotation matrix

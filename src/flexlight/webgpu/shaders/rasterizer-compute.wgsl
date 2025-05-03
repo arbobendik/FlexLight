@@ -66,7 +66,7 @@ struct UniformUint {
 @group(1) @binding(0) var texture_data: texture_2d_array<u32>;
 @group(1) @binding(1) var<storage, read> texture_instance: array<u32>;
 // textureSample(hdri_map, hdri_sampler, direction * vec3f(1, 1, -1));
-@group(1) @binding(2) var environment_map: texture_cube<f32>;
+@group(1) @binding(2) var environment_map: texture_2d<f32>;
 @group(1) @binding(3) var environment_map_sampler: sampler;
 // ComputeGeometryBindGroup
 @group(2) @binding(0) var triangles: texture_2d_array<f32>;
@@ -590,6 +590,18 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 }
 
 
+fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
+    let len:f32 = sqrt (dir.x * dir.x + dir.z * dir.z);
+    var s:f32 = acos( dir.x / len);
+    if (dir.z < 0) {
+        s = 2.0 * PI - s;
+    }
+    s = s / (2.0 * PI);
+    var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
+    // return vec3<f32>(0.5f, 0.5f, 0.5f);
+    return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
+}
+
 
 fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, init_random_state: u32) -> SampledColor {
     // Use additive color mixing technique, so start with black
@@ -731,7 +743,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             // Mix ideal and diffuse reflection/refraction
             outgoing_ray_dir = normalize(mix(outgoing_ray_dir, diffuse_random_dir, roughness_brdf));
             // Sample environment map if present
-            let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, outgoing_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
+            let env_color: vec3<f32> = env_map_sample(outgoing_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f));
             final_color += material.albedo * pow(env_color * 1.5f, vec3<f32>(2.0f)) * inv_samples;
         }
     } else {
@@ -771,7 +783,7 @@ fn compute(
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
-            env_color = textureSampleLevel(environment_map, environment_map_sampler, view_direction, 0.0f).xyz;
+            env_color = env_map_sample(view_direction);
             env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
         } else {
             // If no environment map is present, use ambient color
