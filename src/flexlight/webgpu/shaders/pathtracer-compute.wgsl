@@ -664,9 +664,13 @@ fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
 }
 
-fn fresnel(f0: vec3<f32>, theta: f32) -> vec3<f32> {
+fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
-    return f0 + (1.0f - f0) * pow(1.0f - theta, 5.0f);
+    return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
+}
+
+fn schlick(f0: f32, cos_theta: f32) -> f32 {
+    return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
 fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
@@ -682,19 +686,38 @@ fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>
     let n_dot_l: f32 = max(dot(n, l), 0.0f);
     let n_dot_v: f32 = max(dot(n, v), 0.0f);
 
-    let alpha: f32 = material.roughness * material.roughness;
-    let brdf: f32 = mix(1.0f, n_dot_v, material.metallic);
-    let f0: vec3<f32> = material.albedo * brdf;
+    let vm: vec3<f32> = -v;//reflect(v, n);
 
-    let ks: vec3<f32> = fresnel(f0, v_dot_h);
-    let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.metallic);
+    let hm: vec3<f32> = normalize(vm + l);
+
+    let nm_dot_h: f32 = max(dot(n, hm), 0.0f);
+    let nm_dot_l: f32 = max(dot(n, l), 0.0f);
+    let nm_dot_v: f32 = max(dot(n, vm), 0.0f);
+
+    let alpha: f32 = max(material.roughness * material.roughness, 0.01f);
+    // let brdf: f32 = mix(1.0f, n_dot_v, material.metallic);
+    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+    let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
+    // f0 = mix(f0, material.albedo, material.metallic);
     let lambert: vec3<f32> = material.albedo * INV_PI;
 
-    let cook_torrance_numerator: vec3<f32> = ks * trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
-    let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
+    // let ks: vec3<f32> = fresnel(f0, v_dot_h);
+    // let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.metallic);
 
-    let cook_torrance: vec3<f32> = cook_torrance_numerator / cook_torrance_denominator;
-    let radiance: vec3<f32> = kd * lambert + cook_torrance;
+    let reflect_component: vec3<f32> = fresnel(f0, v_dot_h);
+    let diffuse_component: vec3<f32> = (1.0f - reflect_component) * (1.0f - material.metallic) * (1.0f - material.transmission);
+    let refract_component: vec3<f32> = reflect_component * material.transmission;
+
+    let cook_torrance_numerator: f32 = trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
+    let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
+    let cook_torrance: f32 = cook_torrance_numerator / cook_torrance_denominator;
+
+
+    let cook_torrance_numerator_m: f32 = trowbridgeReitz(alpha, nm_dot_h) * smith(alpha, nm_dot_v, nm_dot_l);
+    let cook_torrance_denominator_m: f32 = max(4.0f * nm_dot_v * nm_dot_l, BIAS);
+    let cook_torrance_m: f32 = cook_torrance_numerator_m / cook_torrance_denominator_m;
+
+    let radiance: vec3<f32> = diffuse_component * lambert + reflect_component * cook_torrance + refract_component * cook_torrance_m;
 
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
@@ -862,49 +885,113 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         }
 
         // ray = Ray(ray.origin, normalize(ray.origin - old_ray_origin));
+
+        // If ray reflects from inside or onto an transparent object,
+        // the surface faces in the opposite direction as usual
+        
+
         // Determine local color considering PBR attributes and lighting
         let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_offset);
         random_state = local_sampled.random_state;
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_sampled.color * importancy_factor;
-        // Multiply albedo with either absorption value or filter color
-        importancy_factor = importancy_factor * material.albedo;
 
-        // If ray reflects from inside or onto an transparent object,
-        // the surface faces in the opposite direction as usual
         var sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         smooth_n *= - sign_dir;
+        
         // Bias ray direction on material properties
         // Generate pseudo random vector for diffuse reflection
         let random_sphere: RandomSphere = random_sphere(random_state);
         random_state = random_sphere.state;
         let diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
 
-        let brdf: f32 = mix(1.0f, abs(dot(smooth_n, - ray.unit_direction)), material.metallic);
+        // let brdf: f32 = mix(1.0f, abs(dot(smooth_n, - ray.unit_direction)), material.metallic);
         // Alter normal according to roughness value
-        let roughness_brdf: f32 = material.roughness * brdf;
-        let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
+        // let roughness_brdf: f32 = material.roughness * brdf;
+        // let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
 
-        let h: vec3<f32> = normalize(rough_n - ray.unit_direction);
+
+        let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
         let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
-        let f0: vec3<f32> = material.albedo * brdf;
-        let f: vec3<f32> = fresnel(f0, v_dot_h);
+        let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
 
-        let fresnel_reflect: f32 = max(f.x, max(f.y, f.z));
+        // let f0: f32 = vec3<f32>((1.0f - material.ior) * (1.0f - material.ior) / ((1.0f + material.ior) * (1.0f + material.ior)));
+        // let fresnel_reflect: f32 = schlick(f0, v_dot_h);
+        let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+        let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
+        // f0 = mix(f0, material.albedo, material.metallic);
         // Yeild random value between 0 and 1 and update state
-        let random_value: Random = pcg(random_state);
-        random_state = random_value.state;
-        // Handle translucency and skip rest of light calculation
-        if (material.transmission * fresnel_reflect <= abs(random_value.value)) {
-            // Calculate perfect reflection ray
+        let random_value_reflect: Random = pcg(random_state);
+        random_state = random_value_reflect.state;
+
+        let reflect_component: f32 = length(fresnel(f0, v_dot_n));
+        let diffuse_component: f32 = (1.0f - reflect_component) * (1.0f - material.transmission) * (1.0f - material.metallic);
+        let refract_component: f32 = (1.0f - reflect_component) * material.transmission;
+
+        let reflect_ratio: f32 = reflect_component / (reflect_component + diffuse_component + refract_component);
+        let refract_ratio: f32 = refract_component / (diffuse_component + refract_component);
+
+        // Does ray reflect or refract?
+
+        if (reflect_ratio <= abs(random_value_reflect.value)) {
+            let random_value_transmission: Random = pcg(random_state);
+            random_state = random_value_transmission.state;
+            // Refract or diffuse
+            if (refract_ratio <= abs(random_value_transmission.value)) {
+                ray.unit_direction = diffuse_random_dir;
+            } else {
+                let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
+                // Refract ray depending on IOR of material
+                ray.unit_direction = refract(ray.unit_direction, smooth_n, eta);
+            }
+            
+            importancy_factor = importancy_factor * material.albedo;
+        } else {
             ray.unit_direction = reflect(ray.unit_direction, smooth_n);
+            importancy_factor = importancy_factor * mix(vec3<f32>(1.0f), material.albedo, reflect_ratio);
+        }
+
+        ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, material.roughness * material.roughness));
+
+
+
+
+
+
+
+
+
+        /*
+        var specular_ray_dir: vec3<f32> = ray.unit_direction;
+        // Handle translucency and skip rest of light calculation
+        if (material.transmission * (1.0f - ks) <= abs(random_value_transmission.value)) {
+            // Calculate perfect reflection ray
+            specular_ray_dir = reflect(ray.unit_direction, smooth_n);
         } else {
             let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
             // Refract ray depending on IOR of material
-            ray.unit_direction = refract(ray.unit_direction, smooth_n, eta);
+            specular_ray_dir = refract(ray.unit_direction, smooth_n, eta);
         }
         // Mix ideal and diffuse reflection/refraction
-        ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, roughness_brdf));
+        specular_ray_dir = normalize(mix(specular_ray_dir, diffuse_random_dir, material.roughness * material.roughness));
+
+
+        let random_value_specular: Random = pcg(random_state);
+        random_state = random_value_specular.state;
+
+        let diffuse_ratio: f32 = diffuse * (1.0f - material.transmission) / (ks + diffuse);
+        
+        if (length(diffuse_ratio) <= random_value_specular.value) {
+            ray.unit_direction = specular_ray_dir;
+            importancy_factor = importancy_factor * mix(material.albedo, vec3<f32>(1.0f), diffuse_ratio);
+        } else {
+            ray.unit_direction = diffuse_random_dir;
+            importancy_factor = importancy_factor * material.albedo;
+        }
+        
+        */
+        
+
         // Test for early termination, avoiding last bounce
         i = i + 1u;
         if (i >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
