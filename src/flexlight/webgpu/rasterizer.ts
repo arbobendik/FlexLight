@@ -86,7 +86,6 @@ interface RasterizerGPUBufferManagers {
 
 interface EngineState {
   temporal: boolean;
-  temporalSamples: number;
   renderQuality: number;
   antialiasing: WebGPUAntialiasingType;
 }
@@ -103,7 +102,7 @@ export class RasterizerWGPU extends RendererWGPU {
   private canvasSizeDependentResources: CanvasSizeDependentResources | undefined;
   private antialiasingModule: AntialiasingModule | undefined;
   private engineState: EngineState = {
-    temporal: false, temporalSamples: 0,
+    temporal: false,
     renderQuality: 0, antialiasing: undefined
   };
 
@@ -287,10 +286,6 @@ export class RasterizerWGPU extends RendererWGPU {
     // Allow frame rendering
     this.isRunning = true;
     // Set engine state to config
-    this.engineState = {
-      temporal: this.config.temporal, temporalSamples: this.config.temporalSamples,
-      renderQuality: this.config.renderQuality, antialiasing: this.config.antialiasing
-    };
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
@@ -338,7 +333,9 @@ export class RasterizerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.temporalSamples !== this.config.temporalSamples || this.engineState.renderQuality !== this.config.renderQuality) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.renderQuality !== this.config.renderQuality) {
+      this.engineState.temporal = this.config.temporal;
+      this.engineState.renderQuality = this.config.renderQuality;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
       Prototype.BVHManager.releaseGPUBuffer();

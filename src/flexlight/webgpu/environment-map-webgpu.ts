@@ -48,8 +48,7 @@ export class EnvironmentMapWebGPU {
         }
     }
 
-    async loadHDRImage(img: ImageData, gamma: number)
-    {
+    async loadHDRImage(img: ImageData, gamma: number){
         const f16Array = new Float16Array(img.width * img.height * 4);
         const oneOverGamma = 1 / gamma;
     
