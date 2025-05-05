@@ -46,7 +46,7 @@ const loadObj = async (model: string) => {
 [camera.direction.x, camera.direction.y] = [- .9, .45];
 
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(50 ,70, 50), new Vector(1, 1, 1), 50000, 10);
+let light1 = new PointLight(new Vector(50 ,70, 50), new Vector(1, 1, 1), 15000, 10);
 scene.addPointLight(light1);
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
@@ -60,14 +60,14 @@ let planeInstance = scene.instance(plane);
 planeInstance.transform.move(0, -1, 0);
 planeInstance.transform.scale(500);
 planeInstance.material.roughness = 1.0;
-planeInstance.material.metallic = 0.8;
+planeInstance.material.metallic = 0;
 
 let dragonInstance = scene.instance(dragon);
 dragonInstance.transform.move(15, 0, 15);
 dragonInstance.transform.scale(0.5);
 dragonInstance.material.color = new Vector(1.0, 0.392, 0.392);
 dragonInstance.material.roughness = 0;
-dragonInstance.material.metallic = 1;
+dragonInstance.material.metallic = 0;
 dragonInstance.material.transmission = 1;
 dragonInstance.material.ior = 1.5;
 
@@ -82,7 +82,7 @@ let sphereInstance = scene.instance(sphere);
 sphereInstance.transform.move(15, 3, 0);
 sphereInstance.transform.scale(4);
 sphereInstance.material.roughness = 0;
-sphereInstance.material.metallic = 1;
+sphereInstance.material.metallic = 0;
 sphereInstance.material.transmission = 1;
 sphereInstance.material.ior = 1.5;
 // Start render engine.

@@ -59,7 +59,7 @@ const cubePrototype = await loadObj('cube');
 
 const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: number, zmax: number) => {
 	let cuboid = scene.instance(cubePrototype);
-	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.001);
+	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.0001);
 	cuboid.transform.position = new Vector(xmin + diff_half.x, ymin + diff_half.y, zmin + diff_half.z);
 	cuboid.transform.scale(diff_half);
 	return cuboid;
@@ -70,7 +70,7 @@ camera.position = new Vector(8, 7, -11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightCenter = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 1000, 0.2);
+let pointLightCenter = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 750, 0.2);
 let pointLightTop = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
@@ -144,9 +144,9 @@ let cuboidColors = [
 // Color all cuboid in center
 cuboids.forEach((cuboid, i) => {
 	cuboid.material.roughness = 0;
-	cuboid.material.metallic = 0.5;
+	cuboid.material.metallic = 0;
 	cuboid.material.transmission = 1;
-	cuboid.material.ior = 1.3;
+	cuboid.material.ior = 1.5;
 	cuboid.material.color = new Vector(cuboidColors[i]![0]! / 255, cuboidColors[i]![1]! / 255, cuboidColors[i]![2]! / 255);
 	// Append to render-queue
 	// scene.queue.push(cuboid);
@@ -178,7 +178,7 @@ let redCube = cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
 let lantern = cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
 // lantern.textureNums = [4, -1, -1];
 lantern.material.metallic = 1;
-lantern.material.emissive = new Vector(2, 2, 2);
+lantern.material.emissive = new Vector(4, 4, 4);
 
 
 engine.renderer.render();

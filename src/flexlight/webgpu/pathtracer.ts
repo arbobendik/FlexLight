@@ -103,7 +103,6 @@ interface PathTracerGPUBufferManagers {
 
 interface EngineState {
   temporal: boolean;
-  temporalSamples: number;
   renderQuality: number;
   antialiasing: WebGPUAntialiasingType;
 }
@@ -120,7 +119,7 @@ export class PathTracerWGPU extends RendererWGPU {
   private canvasSizeDependentResources: CanvasSizeDependentResources | undefined;
   private antialiasingModule: AntialiasingModule | undefined;
   private engineState: EngineState = {
-    temporal: false, temporalSamples: 0,
+    temporal: false,
     renderQuality: 0, antialiasing: undefined
   };
 
@@ -178,9 +177,9 @@ export class PathTracerWGPU extends RendererWGPU {
     let accumulatedTargetUint: GPUTexture | undefined = undefined;
     let shiftLock: GPUBuffer | undefined = undefined;
 
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       // Init canvas render texture
-      temporalIn = device.createTexture({ size: [width, height, this.config.temporal ? 2 : 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      temporalIn = device.createTexture({ size: [width, height, this.engineState.temporal ? 2 : 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init temporal screen space correction render target
       shiftTargetFloat = device.createTexture({ size: [width, height, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       shiftTargetUint = device.createTexture({ size: [width, height, 4], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
@@ -216,6 +215,7 @@ export class PathTracerWGPU extends RendererWGPU {
     const preferedCanvasFormat = "rgba8unorm"; // await navigator.gpu.getPreferredCanvasFormat();
     
     context.configure({ device: device, format: preferedCanvasFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+    // Prepare engine
     this.prepareEngine(device, context);
   }
   
@@ -297,7 +297,7 @@ export class PathTracerWGPU extends RendererWGPU {
     let selectiveAverageGroupLayout: GPUBindGroupLayout | undefined = undefined;
     // let reprojectGroupLayout: GPUBindGroupLayout | undefined = undefined;
     let temporalDynamicGroupLayout: GPUBindGroupLayout | undefined = undefined;
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       shiftGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },
@@ -373,7 +373,7 @@ export class PathTracerWGPU extends RendererWGPU {
     let selectiveAveragePipeline: GPUComputePipeline | undefined = undefined;
     // let reprojectPipeline: GPUComputePipeline | undefined = undefined;
 
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       // Pipeline for screen space correction of motion before accumulation
       shiftPipeline = this.createComputePipeline(device, PathtracerShiftShader, "shift pipeline", bindGroupLayouts.shiftGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
       // Pipeline for temporal accumulation
@@ -394,10 +394,6 @@ export class PathTracerWGPU extends RendererWGPU {
     // Allow frame rendering
     this.isRunning = true;
     // Set engine state to config
-    this.engineState = {
-      temporal: this.config.temporal, temporalSamples: this.config.temporalSamples,
-      renderQuality: this.config.renderQuality, antialiasing: this.config.antialiasing
-    };
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
@@ -445,7 +441,9 @@ export class PathTracerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.temporalSamples !== this.config.temporalSamples || this.engineState.renderQuality !== this.config.renderQuality) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.renderQuality !== this.config.renderQuality) {
+      this.engineState.temporal = this.config.temporal;
+      this.engineState.renderQuality = this.config.renderQuality;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
       Prototype.BVHManager.releaseGPUBuffer();
@@ -460,6 +458,7 @@ export class PathTracerWGPU extends RendererWGPU {
       this.scene.pointLightManager.releaseGPUBuffer();
 
       console.log("RECOMPILE");
+      console.log(this.engineState.temporal, this.config.temporal);
       // Update Textures
       requestAnimationFrame(() => this.prepareEngine(device, context));
       return;
@@ -472,6 +471,7 @@ export class PathTracerWGPU extends RendererWGPU {
     });
     
     // Swap antialiasing program if needed
+    // console.log (this.engineState.antialiasing, this.config.antialiasing);
     if (this.engineState.antialiasing !== this.config.antialiasing) {
       // Use internal antialiasing variable for actual state of antialiasing.
       this.engineState.antialiasing = this.config.antialiasing;
@@ -514,7 +514,7 @@ export class PathTracerWGPU extends RendererWGPU {
     let canvasTarget = context.getCurrentTexture();
     // Assemble lists to fill bind groups
     let computeTargetView =
-      this.config.temporal ? this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) :
+      this.engineState.temporal ? this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) :
       !this.antialiasingModule ? this.canvasSizeDependentResources!.canvasIn!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) :
       this.antialiasingModule.textureInView2dArray;
 
@@ -540,7 +540,6 @@ export class PathTracerWGPU extends RendererWGPU {
 
 
 
-    // const computeShiftView = this.config.temporal ? this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 5 }) : ;
     
     const computeRenderGroup = device.createBindGroup({
       label: "render input group for compute pass",
@@ -551,7 +550,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 2, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
         { binding: 3, resource: this.canvasSizeDependentResources!.uvTexture.createView() },
         { binding: 4, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
-        { binding: 5, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: this.config.temporal ? 4 : 1 }) },
+        { binding: 5, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: this.engineState.temporal ? 4 : 1 }) },
       ]
     });
     
@@ -561,7 +560,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // let reprojectGroup: GPUBindGroup | undefined;
     let temporalDynamicGroup: GPUBindGroup | undefined;
     
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       let temporalTargetView = this.antialiasingModule ? this.antialiasingModule.textureInView : this.canvasSizeDependentResources!.canvasIn.createView({ dimension: "2d" });
       // console.log(temporalTargetView);
       if (!temporalTargetView) throw new Error("Could not create temporal target view.");
@@ -660,9 +659,7 @@ export class PathTracerWGPU extends RendererWGPU {
     );
 
     let invViewMatrix = moore_penrose(viewMatrix);
-    
-    // if (!this.config.temporal) viewMatrix = viewMatrixJitter;
-    const temporalCount = this.config.temporal ? this.frameCounter : 0;
+    const temporalCount = this.engineState.temporal ? this.frameCounter : 0;
     // Update uniform values on GPU
     if (uniformFloatBuffer) device.queue.writeBuffer(uniformFloatBuffer, 0, new Float32Array([
       // View matrix
@@ -678,12 +675,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Ambient light
       this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z, 0,
       // min importancy of light ray
-      this.config.minImportancy,
-      
-      // Instance count
-      // sceneNumbers.instanceCount,
-      // Triangle count
-      // sceneNumbers.triangleCount,
+      this.config.minImportancy
     ]));
 
     //let firstEnvMapSide: HTMLImageElement | undefined = this.scene.environmentMap.cubeSideImages[0];
@@ -697,7 +689,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Temporal max
       TEMPORAL_MAX,
       // render for temporal or not
-      (this.config.temporal ? 1 : 0),
+      (this.engineState.temporal ? 1 : 0),
       // amount of samples per ray
       this.config.samplesPerRay,
       // max reflections of ray
@@ -794,7 +786,7 @@ export class PathTracerWGPU extends RendererWGPU {
     renderEncoder.end();
 
 
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       let shiftEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
       shiftEncoder.setPipeline(pipelines.shiftPipeline!);
@@ -821,7 +813,7 @@ export class PathTracerWGPU extends RendererWGPU {
     computeEncoder.end();
 
     // Execute temporal pass if activated
-    if (this.config.temporal) {
+    if (this.engineState.temporal) {
       let selectiveAverageEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
       selectiveAverageEncoder.setPipeline(pipelines.selectiveAveragePipeline!);

@@ -3,7 +3,7 @@
 import { FlexLight } from "flexlight";
 import { ValueType, ConfigForm } from "./form.js";
 import { RendererType } from "flexlight/common/renderer.js";
-import { ApiType } from "flexlight/common/renderer.js";
+// import { ApiType } from "flexlight/common/renderer.js";
 import { StringAntialiasingType } from "flexlight/common/config.js";
 // Types for ConfigUI
 interface Property<T extends ValueType> {
@@ -54,6 +54,8 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "Samples per ray", defaultValue: 1 }));
     configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 5 }));
     configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.3 }));
+
+    console.log(engine.config);
 
 
     return form;
