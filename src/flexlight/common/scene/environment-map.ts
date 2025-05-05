@@ -14,22 +14,22 @@ export interface EnvironmentMap {
 
 export class EnvironmentMap implements EnvironmentMap {
     constructor(dataView: DataView, exposure: number = 1.0, gamma: number = 1.0 / 2.2) {
-        this.exposure = exposure;
-        this.gamma = gamma;
-
+        
         const hdriData = decodeRGBE(dataView);
+        this.exposure = exposure * hdriData.exposure;
+        this.gamma = gamma * hdriData.gamma;
         const imageArray = new Uint8ClampedArray(hdriData.data.length / 3 * 4);
 
         for (let i = 0, j = 0; i < hdriData.data.length; i += 3, j += 4) {
-            imageArray[j] = Math.pow(hdriData.data[i]! * exposure, gamma) * 255;
-            imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * exposure, gamma) * 255;
-            imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * exposure, gamma) * 255;
+            imageArray[j] = Math.pow(hdriData.data[i]! * this.exposure, this.gamma) * 255;
+            imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * this.exposure, this.gamma) * 255;
+            imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * this.exposure, this.gamma) * 255;
             imageArray[j + 3] = 255;
         }
 
         this.imageData = new ImageData(imageArray, hdriData.width, hdriData.height);
         this.imageSize = new Vector(hdriData.width, hdriData.height);
-
+        /*
         var canvas = document.createElement('canvas');
         var ctx = canvas.getContext('2d')!;
         canvas.width = this.imageData.width;
@@ -40,6 +40,7 @@ export class EnvironmentMap implements EnvironmentMap {
         image.src = canvas.toDataURL();
         
         console.log("Environment map image: ", image);
+        */
     }
 }
 

@@ -27,5 +27,4 @@ export class Config {
   samplesPerRay: number = 1;
   maxReflections: number = 5;
   minImportancy: number = 0.3;
-  temporalSamples: number = 4;
 }

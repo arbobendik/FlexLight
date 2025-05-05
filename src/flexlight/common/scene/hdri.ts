@@ -25,11 +25,7 @@ type DataStream = {
 
 // Decodes RGBE-encoded data to a flat list of floating point pixel data (RGB).
 export function decodeRGBE(data: DataView): HDRImageData {
-	const stream = {
-		data,
-		offset: 0
-	};
-
+	const stream = {data, offset: 0};
 	const header = parseHeader(stream);
 
 	return {
