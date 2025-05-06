@@ -648,10 +648,10 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     return false;
 }
 
-fn trowbridgeReitz(alpha: f32, n_dot_h: f32) -> f32 {
+fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
     let numerator: f32 = alpha * alpha;
-    let denom: f32 = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
-    return numerator / max(PI * denom * denom, BIAS);
+    let denom: vec2<f32> = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
+    return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
 }
 
 fn schlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
@@ -669,29 +669,20 @@ fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-fn schlick(f0: f32, cos_theta: f32) -> f32 {
-    return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
-}
-
-fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, inv_v: vec3<f32>) -> vec3<f32> {
     let len_p1: f32 = 1.0f + length(light_dir);
     // Apply inverse square law
     let brightness: vec3<f32> = light_color * light_intensity / (len_p1 * len_p1);
 
     let l: vec3<f32> = normalize(light_dir);
-    let h: vec3<f32> = normalize(v + l);
+    let h: vec3<f32> = normalize(l - mv);
 
-    let v_dot_h: f32 = abs(dot(v, h));
+    let v_dot_h: f32 = abs(dot(mv, h));
     let n_dot_h: f32 = abs(dot(n, h));
     let n_dot_l: f32 = abs(dot(n, l));
-    let n_dot_v: f32 = abs(dot(n, v));
+    let n_dot_v: f32 = abs(dot(n, mv));
 
-
-    let vm: vec3<f32> = reflect(v, n);
-
-    let n_dot_vm: f32 = abs(dot(n, vm));
-    
-    let hm: vec3<f32> = normalize(l + vm);
+    let hm: vec3<f32> = normalize(l + inv_v);
     let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
 
     let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
@@ -699,22 +690,15 @@ fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>
     let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
     let lambert: vec3<f32> = material.albedo * INV_PI;
 
-    let reflect_component: vec3<f32> = fresnel(f0, v_dot_h);
-    let diffuse_component: vec3<f32> = (1.0f - reflect_component) * (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract_component: vec3<f32> = reflect_component * material.transmission;
+    let reflect: vec3<f32> = fresnel(f0, v_dot_h);
+    let diffuse: vec3<f32> = (1.0f - reflect) * (1.0f - material.metallic) * (1.0f - material.transmission);
+    let refract: vec3<f32> = reflect * material.transmission;
 
-    let smith: f32 = smith(alpha, n_dot_v, n_dot_l);
-
-    let cook_torrance_numerator: f32 = trowbridgeReitz(alpha, n_dot_h) * smith;
+    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_hm)) * smith(alpha, n_dot_v, n_dot_l);
     let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
-    let cook_torrance: f32 = max(cook_torrance_numerator / cook_torrance_denominator, 0.0f);
+    let cook_torrance: vec2<f32> = max(cook_torrance_numerator / cook_torrance_denominator, vec2<f32>(0.0f));
 
-    let cook_torrance_numerator_m: f32 = trowbridgeReitz(alpha, n_dot_hm) * smith;
-    let cook_torrance_denominator_m: f32 = max(4.0f * n_dot_vm * n_dot_l, BIAS);
-    let cook_torrance_m: f32 = max(cook_torrance_numerator_m / cook_torrance_denominator_m, 0.0f);
-    
-    let radiance: vec3<f32> = diffuse_component * lambert + reflect_component * cook_torrance + refract_component * cook_torrance_m;
-
+    let radiance: vec3<f32> = diffuse * lambert + reflect * cook_torrance.x + refract * cook_torrance.y;
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
 }
@@ -727,8 +711,8 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     var reservoir_num: u32 = 0u;
     var reservoir_weight: f32 = 0.0f;
     var reservoir_dir: vec3<f32>;
-
     var random_state: u32 = init_random_state;
+    let inv_v: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
 
     let size: u32 = u32(arrayLength(&lights));
     for (var i: u32 = 0u; i < size; i++) {
@@ -744,8 +728,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
         reservoir_length += 1.0f;
         // Alter light source position according to variation.
         let dir: vec3<f32> = light_position - camera_ray.origin;
-
-        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction);
+        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, inv_v);
 
         local_color += color_for_light;
         let weight: f32 = length(color_for_light);
@@ -765,7 +748,6 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     let unit_light_dir: vec3<f32> = normalize(reservoir_dir);
     // Apply emissive texture and ambient light
     let base_luminance: vec3<f32> = material.emissive;
-    
     // Compute quick exit criterion to potentially skip expensive shadow test
     let show_color: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f;
     let show_shadow: bool = dot(smooth_n, unit_light_dir) < 0.0f;
@@ -790,7 +772,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
 
 
 
-fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: vec2<f32>, init_random_state: u32) -> SampledColor {
+fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
     var importancy_factor: vec3<f32> = vec3<f32>(1.0f);
@@ -820,13 +802,12 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let edge1: vec3<f32> = t[1] - t[0];
         let edge2: vec3<f32> = t[2] - t[0];
 
-        let geometry_n: vec3<f32> = normalize(cross(t[2] - t[0], t[1] - t[0]));
+        let geometry_n: vec3<f32> = normalize(cross(edge2, edge1));
         let diffs: vec3<f32> = vec3<f32>(
             distance(offset_ray_target, t[0]),
             distance(offset_ray_target, t[1]),
             distance(offset_ray_target, t[2])
         );
-        
         // Calculate barycentric coordinates
         let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - hit.uv.x - hit.uv.y, hit.uv.x, hit.uv.y);
         // Interpolate smooth normal
@@ -894,40 +875,30 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         // Generate pseudo random vector for diffuse reflection
         let random_sphere: RandomSphere = random_sphere(random_state);
         random_state = random_sphere.state;
+
         let diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
-
-        // let brdf: f32 = mix(1.0f, abs(dot(smooth_n, - ray.unit_direction)), material.metallic);
-        // Alter normal according to roughness value
-        // let roughness_brdf: f32 = material.roughness * brdf;
-        // let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
-
-        let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
-        let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
+        // let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
+        // let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
         let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
-
-        // let f0: f32 = vec3<f32>((1.0f - material.ior) * (1.0f - material.ior) / ((1.0f + material.ior) * (1.0f + material.ior)));
-        // let fresnel_reflect: f32 = schlick(f0, v_dot_h);
         let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
         let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
-        // f0 = mix(f0, material.albedo, material.metallic);
         // Yeild random value between 0 and 1 and update state
-
-        
         let random_value_reflect: Random = pcg(random_state);
         random_state = random_value_reflect.state;
+        let random_value_transmission: Random = pcg(random_state);
+        random_state = random_value_transmission.state;
 
-        let reflect_component: f32 = length(fresnel(f0, v_dot_n));
-        let diffuse_component: f32 = (1.0f - reflect_component) * (1.0f - material.transmission) * (1.0f - material.metallic);
+        let f: vec3<f32> = fresnel(f0, v_dot_n);
+
+        let reflect_component: f32 = (f.x + f.y + f.z) / 3.0f;
+        let diffuse_component: f32 = (1.0f - reflect_component) * (1.0f - material.metallic) * (1.0f - material.transmission);
         let refract_component: f32 = (1.0f - reflect_component) * material.transmission;
-
+        // Calculate ratio of reflection and transmission
         let reflect_ratio: f32 = reflect_component / (reflect_component + diffuse_component + refract_component);
         let refract_ratio: f32 = refract_component / (diffuse_component + refract_component);
-
         // Does ray reflect or refract?
         if (reflect_ratio <= abs(random_value_reflect.value)) {
-            let random_value_transmission: Random = pcg(random_state);
-            random_state = random_value_transmission.state;
-            // Refract or diffuse
+            // Refract or diffuse?
             if (refract_ratio <= abs(random_value_transmission.value)) {
                 ray.unit_direction = diffuse_random_dir;
             } else {
@@ -935,52 +906,14 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
                 // Refract ray depending on IOR of material
                 ray.unit_direction = refract(ray.unit_direction, smooth_n, eta);
             }
-            
-            importancy_factor = importancy_factor * material.albedo;
+            importancy_factor *= material.albedo;
         } else {
             ray.unit_direction = reflect(ray.unit_direction, smooth_n);
             // importancy_factor = importancy_factor * material.albedo;
-            importancy_factor = importancy_factor * mix(vec3<f32>(1.0f), material.albedo, reflect_ratio);
+            importancy_factor *= mix(vec3<f32>(1.0f), material.albedo, reflect_ratio);
         }
 
         ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, material.roughness * material.roughness));
-        
-        /*
-        let ks: f32 = length(fresnel(f0, v_dot_n));
-        let diffuse: f32 = (1.0f - ks) * (1.0f - material.metallic);
-
-        var specular_ray_dir: vec3<f32> = ray.unit_direction;
-
-        let random_value_transmission: Random = pcg(random_state);
-        random_state = random_value_transmission.state;
-        // Handle translucency and skip rest of light calculation
-        if (material.transmission * (1.0f - ks) <= abs(random_value_transmission.value)) {
-            // Calculate perfect reflection ray
-            specular_ray_dir = reflect(ray.unit_direction, smooth_n);
-        } else {
-            let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-            // Refract ray depending on IOR of material
-            specular_ray_dir = refract(ray.unit_direction, smooth_n, eta);
-        }
-        // Mix ideal and diffuse reflection/refraction
-        specular_ray_dir = normalize(mix(specular_ray_dir, diffuse_random_dir, material.roughness * material.roughness));
-
-
-        let random_value_specular: Random = pcg(random_state);
-        random_state = random_value_specular.state;
-
-        let diffuse_ratio: f32 = diffuse * (1.0f - material.transmission) / (ks + diffuse);
-        
-        if (length(diffuse_ratio) <= random_value_specular.value) {
-            ray.unit_direction = specular_ray_dir;
-            importancy_factor = importancy_factor * mix(material.albedo, vec3<f32>(1.0f), diffuse_ratio);
-        } else {
-            ray.unit_direction = diffuse_random_dir;
-            importancy_factor = importancy_factor * material.albedo;
-        }
-        */
-        
-
         // Test for early termination, avoiding last bounce
         i = i + 1u;
         if (i >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
@@ -1004,8 +937,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     if (add_ambient) {
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             let dir: vec3<f32> = ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f);
-            let env_color: vec3<f32> = env_map_sample(dir, clip_space);
-            // let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
+            let env_color: vec3<f32> = env_map_sample(dir);
             final_color += importancy_factor * env_color;
         } else {
             // If no environment map is present, use ambient color
@@ -1016,13 +948,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     return SampledColor(final_color, random_state);
 }
 
-fn env_map_sample(dir: vec3<f32>, clip_space: vec2<f32>) -> vec3<f32> {
-    /*
-    if (clip_space.x < 0.0f) {
-        return vec3<f32>(uniforms_float.ambient);
-    }
-    */
-
+fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
     let len:f32 = sqrt (dir.x * dir.x + dir.z * dir.z);
     var s:f32 = acos( dir.x / len);
     if (dir.z < 0) {
@@ -1034,20 +960,6 @@ fn env_map_sample(dir: vec3<f32>, clip_space: vec2<f32>) -> vec3<f32> {
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
     return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
 }
-
-/*
-fn write_no_hit(screen_pos: vec2<u32>) {
-    // If there is no triangle render ambient color 
-    textureStore(compute_out, screen_pos, 0, vec4<f32>(uniforms_float.ambient, 1.0f));
-    // And overwrite position with 0 0 0 0
-    if (uniforms_uint.is_temporal == 1u) {
-        // Store position in target
-        textureStore(compute_out, screen_pos, 1, vec4<f32>(0.0f));
-    }
-}
-
-var<workgroup> workgroup_any_hit: bool;
-*/
 
 @compute
 @workgroup_size(8, 8)
@@ -1068,37 +980,17 @@ fn compute(
     let instance_index: u32 = texture_offset[buffer_index * 2u] - 1u;
     let triangle_index: u32 = texture_offset[buffer_index * 2u + 1u] - 1u;
 
-    /*
-    let no_hit: bool = instance_index == UINT_MAX && triangle_index == UINT_MAX;
-    if (!no_hit) {
-        workgroup_any_hit = true;
-    }
-    // Terminate if entire workgroup desn't contain any hit.
-    if (!workgroupUniformLoad(&workgroup_any_hit)) {
-        write_no_hit(screen_pos);
-        return;
-    }
-    */
-
-    // let view_inv_matrix: mat3x3<f32> = (uniforms_float.view_matrix);
-
-    let screen_space: vec2<f32> = vec2<f32>(f32(global_invocation_id.x) / f32(uniforms_uint.render_size.x), - f32(global_invocation_id.y) / f32(uniforms_uint.render_size.y)) * 2.0f + vec2<f32>(-1.0f, 1.0f);
-    // let clip_space: vec3<f32> = vec3<f32>(screen_space.x, - screen_space.y, 1.0f);
+    let screen_space: vec2<f32> = vec2<f32>(global_invocation_id.xy) / vec2<f32>(uniforms_uint.render_size.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
     let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f) * vec3<f32>(1.0f, 1.0f, -1.0f));
     
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
-
         var env_color: vec3<f32> = vec3<f32>(0.0f);
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-            
-            // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
-            env_color = env_map_sample(view_direction, screen_space);
-            // env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
+            env_color = env_map_sample(view_direction);
         } else {
             // If no environment map is present, use ambient color
             env_color = uniforms_float.ambient;
         }
-
         // If there is no triangle render ambient color 
         textureStore(compute_out, screen_pos, 0, vec4<f32>(env_color, 1.0f));
         // And overwrite position with 0 0 0 0
@@ -1111,30 +1003,22 @@ fn compute(
     
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
-
-    // let clip_space: vec2<f32> = vec2<f32>(screen_pos) / vec2<f32>(num_workgroups.xy * 8u);
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
     let init_hit: Hit = Hit(uvw.yz, distance(absolute_position, uniforms_float.camera_position), instance_index, triangle_index);
-    // let camera_ray: Ray = Ray(absolute_position, - normalize(uniforms_float.camera_position - absolute_position));
-
     // Determine if additional samples are needed
     var sampleFactor: u32 = 1u;
     
     
     if (uniforms_uint.is_temporal == 1u) {
         // Get count of shifted texture
-
         let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, screen_pos, 0, 0);
         let shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, screen_pos, 1, 0);
-
         let shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, screen_pos, 0, 0);
         let shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, screen_pos, 2, 0);
         // Extract 3d position value
         let fine_color_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
-        // let coarse_color_acc: vec4<f32> = textureLoad(shift_out, screen_pos, 1, 0);
         let fine_color_low_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
-        // let coarse_color_low_variance_acc: vec4<f32> = textureLoad(shift_out, screen_pos, 3, 0);
         let abs_position_old: vec4<f32> = shift_out_float_1;
         // If absolute position is all zeros then there is nothing to do
         let dist: f32 = distance(absolute_position, abs_position_old.xyz);
@@ -1148,84 +1032,27 @@ fn compute(
         if (fine_count == 0u || !last_frame) {
             sampleFactor = 1u;
         }
-
-        /*
-        let temporal_target_mod: u32 = (uniforms_uint.temporal_target + (workgroup_id.x * 8u) / (uniforms_uint.render_size.x / 2u)) % 3u;
-        if (
-            dist <= cur_depth * 8.0f / f32(uniforms_uint.render_size.x)
-            && last_frame
-            // Only keep old pixel if accumulation is saturated
-            && fine_count >= 8u
-            // Recalculate every third frame anyways to detect change in reflection
-            && temporal_target_mod != 0u
-        ){
-            textureStore(compute_out, screen_pos, 0, fine_color_acc);
-            // Store position in target
-            textureStore(compute_out, screen_pos, 1, vec4<f32>(absolute_position, f32(instance_index)));
-            return;
-        }
-        */
-        
     }
-    
-
-    // Load bounding vertices
-    /*
-
-    let is_leader: bool = local_invocation_id.x == 0u && local_invocation_id.y == 0u;
-
-    if (is_leader) {
-        for (var i: u32 = 0u; i < INSTANCE_BVH_CACHE_SIZE; i++) {
-            instance_bvh_cache[i] = instance_bvh[i];
-        }
-
-        for (var i: u32 = 0u; i < INSTANCE_BOUNDING_VERTICES_CACHE_SIZE; i++) {
-            instance_bounding_vertices_cache[i] = instance_bounding_vertices[i];
-        }
-    }
-
-    workgroupBarrier();
-
-    // BREAK UNIFORM CONTROL FLOW
-    if (no_hit) {
-        write_no_hit(screen_pos);
-        return;
-    }
-    
-    */
-
+    // Init color accumulator and random state
     var final_color = vec3<f32>(0.0f);
-
-
     var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
     // Generate multiple samples
     for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
         // Use cosine as noise in random coordinate picker
-        // let cos_sample_n = cos(f32(i));
-        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, random_state);
+        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, random_state);
         random_state = sampled_color.random_state;
         final_color += sampled_color.color;
     }
-
     // Average ray colors over samples.
     let inv_samples: f32 = 1.0f / f32(uniforms_uint.samples * sampleFactor);
     final_color *= inv_samples;
-
     // Write to additional textures for temporal pass
     if (uniforms_uint.is_temporal == 1u) {
         // Render to compute target
         textureStore(compute_out, screen_pos, 0, vec4<f32>(final_color, 1.0f));
-
-
-        // Get inverse transform
-        // let inverse_transform: Transform = instance_transform[instance_index * 2u + 1u];
-        // Store position in target
-        // textureStore(compute_out, screen_pos, 1, vec4<f32>(inverse_transform.rotation * (absolute_position + inverse_transform.shift), f32(instance_index)));
         textureStore(compute_out, screen_pos, 1, vec4<f32>(absolute_position, f32(instance_index)));
     } else {
         // Render to compute target
         textureStore(compute_out, screen_pos, 0, vec4<f32>(final_color, 1.0f));
     }
-    
-    // textureStore(compute_out, screen_pos, 0, vec4<f32>(1.0f, 0.0f, 0.0f, 1.0f));
 }
