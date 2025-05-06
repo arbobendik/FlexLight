@@ -35,7 +35,7 @@ const loadObj = async (model: string) => {
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 14, -10];
 [camera.direction.x, camera.direction.y] = [-.9, .45];
 
-let light1 = new PointLight(new Vector(50, 70, 50), new Vector(1, 1, 1), 15000, 10);
+let light1 = new PointLight(new Vector(50, 70, 50), new Vector(1, 1, 1), 15000, 5);
 
 scene.addPointLight(light1);
 
@@ -77,6 +77,24 @@ sphereInstance.material.transmission = 1;
 sphereInstance.material.ior = 1.5;
 // Start render engine.
 engine.renderer.render();
+
+/*
+let slider = document.createElement("input");
+slider.type = "range";
+slider.min = "0";
+slider.max = "10";
+slider.step = "0.01";
+slider.value = "0";
+slider.oninput = () => {
+	let pos = sphereInstance.transform.position;
+    sphereInstance.transform.position = new Vector(pos.x, Number(slider.value), pos.z);
+};
+slider.style.position = "absolute";
+slider.style.top = "5rem";
+slider.style.right = "1rem";
+document.body.appendChild(slider);
+*/
+
 
 let rotationAngle = 0;
 setInterval(() => {

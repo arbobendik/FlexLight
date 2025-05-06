@@ -61,11 +61,10 @@ let scene: Scene = engine.scene;
 
 // Set camera perspective and position.
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
-[camera.direction.x, camera.direction.y] = [-2.3, 0.4];
+[camera.direction.x, camera.direction.y] = [-Math.PI * 3 / 4, 0.4];
 
 
 let choose_lights = true;
-
 // choose_lights = false;
 
 if (choose_lights) {
@@ -184,7 +183,7 @@ for (let i = 0; i < 5; i++) {
 			let dragon_instance = scene.instance(sphere);
 			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, -2*i - 2);
 			
-			dragon_instance.material.roughness = j / 5;
+			dragon_instance.material.roughness = j * 0.8 / 5;
 			dragon_instance.material.transmission = k / 5;
 			dragon_instance.material.metallic = 1.0 - i / 5;
 			dragon_instance.material.color = new Vector(1.0, 0.5, 0.5);
