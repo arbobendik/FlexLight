@@ -681,42 +681,38 @@ fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>
     let l: vec3<f32> = normalize(light_dir);
     let h: vec3<f32> = normalize(v + l);
 
-    let v_dot_h: f32 = max(dot(v, h), 0.0f);
-    let n_dot_h: f32 = max(dot(n, h), 0.0f);
-    let n_dot_l: f32 = max(dot(n, l), 0.0f);
-    let n_dot_v: f32 = max(dot(n, v), 0.0f);
+    let v_dot_h: f32 = abs(dot(v, h));
+    let n_dot_h: f32 = abs(dot(n, h));
+    let n_dot_l: f32 = abs(dot(n, l));
+    let n_dot_v: f32 = abs(dot(n, v));
 
-    let vm: vec3<f32> = -v;//reflect(v, n);
 
-    let hm: vec3<f32> = normalize(vm + l);
+    let vm: vec3<f32> = reflect(v, n);
 
-    let nm_dot_h: f32 = max(dot(n, hm), 0.0f);
-    let nm_dot_l: f32 = max(dot(n, l), 0.0f);
-    let nm_dot_v: f32 = max(dot(n, vm), 0.0f);
+    let n_dot_vm: f32 = abs(dot(n, vm));
+    
+    let hm: vec3<f32> = normalize(l + vm);
+    let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
 
-    let alpha: f32 = max(material.roughness * material.roughness, 0.01f);
-    // let brdf: f32 = mix(1.0f, n_dot_v, material.metallic);
+    let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
     let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
     let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
-    // f0 = mix(f0, material.albedo, material.metallic);
     let lambert: vec3<f32> = material.albedo * INV_PI;
-
-    // let ks: vec3<f32> = fresnel(f0, v_dot_h);
-    // let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.metallic);
 
     let reflect_component: vec3<f32> = fresnel(f0, v_dot_h);
     let diffuse_component: vec3<f32> = (1.0f - reflect_component) * (1.0f - material.metallic) * (1.0f - material.transmission);
     let refract_component: vec3<f32> = reflect_component * material.transmission;
 
-    let cook_torrance_numerator: f32 = trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
+    let smith: f32 = smith(alpha, n_dot_v, n_dot_l);
+
+    let cook_torrance_numerator: f32 = trowbridgeReitz(alpha, n_dot_h) * smith;
     let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
-    let cook_torrance: f32 = cook_torrance_numerator / cook_torrance_denominator;
+    let cook_torrance: f32 = max(cook_torrance_numerator / cook_torrance_denominator, 0.0f);
 
-
-    let cook_torrance_numerator_m: f32 = trowbridgeReitz(alpha, nm_dot_h) * smith(alpha, nm_dot_v, nm_dot_l);
-    let cook_torrance_denominator_m: f32 = max(4.0f * nm_dot_v * nm_dot_l, BIAS);
-    let cook_torrance_m: f32 = cook_torrance_numerator_m / cook_torrance_denominator_m;
-
+    let cook_torrance_numerator_m: f32 = trowbridgeReitz(alpha, n_dot_hm) * smith;
+    let cook_torrance_denominator_m: f32 = max(4.0f * n_dot_vm * n_dot_l, BIAS);
+    let cook_torrance_m: f32 = max(cook_torrance_numerator_m / cook_torrance_denominator_m, 0.0f);
+    
     let radiance: vec3<f32> = diffuse_component * lambert + reflect_component * cook_torrance + refract_component * cook_torrance_m;
 
     // Outgoing light to camera
@@ -884,21 +880,16 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
         }
 
-        // ray = Ray(ray.origin, normalize(ray.origin - old_ray_origin));
-
-        // If ray reflects from inside or onto an transparent object,
-        // the surface faces in the opposite direction as usual
-        
-
         // Determine local color considering PBR attributes and lighting
         let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_offset);
         random_state = local_sampled.random_state;
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_sampled.color * importancy_factor;
 
+        // If ray reflects from inside or onto an transparent object,
+        // the surface faces in the opposite direction as usual
         var sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         smooth_n *= - sign_dir;
-        
         // Bias ray direction on material properties
         // Generate pseudo random vector for diffuse reflection
         let random_sphere: RandomSphere = random_sphere(random_state);
@@ -910,7 +901,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         // let roughness_brdf: f32 = material.roughness * brdf;
         // let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
 
-
         let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
         let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
         let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
@@ -921,6 +911,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
         // f0 = mix(f0, material.albedo, material.metallic);
         // Yeild random value between 0 and 1 and update state
+
+        
         let random_value_reflect: Random = pcg(random_state);
         random_state = random_value_reflect.state;
 
@@ -932,7 +924,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let refract_ratio: f32 = refract_component / (diffuse_component + refract_component);
 
         // Does ray reflect or refract?
-
         if (reflect_ratio <= abs(random_value_reflect.value)) {
             let random_value_transmission: Random = pcg(random_state);
             random_state = random_value_transmission.state;
@@ -948,21 +939,20 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             importancy_factor = importancy_factor * material.albedo;
         } else {
             ray.unit_direction = reflect(ray.unit_direction, smooth_n);
+            // importancy_factor = importancy_factor * material.albedo;
             importancy_factor = importancy_factor * mix(vec3<f32>(1.0f), material.albedo, reflect_ratio);
         }
 
         ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, material.roughness * material.roughness));
-
-
-
-
-
-
-
-
-
+        
         /*
+        let ks: f32 = length(fresnel(f0, v_dot_n));
+        let diffuse: f32 = (1.0f - ks) * (1.0f - material.metallic);
+
         var specular_ray_dir: vec3<f32> = ray.unit_direction;
+
+        let random_value_transmission: Random = pcg(random_state);
+        random_state = random_value_transmission.state;
         // Handle translucency and skip rest of light calculation
         if (material.transmission * (1.0f - ks) <= abs(random_value_transmission.value)) {
             // Calculate perfect reflection ray
@@ -988,7 +978,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
             ray.unit_direction = diffuse_random_dir;
             importancy_factor = importancy_factor * material.albedo;
         }
-        
         */
         
 
@@ -1015,7 +1004,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     if (add_ambient) {
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             let dir: vec3<f32> = ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f);
-            let env_color: vec3<f32> = env_map_sample(dir);
+            let env_color: vec3<f32> = env_map_sample(dir, clip_space);
             // let env_color: vec3<f32> = textureSampleLevel(environment_map, environment_map_sampler, ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f), 0.0f).xyz;
             final_color += importancy_factor * env_color;
         } else {
@@ -1027,12 +1016,19 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     return SampledColor(final_color, random_state);
 }
 
-fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
+fn env_map_sample(dir: vec3<f32>, clip_space: vec2<f32>) -> vec3<f32> {
+    /*
+    if (clip_space.x < 0.0f) {
+        return vec3<f32>(uniforms_float.ambient);
+    }
+    */
+
     let len:f32 = sqrt (dir.x * dir.x + dir.z * dir.z);
     var s:f32 = acos( dir.x / len);
     if (dir.z < 0) {
         s = 2.0 * PI - s;
     }
+    
     s = s / (2.0 * PI);
     var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
@@ -1096,7 +1092,7 @@ fn compute(
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
-            env_color = env_map_sample(view_direction);
+            env_color = env_map_sample(view_direction, screen_space);
             // env_color = pow(env_color * 1.5f, vec3<f32>(2.0f));
         } else {
             // If no environment map is present, use ambient color
