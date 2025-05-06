@@ -65,7 +65,7 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-// choose_lights = false;
+choose_lights = false;
 
 if (choose_lights) {
 	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 200000, 10);
