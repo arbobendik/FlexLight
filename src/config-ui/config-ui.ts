@@ -33,9 +33,35 @@ const getStartValueSelect = <T extends ValueType>(property: Property<T>): T => {
     else return value as T;
 };
 
+const addScreenshotButton = (parent: HTMLElement, engine: FlexLight) => {
+    const button = document.createElement("button");
+    button.id = "screenshot";
+    button.textContent = "Screenshot";
+    button.type = "button";
+    button.onclick = () => saveCanvas(engine.canvas);
+    parent.appendChild(button);
+};
+
+const saveCanvas = (canvas: HTMLCanvasElement) => {
+    canvas.toBlob((blob) => {
+        console.log(blob);
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+
+        var link = document.createElement("a");
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.href = url;
+        link.download = "screenshot.png";
+        link.click();
+        URL.revokeObjectURL(url);
+    });
+};
 
 export function createConfigUI(engine: FlexLight): HTMLFormElement {
     const form = document.createElement("form");
+
+    addScreenshotButton(form, engine);
 
     const localStorageHook = (name: string, value: ValueType) => {
         localStorage.setItem(name, value.toString());
