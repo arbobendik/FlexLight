@@ -1,7 +1,7 @@
 "use strict";
 
 import { createConfigUI } from "../../config-ui/config-ui.js";
-import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap, normalize, vector_add } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -44,8 +44,8 @@ let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
-[camera.direction.x, camera.direction.y] = [-2.38, 0.4];
+[camera.position.x, camera.position.y, camera.position.z] = [-22.4, 9.4, 21.3];
+[camera.direction.x, camera.direction.y] = [- 2.45, 0.1];
 
 let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
 // let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
@@ -135,6 +135,21 @@ dragon_instance.transform.position = new Vector(0, 0, -20);
 dragon_instance.transform.scale(1);
 dragon_instance.material.roughness = 0;
 dragon_instance.material.metallic = 1.0;
+
+
+for (let i = 0; i < 5; i++) {
+	for (let j = 0; j < 5; j++) {
+		for (let k = 0; k < 1; k++) {
+			let sphere_instance = scene.instance(sphere);
+			sphere_instance.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+			sphere_instance.transform.position = vector_add(new Vector(12, 1, - 16), new Vector(Math.sqrt(2) * i, 2 * j, Math.sqrt(2) * i));
+			sphere_instance.material.roughness = 0;
+			sphere_instance.material.transmission = j / 5;
+			sphere_instance.material.metallic = 1.0 - i / 5;
+			sphere_instance.material.color = new Vector(1.0, 0.25, 0.25);
+		}
+	}
+}
 
 // Init iterator variable for simple animations
 let iterator = 0;
