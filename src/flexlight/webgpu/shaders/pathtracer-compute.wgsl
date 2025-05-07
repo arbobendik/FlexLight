@@ -174,8 +174,8 @@ fn access_texture_data(index: u32) -> vec4<u32> {
     // return vec4<u32>(255u, 255u, 255u, 1u);
 }
 
+
 fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
-    
     let texture_instance_offset: u32 = index * TEXTURE_INSTANCE_SIZE;
     // Fetch data from texture instance buffer
     let texture_data_offset: u32 = texture_instance[texture_instance_offset];
@@ -248,6 +248,10 @@ struct RandomHemisphere {
     state: u32,
     value: vec3<f32>
 };
+
+fn rgb_to_greyscale(rgb: vec3<f32>) -> f32 {
+    return dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+}
 
 fn pcg(state: u32) -> Random {
     // PCG random number generator
@@ -682,17 +686,18 @@ fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>
     let n_dot_l: f32 = abs(dot(n, l));
     let n_dot_v: f32 = abs(dot(n, mv));
 
-    let hm: vec3<f32> = normalize(l + inv_v);
+    let vm: vec3<f32> = reflect(-mv, n);
+    let hm: vec3<f32> = normalize(l + vm);
     let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
 
     let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
     let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-    let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
+    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
     let lambert: vec3<f32> = material.albedo * INV_PI;
 
     let reflect: vec3<f32> = fresnel(f0, v_dot_h);
     let diffuse: vec3<f32> = (1.0f - reflect) * (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract: vec3<f32> = reflect * material.transmission;
+    let refract: f32 = material.transmission;
 
     let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_hm)) * smith(alpha, n_dot_v, n_dot_l);
     let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
@@ -731,7 +736,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
         let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, inv_v);
 
         local_color += color_for_light;
-        let weight: f32 = length(color_for_light);
+        let weight: f32 = rgb_to_greyscale(color_for_light);
 
         total_weight += weight;
         // Yeild random value between 0 and 1 and update state
@@ -877,22 +882,20 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         random_state = random_sphere.state;
 
         let diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
-        // let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
-        // let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
+        let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
+        let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
         let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
         let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-        let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
+        let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
         // Yeild random value between 0 and 1 and update state
         let random_value_reflect: Random = pcg(random_state);
         random_state = random_value_reflect.state;
         let random_value_transmission: Random = pcg(random_state);
         random_state = random_value_transmission.state;
 
-        let f: vec3<f32> = fresnel(f0, v_dot_n);
-
-        let reflect_component: f32 = (f.x + f.y + f.z) / 3.0f;
+        let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, v_dot_n));
         let diffuse_component: f32 = (1.0f - reflect_component) * (1.0f - material.metallic) * (1.0f - material.transmission);
-        let refract_component: f32 = (1.0f - reflect_component) * material.transmission;
+        let refract_component: f32 = material.transmission;
         // Calculate ratio of reflection and transmission
         let reflect_ratio: f32 = reflect_component / (reflect_component + diffuse_component + refract_component);
         let refract_ratio: f32 = refract_component / (diffuse_component + refract_component);
@@ -910,13 +913,13 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         } else {
             ray.unit_direction = reflect(ray.unit_direction, smooth_n);
             // importancy_factor = importancy_factor * material.albedo;
-            importancy_factor *= mix(vec3<f32>(1.0f), material.albedo, reflect_ratio);
+            importancy_factor *= mix(vec3<f32>(1.0f), material.albedo, material.metallic);
         }
 
         ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, material.roughness * material.roughness));
         // Test for early termination, avoiding last bounce
         i = i + 1u;
-        if (i >= uniforms_uint.max_reflections || length(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
+        if (i >= uniforms_uint.max_reflections || rgb_to_greyscale(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
             add_ambient = false;
             break;
         }
