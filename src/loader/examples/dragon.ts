@@ -69,7 +69,7 @@ monkeInstance.material.roughness = 0.1;
 monkeInstance.material.metallic = 1;
 
 let sphereInstance = scene.instance(sphere);
-sphereInstance.transform.move(15, 3, 0);
+sphereInstance.transform.move(15, 3.1, 0);
 sphereInstance.transform.scale(4);
 sphereInstance.material.roughness = 0;
 sphereInstance.material.metallic = 0;
