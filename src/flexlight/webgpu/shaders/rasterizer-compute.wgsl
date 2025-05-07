@@ -172,6 +172,7 @@ fn access_texture_data(index: u32) -> vec4<u32> {
     // return vec4<u32>(255u, 255u, 255u, 1u);
 }
 
+
 fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
     
     let texture_instance_offset: u32 = index * TEXTURE_INSTANCE_SIZE;
@@ -246,6 +247,10 @@ struct RandomHemisphere {
     state: u32,
     value: vec3<f32>
 };
+
+fn rgb_to_greyscale(rgb: vec3<f32>) -> f32 {
+    return dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+}
 
 fn pcg(state: u32) -> Random {
     // PCG random number generator
@@ -455,10 +460,11 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     return false;
 }
 
-fn trowbridgeReitz(alpha: f32, n_dot_h: f32) -> f32 {
+
+fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
     let numerator: f32 = alpha * alpha;
-    let denom: f32 = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
-    return numerator / max(PI * denom * denom, BIAS);
+    let denom: vec2<f32> = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
+    return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
 }
 
 fn schlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
@@ -471,81 +477,48 @@ fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
 }
 
-fn fresnel(f0: vec3<f32>, theta: f32) -> vec3<f32> {
+fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
-    return f0 + (1.0f - f0) * pow(1.0f - theta, 5.0f);
+    return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, inv_v: vec3<f32>) -> vec3<f32> {
     let len_p1: f32 = 1.0f + length(light_dir);
     // Apply inverse square law
     let brightness: vec3<f32> = light_color * light_intensity / (len_p1 * len_p1);
 
     let l: vec3<f32> = normalize(light_dir);
-    let h: vec3<f32> = normalize(v + l);
+    let h: vec3<f32> = normalize(l - mv);
 
-    let v_dot_h: f32 = max(dot(v, h), 0.0f);
-    let n_dot_h: f32 = max(dot(n, h), 0.0f);
-    let n_dot_l: f32 = max(dot(n, l), 0.0f);
-    let n_dot_v: f32 = max(dot(n, v), 0.0f);
+    let v_dot_h: f32 = abs(dot(mv, h));
+    let n_dot_h: f32 = abs(dot(n, h));
+    let n_dot_l: f32 = abs(dot(n, l));
+    let n_dot_v: f32 = abs(dot(n, mv));
 
-    let alpha: f32 = material.roughness * material.roughness;
-    let brdf: f32 = mix(1.0f, n_dot_v, material.metallic);
-    let f0: vec3<f32> = material.albedo * brdf;
+    let hm: vec3<f32> = normalize(l + inv_v);
+    let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
 
-    let ks: vec3<f32> = fresnel(f0, v_dot_h);
-    let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.metallic);
+    let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
+    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+    let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
     let lambert: vec3<f32> = material.albedo * INV_PI;
 
-    let cook_torrance_numerator: vec3<f32> = ks * trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
+    let reflect: vec3<f32> = fresnel(f0, v_dot_h);
+    let diffuse: vec3<f32> = (1.0f - reflect) * (1.0f - material.metallic) * (1.0f - material.transmission);
+    let refract: vec3<f32> = reflect * material.transmission;
+
+    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_hm)) * smith(alpha, n_dot_v, n_dot_l);
     let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
+    let cook_torrance: vec2<f32> = max(cook_torrance_numerator / cook_torrance_denominator, vec2<f32>(0.0f));
 
-    let cook_torrance: vec3<f32> = cook_torrance_numerator / cook_torrance_denominator;
-
-
-    // Use cook-torrance for specular and lambert for diffuse
-    let radiance: vec3<f32> = kd * lambert + cook_torrance;
-    // Add radiance term using sky
-
+    let radiance: vec3<f32> = diffuse * lambert + reflect * cook_torrance.x + refract * cook_torrance.y;
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
 }
 
-fn sampleSkyBox(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>,  n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
-    let l: vec3<f32> = normalize(light_dir);
-    let h: vec3<f32> = normalize(v + l);
-
-    let v_dot_h: f32 = max(dot(v, h), 0.0f);
-    let n_dot_h: f32 = max(dot(n, h), 0.0f);
-    let n_dot_l: f32 = max(dot(n, l), 0.0f);
-    let n_dot_v: f32 = max(dot(n, v), 0.0f);
-
-    let alpha: f32 = material.roughness * material.roughness;
-    let brdf: f32 = mix(1.0f, n_dot_v, material.metallic);
-    let f0: vec3<f32> = material.albedo * brdf;
-
-    let ks: vec3<f32> = fresnel(f0, v_dot_h);
-    let kd: vec3<f32> = (1.0f - ks) * (1.0f - material.metallic);
-    let lambert: vec3<f32> = material.albedo * INV_PI;
-
-    let cook_torrance_numerator: vec3<f32> = ks * trowbridgeReitz(alpha, n_dot_h) * smith(alpha, n_dot_v, n_dot_l);
-    let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
-
-    let cook_torrance: vec3<f32> = cook_torrance_numerator / cook_torrance_denominator;
-
-
-    // Use cook-torrance for specular and lambert for diffuse
-    let radiance: vec3<f32> = kd * lambert + cook_torrance;
-    // Add radiance term using sky
-
-    // Outgoing light to camera
-    return radiance * n_dot_l * light_color;
-}
-
-
 fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32) -> SampledColor {
     var local_color: vec3<f32> = vec3<f32>(0.0f);
-
+    let inv_v: vec3<f32> = normalize(- camera_ray.unit_direction);
     var random_state: u32 = init_random_state;
 
     let size: u32 = u32(arrayLength(&lights));
@@ -561,8 +534,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         // Alter light source position according to variation.
         let dir: vec3<f32> = light_position - camera_ray.origin;
 
-        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction);
-        let color_intensity: f32 = length(color_for_light);
+        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction, inv_v);
+        let color_intensity: f32 = rgb_to_greyscale(color_for_light);
 
         let unit_light_dir: vec3<f32> = normalize(dir);
         // Compute quick exit criterion to potentially skip expensive shadow test
