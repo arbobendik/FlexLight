@@ -65,7 +65,7 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-choose_lights = false;
+// choose_lights = false;
 
 if (choose_lights) {
 	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 200000, 10);
@@ -80,9 +80,7 @@ if (choose_lights) {
 }
 
 if (!choose_lights) {
-
 	let light1 = new PointLight(new Vector(0, 0, 0), new Vector(1, 1, 1), 0, 10);
-
 	scene.addPointLight(light1);
 	// engine.renderer.fpsLimit = 600;
 	let environmentMapURL = staticPath + "textures/house_2k.hdr";
@@ -186,7 +184,7 @@ for (let i = 0; i < 5; i++) {
 			dragon_instance.material.roughness = j * 0.8 / 5;
 			dragon_instance.material.transmission = k / 5;
 			dragon_instance.material.metallic = 1.0 - i / 5;
-			dragon_instance.material.color = new Vector(1.0, 0.5, 0.5);
+			dragon_instance.material.color = new Vector(1.0, 0.1, 0.1);
 			/*
 			// init iterator variable for simple animations
 			let iterator = 0;
