@@ -65,12 +65,12 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-// choose_lights = false;
+choose_lights = false;
 
 if (choose_lights) {
-	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 200000, 10);
-	let light2 = new PointLight(new Vector(-100, 100, -50), new Vector(1, 1, 1), 200000, 10);
-	let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 200000, 10);
+	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 50000, 10);
+	let light2 = new PointLight(new Vector(-100, 100, -50), new Vector(1, 1, 1), 50000, 10);
+	let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 50000, 10);
 
 	// scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 	scene.addPointLight(light1);
@@ -105,11 +105,11 @@ const loadObj = async (model: string) => {
 // let model = urlParams.get('model') ?? 'sphere';
 // let prototype = await loadObj(model);
 // let cube = await loadObj('cube');
-let plane = await loadObj('plane2');
-let dragon = await loadObj('dragon_lp');
+// let plane = await loadObj('plane2');
+// let dragon = await loadObj('dragon_lp');
 // let fullScene = await loadObj('sinan');
 let sphere = await loadObj('sphere');
-let monkey = await loadObj('monke');
+// let monkey = await loadObj('monke');
 
 // const fullScene1 = scene.instance(fullScene);
 // const cube1 = scene.instance(cube);
@@ -184,7 +184,7 @@ for (let i = 0; i < 5; i++) {
 			dragon_instance.material.roughness = j * 0.8 / 5;
 			dragon_instance.material.transmission = k / 5;
 			dragon_instance.material.metallic = 1.0 - i / 5;
-			dragon_instance.material.color = new Vector(1.0, 0.1, 0.1);
+			dragon_instance.material.color = new Vector(1.0, 0.5, 0.5);
 			/*
 			// init iterator variable for simple animations
 			let iterator = 0;
