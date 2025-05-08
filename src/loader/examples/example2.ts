@@ -44,8 +44,8 @@ let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-22.4, 9.4, 21.3];
-[camera.direction.x, camera.direction.y] = [- 2.45, 0.1];
+[camera.position.x, camera.position.y, camera.position.z] = [-12.4, 5.4, 17.3];
+[camera.direction.x, camera.direction.y] = [- 2.5, 0.1];
 
 let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
 // let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
@@ -70,9 +70,10 @@ const loadObj = async (model: string) => {
 // let cube = await loadObj('cube');
 let plane = await loadObj('plane2');
 let dragon = await loadObj('dragon_lp');
-// let fullScene = await loadObj('sinan');
+// let statue = await loadObj('monke_smooth');
+// let robot = await loadObj('robot');
 let sphere = await loadObj('sphere');
-let monkey = await loadObj('monke');
+let monkey = await loadObj('monke_smooth');
 
 // const fullScene1 = scene.instance(fullScene);
 // const cube1 = scene.instance(cube);
@@ -98,9 +99,11 @@ groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.p
 groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
 
 monkey1.transform.position = new Vector(5, 1, 0);
-// monkey1.transform.scale(new Vector(3, 1.8, 0.5));
+monkey1.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+monkey1.transform.scale(2);
+monkey1.material.color = new Vector(0.75, 0.75, 1);
 monkey1.material.roughness = 0;
-monkey1.material.metallic = 1;
+monkey1.material.metallic = 0;
 monkey1.material.transmission = 1;
 monkey1.material.ior = 1.5;
 
@@ -131,10 +134,29 @@ sphere_rusted.metallic = await loadTexture(staticPath + "textures/rusted/metalli
 sphere_rusted.normal = await loadTexture(staticPath + "textures/rusted/normal.png", "normal");
 
 let dragon_instance = scene.instance(dragon);
-dragon_instance.transform.position = new Vector(0, 0, -20);
-dragon_instance.transform.scale(1);
-dragon_instance.material.roughness = 0;
-dragon_instance.material.metallic = 1.0;
+dragon_instance.transform.position = new Vector(2.5, -0.75, -20);
+dragon_instance.transform.scale(0.75);
+dragon_instance.material.roughness = 0
+dragon_instance.material.metallic = 1;
+
+/*
+let statue_instance = scene.instance(statue);
+statue_instance.transform.position = new Vector(13, 2, -8);
+statue_instance.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+statue_instance.transform.scale(2);
+statue_instance.material.roughness = 0;
+statue_instance.material.metallic = 0;
+statue_instance.material.ior = 2.5;
+statue_instance.material.color = new Vector(0.1, 0.1, 1);
+
+let robot_instance = scene.instance(robot);
+statue_instance.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 2);
+robot_instance.transform.position = new Vector(0, -2, -10);
+robot_instance.transform.scale(2);
+robot_instance.material.roughness = 0.1;
+robot_instance.material.metallic = 1;
+robot_instance.material.color = new Vector(1, 0.784, 0.392);
+*/
 
 
 for (let i = 0; i < 5; i++) {
@@ -156,7 +178,7 @@ let iterator = 0;
 
 setInterval(() => {
 	// increase iterator
-	// iterator += 0.002;
+	iterator += 0.002;
 	// precalculate sin and cos
 	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
 	// dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);
