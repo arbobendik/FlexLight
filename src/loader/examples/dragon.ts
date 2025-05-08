@@ -78,7 +78,7 @@ sphereInstance.material.ior = 1.5;
 // Start render engine.
 engine.renderer.render();
 
-/*
+
 let slider = document.createElement("input");
 slider.type = "range";
 slider.min = "0";
@@ -93,7 +93,6 @@ slider.style.position = "absolute";
 slider.style.top = "5rem";
 slider.style.right = "1rem";
 document.body.appendChild(slider);
-*/
 
 
 let rotationAngle = 0;
