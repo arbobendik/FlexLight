@@ -107,24 +107,17 @@ struct Light {
     variance: f32
 };
 
+struct Intersect{
+    uv: vec2<f32>,
+    distance: f32
+};
+
 struct Hit {
     uv: vec2<f32>,
     distance: f32,
     instance_index: u32,
     triangle_index: u32
 };
-
-/*
-struct Sample {
-    color: vec3<f32>,
-    render_id_w: f32
-}
-*/
-
-struct SampledColor {
-    color: vec3<f32>,
-    random_state: u32
-}
 
 
 fn access_triangle(index: u32) -> vec4<f32> {
@@ -182,15 +175,9 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
     let width: u32 = texture_instance[texture_instance_offset + 2u];
     let height: u32 = texture_instance[texture_instance_offset + 3u];
 
-    // WebGPU quirk of having upsidedown height for textures
     let texel_position: vec2<f32> = uv * vec2<f32>(f32(width), f32(height));
     let texel_position_u32: vec2<u32> = vec2<u32>(u32(texel_position.x), u32(texel_position.y));
-
     let texel_position_mat: mat4x2<f32> = mat4x2<f32>(texel_position, texel_position, texel_position, texel_position);
-
-
-    let t_texel_pos_u32_x: vec4<u32> = vec4<u32>(texel_position_u32.x + 0u, texel_position_u32.x + 1u, texel_position_u32.x + 0u, texel_position_u32.x + 1u);
-    let t_texel_pos_u32_y: vec4<u32> = vec4<u32>(texel_position_u32.y + 0u, texel_position_u32.y + 0u, texel_position_u32.y + 1u, texel_position_u32.y + 1u);
 
     let texel_pos: mat4x2<f32> = mat4x2<f32>(
         floor(texel_position + vec2<f32>(0.0f, 0.0f)),
@@ -207,14 +194,9 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
         abs(difference[2].x * difference[2].y),
         abs(difference[3].x * difference[3].y),
     );
-    
     // Convert to index
-
-    // let texel_index_00: u32 = texture_data_offset + u32(texel_pos[0].x) + u32(texel_pos[0].y) * width;
-    // let texel_index_10: u32 = texture_data_offset + u32(texel_pos[1].x) + u32(texel_pos[1].y) * width;
-    // let texel_index_01: u32 = texture_data_offset + u32(texel_pos[2].x) + u32(texel_pos[2].y) * width;
-    //let texel_index_11: u32 = texture_data_offset + u32(texel_pos[3].x) + u32(texel_pos[3].y) * width;
-
+    let t_texel_pos_u32_x: vec4<u32> = vec4<u32>(texel_position_u32.x, texel_position_u32.x + 1u, texel_position_u32.x, texel_position_u32.x + 1u);
+    let t_texel_pos_u32_y: vec4<u32> = vec4<u32>(texel_position_u32.y, texel_position_u32.y, texel_position_u32.y + 1u, texel_position_u32.y + 1u);
     let texel_index: vec4<u32> = texture_data_offset + t_texel_pos_u32_x + t_texel_pos_u32_y * width;
     // Fetch texel and return result
     let uint_data_00: vec4<u32> = access_texture_data(texel_index.x);
@@ -223,13 +205,11 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
     let uint_data_11: vec4<u32> = access_texture_data(texel_index.w);
 
     let float_data: mat4x4<f32> = mat4x4<f32>(
-        f32(uint_data_00.x), f32(uint_data_00.y), f32(uint_data_00.z), f32(uint_data_00.w),
-        f32(uint_data_10.x), f32(uint_data_10.y), f32(uint_data_10.z), f32(uint_data_10.w),
-        f32(uint_data_01.x), f32(uint_data_01.y), f32(uint_data_01.z), f32(uint_data_01.w),
-        f32(uint_data_11.x), f32(uint_data_11.y), f32(uint_data_11.z), f32(uint_data_11.w)
+        vec4<f32>(uint_data_00),
+        vec4<f32>(uint_data_10),
+        vec4<f32>(uint_data_01),
+        vec4<f32>(uint_data_11)
     );
-    
-
     // Add weighted texels
     return float_data * texel_weights.wzyx;
 }
@@ -291,46 +271,45 @@ fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
     }
 }
 
-fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Hit {
-    let no_hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), 0.0f, UINT_MAX, UINT_MAX);
+fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Intersect {
     let edge1: vec3<f32> = b - a;
     let edge2: vec3<f32> = c - a;
     let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
     let det: f32 = dot(edge1, pvec);
     if(abs(det) < BIAS) {
-        return no_hit;
+        return Intersect(vec2<f32>(0.0f, 0.0f), 0.0f);
     }
     let inv_det: f32 = 1.0f / det;
     let tvec: vec3<f32> = ray.origin - a;
     let u: f32 = dot(tvec, pvec) * inv_det;
     if(u < BIAS || u > 1.0f) {
-        return no_hit;
+        return Intersect(vec2<f32>(0.0f, 0.0f), 0.0f);
     }
     let qvec: vec3<f32> = cross(tvec, edge1);
     let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
     let uv_sum: f32 = u + v;
     if(v < BIAS || uv_sum > 1.0f) {
-        return no_hit;
+        return Intersect(vec2<f32>(0.0f, 0.0f), 0.0f);
     }
     let s: f32 = dot(edge2, qvec) * inv_det;
     if(s <= l && s > BIAS) {
-        return Hit(vec2<f32>(u, v), s, UINT_MAX, UINT_MAX);
+        return Intersect(vec2<f32>(u, v), s);
     } else {
-        return no_hit;
+        return Intersect(vec2<f32>(0.0f, 0.0f), 0.0f);
     }
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
-    let edge1 = b - a;
-    let edge2 = c - a;
-    let pvec = cross(ray.unit_direction, edge2);
-    let det = dot(edge1, pvec);
-    let inv_det = 1.0f / det;
+    let edge1: vec3<f32> = b - a;
+    let edge2: vec3<f32> = c - a;
+    let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
+    let det: f32 = dot(edge1, pvec);
+    let inv_det: f32 = 1.0f / det;
     if(det < BIAS) {
         return false;
     }
-    let tvec = ray.origin - a;
+    let tvec: vec3<f32> = ray.origin - a;
     let u: f32 = dot(tvec, pvec) * inv_det;
     if(u < BIAS || u > 1.0f) {
         return false;
@@ -345,18 +324,20 @@ fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f3
 }
 
 // Bounding volume intersection test
-fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max_len: f32) -> f32 {
-    let inv_dir: vec3<f32> = 1.0f / ray.unit_direction;
-    let v0: vec3<f32> = (min_corner - ray.origin) * inv_dir;
-    let v1: vec3<f32> = (max_corner - ray.origin) * inv_dir;
+fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray_origin: vec3<f32>, inv_direction: vec3<f32>, max_len: f32) -> f32 {
+    // let inv_dir: vec3<f32> = 1.0f / ray.unit_direction;
+    let v0: vec3<f32> = (min_corner - ray_origin) * inv_direction;
+    let v1: vec3<f32> = (max_corner - ray_origin) * inv_direction;
     let tmin: f32 = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     let tmax: f32 = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-
+    return select(POW32, tmin, tmax >= max(tmin, 0.0f) && tmin < max_len);
+    /*
     if (tmax >= max(tmin, 0.0f) && tmin < max_len) {
         return tmin;
     } else {
         return POW32;
     }
+    */
 }
 
 // Test for closest ray triangle intersection
@@ -372,7 +353,8 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
         normalize(inverse_dir)
     );
 
-    let len_factor: f32 = length(inverse_dir);
+    let inv_dir: vec3<f32> = 1.0f / t_ray.unit_direction;
+    // let len_factor: f32 = length(inverse_dir);
 
     let triangle_instance_offset: u32 = instance_uint[instance_uint_offset];
     let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
@@ -400,37 +382,35 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
         let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
         let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
         
-
         if (indicator_and_children.x == 0u) {
             // Run Moeller-Trumbore algorithm for both triangles
             // Test if ray even intersects
-            let hit0: Hit = moellerTrumbore(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, hit.distance * len_factor);
-            if (hit0.distance != 0.0) {
+            let intersect0: Intersect = moellerTrumbore(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, hit.distance);
+            if (intersect0.distance != 0.0) {
                 // Calculate intersection point
-                // hit = hit0;
-                hit.distance = hit0.distance / len_factor;
-                hit.uv = hit0.uv;
+                hit.distance = intersect0.distance;
+                hit.uv = intersect0.uv;
                 hit.instance_index = instance_index;
                 hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 // Test if ray even intersects
-                let hit1: Hit = moellerTrumbore(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, hit.distance * len_factor);
-                if (hit1.distance != 0.0) {
+                let intersect1: Intersect = moellerTrumbore(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, hit.distance);
+                if (intersect1.distance != 0.0) {
                     // Calculate intersection point
-                    hit.distance = hit1.distance / len_factor;
-                    hit.uv = hit1.uv;
+                    hit.distance = intersect1.distance;
+                    hit.uv = intersect1.uv;
                     hit.instance_index = instance_index;
                     hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z;
                 }
             }
             
         } else {
-            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, hit.distance * len_factor);
+            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray.origin, inv_dir, hit.distance);
             var dist1: f32 = POW32;
             if (indicator_and_children.z != UINT_MAX) {
-                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray, hit.distance * len_factor);
+                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray.origin, inv_dir, hit.distance);
             }
 
             let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
@@ -449,6 +429,10 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             }
         }
     }
+
+    if (hit.distance != max_len) {
+        hit.distance = hit.distance / length(inverse_dir);
+    }
     // Return hit object
     return hit;
 }
@@ -461,6 +445,8 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
     // Stack for BVH traversal
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
+
+    let inv_dir: vec3<f32> = 1.0f / ray.unit_direction;
 
     while (stack_index > 0u && stack_index < 16u) {
         stack_index -= 1u;
@@ -477,11 +463,11 @@ fn traverseInstanceBVH(ray: Ray) -> Hit {
         let bv1 = instance_bounding_vertices[vertex_offset + 1u];
         let bv2 = instance_bounding_vertices[vertex_offset + 2u];
 
-        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, hit.distance);
+        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray.origin, inv_dir, hit.distance);
         
         var dist1: f32 = POW32;
         if (child1 != UINT_MAX) {
-            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, hit.distance);
+            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray.origin, inv_dir, hit.distance);
         }
 
         let dist_near = min(dist0, dist1);
@@ -533,6 +519,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
         inverse_transform.rotation * (ray.origin + inverse_transform.shift),
         normalize(inverse_dir)
     );
+    let inv_dir: vec3<f32> = 1.0f / t_ray.unit_direction;
     let max_len: f32 = length(inverse_dir) * l;
 
     let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
@@ -567,10 +554,10 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
                 }   
             }
         } else {
-            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, max_len);
+            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray.origin, inv_dir, max_len);
             var dist1: f32 = POW32;
             if (indicator_and_children.z != UINT_MAX) {
-                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray, max_len);
+                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray.origin, inv_dir, max_len);
             }
 
             let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
@@ -596,6 +583,7 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
+    let inv_dir: vec3<f32> = 1.0f / ray.unit_direction;
 
     while (stack_index > 0u && stack_index < 16u) {
         stack_index -= 1u;
@@ -612,11 +600,11 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
         let bv1 = instance_bounding_vertices[vertex_offset + 1u];
         let bv2 = instance_bounding_vertices[vertex_offset + 2u];
 
-        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, l);
+        let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray.origin, inv_dir, l);
         
         var dist1: f32 = POW32;
         if (child1 != UINT_MAX) {
-            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, l);
+            dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray.origin, inv_dir, l);
         }
 
         let dist_near = min(dist0, dist1);
@@ -658,60 +646,74 @@ fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
     return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
 }
 
-fn schlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
+fn oneOverSchlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
     let k: f32 = alpha * 0.5f;
-    let denom: f32 = max(n_dot_x * (1.0f - k) + k, BIAS);
-    return n_dot_x / denom;
+    return max(n_dot_x * (1.0f - k) + k, BIAS);
 }
-
+/*
 fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
 }
+*/
 
 fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, inv_v: vec3<f32>) -> vec3<f32> {
-    let len_p1: f32 = 1.0f + length(light_dir);
+struct ForwardPreCalc {
+    reflected_view: vec3<f32>,
+    one_over_4_schlick_beckmann_n_dot_v: f32,
+    f0: vec3<f32>,
+    alpha: f32,
+    diffuse_component: vec3<f32>
+}
+
+fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, pre: ForwardPreCalc) -> vec3<f32> {
+    let len: f32 = length(light_dir);
+    let len_p1: f32 = 1.0f + len;
     // Apply inverse square law
     let brightness: vec3<f32> = light_color * light_intensity / (len_p1 * len_p1);
 
-    let l: vec3<f32> = normalize(light_dir);
-    let h: vec3<f32> = normalize(l - mv);
+    let l: vec3<f32> = light_dir / len;
+    let n_dot_l: f32 = abs(dot(n, l));
 
+    let h: vec3<f32> = normalize(l - mv);
     let v_dot_h: f32 = abs(dot(mv, h));
     let n_dot_h: f32 = abs(dot(n, h));
-    let n_dot_l: f32 = abs(dot(n, l));
-    let n_dot_v: f32 = abs(dot(n, mv));
 
-    let vm: vec3<f32> = reflect(-mv, n);
-    let hm: vec3<f32> = normalize(l + vm);
-    let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
-    // let vm_dot_hm: f32 = max(dot(vm, hm), 0.0f);
+    let rh: vec3<f32> = normalize(l + pre.reflected_view);
+    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
 
-    // Minimum alpha for better looking smooth metals and caustics
-    let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
-    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
-    let lambert: vec3<f32> = material.albedo * INV_PI;
+    let reflect: vec3<f32> = fresnel(pre.f0, v_dot_h);
 
-    let reflect: vec3<f32> = fresnel(f0, v_dot_h);
-    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract: f32 = material.transmission;
+    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(pre.alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_denominator: f32 = max(pre.one_over_4_schlick_beckmann_n_dot_v * oneOverSchlickBeckmann(pre.alpha, n_dot_l), BIAS);
+    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
 
-    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_hm)) * smith(alpha, n_dot_v, n_dot_l);
-    let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
-    let cook_torrance: vec2<f32> = max(cook_torrance_numerator / cook_torrance_denominator, vec2<f32>(0.0f));
-
-    let radiance: vec3<f32> = diffuse * lambert + reflect * cook_torrance.x + refract * cook_torrance.y;
+    let radiance: vec3<f32> = pre.diffuse_component + reflect * cook_torrance.x + transmission * cook_torrance.y;
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
 }
 
+struct SamplePreCalc {
+    f0: vec3<f32>,
+    n_dot_v: f32,
+    alpha: f32,
+}
 
-fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32) -> SampledColor {
+struct SampledColor {
+    color: vec3<f32>,
+    random_state: u32
+}
+
+fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
+    let size: u32 = u32(arrayLength(&lights));
+    // If no lights, return emissive color
+    if (size == 0u) {
+        return SampledColor(material.emissive, init_random_state);
+    }
+
     var local_color: vec3<f32> = vec3<f32>(0.0f);
     var reservoir_length: f32 = 0.0f;
     var total_weight: f32 = 0.0f;
@@ -719,23 +721,33 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     var reservoir_weight: f32 = 0.0f;
     var reservoir_dir: vec3<f32>;
     var random_state: u32 = init_random_state;
-    let inv_v: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
+    // Minimum alpha for better looking smooth metals and caustics
+    let alpha: f32 = max(pre.alpha, 0.05f);
+    // Precaluclate reflected vector
+    let rv: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
 
-    let size: u32 = u32(arrayLength(&lights));
+    let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, pre.n_dot_v) * 4.0f;
+    // Precaluclate diffuse component
+    let lambert: vec3<f32> = material.albedo * INV_PI;
+    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
+    let diffuse_component: vec3<f32> = diffuse * lambert;
+    // Precalculated values for forwardTrace
+    let pre_calc: ForwardPreCalc = ForwardPreCalc(rv, one_over_4_schlick_beckmann_n_dot_v, pre.f0, alpha, diffuse_component);
+    // Determine one random light source variation for all point lights
+    let random_sphere: RandomSphere = random_sphere(random_state);
+    random_state = random_sphere.state;
+    // Iterate over point lights
     for (var i: u32 = 0u; i < size; i++) {
         let light_offset: u32 = i;
         // Read light from storage buffer
         let light: Light = lights[light_offset];
         // Yeild random sphere and update state
-        let random_sphere: RandomSphere = random_sphere(random_state);
-        random_state = random_sphere.state;
-
         let light_position = light.position + random_sphere.value * light.variance;
         // Increment light weight
         reservoir_length += 1.0f;
         // Alter light source position according to variation.
         let dir: vec3<f32> = light_position - camera_ray.origin;
-        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, inv_v);
+        let color_for_light: vec3<f32> = forwardTrace(material.transmission, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, pre_calc);
 
         local_color += color_for_light;
         let weight: f32 = rgb_to_greyscale(color_for_light);
@@ -756,13 +768,8 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     // Apply emissive texture and ambient light
     let base_luminance: vec3<f32> = material.emissive;
     // Compute quick exit criterion to potentially skip expensive shadow test
-    let show_color: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f;
-    let show_shadow: bool = dot(smooth_n, unit_light_dir) < 0.0f;
+    let show_shadow: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f || dot(smooth_n, unit_light_dir) < 0.0f;
     // Test if in shadow
-    if (show_color) {
-        return SampledColor(local_color + base_luminance, random_state);
-    }
-
     if (show_shadow) {
         return SampledColor(base_luminance, random_state);
     }
@@ -779,7 +786,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
 
 
 
-fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32) -> SampledColor {
+fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32, screen_space: vec2<f32>) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
     var importancy_factor: vec3<f32> = vec3<f32>(1.0f);
@@ -832,13 +839,15 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let barycentric: vec2<f32> = mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw;
         // Sample material
         var material: Material = instance_material[hit.instance_index];
+
+        let hit_instance_location: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
         // Read material textures
-        let albedo_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 3u];
+        let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
         if (albedo_texture_id != UINT_MAX) {
             material.albedo = textureSample(albedo_texture_id, barycentric).xyz * INV_255;
         }
 
-        let normal_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 4u];
+        let normal_texture_id: u32 = instance_uint[hit_instance_location + 4u];
         if (normal_texture_id != UINT_MAX) {
             let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * 2.0f - 255.0f);
             let delta_uv1: vec2<f32> = t4.zw - t5.xy;
@@ -853,79 +862,72 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             smooth_n = normalize(tbn * normal_data);
         }
         
-        let emissive_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 5u];
+        let emissive_texture_id: u32 = instance_uint[hit_instance_location + 5u];
         if (emissive_texture_id != UINT_MAX) {
             material.emissive = textureSample(emissive_texture_id, barycentric).xyz * INV_255;
         }
 
-        let roughness_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 6u];
+        let roughness_texture_id: u32 = instance_uint[hit_instance_location + 6u];
         if (roughness_texture_id != UINT_MAX) {
             material.roughness = textureSample(roughness_texture_id, barycentric).x * INV_255;
         }
 
-        let metallic_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 7u];
+        let metallic_texture_id: u32 = instance_uint[hit_instance_location + 7u];
         if (metallic_texture_id != UINT_MAX) {
             material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
         }
 
+
+        let alpha: f32 = material.roughness * material.roughness;
+        let n_dot_v: f32 = abs(dot(smooth_n, - ray.unit_direction));
+
+        let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+        let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+
         // Determine local color considering PBR attributes and lighting
-        let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_offset);
+        let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_offset, SamplePreCalc(f0, n_dot_v, alpha));
         random_state = local_sampled.random_state;
         // Calculate primary light sources for this pass if ray hits non translucent object
         final_color += local_sampled.color * importancy_factor;
 
         // If ray reflects from inside or onto an transparent object,
         // the surface faces in the opposite direction as usual
-        var sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
+        let sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         smooth_n *= - sign_dir;
+
+        let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
         // Bias ray direction on material properties
         // Generate pseudo random vector for diffuse reflection
         let random_sphere: RandomSphere = random_sphere(random_state);
         random_state = random_sphere.state;
-
         let diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
-        let h: vec3<f32> = normalize(smooth_n - ray.unit_direction);
-        // let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
-        let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
-
-
-        // let vm: vec3<f32> = reflect(ray.unit_direction, smooth_n);
-        // let hm: vec3<f32> = normalize(l + vm);
-        // let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
-        // let vm_dot_n: f32 = max(dot(vm, smooth_n), 0.0f);
-
-        let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-        let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
         // Yeild random value between 0 and 1 and update state
         let random_value_reflect: Random = pcg(random_state);
         random_state = random_value_reflect.state;
-        let random_value_transmission: Random = pcg(random_state);
-        random_state = random_value_transmission.state;
+
 
         let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, v_dot_n));
         let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
         let refract_component: f32 = material.transmission;
+
         // Calculate ratio of reflection and transmission
-        let reflect_ratio: f32 = reflect_component / (reflect_component + diffuse_component + refract_component);
-        let refract_ratio: f32 = refract_component / (diffuse_component + refract_component);
-        // Does ray reflect or refract?
-        if (reflect_ratio <= abs(random_value_reflect.value)) {
-            // Refract or diffuse?
-            if (refract_ratio <= abs(random_value_transmission.value)) {
-                ray.unit_direction = diffuse_random_dir;
-            } else {
+        let total_component: f32 = reflect_component + diffuse_component + refract_component;
+        let reflect_ratio: f32 = reflect_component / total_component;
+        let refract_ratio: f32 = refract_component / total_component;
+        // Does ray reflect or refract or diffuse?
+        if (reflect_ratio > abs(random_value_reflect.value)) {
+            ray.unit_direction = normalize(mix(reflect(ray.unit_direction, smooth_n), diffuse_random_dir, alpha));
+            importancy_factor *= mix(vec3<f32>(1.0f), material.albedo, material.metallic);
+        } else {
+            if (reflect_ratio + refract_ratio > abs(random_value_reflect.value)) {
                 let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
                 // Refract ray depending on IOR of material
-                ray.unit_direction = refract(ray.unit_direction, smooth_n, eta);
+                ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), - diffuse_random_dir, alpha));
+            } else {
+                ray.unit_direction = diffuse_random_dir;
             }
             importancy_factor *= material.albedo;
-        } else {
-            ray.unit_direction = reflect(ray.unit_direction, smooth_n);
-            // importancy_factor = importancy_factor * material.albedo;
-            importancy_factor *= mix(vec3<f32>(1.0f), material.albedo, material.metallic);
         }
-
-        ray.unit_direction = normalize(mix(ray.unit_direction, diffuse_random_dir, material.roughness * material.roughness));
         // Test for early termination, avoiding last bounce
         i = i + 1u;
         if (i >= uniforms_uint.max_reflections || rgb_to_greyscale(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
@@ -1051,7 +1053,7 @@ fn compute(
     // Generate multiple samples
     for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
         // Use cosine as noise in random coordinate picker
-        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, random_state);
+        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, random_state, screen_space);
         random_state = sampled_color.random_state;
         final_color += sampled_color.color;
     }
