@@ -198,7 +198,7 @@ robot_instance.transform.position = new Vector(0, -2, -10);
 robot_instance.material.color = new Vector(1.0, 0.784, 0.392);
 // robot_instance.transform.scale(0.005);
 // robot_instance.normal = await loadTexture(staticPath + "textures/worn-metal/normal.png", "normal");
-robot_instance.material.roughness = 0.5;
+robot_instance.material.roughness = 0.1;
 robot_instance.material.metallic = 1;
 
 

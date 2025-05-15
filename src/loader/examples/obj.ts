@@ -68,9 +68,9 @@ let choose_lights = true;
 choose_lights = false;
 
 if (choose_lights) {
-	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 50000, 10);
-	let light2 = new PointLight(new Vector(-100, 100, -50), new Vector(1, 1, 1), 50000, 10);
-	let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 50000, 10);
+	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 100000, 10);
+	let light2 = new PointLight(new Vector(-100, 100, -50), new Vector(1, 1, 1), 100000, 10);
+	let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 100000, 10);
 
 	// scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 	scene.addPointLight(light1);
