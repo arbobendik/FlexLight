@@ -75,7 +75,7 @@ const loadObj = async (model: string) => {
 	return prototype;
 }
 
-let tentative = await loadObj('local/tentative');
+let tentative = await loadObj('local/tentative_blend');
 let monkey = await loadObj('monke');
 
 const tentativeInstance = scene.instance(tentative);

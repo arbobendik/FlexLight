@@ -49,7 +49,7 @@ export abstract class RendererWGPU extends Renderer {
             // Fragment shader
             fragment: { module: module, entryPoint: "fragment", targets: [{ format: "rgba8unorm" }] },
             // Culling config
-            primitive: { topology: "triangle-list", cullMode: "front" }
+            primitive: { topology: "triangle-list", cullMode: "back" }
         });
     }
 

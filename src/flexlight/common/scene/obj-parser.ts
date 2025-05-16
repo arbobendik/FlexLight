@@ -7,6 +7,7 @@ import { Material } from "./material";
 export interface ObjectPrototype {
     triangles: Array<number>;
     material: Material;
+    label: string;
 }
 
 export interface Vertex {
@@ -29,10 +30,6 @@ export class Parser {
     }
     */
 
-    /**
-     * Ear clipping triangulation algorithm for n-gons (both convex and concave).
-     * Returns an array of triangles.
-     */
     private static earClipTriangulate(vertices: Array<Vertex>, normal: Vector<3>): Array<Triangle> | undefined {
         // Need at least 3 vertices to form a triangle
         if (vertices.length < 3) {
@@ -98,11 +95,7 @@ export class Parser {
         return triangles;
     }
 
-    /**
-     * Checks if a vertex forms an ear in the polygon.
-     * An ear is a vertex where the triangle formed by it and its adjacent vertices
-     * contains no other vertices of the polygon.
-     */
+    
     private static isEar(vertices: Array<Vertex>, normal: Vector<3>, i: number, prev: number, next: number): boolean {
         // First check if the vertex is convex
         if (!Parser.isVertexConvex(vertices, normal, i, prev, next)) {
@@ -131,7 +124,6 @@ export class Parser {
     }
 
     // Checks if a vertex is convex (internal angle < 180 degrees).
-    
     private static isVertexConvex(vertices: Array<Vertex>, normal: Vector<3>, i: number, prev: number, next: number): boolean {
         const a = vertices[prev]!.position;
         const b = vertices[i]!.position;
@@ -187,6 +179,7 @@ export class Parser {
         let oldUvs: Map<number, [number, number]> = new Map();
         // track current material
         let curMaterialName: string | undefined = undefined;
+        let curObjectName: string | undefined = undefined;
         // final object variable 
         let triangleCount = 0;
         let triangles: Array<number> = [];
@@ -221,7 +214,8 @@ export class Parser {
             // console.log(triangles, triangleCount);
         }
 
-        const objectReference = (line: number, objectName: string): ObjectPrototype | void => {
+        const objectReference = (line: number, objectName: string): ObjectPrototype | undefined => {
+            let result: ObjectPrototype | undefined = undefined;
             // Only yeild object if this is not the first object
             if (triangleCount > 0) {
                 console.log("Line:", line);
@@ -230,6 +224,7 @@ export class Parser {
                 oldNormals.clear();
                 oldUvs.clear();
                 // Copy old maps to reuse them as new maps without new reallocation
+                /*
                 let tempVertices = oldVertices;
                 let tempNormals = oldNormals;
                 let tempUvs = oldUvs;
@@ -241,18 +236,24 @@ export class Parser {
                 accumulateVertices = tempVertices;
                 accumulateNormals = tempNormals;
                 accumulateUvs = tempUvs;
+                */
                 // Log object name and triangle count
                 console.log("Object name:", objectName);
                 console.log("Triangle count:", triangleCount);
 
                 const material = curMaterialName ? materials.get(curMaterialName)! : new Material();
+                console.log("Material:", curMaterialName, material);
                 // Reset material name
                 curMaterialName = undefined;
-                // Yield triangles
-                return { triangles, material };
+                curObjectName = undefined;
+                // Return object
+                result = { triangles, material, label: objectName };
             }
             // Clear triangle array in any case
+            triangleCount = 0;
             triangles = [];
+            // Yield triangles
+            return result;
         }
         // Iterate over lines
         for (let i = 0; i < lineNumber; i++) {
@@ -261,20 +262,20 @@ export class Parser {
             // Convert line to array of words
             let words: Array<string> = [];
             line.split(/[\t \s\s+]/g).forEach(word => { if (word.length) words.push(word) });
-
-
-            
             // interpret current line
             switch (words[0]) {
+                
                 case "o":
                     if (asSeperateObjects) {
-                        let result = objectReference(i, words[1] ?? "");
+                        let result = objectReference(i, curObjectName ?? "");
+                        curObjectName = words[1] ?? "";
                         if (result) yield result;
                     }
                     break;
                 case "g":
                     if (asSeperateObjects) {
-                        let result = objectReference(i, words[1] ?? "");
+                        let result = objectReference(i, curObjectName ?? "");
+                        curObjectName = words[1] ?? "";
                         if (result) yield result;
                     }
                     break;
@@ -312,14 +313,13 @@ export class Parser {
                         break;
                     }
 
-
                     let vertices: Array<Vertex> = [];
-
+                    
                     for (let j = 0; j < data.length; j++) {
                         let posVec: [number, number, number] | undefined = oldVertices.get(data[j]![0]!) ?? accumulateVertices.get(data[j]![0]!);
                         let normalVec: [number, number, number] | undefined = oldNormals.get(data[j]![2]!) ?? accumulateNormals.get(data[j]![2]!);
                         let uvVec: [number, number] | undefined = oldUvs.get(data[j]![1]!) ?? accumulateUvs.get(data[j]![1]!);
-
+                        
                         if (!posVec) {
                             console.warn('Invalid vertex data:', data[j]);
                             console.warn(i, line);
@@ -332,57 +332,9 @@ export class Parser {
                             });
                         }
                     }
-
-                    // console.log(vertices);
                     
-                    /*
-                    // Triangle case
-                    const triangleVertices: Array<Vector<3> | undefined> = [
-                        oldVertices.get(data[2]![0]!) ?? accumulateVertices.get(data[2]![0]!), 
-                        oldVertices.get(data[1]![0]!) ?? accumulateVertices.get(data[1]![0]!), 
-                        oldVertices.get(data[0]![0]!) ?? accumulateVertices.get(data[0]![0]!)
-                    ].map((vertex: number[] | undefined) => vertex ? new Vector(vertex[0]!, vertex[1]!, vertex[2]!) : undefined);
-                    const triangleNormals: Array<Vector<3> | undefined> = [
-                        oldNormals.get(data[2]![2]!) ?? accumulateNormals.get(data[2]![2]!), 
-                        oldNormals.get(data[1]![2]!) ?? accumulateNormals.get(data[1]![2]!), 
-                        oldNormals.get(data[0]![2]!) ?? accumulateNormals.get(data[0]![2]!)
-                    ].map((normal: number[] | undefined) => normal ? new Vector(normal[0]!, normal[1]!, normal[2]!) : undefined);
-                    const triangleUvs: Array<Vector<2> | undefined> = [
-                        oldUvs.get(data[2]![1]!) ?? accumulateUvs.get(data[2]![1]!), 
-                        oldUvs.get(data[1]![1]!) ?? accumulateUvs.get(data[1]![1]!), 
-                        oldUvs.get(data[0]![1]!) ?? accumulateUvs.get(data[0]![1]!)
-                    ].map((uv: number[] | undefined) => uv ? new Vector(uv[0]!, uv[1]!) : undefined);
-
-                    if(!triangleVertices[0] || !triangleVertices[1] || !triangleVertices[2]) {
-                        // console.warn("Invalid triangle", triangleVertices);
-                        break;
-                    }
-
-                    // Triangle 2 1 0
-                    triangles.push( ...triangleVertices[2]!, ...triangleVertices[1]!, ...triangleVertices[0]);
-
-                    // Test if normals are defined, otherwise compute from vertices for triangle 2 1 0
-                    if (triangleNormals[2] && triangleNormals[1] && triangleNormals[0]) {
-                        triangles.push( ...normalize(triangleNormals[2]!), ...normalize(triangleNormals[1]!), ...normalize(triangleNormals[0]));
-                    } else {
-                        const normal = normalize(cross(vector_difference(triangleVertices[0]!, triangleVertices[2]!), vector_difference(triangleVertices[0]!, triangleVertices[1]!)));
-                        triangles.push( ...normal, ...normal, ...normal);
-                    }
-
-                    // Test if uvs are defined, otherwise use default uvs for triangle 2 1 0
-                    if (triangleUvs[2] && triangleUvs[1] && triangleUvs[0]) {
-                        triangles.push( ...triangleUvs[2]!, ...triangleUvs[1]!, ...triangleUvs[0]);
-                    } else {
-                        triangles.push(0,0, 0,1, 1,1);
-                    }
-                    triangleCount += 1;
-                    console.log(line);
-                    console.log(data);
-                    console.log(vertices);
-                    */
-
                     let geometryNormal = new Vector<3>(0, 0, 0);
-                    
+
                     for (let j = 2; j < data.length; j++) {
                         if (!vertices[0] || !vertices[j] || !vertices[j - 1]) {
                             console.warn("Malformed vertices:", vertices[0], vertices[j], vertices[j - 1]);
@@ -391,7 +343,7 @@ export class Parser {
 
                         let v0 = vector_difference(vertices[0]!.position, vertices[j]!.position);
                         let v1 = vector_difference(vertices[0]!.position, vertices[j - 1]!.position);
-                        geometryNormal = normalize(cross(v0, v1));
+                        geometryNormal = normalize(cross(v1, v0));
                         // If all vectors are non-zero, break
                         if (vector_length(v0) > BIAS && vector_length(v1) > BIAS && vector_length(geometryNormal) > BIAS) break;
                     }
@@ -401,20 +353,24 @@ export class Parser {
                         break;
                     }
 
-                    
-                    // Use ear clipping for potentially concave polygons
-                    let triangulated = Parser.earClipTriangulate(vertices, geometryNormal);
-                    // If success, add triangles
-                    if (triangulated) {
-                        for (const triangle of triangulated) addTriangle(triangle[0], triangle[1], triangle[2], geometryNormal);
-                        break;
+                    // Set all unset normals to the geometry normal
+                    for (let j = 0; j < vertices.length; j++) {
+                        if (!vertices[j]!.normal) vertices[j]!.normal = geometryNormal;
                     }
 
                     let invertedNormal: Vector<3> = vector_scale(geometryNormal, -1);
-                    // Try again to triangulate with invertedNormal
-                    triangulated = Parser.earClipTriangulate(vertices, invertedNormal);
+                    // Use ear clipping for potentially concave polygons
+                    let triangulated = Parser.earClipTriangulate(vertices, invertedNormal);
+                    // If success, add triangles
                     if (triangulated) {
                         for (const triangle of triangulated) addTriangle(triangle[0], triangle[1], triangle[2], invertedNormal);
+                        break;
+                    }
+
+                    // Try again to triangulate with invertedNormal
+                    triangulated = Parser.earClipTriangulate(vertices, geometryNormal);
+                    if (triangulated) {
+                        for (const triangle of triangulated) addTriangle(triangle[0], triangle[1], triangle[2], geometryNormal);
                         break;
                     }
 
@@ -422,17 +378,25 @@ export class Parser {
                     break;
                 case 'usemtl':
                     // Use material name for next vertices
-                    if (materials[words[1] as keyof typeof materials]) {
+                    if (materials.get(words[1]!)) {
                         curMaterialName = words[1];
                     } else {
-                        console.warn('Couldn\'t resolve material', curMaterialName);
+                        console.warn('Couldn\'t resolve material', words[1]);
+                    }
+                    // If we are not parsing seperate objects, yield the object
+                    if (asSeperateObjects) {
+                        let result = objectReference(i, curObjectName ?? "");
+                        curObjectName = words[1] ?? "";
+                        console.log("next object:", curObjectName);
+                        if (result) yield result;
                     }
                     break;
             }
         }
+
         // Yeild final object till end of file
-        const material = curMaterialName ? materials.get(curMaterialName)! : new Material();
-        yield { triangles, material };
+        let result = objectReference(lineNumber, curObjectName ?? "");
+        if (result) yield result;
     }
 
     static mtl = async (path: string): Promise<Map<string, Material>> => {
@@ -451,8 +415,8 @@ export class Parser {
                     currentMaterialName = words[1] ?? "";
                     materials.set(currentMaterialName, new Material());
                     break;
-                case 'Ka':
-                    materials.get(currentMaterialName)!.color = vector_scale(new Vector(Number(words[1]), Number(words[2]), Number(words[3])), 255);
+                case 'Kd':
+                    materials.get(currentMaterialName)!.color = new Vector(Number(words[1]), Number(words[2]), Number(words[3]));
                     break;
                 case 'Ke':
                     let emissiveness: Vector<3> = new Vector(Number(words[1]), Number(words[2]), Number(words[3]));
@@ -460,11 +424,10 @@ export class Parser {
                     // Replace color if emissiveness is not 0
                     break;
                 case 'Ns':
-                    materials.get(currentMaterialName)!.metallic = Number(words[1]) / 1000;
+                    materials.get(currentMaterialName)!.roughness = 1 - Number(words[1]) / 1000;
                     break;
                 case 'd':
-                    // materials[currentMaterialName].translucency = Number(words[1]);
-                    // materials[currentMaterialName].roughness = 0;
+                    materials.get(currentMaterialName)!.transmission = 1 - Number(words[1]);
                     break;
                 case 'Ni':
                     materials.get(currentMaterialName)!.ior = Number(words[1]);
