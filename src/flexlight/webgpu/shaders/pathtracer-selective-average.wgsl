@@ -233,14 +233,14 @@ fn compute(
 
     if (sum != 0.0f) {
         // Add color to total and increase counter by one
-        fine_count = min(old_fine_count + 1.0f, 32.0f);
+        fine_count = min(old_fine_count + 1.0f, 1024.0f);
         fine_color = mix(fine_color_acc, color_cur, 1.0f / fine_count);
         fine_color_low = mix(fine_color_low_acc, croped_cur_color, 1.0f / fine_count);
 
         rel_position_cur = mix(rel_position_old, rel_position_cur, 1.0f / fine_count);
         // abs_position_cur = mix(abs_position_old, abs_position_cur, 1.0f / f32(fine_count));
 
-        coarse_count = min(old_coarse_count + 1.0f, 4.0f);
+        coarse_count = min(old_coarse_count + 1.0f, 32.0f);
         coarse_color = mix(coarse_color_acc, color_cur, 1.0f / coarse_count);
         coarse_color_low = mix(coarse_color_low_acc, croped_cur_color, 1.0f / coarse_count);
 

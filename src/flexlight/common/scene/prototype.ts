@@ -34,19 +34,22 @@ export class Prototype {
     readonly boundingVertices: TypedArrayView<Float16Array>;
     readonly bounding: Bounding;
     readonly material: Material;
+    readonly label: string;
     // Construct using arrays
     constructor(
         triangles: Float16Array | Array<number>,
         bvh: Uint32Array<ArrayBuffer> | Array<number>,
         boundingVertices: Float16Array | Array<number>,
         bounding: Bounding,
-        material: Material
+        material: Material,
+        label: string
     ) {
         this.triangles = Prototype._triangleManager.allocateArray(triangles);
         this.bvh = Prototype._BVHManager.allocateArray(bvh);
         this.boundingVertices = Prototype._boundingVertexManager.allocateArray(boundingVertices);
         this.bounding = bounding;
         this.material = material;
+        this.label = label;
     }
 
 
@@ -55,19 +58,23 @@ export class Prototype {
         // if (name) console.log("BVH", name, bvh);
         const bounding = { min: new Vector<3>(bvh.root.bounding.min.x, bvh.root.bounding.min.y, bvh.root.bounding.min.z), max: new Vector<3>(bvh.root.bounding.max.x, bvh.root.bounding.max.y, bvh.root.bounding.max.z) };
         const bvhArrays: BVHArrays = bvh.toArrays();
+
+        // console.log("Object prototype material", objectPrototype.material);
         // if (name) console.log("BVH Arrays", name, bvhArrays);
-        return new Prototype(objectPrototype.triangles, bvhArrays.bvh, bvhArrays.boundingVertices, bounding, objectPrototype.material);
+        return new Prototype(objectPrototype.triangles, bvhArrays.bvh, bvhArrays.boundingVertices, bounding, objectPrototype.material, objectPrototype.label);
     }
 
     // Construct from OBJ file
     static async *fromObj(objPath: string, mtlPath: string | undefined = undefined): AsyncGenerator<Prototype> {
         let materials: Map<string, Material> = new Map();
         if (mtlPath) materials = await Parser.mtl(mtlPath);
+        console.log("Materials", materials);
         // Parse OBJ file
         const prototypeArrayGenerator: AsyncGenerator<ObjectPrototype> = Parser.obj(objPath, materials, true);
         // Construct prototype
         for await (const prototypeArray of prototypeArrayGenerator) {
-            console.log("Object triangle count:", prototypeArray.triangles.length / TRIANGLE_SIZE);
+            // console.log("Object triangle count:", prototypeArray.triangles.length / TRIANGLE_SIZE);
+            // console.log("Object prototype material", prototypeArray.material);
             yield Prototype.fromTriangleArray(prototypeArray);
         }
     }

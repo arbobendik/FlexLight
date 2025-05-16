@@ -6,7 +6,7 @@ import { WebGPUAntialiasingType } from '../../../flexlight';
 // @ts-ignore
 import TAAShader from '../shaders/taa.wgsl';
 
-const FRAMES: number = 4;
+const FRAMES: number = 8;
 // const GOLDEN_RATIO: number = 2.236067977499790; // sqrt(5)
 
 export class TAA extends AntialiasingModule {
@@ -106,7 +106,7 @@ export class TAA extends AntialiasingModule {
 
     jitter = (): Vector<2> => {
         let frameIndex = (this.frameIndex + 1) % FRAMES;
-        let scale = 0.5 / Math.min(this.canvas.width, this.canvas.height);
+        let scale = 0.4 / Math.min(this.canvas.width, this.canvas.height);
         return vector_scale(this.randomVecs[frameIndex]!, scale);
     }
 

@@ -66,12 +66,12 @@ const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: nu
 }
 
 // Set camera perspective and position
-camera.position = new Vector(8, 7, -11);
+camera.position = new Vector(8, 7, 11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightCenter = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 750, 0.2);
-let pointLightTop = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
+let pointLightCenter = new PointLight(new Vector(0.5, 1.5, -0.5), new Vector(1, 1, 1), 750, 0.2);
+let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 300, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
@@ -127,10 +127,10 @@ cuboids[3]!.transform.scale(new Vector(0.5, 1.5, 0.5));
 
 // Generate a few translucent cuboids on surface
 let cuboids = [
-	cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
-	cuboid(-1.5, 1.5, -1, 2, -2, -1),
-	cuboid(0.5, 1.5, -1, 2, -1, 0),
-	cuboid(-1.5, -0.5, -1, 2, - 1, 0)
+	cuboid(-1.5, 4.5, -1, 2, -2.5, -1.5),
+	cuboid(-1.5, 1.5, -1, 2, 1, 2),
+	cuboid(0.5, 1.5, -1, 2, 0, 1),
+	cuboid(-1.5, -0.5, -1, 2, 0, 1)
 ];
 
 
@@ -154,8 +154,8 @@ cuboids.forEach((cuboid, i) => {
 
 
 let grassCubes = [
-	cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8),
-	cuboid(-3, -2, -1, 0, -5.2, -4.2)
+	cuboid(5.5, 6.5, 1.5, 2.5, -6.8, -5.8),
+	cuboid(-3, -2, -1, 0, 4.2, 5.2)
 ];
 
 
@@ -169,13 +169,13 @@ grassCubes.forEach(cube => {
 */
 
 // Create diffuse white "wall" cuboid
-let wall = cuboid(2.5, 7.5, -1, 1.5, 5, 7);
+let wall = cuboid(2.5, 7.5, -1, 1.5, -7, -5);
 // Spawn red cube on top of "wall"
-let redCube = cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
+let redCube = cuboid(4, 5, 1.5, 2.5, -6.2, -5.2);
 // redCube.textureNums = [3, 0, -1];
 // scene.queue.push(redCube);
 // Spawn lantern on the floor
-let lantern = cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
+let lantern = cuboid(-2.5, -1.5, -1, 0, 2.8, 3.8);
 // lantern.textureNums = [4, -1, -1];
 lantern.material.metallic = 1;
 lantern.material.emissive = new Vector(4, 4, 4);

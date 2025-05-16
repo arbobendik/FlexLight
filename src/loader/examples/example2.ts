@@ -44,7 +44,7 @@ let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-12.4, 5.4, 17.3];
+[camera.position.x, camera.position.y, camera.position.z] = [-12.4, 5.4, -17.3];
 [camera.direction.x, camera.direction.y] = [- 2.5, 0.1];
 
 let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
@@ -99,7 +99,7 @@ groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.p
 groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
 
 monkey1.transform.position = new Vector(5, 1, 0);
-monkey1.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
+monkey1.transform.rotateAxis(new Vector(0, 1, 0), Math.PI * 3 / 4);
 monkey1.transform.scale(2);
 monkey1.material.color = new Vector(0.75, 0.75, 1);
 monkey1.material.roughness = 0;
@@ -134,7 +134,7 @@ sphere_rusted.metallic = await loadTexture(staticPath + "textures/rusted/metalli
 sphere_rusted.normal = await loadTexture(staticPath + "textures/rusted/normal.png", "normal");
 
 let dragon_instance = scene.instance(dragon);
-dragon_instance.transform.position = new Vector(2.5, -0.75, -20);
+dragon_instance.transform.position = new Vector(2.5, -0.75, 20);
 dragon_instance.transform.scale(0.75);
 dragon_instance.material.roughness = 0
 dragon_instance.material.metallic = 1;
@@ -164,7 +164,7 @@ for (let i = 0; i < 5; i++) {
 		for (let k = 0; k < 1; k++) {
 			let sphere_instance = scene.instance(sphere);
 			sphere_instance.transform.rotateAxis(new Vector(0, 1, 0), Math.PI / 4);
-			sphere_instance.transform.position = vector_add(new Vector(12, 1, - 16), new Vector(Math.sqrt(2) * i, 2 * j, Math.sqrt(2) * i));
+			sphere_instance.transform.position = vector_add(new Vector(12, 1, 16), new Vector(Math.sqrt(2) * i, 2 * j, - Math.sqrt(2) * i));
 			sphere_instance.material.roughness = 0;
 			sphere_instance.material.transmission = j / 5;
 			sphere_instance.material.metallic = 1.0 - i / 5;
