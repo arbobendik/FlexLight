@@ -490,9 +490,9 @@ export class RasterizerWGPU extends RendererWGPU {
     let invFov = 1 / this.camera.fov;
     let heightInvWidthFov = this.canvas.height * invFov / this.canvas.width;
     let viewMatrix = new Matrix<3, 3>(
-      [   Math.cos(dirJitter.x) * heightInvWidthFov,                  0,                                Math.sin(dirJitter.x) * heightInvWidthFov               ],
-      [ - Math.sin(dirJitter.x) * Math.sin(dirJitter.y) * invFov,     Math.cos(dirJitter.y) * invFov,   Math.cos(dirJitter.x) * Math.sin(dirJitter.y) * invFov  ],
-      [ - Math.sin(dirJitter.x) * Math.cos(dirJitter.y),            - Math.sin(dirJitter.y),            Math.cos(dirJitter.x) * Math.cos(dirJitter.y)           ]
+      [   Math.cos(dirJitter.x) * heightInvWidthFov,                  0,                                - Math.sin(dirJitter.x) * heightInvWidthFov               ],
+      [ - Math.sin(dirJitter.x) * Math.sin(dirJitter.y) * invFov,     Math.cos(dirJitter.y) * invFov,   - Math.cos(dirJitter.x) * Math.sin(dirJitter.y) * invFov  ],
+      [ - Math.sin(dirJitter.x) * Math.cos(dirJitter.y),            - Math.sin(dirJitter.y),            - Math.cos(dirJitter.x) * Math.cos(dirJitter.y)           ]
     );
 
     let invViewMatrix = moore_penrose(viewMatrix);

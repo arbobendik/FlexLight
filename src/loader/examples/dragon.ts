@@ -32,10 +32,10 @@ const loadObj = async (model: string) => {
 };
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-10, 14, -10];
+[camera.position.x, camera.position.y, camera.position.z] = [-10, 14, 10];
 [camera.direction.x, camera.direction.y] = [-.9, .45];
 
-let light1 = new PointLight(new Vector(50, 70, 50), new Vector(1, 1, 1), 15000, 5);
+let light1 = new PointLight(new Vector(50, 70, -50), new Vector(1, 1, 1), 15000, 5);
 
 scene.addPointLight(light1);
 
@@ -53,7 +53,7 @@ planeInstance.material.roughness = 1.0;
 planeInstance.material.metallic = 0;
 
 let dragonInstance = scene.instance(dragon);
-dragonInstance.transform.move(15, 0, 15);
+dragonInstance.transform.move(15, 0, -15);
 dragonInstance.transform.scale(0.5);
 dragonInstance.material.color = new Vector(1.0, 0.392, 0.392);
 dragonInstance.material.roughness = 0;
@@ -62,7 +62,7 @@ dragonInstance.material.transmission = 1;
 dragonInstance.material.ior = 1.5;
 
 let monkeInstance = scene.instance(monke);
-monkeInstance.transform.move(5, 1, 12);
+monkeInstance.transform.move(5, 1, -12);
 monkeInstance.transform.scale(2);
 monkeInstance.material.color = new Vector(1.0, 0.784, 0.392);
 monkeInstance.material.roughness = 0.1;
