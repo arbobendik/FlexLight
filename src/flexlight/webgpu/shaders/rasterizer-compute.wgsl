@@ -49,13 +49,15 @@ struct UniformUint {
     render_size: vec2<u32>,
     temporal_target: u32,
     temporal_max: u32,
-    is_temporal: u32,
 
+    is_temporal: u32,
     samples: u32,
     max_reflections: u32,
-
     tonemapping_operator: u32,
+
     environment_map_size: vec2<u32>,
+    point_light_count: u32,
+    env_map_mip_level_count: u32,
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
@@ -112,18 +114,6 @@ struct Hit {
     triangle_index: u32
 };
 
-/*
-struct Sample {
-    color: vec3<f32>,
-    render_id_w: f32
-}
-*/
-
-struct SampledColor {
-    color: vec3<f32>,
-    random_state: u32
-}
-
 
 fn access_triangle(index: u32) -> vec4<f32> {
     // Divide triangle index by 2048 * 2048 to get layer
@@ -174,7 +164,6 @@ fn access_texture_data(index: u32) -> vec4<u32> {
 
 
 fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
-    
     let texture_instance_offset: u32 = index * TEXTURE_INSTANCE_SIZE;
     // Fetch data from texture instance buffer
     let texture_data_offset: u32 = texture_instance[texture_instance_offset];
@@ -467,62 +456,90 @@ fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
     return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
 }
 
-fn schlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
+fn oneOverSchlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
     let k: f32 = alpha * 0.5f;
-    let denom: f32 = max(n_dot_x * (1.0f - k) + k, BIAS);
-    return n_dot_x / denom;
+    return max(n_dot_x * (1.0f - k) + k, BIAS);
 }
-
+/*
 fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
 }
+*/
 
 fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-fn forwardTrace(material: Material, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, inv_v: vec3<f32>) -> vec3<f32> {
-    let len_p1: f32 = 1.0f + length(light_dir);
+struct ForwardPreCalc {
+    reflected_view: vec3<f32>,
+    one_over_4_schlick_beckmann_n_dot_v: f32,
+    f0: vec3<f32>,
+    alpha: f32,
+    diffuse_component: vec3<f32>
+}
+
+fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, pre: ForwardPreCalc) -> vec3<f32> {
+    let len: f32 = length(light_dir);
+    let len_p1: f32 = 1.0f + len;
     // Apply inverse square law
     let brightness: vec3<f32> = light_color * light_intensity / (len_p1 * len_p1);
 
-    let l: vec3<f32> = normalize(light_dir);
-    let h: vec3<f32> = normalize(l - mv);
+    let l: vec3<f32> = light_dir / len;
+    let n_dot_l: f32 = abs(dot(n, l));
 
+    let h: vec3<f32> = normalize(l - mv);
     let v_dot_h: f32 = abs(dot(mv, h));
     let n_dot_h: f32 = abs(dot(n, h));
-    let n_dot_l: f32 = abs(dot(n, l));
-    let n_dot_v: f32 = abs(dot(n, mv));
 
-    let hm: vec3<f32> = normalize(l + inv_v);
-    let n_dot_hm: f32 = max(dot(n, hm), 0.0f);
+    let rh: vec3<f32> = normalize(l + pre.reflected_view);
+    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
 
-    let alpha: f32 = max(material.roughness * material.roughness, 0.05f);
-    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-    let f0: vec3<f32> = material.albedo * f0_sqrt * f0_sqrt;
-    let lambert: vec3<f32> = material.albedo * INV_PI;
+    let reflect: vec3<f32> = fresnel(pre.f0, v_dot_h);
 
-    let reflect: vec3<f32> = fresnel(f0, v_dot_h);
-    let diffuse: vec3<f32> = (1.0f - reflect) * (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract: vec3<f32> = reflect * material.transmission;
+    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(pre.alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_denominator: f32 = max(pre.one_over_4_schlick_beckmann_n_dot_v * oneOverSchlickBeckmann(pre.alpha, n_dot_l), BIAS);
+    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
 
-    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_hm)) * smith(alpha, n_dot_v, n_dot_l);
-    let cook_torrance_denominator: f32 = max(4.0f * n_dot_v * n_dot_l, BIAS);
-    let cook_torrance: vec2<f32> = max(cook_torrance_numerator / cook_torrance_denominator, vec2<f32>(0.0f));
-
-    let radiance: vec3<f32> = diffuse * lambert + reflect * cook_torrance.x + refract * cook_torrance.y;
+    let radiance: vec3<f32> = pre.diffuse_component + reflect * cook_torrance.x + transmission * cook_torrance.y;
     // Outgoing light to camera
     return radiance * n_dot_l * brightness;
 }
 
-fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32) -> SampledColor {
+struct SamplePreCalc {
+    f0: vec3<f32>,
+    alpha: f32,
+    random_sphere: vec3<f32>,
+    n_dot_v: f32,
+}
+
+struct SampledColor {
+    color: vec3<f32>,
+    random_state: u32
+}
+
+fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
+    let size: u32 = uniforms_uint.point_light_count + 1u;
+
     var local_color: vec3<f32> = vec3<f32>(0.0f);
     let inv_v: vec3<f32> = normalize(- camera_ray.unit_direction);
     var random_state: u32 = init_random_state;
 
-    let size: u32 = u32(arrayLength(&lights));
-    for (var i: u32 = 0u; i < size; i++) {
+    // Minimum alpha for better looking smooth metals and caustics
+    let alpha: f32 = max(pre.alpha, 0.05f);
+    // Precaluclate reflected vector
+    let rv: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
+
+    let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, pre.n_dot_v) * 4.0f;
+    // Precaluclate diffuse component
+    let lambert: vec3<f32> = material.albedo * INV_PI;
+    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
+    let diffuse_component: vec3<f32> = diffuse * lambert;
+    // Precalculated values for forwardTrace
+    let pre_calc: ForwardPreCalc = ForwardPreCalc(rv, one_over_4_schlick_beckmann_n_dot_v, pre.f0, alpha, diffuse_component);
+
+    //let size: u32 = u32(arrayLength(&lights));
+    for (var i: u32 = 1u; i < size; i++) {
         let light_offset: u32 = i;
         // Read light from storage buffer
         let light: Light = lights[light_offset];
@@ -534,7 +551,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         // Alter light source position according to variation.
         let dir: vec3<f32> = light_position - camera_ray.origin;
 
-        let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction, inv_v);
+        // let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction, inv_v);
+        let color_for_light: vec3<f32> = forwardTrace(material.transmission, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, pre_calc);
         let color_intensity: f32 = rgb_to_greyscale(color_for_light);
 
         let unit_light_dir: vec3<f32> = normalize(dir);
@@ -546,14 +564,13 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             local_color += color_for_light;
         }
 
-        if (show_shadow) {
-            continue;
-        }
-        // Apply geometry offset
-        let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
-        let light_ray: Ray = Ray(offset_target, unit_light_dir);
-        if (!shadowTraverseInstanceBVH(light_ray, length(dir))) {
-            local_color += color_for_light;
+        if (!show_shadow) {
+            // Apply geometry offset
+            let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
+            let light_ray: Ray = Ray(offset_target, unit_light_dir);
+            if (!shadowTraverseInstanceBVH(light_ray, length(dir))) {
+                local_color += color_for_light;
+            }
         }
     }
 
@@ -563,7 +580,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 }
 
 
-fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
+fn env_map_sample(dir: vec3<f32>, roughness: f32) -> vec3<f32> {
     let len:f32 = sqrt (dir.x * dir.x + dir.z * dir.z);
     var s:f32 = acos( dir.x / len);
     if (dir.z < 0) {
@@ -572,7 +589,8 @@ fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
     s = s / (2.0 * PI);
     var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
-    return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
+    var mip_level: f32 = max(0.0f, ceil(f32(uniforms_uint.env_map_mip_level_count - 1u) * roughness));
+    return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, mip_level).xyz * 255.0f;
 }
 
 
@@ -624,7 +642,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
     let geometry_offset: f32 = dot(diffs * angle_tan, geometry_uvw);
     // Interpolate final barycentric texture coordinates between UV's of the respective vertices
-    let barycentric: vec2<f32> = mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw;
+    let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
     // Sample material
     var material: Material = instance_material[hit.instance_index];
     // Read material textures
@@ -663,14 +681,26 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
     }
 
-    // ray = Ray(ray.origin, normalize(ray.origin - old_ray_origin));
+    let alpha: f32 = material.roughness * material.roughness;
+    let n_dot_v: f32 = abs(dot(smooth_n, - ray.unit_direction));
+
+    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+
+    var final_color: vec3<f32>;
     // Determine local color considering PBR attributes and lighting
-    let local_sampled: SampledColor = sample(material, ray, random_state, smooth_n, geometry_offset);
-    var final_color: vec3<f32> = local_sampled.color;
-    // let skybox_factor: vec3<f32> = vec3<f32>(0.0f);
+    for (var i: u32 = 0u; i < uniforms_uint.samples; i++) {
+        let light_offset_sphere: RandomSphere = random_sphere(random_state);
+        let light_offset_dir: vec3<f32> = light_offset_sphere.value;
+        random_state = light_offset_sphere.state;
+        let local_sampled: SampledColor = sample(material, ray, random_state, smooth_n, geometry_offset, SamplePreCalc(f0, alpha, light_offset_dir, n_dot_v));
+        random_state = local_sampled.random_state;
+        final_color += local_sampled.color;
+    }
+    // Average the color over samples
+    final_color /= f32(uniforms_uint.samples);
 
 
-    random_state = local_sampled.random_state;
     // Calculate primary light sources for this pass if ray hits non translucent object
 
     // If ray reflects from inside or onto an transparent object,
@@ -678,47 +708,31 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     var sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
     smooth_n *= - sign_dir;
 
-
+    // Sample environment map if present
     if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-        let inv_samples: f32 = 1.0f / f32(uniforms_uint.samples);
+            let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
+            let refract_component: f32 = material.transmission;
+            // Calculate ratio of reflection and transmission
+            let total_component: f32 = reflect_component + refract_component;
+            let total_component_inv: f32 = 1.0f / total_component;
+            let reflect_ratio: f32 = reflect_component * total_component_inv;
+            let refract_ratio: f32 = refract_component * total_component_inv;
+            // Does ray reflect or refract or diffuse?
 
-        for (var i: u32 = 0u; i < uniforms_uint.samples; i++) {
-            // Bias ray direction on material properties
-            // Generate pseudo random vector for diffuse reflection
-            let random_sphere: RandomSphere = random_sphere(random_state);
-            random_state = random_sphere.state;
-            let diffuse_random_dir: vec3<f32> = normalize(smooth_n + random_sphere.value);
-            let brdf: f32 = mix(1.0f, abs(dot(smooth_n, - ray.unit_direction)), material.metallic);
-            // Alter normal according to roughness value
-            let roughness_brdf: f32 = material.roughness * brdf;
-            let rough_n: vec3<f32> = normalize(mix(smooth_n, diffuse_random_dir, roughness_brdf));
+            let reflect_ray_dir: vec3<f32> = reflect(ray.unit_direction, smooth_n);
+            let reflect_importancy_factor: vec3<f32> = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
 
-            let h: vec3<f32> = normalize(rough_n - ray.unit_direction);
-            let v_dot_h = max(dot(- ray.unit_direction, h), 0.0f);
-            let f0: vec3<f32> = material.albedo * brdf;
-            let f: vec3<f32> = fresnel(f0, v_dot_h);
+            let env_color_reflect: vec3<f32> = env_map_sample(reflect_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f), material.roughness) * reflect_importancy_factor;
+            final_color += env_color_reflect * reflect_ratio;
 
-            let fresnel_reflect: f32 = max(f.x, max(f.y, f.z));
-            // Yeild random value between 0 and 1 and update state
-            let random_value: Random = pcg(random_state);
-            random_state = random_value.state;
-
-            var outgoing_ray_dir: vec3<f32>;
-            // Handle translucency and skip rest of light calculation
-            if (material.transmission * fresnel_reflect <= abs(random_value.value)) {
-                // Calculate perfect reflection ray
-                outgoing_ray_dir = reflect(ray.unit_direction, smooth_n);
-            } else {
+            if (material.transmission > 0.0f) {
                 let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
                 // Refract ray depending on IOR of material
-                outgoing_ray_dir = refract(ray.unit_direction, smooth_n, eta);
+                let refract_ray_dir: vec3<f32> = refract(ray.unit_direction, smooth_n, eta);
+                let refract_importancy_factor: vec3<f32> = material.albedo;
+                let env_color_refract: vec3<f32> = env_map_sample(refract_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f), material.roughness) * refract_importancy_factor;
+                final_color += env_color_refract * refract_ratio;
             }
-            // Mix ideal and diffuse reflection/refraction
-            outgoing_ray_dir = normalize(mix(outgoing_ray_dir, diffuse_random_dir, roughness_brdf));
-            // Sample environment map if present
-            let env_color: vec3<f32> = env_map_sample(outgoing_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f));
-            final_color += material.albedo * env_color * inv_samples;
-        }
     } else {
         // If no environment map is present, use ambient color
         final_color += material.albedo * uniforms_float.ambient;
@@ -756,7 +770,7 @@ fn compute(
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
-            env_color = env_map_sample(view_direction);
+            env_color = env_map_sample(view_direction, 0.0f);
         } else {
             // If no environment map is present, use ambient color
             env_color = uniforms_float.ambient;
