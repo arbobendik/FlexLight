@@ -701,7 +701,7 @@ struct SampledColor {
 fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
     let size: u32 = uniforms_uint.point_light_count + 1u;
     // If no lights, return emissive color
-    if (size == 1u) {
+    if (size <= 1u) {
         return SampledColor(material.emissive, init_random_state);
     }
 
@@ -890,7 +890,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         smooth_n *= - sign_dir;
 
-        let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
+        // let v_dot_n = max(dot(smooth_n, - ray.unit_direction), 0.0f);
         // Bias ray direction on material properties
         // Generate pseudo random vector for diffuse reflection
         let random_sphere: RandomSphere = random_sphere(random_state);
@@ -901,7 +901,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         random_state = random_value_reflect.state;
 
 
-        let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, v_dot_n));
+        let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
         let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
         let refract_component: f32 = material.transmission;
 

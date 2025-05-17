@@ -521,6 +521,10 @@ struct SampledColor {
 fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
     let size: u32 = uniforms_uint.point_light_count + 1u;
 
+    if (size <= 1u) {
+        return SampledColor(material.emissive, init_random_state);
+    }
+
     var local_color: vec3<f32> = vec3<f32>(0.0f);
     let inv_v: vec3<f32> = normalize(- camera_ray.unit_direction);
     var random_state: u32 = init_random_state;
@@ -711,19 +715,23 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     // Sample environment map if present
     if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
             let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
+            let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
             let refract_component: f32 = material.transmission;
             // Calculate ratio of reflection and transmission
-            let total_component: f32 = reflect_component + refract_component;
+            let total_component: f32 = reflect_component + diffuse_component + refract_component;
             let total_component_inv: f32 = 1.0f / total_component;
             let reflect_ratio: f32 = reflect_component * total_component_inv;
+            let diffuse_ratio: f32 = diffuse_component * total_component_inv;
             let refract_ratio: f32 = refract_component * total_component_inv;
             // Does ray reflect or refract or diffuse?
 
-            let reflect_ray_dir: vec3<f32> = reflect(ray.unit_direction, smooth_n);
+            let reflect_diffuse_ray_dir: vec3<f32> = reflect(ray.unit_direction, smooth_n);
             let reflect_importancy_factor: vec3<f32> = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
+            let diffuse_importancy_factor: vec3<f32> = material.albedo;
+            let env_color_reflect_diffuse: vec3<f32> = env_map_sample(reflect_diffuse_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f), material.roughness);
 
-            let env_color_reflect: vec3<f32> = env_map_sample(reflect_ray_dir * vec3<f32>(1.0f, 1.0f, -1.0f), material.roughness) * reflect_importancy_factor;
-            final_color += env_color_reflect * reflect_ratio;
+            final_color += env_color_reflect_diffuse * reflect_ratio * reflect_importancy_factor;
+            final_color += env_color_reflect_diffuse * diffuse_ratio * diffuse_importancy_factor;
 
             if (material.transmission > 0.0f) {
                 let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
