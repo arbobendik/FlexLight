@@ -49,13 +49,14 @@ struct UniformUint {
     render_size: vec2<u32>,
     temporal_target: u32,
     temporal_max: u32,
-    is_temporal: u32,
 
+    is_temporal: u32,
     samples: u32,
     max_reflections: u32,
-
     tonemapping_operator: u32,
+
     environment_map_size: vec2<u32>,
+    point_light_count: u32,
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
@@ -698,9 +699,9 @@ struct SampledColor {
 }
 
 fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
-    let size: u32 = u32(arrayLength(&lights));
+    let size: u32 = uniforms_uint.point_light_count + 1u;
     // If no lights, return emissive color
-    if (size == 0u) {
+    if (size == 1u) {
         return SampledColor(material.emissive, init_random_state);
     }
 
@@ -727,7 +728,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     // let random_sphere: RandomSphere = random_sphere(random_state);
     // random_state = random_sphere.state;
     // Iterate over point lights
-    for (var i: u32 = 0u; i < size; i++) {
+    for (var i: u32 = 1u; i < size; i++) {
         let light_offset: u32 = i;
         // Read light from storage buffer
         let light: Light = lights[light_offset];
@@ -830,7 +831,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
         let geometry_offset: f32 = dot(diffs * angle_tan, geometry_uvw);
         // Interpolate final barycentric texture coordinates between UV's of the respective vertices
-        let barycentric: vec2<f32> = mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw;
+        let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
         // Sample material
         var material: Material = instance_material[hit.instance_index];
 

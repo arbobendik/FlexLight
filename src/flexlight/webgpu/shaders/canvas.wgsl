@@ -22,6 +22,7 @@ struct UniformUint {
     max_reflections: u32,
 
     tonemapping_operator: u32,
+    point_light_count: u32,
 };
 
 @group(0) @binding(0) var compute_out: texture_2d<f32>;
