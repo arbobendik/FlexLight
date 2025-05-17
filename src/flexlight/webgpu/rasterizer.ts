@@ -542,6 +542,10 @@ export class RasterizerWGPU extends RendererWGPU {
       (this.config.hdr ? 1 : 0),
       // Environment map size
       envMapSize.x, envMapSize.y,
+      // Point light count
+      this.scene.pointLightCount,
+      // Environment map mip level count
+      gpuBufferManagers.environmentMapGPUManager.mipLevelCount
     ]));
 
     // Create buffer groups with dynamic buffers
