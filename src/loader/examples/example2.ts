@@ -47,10 +47,10 @@ let scene: Scene = engine.scene;
 [camera.position.x, camera.position.y, camera.position.z] = [-12.4, 5.4, -17.3];
 [camera.direction.x, camera.direction.y] = [- 2.5, 0.1];
 
-let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
+// let light1 = new PointLight(new Vector(110, 110, 110), new Vector(1, 0.5, 0.5), 0, 10);
 // let light2 = new PointLight(new Vector(-110, 110, -110), new Vector(0.5, 0.5, 1), 50000, 10);
 // let light3 = new PointLight(new Vector(-110, 100, 100), new Vector(1, 1, 1), 100000, 10);
-scene.addPointLight(light1);
+// scene.addPointLight(light1);
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 let environmentMapURL = staticPath + "textures/house_8k.hdr";
@@ -178,7 +178,7 @@ let iterator = 0;
 
 setInterval(() => {
 	// increase iterator
-	iterator += 0.002;
+	// iterator += 0.002;
 	// precalculate sin and cos
 	dragon_instance.transform.rotateAxis(new Vector(0, 1, 0), iterator);
 	// dragon_instance.transform.position = new Vector(Math.sin(iterator) * 10, Math.cos(iterator) * 10, -20);

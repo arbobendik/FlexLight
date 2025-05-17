@@ -33,6 +33,10 @@ export class Scene {
     // Environment Map: Cube Side Images
     private _environmentMapManager: EnvironmentMapManager = new EnvironmentMapManager();
     get environmentMapManager () { return this._environmentMapManager; }
+
+    // Point Light Count
+    private _pointLightCount: number = 0;
+    get pointLightCount () { return this._pointLightCount; }
     // Triangle Count
     get triangleCount () {
         let count = 0;
@@ -54,7 +58,7 @@ export class Scene {
     get environmentMap () { return this._environmentMapManager.environmentMap; }
 
 
-    private readonly pointLights: Set<PointLight> = new Set();
+    private readonly pointLights: Set<PointLight> = new Set([new PointLight(new Vector(0, 0, 0), new Vector(0, 0, 0), 0, 0)]);
 
     constructor(instances: Array<Instance> = []) {
         for (const instance of instances) this.instances.add(instance);
@@ -138,10 +142,12 @@ export class Scene {
     // Add point light to scene
     addPointLight(pointLight: PointLight) {
         this.pointLights.add(pointLight);
+        this._pointLightCount ++;
     }
 
     // Remove point light from scene
     removePointLight(pointLight: PointLight) {
         this.pointLights.delete(pointLight);
+        this._pointLightCount --;
     }
 }
