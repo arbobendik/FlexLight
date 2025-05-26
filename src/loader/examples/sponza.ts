@@ -106,9 +106,6 @@ for await (let prototype of sponzaGenerator) {
     sponzaInstances.push(instance);
 }
 
-const pointLight = new PointLight(new Vector(0, 0, 0), new Vector(1, 1, 1), 0, 0);
-scene.addPointLight(pointLight);
-
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 let environmentMapURL = staticPath + "textures/house_2k.hdr";
 fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.25, 0.5));
