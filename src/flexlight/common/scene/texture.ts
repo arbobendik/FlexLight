@@ -95,7 +95,7 @@ export class NormalTexture extends Texture {
 
 export class AlbedoTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
-        super(texture, 3, width, height);
+        super(texture, 4, width, height);
     }
 }
 

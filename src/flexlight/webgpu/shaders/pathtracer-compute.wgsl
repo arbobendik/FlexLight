@@ -332,7 +332,7 @@ fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max
     let tmin: f32 = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
     let tmax: f32 = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
 
-    if (tmax >= max(tmin, 0.0f) && tmin < max_len) {
+    if (tmax >= max(tmin, BIAS) && tmin < max_len) {
         return tmin;
     } else {
         return POW32;
@@ -699,24 +699,20 @@ struct SampledColor {
 }
 
 fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
-    let size: u32 = uniforms_uint.point_light_count + 1u;
+    let m: u32 = uniforms_uint.point_light_count + 1u;
     // If no lights, return emissive color
-    if (size <= 1u) {
+    if (m <= 1u) {
         return SampledColor(material.emissive, init_random_state);
     }
 
-    var local_color: vec3<f32> = vec3<f32>(0.0f);
-    var reservoir_length: f32 = 0.0f;
-    var total_weight: f32 = 0.0f;
-    var reservoir_num: u32 = 0u;
-    var reservoir_weight: f32 = 0.0f;
+    var w_sum: f32 = 0.0f;
+    var reservoir_color: vec3<f32> = vec3<f32>(0.0f);
     var reservoir_dir: vec3<f32>;
     var random_state: u32 = init_random_state;
     // Minimum alpha for better looking smooth metals and caustics
     let alpha: f32 = max(pre.alpha, 0.05f);
     // Precaluclate reflected vector
     let rv: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
-
     let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, pre.n_dot_v) * 4.0f;
     // Precaluclate diffuse component
     let lambert: vec3<f32> = material.albedo * INV_PI;
@@ -724,33 +720,22 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     let diffuse_component: vec3<f32> = diffuse * lambert;
     // Precalculated values for forwardTrace
     let pre_calc: ForwardPreCalc = ForwardPreCalc(rv, one_over_4_schlick_beckmann_n_dot_v, pre.f0, alpha, diffuse_component);
-    // Determine one random light source variation for all point lights
-    // let random_sphere: RandomSphere = random_sphere(random_state);
-    // random_state = random_sphere.state;
     // Iterate over point lights
-    for (var i: u32 = 1u; i < size; i++) {
-        let light_offset: u32 = i;
+    for (var i: u32 = 0u; i < uniforms_uint.point_light_count; i++) {
         // Read light from storage buffer
-        let light: Light = lights[light_offset];
+        let light: Light = lights[i + 1u];
         // Yeild random sphere and update state
         let light_position = light.position + pre.random_sphere * light.variance;
-        // Increment light weight
-        reservoir_length += 1.0f;
         // Alter light source position according to variation.
         let dir: vec3<f32> = light_position - camera_ray.origin;
         let color_for_light: vec3<f32> = forwardTrace(material.transmission, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, pre_calc);
-
-        local_color += color_for_light;
-        let weight: f32 = rgb_to_greyscale(color_for_light);
-
-        total_weight += weight;
+        let w_i: f32 = rgb_to_greyscale(color_for_light);
+        w_sum += w_i;
         // Yeild random value between 0 and 1 and update state
         let random_value: Random = pcg(random_state);
         random_state = random_value.state;
-
-        if (random_value.value * total_weight <= weight) {
-            reservoir_num = i;
-            reservoir_weight = weight;
+        if (random_value.value * w_sum <= w_i) {
+            reservoir_color = color_for_light / w_i;
             reservoir_dir = dir;
         }
     }
@@ -759,7 +744,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     // Apply emissive texture and ambient light
     let base_luminance: vec3<f32> = material.emissive;
     // Compute quick exit criterion to potentially skip expensive shadow test
-    let show_shadow: bool = reservoir_length == 0.0f || reservoir_weight == 0.0f || dot(smooth_n, unit_light_dir) < 0.0f;
+    let show_shadow: bool = w_sum == 0.0f || dot(smooth_n, unit_light_dir) < 0.0f;
     // Test if in shadow
     if (show_shadow) {
         return SampledColor(base_luminance, random_state);
@@ -771,7 +756,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
         return SampledColor(base_luminance, random_state);
     } else {
-        return SampledColor(local_color + base_luminance, random_state);
+        return SampledColor(reservoir_color * w_sum + base_luminance, random_state);
     }
 }
 
@@ -810,6 +795,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Compute edge vectors
         let edge1: vec3<f32> = t[1] - t[0];
         let edge2: vec3<f32> = t[2] - t[0];
+        let edge3: vec3<f32> = t[2] - t[1];
+
+        let min_edge_length: f32 = min(length(edge1), min(length(edge2), length(edge3)));
 
         let geometry_n: vec3<f32> = normalize(cross(edge2, edge1));
         let diffs: vec3<f32> = vec3<f32>(
@@ -827,9 +815,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             dot(geometry_n, normalize(normals[1])),
             dot(geometry_n, normalize(normals[2]))
         )));
-        
-        let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
-        let geometry_offset: f32 = dot(diffs * angle_tan, geometry_uvw);
+        // Limit angles to 45 degrees
+        let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(PI * 0.25f));
+        // Keep geometry offset within reasonable range
+        let geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.5f);
         // Interpolate final barycentric texture coordinates between UV's of the respective vertices
         let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
         // Sample material
@@ -839,7 +828,26 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Read material textures
         let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
         if (albedo_texture_id != UINT_MAX) {
-            material.albedo = textureSample(albedo_texture_id, barycentric).xyz * INV_255;
+            let albedo_data: vec4<f32> = textureSample(albedo_texture_id, barycentric) * INV_255;
+            material.albedo = albedo_data.xyz;
+            /*
+            // Enable transparent textures
+            // Yeild random value between 0 and 1 and update state
+            let transparancy_random_value: Random = pcg(random_state);
+            random_state = transparancy_random_value.state;
+            if (1.0f - albedo_data.w > transparancy_random_value.value) {
+                // Redirect ray to next triangle as this one is transparent
+                hit = traverseInstanceBVH(ray);
+                // Stop loop if there is no intersection and ray goes in the void
+                if (hit.instance_index == UINT_MAX) {
+                    add_ambient = true;
+                    break;
+                }
+                // Project ray origin to hit point
+                ray.origin += hit.distance * ray.unit_direction;
+                continue;
+            }
+            */
         }
 
         let normal_texture_id: u32 = instance_uint[hit_instance_location + 4u];
@@ -919,6 +927,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
                 // Refract ray depending on IOR of material
                 ray.unit_direction = normalize(mix(refract(ray.unit_direction, smooth_n, eta), - diffuse_random_dir, alpha));
+                smooth_n = - smooth_n;
             } else {
                 ray.unit_direction = diffuse_random_dir;
             }
@@ -926,12 +935,21 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         }
         // Test for early termination, avoiding last bounce
         i = i + 1u;
-        if (i >= uniforms_uint.max_reflections || rgb_to_greyscale(importancy_factor) < uniforms_float.min_importancy * SQRT3) {
+        let survival_probability: f32 = rgb_to_greyscale(importancy_factor);
+        let random_value: Random = pcg(random_state);
+        random_state = random_value.state;
+
+
+        if (i >= uniforms_uint.max_reflections || survival_probability < random_value.value) {
             add_ambient = false;
             break;
         }
+
+        importancy_factor /= survival_probability;
+
+        // let new_sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         // Calculate next intersection
-        ray.origin = geometry_offset * ray.unit_direction + ray.origin;
+        ray.origin = geometry_offset * smooth_n + ray.origin;
         hit = traverseInstanceBVH(ray);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.instance_index == UINT_MAX) {
@@ -946,7 +964,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
     // Sample environment map if present
     if (add_ambient) {
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-            let dir: vec3<f32> = ray.unit_direction * vec3<f32>(1.0f, 1.0f, -1.0f);
+            let dir: vec3<f32> = ray.unit_direction;
             let env_color: vec3<f32> = env_map_sample(dir);
             final_color += importancy_factor * env_color;
         } else {
@@ -991,7 +1009,7 @@ fn compute(
     let triangle_index: u32 = texture_offset[buffer_index * 2u + 1u] - 1u;
 
     let screen_space: vec2<f32> = vec2<f32>(global_invocation_id.xy) / vec2<f32>(uniforms_uint.render_size.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
-    let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f) * vec3<f32>(1.0f, 1.0f, -1.0f));
+    let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f));
     
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
         var env_color: vec3<f32> = vec3<f32>(0.0f);
