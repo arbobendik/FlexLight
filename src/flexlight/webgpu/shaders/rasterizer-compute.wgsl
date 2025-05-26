@@ -566,9 +566,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         // Test if in shadow
         if (show_color) {
             local_color += color_for_light;
-        }
-
-        if (!show_shadow) {
+        } else if (!show_shadow) {
             // Apply geometry offset
             let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
             let light_ray: Ray = Ray(offset_target, unit_light_dir);
@@ -593,7 +591,7 @@ fn env_map_sample(dir: vec3<f32>, roughness: f32) -> vec3<f32> {
     s = s / (2.0 * PI);
     var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
-    var mip_level: f32 = max(0.0f, ceil(f32(uniforms_uint.env_map_mip_level_count - 1u) * roughness));
+    var mip_level: f32 = max(0.0f, ceil(f32(uniforms_uint.env_map_mip_level_count - 1u) * (1.0f - (1.0f - roughness) * (1.0f - roughness))));
     return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, mip_level).xyz * 255.0f;
 }
 
