@@ -769,20 +769,30 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
         
     } else if (random1.value < reflect_ratio + refract_ratio) {
-        // Sample transmission using GGX importance sampling
-        let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
-        let half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
-        
         let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-        // Refract ray through the microfacet normal, not surface normal
-        let refracted: vec3<f32> = refract(in_dir, half_vector, eta);
+        // Sample transmission using GGX importance sampling
+        /*
+        let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
+        var half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
+        
+        
+        // Ensure half vector is oriented correctly for refraction
+        // For refraction to work, we want dot(-in_dir, half_vector) > 0
+        let v_dot_h: f32 = dot(-in_dir, half_vector);
+        if (v_dot_h < 0.0f) {
+            // Flip half vector to correct orientation
+            half_vector = -half_vector;
+        }
+        */
+        // Try refraction through the properly oriented half vector
+        let refracted: vec3<f32> = refract(in_dir, n, eta);
         
         // Check if total internal reflection occurred
         if (length(refracted) < BIAS) {
-            // Total internal reflection - use GGX sampled direction for reflection
-            sample.unit_direction = normalize(reflect(in_dir, half_vector));
+            // Total internal reflection - use half vector for reflection
+            sample.unit_direction = normalize(reflect(in_dir, n));
         } else {
-            // Normal refraction through microfacet - GGX sampling already handles roughness
+            // Normal refraction through microfacet
             sample.unit_direction = normalize(refracted);
             // Flip normal for transmission (ray exits on opposite side)
             sample.normal = - sample.normal;
@@ -794,41 +804,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         sample.unit_direction = diffuse_random_dir;
         sample.throughput = material.albedo;
     }
-
-    // Old simplified sampling approach (commented out for potential restoration)
-    /*
-    let random_sphere: RandomSphere = random_sphere(sample.random_state);
-    sample.random_state = random_sphere.state;
-    let diffuse_random_dir: vec3<f32> = normalize(n + random_sphere.value);
-    // Yeild random value between 0 and 1 and update state
-    let random_value_reflect: Random = pcg(sample.random_state);
-    sample.random_state = random_value_reflect.state;
-
-    let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
-    let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract_component: f32 = material.transmission;
-
-    // Calculate ratio of reflection and transmission
-    let total_component: f32 = reflect_component + diffuse_component + refract_component;
-    let total_component_inv: f32 = 1.0f / total_component;
-    let reflect_ratio: f32 = reflect_component * total_component_inv;
-    let refract_ratio: f32 = refract_component * total_component_inv;
-    // Does ray reflect or refract or diffuse?
-    if (reflect_ratio > abs(random_value_reflect.value)) {
-        sample.unit_direction = normalize(mix(reflect(in_dir, n), diffuse_random_dir, alpha));
-        sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
-    } else {
-        if (reflect_ratio + refract_ratio > abs(random_value_reflect.value)) {
-            let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-            // Refract ray depending on IOR of material
-            sample.unit_direction = normalize(mix(refract(in_dir, n, eta), - diffuse_random_dir, alpha));
-        } else {
-            sample.unit_direction = diffuse_random_dir;
-        }
-        sample.throughput = material.albedo;
-    }
-    */
-
+    
     return sample;
 }
 
@@ -1152,6 +1128,99 @@ fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
     return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
 }
+/*
+// Helper function to calculate GGX PDF for half vector sampling
+fn ggxPDF(alpha: f32, n_dot_h: f32) -> f32 {
+    let alpha_sq: f32 = alpha * alpha;
+    let denom: f32 = n_dot_h * n_dot_h * (alpha_sq - 1.0f) + 1.0f;
+    return alpha_sq / (PI * denom * denom) * n_dot_h;
+}
+
+// PBSDF calculates the probability density function of sampleBSDF for a given output direction
+fn PBSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material, sign_dir: f32) -> f32 {
+    let alpha: f32 = material.roughness * material.roughness;
+    let n_dot_v: f32 = abs(dot(n, - in_dir));
+    let n_dot_l: f32 = abs(dot(n, out_dir));
+    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+    
+    // Check for total internal reflection to match sampleBSDF behavior
+    let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
+    let cos_theta_i: f32 = abs(dot(- in_dir, n));
+    let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
+    let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
+    let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
+    let transmission_component: f32 = select(material.transmission, 0.0f, is_total_internal_reflection);
+
+    // Calculate component weights (same as sampleBSDF)
+    let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
+    let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - transmission_component);
+
+    // Calculate sampling probabilities
+    let total_component: f32 = reflect_component + diffuse_component + transmission_component;
+    let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
+    let reflect_ratio: f32 = reflect_component * total_component_inv;
+    let refract_ratio: f32 = transmission_component * total_component_inv;
+    let diffuse_ratio: f32 = diffuse_component * total_component_inv;
+
+    var total_pdf: f32 = 0.0f;
+
+    // Check if output direction is on same side as input (reflection/diffuse) or opposite side (transmission)
+    let same_side: bool = dot(out_dir, n) * dot(in_dir, n) > 0.0f;
+
+    if (same_side) {
+        // Reflection or diffuse case
+        
+        // Calculate reflection PDF using GGX half-vector sampling
+        let h_reflect: vec3<f32> = normalize(out_dir - in_dir);
+        let n_dot_h_reflect: f32 = abs(dot(n, h_reflect));
+        let v_dot_h_reflect: f32 = abs(dot(in_dir, h_reflect));
+        
+        if (n_dot_h_reflect > BIAS && v_dot_h_reflect > BIAS) {
+            // GGX PDF for half vector * Jacobian for reflection (1 / 4(v·h))
+            let ggx_half_pdf: f32 = ggxPDF(alpha, n_dot_h_reflect);
+            let reflection_pdf: f32 = ggx_half_pdf / (4.0f * v_dot_h_reflect);
+            total_pdf += reflect_ratio * reflection_pdf;
+        }
+
+        // Add diffuse PDF (cosine-weighted hemisphere sampling)
+        if (n_dot_l > BIAS) {
+            let diffuse_pdf: f32 = n_dot_l * INV_PI; // cos(theta) / pi
+            total_pdf += diffuse_ratio * diffuse_pdf;
+        }
+
+    } else {
+        // Transmission case (opposite side)
+        if (!is_total_internal_reflection && transmission_component > BIAS) {
+            // Calculate transmission PDF using GGX half-vector sampling
+            // For transmission, half vector is on the "average" side between incident and transmitted
+            let eta_inv: f32 = 1.0f / eta;
+            let h_transmission: vec3<f32> = normalize(-(in_dir + eta * out_dir));
+            
+            // Ensure half vector points toward same side as surface normal
+            let h_trans: vec3<f32> = select(-h_transmission, h_transmission, dot(h_transmission, n) > 0.0f);
+            
+            let n_dot_h_trans: f32 = abs(dot(n, h_trans));
+            let v_dot_h_trans: f32 = abs(dot(in_dir, h_trans));
+            let l_dot_h_trans: f32 = abs(dot(out_dir, h_trans));
+            
+            if (n_dot_h_trans > BIAS && v_dot_h_trans > BIAS && l_dot_h_trans > BIAS) {
+                // GGX PDF for half vector * Jacobian for transmission
+                let ggx_half_pdf: f32 = ggxPDF(alpha, n_dot_h_trans);
+                
+                // Jacobian for transmission: |l·h| / |((v·h) + eta*(l·h))|^2
+                let denom: f32 = v_dot_h_trans + eta * l_dot_h_trans;
+                let transmission_jacobian: f32 = l_dot_h_trans / max(denom * denom, BIAS);
+                let transmission_pdf: f32 = ggx_half_pdf * transmission_jacobian;
+                
+                total_pdf += refract_ratio * transmission_pdf;
+            }
+        }
+    }
+
+    return total_pdf;
+}
+*/
 
 @compute
 @workgroup_size(8, 8)
@@ -1197,7 +1266,7 @@ fn compute(
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
     // Generate hit struct for pathtracer
-    let init_hit: Hit = Hit(uvw.yz, distance(absolute_position, uniforms_float.camera_position), instance_index, triangle_index);
+    let init_hit: Hit = Hit(uvw.yz, distance(absolute_position, uniforms_float.camera_position.xyz), instance_index, triangle_index);
     // Determine if additional samples are needed
     var sampleFactor: u32 = 1u;
     
