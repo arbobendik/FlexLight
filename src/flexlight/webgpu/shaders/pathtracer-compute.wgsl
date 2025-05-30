@@ -660,9 +660,22 @@ fn sampleGGX(alpha: f32, random1: f32, random2: f32) -> vec3<f32> {
 
 // Transform vector from tangent space to world space
 fn tangentToWorld(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    let up: vec3<f32> = select(vec3<f32>(0.0f, 0.0f, 1.0f), vec3<f32>(1.0f, 0.0f, 0.0f), abs(n.y) < 0.9f);
-    let tangent: vec3<f32> = normalize(cross(up, n));
-    let bitangent: vec3<f32> = cross(n, tangent);
+    // Rotationally-invariant tangent frame construction (Frisvad method)
+    // Only depends on the normal, not absolute world orientation
+    var tangent: vec3<f32>;
+    var bitangent: vec3<f32>;
+    
+    if (n.z < -1.0f + BIAS) {
+        // Handle singularity when normal points down
+        tangent = vec3<f32>(0.0f, -1.0f, 0.0f);
+        bitangent = vec3<f32>(-1.0f, 0.0f, 0.0f);
+    } else {
+        let a: f32 = 1.0f / (1.0f + n.z);
+        let b: f32 = -n.x * n.y * a;
+        tangent = vec3<f32>(1.0f - n.x * n.x * a, b, -n.x);
+        bitangent = vec3<f32>(b, 1.0f - n.y * n.y * a, -n.y);
+    }
+    
     return v.x * tangent + v.y * bitangent + v.z * n;
 }
 
@@ -728,7 +741,7 @@ struct SampleBSDF {
 }
 // SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
 fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: u32, sign_dir: f32) -> SampleBSDF {
-    var sample: SampleBSDF = SampleBSDF(vec3<f32>(0.0f), vec3<f32>(0.0f), random_init, n);
+    var sample: SampleBSDF = SampleBSDF(vec3<f32>(1.0f), vec3<f32>(1.0f), random_init, n);
 
     let alpha: f32 = material.roughness * material.roughness; // Don't match BSDF alpha clamping
     let n_dot_v: f32 = abs(dot(n, - in_dir));
@@ -769,28 +782,24 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
         
     } else if (random1.value < reflect_ratio + refract_ratio) {
-        let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
         // Sample transmission using GGX importance sampling
-        /*
         let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
         var half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
         
+        let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
         
         // Ensure half vector is oriented correctly for refraction
         // For refraction to work, we want dot(-in_dir, half_vector) > 0
-        let v_dot_h: f32 = dot(-in_dir, half_vector);
-        if (v_dot_h < 0.0f) {
-            // Flip half vector to correct orientation
-            half_vector = -half_vector;
-        }
-        */
+        
         // Try refraction through the properly oriented half vector
-        let refracted: vec3<f32> = refract(in_dir, n, eta);
+        let refracted: vec3<f32> = refract(in_dir, half_vector, eta);
         
         // Check if total internal reflection occurred
         if (length(refracted) < BIAS) {
             // Total internal reflection - use half vector for reflection
-            sample.unit_direction = normalize(reflect(in_dir, n));
+            sample.unit_direction = normalize(reflect(in_dir, half_vector));
+            // Throughput accounts for what's not captured by sampling
+            sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
         } else {
             // Normal refraction through microfacet
             sample.unit_direction = normalize(refracted);
