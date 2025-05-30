@@ -42,7 +42,7 @@ scene.addPointLight(light1);
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 
 const plane = await loadObj('plane');
-const dragon = await loadObj('dragon_lp');
+const dragon = await loadObj('dragon_lp_flipped');
 const monke = await loadObj('monke_smooth');
 const sphere = await loadObj('sphere');
 
@@ -53,9 +53,9 @@ planeInstance.material.roughness = 1.0;
 planeInstance.material.metallic = 0;
 
 let dragonInstance = scene.instance(dragon);
-dragonInstance.transform.move(17.5, 0, -15);
+dragonInstance.transform.move(15, 0, -15);
 dragonInstance.transform.scale(0.5);
-dragonInstance.transform.rotateAxis(new Vector(0, 1, 0), 0.2);
+// dragonInstance.transform.rotateAxis(new Vector(0, 1, 0), 0.2);
 dragonInstance.material.color = new Vector(1.0, 0.392, 0.392);
 dragonInstance.material.roughness = 0;
 dragonInstance.material.metallic = 0;
