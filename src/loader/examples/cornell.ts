@@ -1,6 +1,6 @@
 "use strict";
 
-import { Instance, Camera, FlexLight, Prototype, Scene, Vector, PointLight, vector_length, vector_scale, normalize } from '../../flexlight/flexlight.js';
+import { Instance, Camera, FlexLight, Prototype, Scene, Vector, PointLight, vector_length, vector_scale, normalize, vector_add } from '../../flexlight/flexlight.js';
 import { createConfigUI } from '../../config-ui/config-ui.js';
 
 const staticPath = './static/';
@@ -39,6 +39,9 @@ for await (let prototype of cornellGenerator) {
     const instance = scene.instance(prototype);
     // instance.material.metallic = 0;
     // instance.material.roughness = 1;
+    if (instance.material.ior === 1.5) {
+        instance.material.ior = 1;
+    }
     cornellInstances.push(instance);
 }
 
@@ -58,7 +61,8 @@ leftWall.material.color = new Vector(.611, .0555, .062);
 shortBox.material.color = new Vector(.7295, .7355, .729);
 tallBox.material.color = new Vector(.7295, .7355, .729);
 */
-let frac = 255/255;
+/*
+let frac = 180/255;
 floor.material.color = new Vector(frac, frac, frac);
 ceiling.material.color = new Vector(frac, frac, frac);
 backWall.material.color = new Vector(frac, frac, frac);
@@ -66,21 +70,21 @@ rightWall.material.color = new Vector(0, frac, 0);
 leftWall.material.color = new Vector(frac, 0, 0);
 shortBox.material.color = new Vector(frac, frac, frac);
 tallBox.material.color = new Vector(frac, frac, frac);
-
+*/
 tallBox.material.metallic = 1;
 tallBox.material.roughness = 0;
 
-let emissive: Vector<3> = new Vector(16.86, 8.76 + 2., 3.2 + .5);
+let emissive: Vector<3> = light.material.emissive;//new Vector(16.86, 8.76, 3.2);
 
 let emissiveLength = vector_length(emissive);
-let emissiveColor: Vector<3> = normalize(emissive);
-light.material.emissive = vector_scale(emissiveColor, emissiveLength * 4); // Emissive light
+let emissiveColor: Vector<3> = normalize(vector_add(normalize(emissive), vector_scale(new Vector<3>(1, 1, 1), Math.sqrt(3) * 0)));
+light.material.emissive = vector_scale(emissiveColor, emissiveLength * 8); // Emissive light
 
 
 console.log(emissiveColor.x, emissiveColor.y, emissiveColor.z, emissiveLength);
 // Add a point light at the center of the area light
 
-
+/*
 const pointLight = new PointLight(
     new Vector(0, 1.97, 0),  // Center of the area light
     emissiveColor,           // White light
@@ -91,6 +95,7 @@ const pointLight = new PointLight(
 console.log(pointLight);
 
 scene.addPointLight(pointLight);
+*/
 
 // Set camera position and direction for a good view of the scene
 camera.position = new Vector(0, 1, 5);

@@ -183,13 +183,16 @@ export class Parser {
         // final object variable 
         let triangleCount = 0;
         let triangles: Array<number> = [];
-
+        console.log("Fetching file...", path);
         // fetch file and iterate over its lines
         const text = await (await fetch(path)).text();
+        console.log(text);
         console.log('Parsing vertices ...');
 
         const lines = text.split(/\r\n|\r|\n/);
         const lineNumber = lines.length;
+
+        console.log(lineNumber);
 
         const addTriangle = (v1: Vertex, v2: Vertex, v3: Vertex, normal: Vector<3>) => {
             if (!v1 || !v2 || !v3) {
