@@ -28,8 +28,11 @@ export class Scene {
     private _instanceBoundingVertexManager: BufferManager<Float32Array<ArrayBuffer>>;
     get instanceBoundingVertexManager () { return this._instanceBoundingVertexManager; }
     // Px Py Pz, intensity, variance
-    private _pointLightManager: BufferManager<Float32Array<ArrayBuffer>>;
-    get pointLightManager () { return this._pointLightManager; }
+    private _lightManager: BufferManager<Float32Array<ArrayBuffer>>;
+    get lightManager () { return this._lightManager; }
+    // Light Count
+    private _lightCount: number = 0;
+    get lightCount () { return this._lightCount; }
     // Environment Map: Cube Side Images
     private _environmentMapManager: EnvironmentMapManager = new EnvironmentMapManager();
     get environmentMapManager () { return this._environmentMapManager; }
@@ -67,14 +70,19 @@ export class Scene {
         this._instanceMaterialManager = new BufferManager(Float32Array);
         this._instanceBVHManager = new BufferManager(Uint32Array);
         this._instanceBoundingVertexManager = new BufferManager(Float32Array);
-        this._pointLightManager = new BufferManager(Float32Array);
+        this._lightManager = new BufferManager(Float32Array);
     }
 
     updateBuffers = (): number => {
+        // Save emissive instances to append them to direct illumination buffer
+        const emissiveInstanceList: Array<Instance> = [];
+        const emissiveInstanceIDList: Array<number> = [];
+
         const instanceUintArray: Array<number> = [];
         let globalTriangleIndexOffset: number = 0;
 
         // Construct instance uint array
+        let instanceID: number = 0;
         for (let instance of this.instances) {
             const triangleCount = instance.prototype.triangles.length / TRIANGLE_SIZE;
             instanceUintArray.push(
@@ -89,6 +97,15 @@ export class Scene {
                 globalTriangleIndexOffset  // Store first triangle index
             );
             globalTriangleIndexOffset += triangleCount;
+
+            // If instance is emissive, save it to emissive instance list, ignore emissive textures for now.
+            // TODO: Support emissive textures
+            if (instance.material.emissive.x > 0 || instance.material.emissive.y > 0 || instance.material.emissive.z > 0) {
+                emissiveInstanceList.push(instance);
+                emissiveInstanceIDList.push(instanceID);
+            }
+
+            instanceID++;
         }
 
         // Allocate instance buffer
@@ -96,27 +113,38 @@ export class Scene {
 
         // Generate BVH
         this._instanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
-
-        //console.log("BVH", bvh);
         // Generate bounding vertices and BVH structure
         const bvhArrays: BVHArrays = this._instanceBVH.toArrays();
-        // console.log(bvhArrays);
-        // console.log("BVHArray", bvhArrays.bvh);
-        // console.log("Bounding Vertices", bvhArrays.boundingVertices);
-        // console.log("Instance Uint Array", instanceUintArray);
         // Allocate BVH buffers
         this._instanceBVHManager.overwriteAll(bvhArrays.bvh);
         this._instanceBoundingVertexManager.overwriteAll(bvhArrays.boundingVertices);
 
+        // Update light count
+        this._lightCount = this.pointLightCount + emissiveInstanceList.length;
+
         // Construct point light buffer
-        const pointLightArray: Array<number> = [];
-        for (let pointLight of this.pointLights) pointLightArray.push(
+        const lightArray: Array<number> = [];
+        for (let pointLight of this.pointLights) lightArray.push(
             pointLight.position.x, pointLight.position.y, pointLight.position.z, 0,
             pointLight.color.x, pointLight.color.y, pointLight.color.z, pointLight.intensity,
             pointLight.variance, 0, 0, 0
         );
+        // Append emissive instances to light buffer
+        for (let i = 0; i < emissiveInstanceList.length; i++) {
+            const instance = emissiveInstanceList[i]!;
+            const instanceID = emissiveInstanceIDList[i]!;
+            const triangleCount = instance.prototype.triangles.length / TRIANGLE_SIZE;
+            lightArray.push(
+                // instance ID, triangle count, 0, is_area_light_indicator
+                // Maybe include area heuristic here later as well.
+                instanceID, triangleCount, 0, 1,
+                // Emissive color, 0
+                instance.material.emissive.x, instance.material.emissive.y, instance.material.emissive.z, 0,
+                0, 0, 0, 0
+            );
+        }
         // Allocate point light buffer
-        this._pointLightManager.overwriteAll(pointLightArray);
+        this._lightManager.overwriteAll(lightArray);
 
         // Return total triangle count to dispatch renderer with right amount of triangles.
         // console.log(this._instanceBVHManager.bufferView);
