@@ -71,7 +71,7 @@ interface RasterizerGPUBufferManagers {
   BVHGPUManager: BufferToRGBA32<Uint32Array<ArrayBuffer>>;
   boundingVertexGPUManager: BufferToRGBA16<Float16Array>;
   // Light GPU Managers
-  pointLightGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
+  lightGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
   // Texture GPU Managers
   textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array<ArrayBuffer>>;
   textureDataGPUManager: BufferToRGBA8<Uint8Array<ArrayBuffer>>;
@@ -123,7 +123,7 @@ export class RasterizerWGPU extends RendererWGPU {
     this.scene.instanceMaterialManager.releaseGPUBuffer();
     this.scene.instanceBVHManager.releaseGPUBuffer();
     this.scene.instanceBoundingVertexManager.releaseGPUBuffer();
-    this.scene.pointLightManager.releaseGPUBuffer();
+    this.scene.lightManager.releaseGPUBuffer();
     // Also release environment map
     this.scene.environmentMapManager.releaseGPUBuffer();
 
@@ -313,7 +313,7 @@ export class RasterizerWGPU extends RendererWGPU {
 
       instanceBVHGPUManager: new BufferToGPUBuffer<Uint32Array<ArrayBuffer>>(this.scene.instanceBVHManager, device, "instance bvh buffer"),
       instanceBoundingVertexGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.instanceBoundingVertexManager, device, "instance bounding vertex buffer"),
-      pointLightGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.pointLightManager, device, "point light buffer"),
+      lightGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.lightManager, device, "light buffer"),
     }
     // Init canvas parameters and textures with resize
     this.resize(device);
@@ -347,7 +347,7 @@ export class RasterizerWGPU extends RendererWGPU {
       this.scene.instanceMaterialManager.releaseGPUBuffer();
       this.scene.instanceBVHManager.releaseGPUBuffer();
       this.scene.instanceBoundingVertexManager.releaseGPUBuffer();
-      this.scene.pointLightManager.releaseGPUBuffer();
+      this.scene.lightManager.releaseGPUBuffer();
 
       console.log("RECOMPILE");
       // Update Textures
@@ -566,7 +566,7 @@ export class RasterizerWGPU extends RendererWGPU {
       entries: [
         { binding: 0, resource: { buffer: uniformFloatBuffer } },
         { binding: 1, resource: { buffer: uniformUintBuffer } },
-        { binding: 2, resource: { buffer: gpuBufferManagers.pointLightGPUManager.gpuResource } },
+        { binding: 2, resource: { buffer: gpuBufferManagers.lightGPUManager.gpuResource } },
 
         { binding: 3, resource: { buffer: gpuBufferManagers.instanceUintGPUManager.gpuResource } },
         { binding: 4, resource: { buffer: gpuBufferManagers.instanceTransformGPUManager.gpuResource } },

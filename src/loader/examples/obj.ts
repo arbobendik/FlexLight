@@ -61,7 +61,7 @@ let scene: Scene = engine.scene;
 
 // Set camera perspective and position.
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
-[camera.direction.x, camera.direction.y] = [-Math.PI * 3 / 4, 0.4];
+[camera.direction.x, camera.direction.y] = [5 * Math.PI / 4, 0.4];
 
 
 let choose_lights = true;
@@ -113,75 +113,15 @@ let sphere = await loadObj('sphere');
 
 // const fullScene1 = scene.instance(fullScene);
 // const cube1 = scene.instance(cube);
-/*
-const groundPlane = scene.instance(plane);
-// const cube2 = scene.instance(cube);
-const monkey1 = scene.instance(monkey);
-
-
-const sphere_rusted = scene.instance(sphere);
-const sphere_metallic = scene.instance(sphere);
-const sphere_diffuse = scene.instance(sphere);
-const sphere_rough_metal = scene.instance(sphere);
-const sphere_rough_diffuse = scene.instance(sphere);
-
-
-
-groundPlane.transform.position = new Vector(0, -2, 0);
-groundPlane.transform.scale(30);
-
-groundPlane.material.roughness = 0.6;
-groundPlane.material.metallic = 0;
-groundPlane.albedo = await loadTexture(staticPath + "textures/stonework/albedo.png", "albedo");
-// groundPlane.normal = await loadTexture(staticPath + "textures/stonework/normal.png", "normal");
-groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/roughness.png", "roughness");
-*/
-
-/*
-monkey1.transform.position = new Vector(5, 1, 0);
-// monkey1.transform.scale(new Vector(3, 1.8, 0.5));
-monkey1.material.roughness = 0;
-monkey1.material.metallic = 1;
-monkey1.material.transmission = 1;
-monkey1.material.ior = 1.5;
-
-//sphere1.transform.position = new Vector(10, 0, 0);
-sphere_metallic.transform.position = new Vector(10, 0, 0);
-sphere_diffuse.transform.position = new Vector(13, 0, 0);
-sphere_rough_metal.transform.position = new Vector(16, 0, 0);
-sphere_rough_diffuse.transform.position = new Vector(19, 0, 0);
-
-sphere_rusted.transform.position = new Vector(10, 0, -3);
-
-sphere_metallic.material.roughness = 0.1;
-sphere_metallic.material.metallic = 1.0;
-
-
-sphere_diffuse.material.roughness = 0.5;
-sphere_diffuse.material.metallic = 1.0;
-
-sphere_rough_metal.material.roughness = 0.7;
-sphere_rough_metal.material.metallic = 0.5;
-
-// sphere_rough_diffuse.material.roughness = 1.0;
-sphere_rough_diffuse.material.metallic = 0.0;
-sphere_rough_diffuse.material.roughness = 1.0;
-sphere_rough_diffuse.material.emissive = new Vector(10, 2, 2);
-
-sphere_rusted.albedo = await loadTexture(staticPath + "textures/rusted/albedo.png", "albedo");
-sphere_rusted.roughness = await loadTexture(staticPath + "textures/rusted/roughness.png", "roughness");
-sphere_rusted.metallic = await loadTexture(staticPath + "textures/rusted/metallic.png", "metallic");
-sphere_rusted.normal = await loadTexture(staticPath + "textures/rusted/normal.png", "normal");
-*/
 
 
 for (let i = 0; i < 5; i++) {
 	for (let j = 0; j < 5; j++) {
 		for (let k = 0; k < 5; k++) {
 			let dragon_instance = scene.instance(sphere);
-			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, -2*i - 2);
+			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 22 );
 			
-			dragon_instance.material.roughness = j * 0.8 / 5;
+			dragon_instance.material.roughness = j * 1 / 5;
 			dragon_instance.material.transmission = k / 5;
 			dragon_instance.material.metallic = 1.0 - i / 5;
 			dragon_instance.material.color = new Vector(1.0, 0.5, 0.5);

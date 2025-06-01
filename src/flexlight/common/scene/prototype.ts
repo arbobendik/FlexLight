@@ -71,10 +71,11 @@ export class Prototype {
         console.log("Materials", materials);
         // Parse OBJ file
         const prototypeArrayGenerator: AsyncGenerator<ObjectPrototype> = Parser.obj(objPath, materials, true);
+        console.log("Prototype array generator", prototypeArrayGenerator);
         // Construct prototype
         for await (const prototypeArray of prototypeArrayGenerator) {
-            // console.log("Object triangle count:", prototypeArray.triangles.length / TRIANGLE_SIZE);
-            // console.log("Object prototype material", prototypeArray.material);
+            console.log("Object triangle count:", prototypeArray.triangles.length / TRIANGLE_SIZE);
+            console.log("Object prototype material", prototypeArray.material);
             yield Prototype.fromTriangleArray(prototypeArray);
         }
     }
