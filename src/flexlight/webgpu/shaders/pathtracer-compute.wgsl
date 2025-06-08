@@ -778,23 +778,15 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
         let half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
         sample.unit_direction = normalize(reflect(in_dir, half_vector));
-        
         // Throughput accounts for what's not captured by sampling
         sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
-        
     } else if (random1.value < reflect_ratio + refract_ratio) {
         // Sample transmission using GGX importance sampling
         let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
         var half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
-        
         let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-        
-        // Ensure half vector is oriented correctly for refraction
-        // For refraction to work, we want dot(-in_dir, half_vector) > 0
-        
         // Try refraction through the properly oriented half vector
         let refracted: vec3<f32> = refract(in_dir, half_vector, eta);
-        
         // Check if total internal reflection occurred
         if (length(refracted) < BIAS) {
             // Total internal reflection - use half vector for reflection
@@ -808,7 +800,6 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
             sample.normal = - sample.normal;
         }
         sample.throughput = material.albedo;
-        
     } else {
         // Sample diffuse using cosine-weighted hemisphere sampling
         sample.unit_direction = diffuse_random_dir;
@@ -917,12 +908,11 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
             // Calculate light direction
             let dir: vec3<f32> = light_position - camera_ray.origin;
             let len: f32 = length(dir);
-
             let l: vec3<f32> = normalize(dir);
             // Outgoing angle at light source
             let light_n_dot_ml: f32 = max(dot(light_smooth_n, - l), 0.0f);
             // Calculate brightness
-            let brightness: vec3<f32> = light.color * light_area * triangle_count * light_n_dot_ml / (len * len);
+            let brightness: vec3<f32> = light.color * light_area * triangle_count * light_n_dot_ml / max(len * len, BIAS);
             // Calculate BSDF for light
             let color_for_light: vec3<f32> = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
             let w_i: f32 = rgb_to_greyscale(color_for_light);
@@ -948,7 +938,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
             let dir: vec3<f32> = light_position - camera_ray.origin;
             let len: f32 = length(dir);
             // Apply inverse square law
-            let brightness: vec3<f32> = light.color * light.intensity / (len * len);
+            let brightness: vec3<f32> = light.color * light.intensity / max(len * len, BIAS);
             let l: vec3<f32> = dir / len;
             // Calculate BSDF for light
             let color_for_light: vec3<f32> = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
@@ -979,6 +969,9 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
     // Apply geometry offset
     let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
+
+    // reservoir_color = clamp(reservoir_color, vec3<f32>(0.0f), vec3<f32>(65535.0f));
+    // w_sum = clamp(w_sum, 0.0f, 65535.0f);
     
     if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
         return SampledColor(vec3<f32>(0.0f), random_state);
@@ -1361,6 +1354,10 @@ fn compute(
     // Average ray colors over samples.
     let inv_samples: f32 = 1.0f / f32(uniforms_uint.samples * sampleFactor);
     final_color *= inv_samples;
+
+    // Clamp color to 16 bit float
+    // Maximal representable number in f16 is 65520
+    final_color = clamp(final_color, vec3<f32>(0.0f), vec3<f32>(65519.0f));
     // Write to additional textures for temporal pass
     if (uniforms_uint.is_temporal == 1u) {
         // Render to compute target

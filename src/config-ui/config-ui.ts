@@ -69,17 +69,17 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     // Add FlexLight settings to parameter form
     const flexLightForm = new ConfigForm(form, engine, localStorageHook);
     // flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"] as const, getStartValueSelect({ name: "Backend", defaultValue: "webgl2" as ApiType }));
-    flexLightForm.addSelect("Renderer", "rendererType", ["rasterizer", "pathtracer"] as const, getStartValueSelect({ name: "Renderer", defaultValue: "rasterizer" as RendererType }));
+    flexLightForm.addSelect("Renderer", "rendererType", ["rasterizer", "pathtracer"] as const, getStartValueSelect({ name: "Renderer", defaultValue: "pathtracer" as RendererType }));
     
     // Add Config settings to parameter form
     const configForm = new ConfigForm(form, engine.config, localStorageHook);
-    configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"] as const, getStartValueSelect({ name: "Antialiasing", defaultValue: "fxaa" as StringAntialiasingType }));
+    configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"] as const, getStartValueSelect({ name: "Antialiasing", defaultValue: "undefined" as StringAntialiasingType }));
     configForm.addCheckbox("Temporal averaging", "temporal", getStartValueCheckbox({ name: "Temporal averaging", defaultValue: true }));
-    configForm.addCheckbox("HDR", "hdr", getStartValueCheckbox({ name: "HDR", defaultValue: true }));
+    configForm.addCheckbox("Tonemapping", "hdr", getStartValueCheckbox({ name: "Tonemapping", defaultValue: true }));
     configForm.addSlider("Render quality", "renderQuality", 0.1, 2, 0.1, getStartValueSlider({ name: "Render quality", defaultValue: 1 }));
     configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "Samples per ray", defaultValue: 1 }));
-    configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 5 }));
-    configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.3 }));
+    configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 6 }));
+    configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.5 }));
 
     console.log(engine.config);
 
