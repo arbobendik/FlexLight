@@ -1,5 +1,3 @@
-
-
 import { RendererType } from "../common/renderer.js";
 import { RendererWGPU, WebGPUReferences } from "./renderer-webgpu.js";
 import { Scene } from "../common/scene/scene.js";
@@ -14,7 +12,7 @@ import { BufferToRGBA8 } from "./buffer-to-gpu/buffer-to-rgba8.js";
 import { EnvironmentMapWebGPU } from "./environment-map-webgpu.js";
 import { Texture } from "../common/scene/texture.js";
 // import { AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../common/scene/texture.js";
-import { Matrix, moore_penrose, POW32M1, Vector } from "../common/lib/math.js";
+import { Matrix, moore_penrose, POW32M1, Vector, vector_scale } from "../common/lib/math.js";
 import { AntialiasingModule } from "./antialiasing/antialiasing-module.js";
 import { WebGPUAntialiasingType } from "./antialiasing/antialiasing-module.js";
 
@@ -651,16 +649,36 @@ export class PathTracerWGPU extends RendererWGPU {
     // Set render target for canvas
     const colorAttachments = renderPassDescriptor.colorAttachments;
     for (const attachment of colorAttachments) if (attachment) attachment.view = canvasTarget.createView();
+
     // Calculate camera offset and projection matrix
-    let invFov = 1 / this.camera.fov;
-    let heightInvWidthFov = this.canvas.height * invFov / this.canvas.width;
-    let viewMatrix = new Matrix<3, 3>(
-      [   Math.cos(dirJitter.x) * heightInvWidthFov,                  0,                                - Math.sin(dirJitter.x) * heightInvWidthFov               ],
-      [ - Math.sin(dirJitter.x) * Math.sin(dirJitter.y) * invFov,     Math.cos(dirJitter.y) * invFov,   - Math.cos(dirJitter.x) * Math.sin(dirJitter.y) * invFov  ],
-      [ - Math.sin(dirJitter.x) * Math.cos(dirJitter.y),            - Math.sin(dirJitter.y),            - Math.cos(dirJitter.x) * Math.cos(dirJitter.y)           ]
+    const aspect: number = this.canvas.width / this.canvas.height;
+    const fov_x_rad: number = this.camera.fov * Math.PI / 180.0;
+    const focal_x: number = 1.0 / Math.tan(fov_x_rad / 2.0);
+    const focal_y: number = focal_x * aspect;
+    // 2. View matrix (camera orientation)
+    const cos_x: number = Math.cos(dirJitter.x);
+    const sin_x: number = Math.sin(dirJitter.x);
+    const cos_y: number = Math.cos(dirJitter.y);
+    const sin_y: number = Math.sin(dirJitter.y);
+    // Camera basis vectors in world space.
+    const right_vec: Vector<3> = new Vector<3>(cos_x, 0, -sin_x);
+    const up_vec: Vector<3> = new Vector<3>(-sin_x * sin_y, cos_y, -cos_x * sin_y);
+    const forward_vec: Vector<3> = new Vector<3>(sin_x * cos_y, sin_y, cos_x * cos_y);
+
+    // World-to-camera rotation matrix has camera basis vectors as rows.
+    const worldToCamera: Matrix<3, 3> = new Matrix<3, 3>(
+      right_vec,
+      up_vec,
+      vector_scale(forward_vec, -1)
+    );
+    
+    const viewMatrix: Matrix<3, 3> = new Matrix<3, 3>(
+      vector_scale(worldToCamera[0]!, focal_x),
+      vector_scale(worldToCamera[1]!, focal_y),
+      worldToCamera[2]!
     );
 
-    let invViewMatrix = moore_penrose(viewMatrix);
+    const invViewMatrix: Matrix<3, 3> = moore_penrose(viewMatrix);
     const temporalCount = this.engineState.temporal ? this.frameCounter : 0;
     // Update uniform values on GPU
     if (uniformFloatBuffer) device.queue.writeBuffer(uniformFloatBuffer, 0, new Float32Array([
