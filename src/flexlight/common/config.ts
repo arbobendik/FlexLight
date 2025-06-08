@@ -7,7 +7,7 @@ export type StringAntialiasingType = "undefined" | "fxaa" | "taa";
 export class Config {
 
   // Quality settings
-  private _antialiasing: WebGPUAntialiasingType = "fxaa";
+  private _antialiasing: WebGPUAntialiasingType = "undefined";
   // String getter / setter for config ui
   get antialiasingAsString(): StringAntialiasingType { return String(this._antialiasing) as StringAntialiasingType; }
   set antialiasingAsString(value: StringAntialiasingType) { 

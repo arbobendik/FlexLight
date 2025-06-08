@@ -50,7 +50,7 @@ let scene: Scene = engine.scene;
 // Set camera perspective and position.
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
-
+/*
 let light1 = new PointLight(new Vector(0, -2, 0), new Vector(1, 0, 0), 5000, 10);
 let light2 = new PointLight(new Vector(0, -2, 50), new Vector(0, 0, 1), 5000, 10);
 let light3 = new PointLight(new Vector(0, 20, 100), new Vector(1, 1, 1), 10000, 20);
@@ -60,6 +60,7 @@ scene.addPointLight(light1);
 scene.addPointLight(light2);
 scene.addPointLight(light3);
 scene.addPointLight(light4);
+*/
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 
@@ -82,22 +83,22 @@ const tentativeInstance = scene.instance(tentative);
 tentativeInstance.transform.position = new Vector(0, -32, 0);
 tentativeInstance.transform.scale(30);
 tentativeInstance.material.color = new Vector(0.7, 0.7, 0.7);
-tentativeInstance.material.roughness = 0.4;
-tentativeInstance.material.metallic = 0.3;
+tentativeInstance.material.roughness = 1;
+tentativeInstance.material.metallic = 0;
 
 const monkeyInstanceRed = scene.instance(monkey);
 monkeyInstanceRed.transform.position = new Vector(0, -2, 0);
 monkeyInstanceRed.transform.scale(5);
 monkeyInstanceRed.material.roughness = 1;
 monkeyInstanceRed.material.metallic = 0;
-monkeyInstanceRed.material.emissive = new Vector(5, 0, 0);
+monkeyInstanceRed.material.emissive = new Vector(500, 0, 0);
 
 const monkeyInstanceBlue = scene.instance(monkey);
 monkeyInstanceBlue.transform.position = new Vector(0, -2, -50);
 monkeyInstanceBlue.transform.scale(5);
 monkeyInstanceBlue.material.roughness = 1;
 monkeyInstanceBlue.material.metallic = 0;
-monkeyInstanceBlue.material.emissive = new Vector(0, 0, 5);
+monkeyInstanceBlue.material.emissive = new Vector(0, 0, 500);
 
 
 // Add FPS counter to top-right corner
