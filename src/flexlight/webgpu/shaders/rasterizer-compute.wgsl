@@ -102,6 +102,7 @@ struct Material {
 
 struct Light {
     position: vec3<f32>,
+    is_area_light: f32,
     color: vec3<f32>,
     intensity: f32,
     variance: f32
@@ -506,6 +507,51 @@ fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>,
     return radiance * n_dot_l * brightness;
 }
 
+// BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
+fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
+    // Minimum alpha for better looking smooth metals and caustics
+    let alpha: f32 = max(material.roughness * material.roughness, 0.04f);
+    let n_dot_v: f32 = abs(dot(n, - in_dir));
+    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
+    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+    // Precaluclate reflected vector
+    let rv: vec3<f32> = reflect(- in_dir, n);
+    // let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, n_dot_v) * 4.0f;
+    // Precaluclate diffuse component
+    let lambert: vec3<f32> = material.albedo * INV_PI;
+    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
+
+    let n_dot_l: f32 = abs(dot(n, out_dir));
+    let h: vec3<f32> = normalize(out_dir - in_dir);
+    let v_dot_h: f32 = abs(dot(in_dir, h));
+    let n_dot_h: f32 = abs(dot(n, h));
+
+    let rh: vec3<f32> = normalize(out_dir + rv);
+    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
+
+    let reflect_factor: vec3<f32> = fresnel(f0, v_dot_h);
+    let diffuse_component: vec3<f32> = diffuse * lambert;
+
+    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_denominator: f32 = max(4.0f * oneOverSchlickBeckmann(alpha, n_dot_v) * oneOverSchlickBeckmann(alpha, n_dot_l), BIAS);
+    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
+
+    // Check for total internal reflection
+    let sign_dir: f32 = sign(dot(- in_dir, n));
+    let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
+    let cos_theta_i: f32 = abs(dot(- in_dir, n));
+    let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
+    let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
+    
+    // Total internal reflection occurs when sin²θt > 1
+    let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
+    let transmission_factor: f32 = select(material.transmission, 0.0f, is_total_internal_reflection);
+
+    let radiance: vec3<f32> = diffuse_component + reflect_factor * cook_torrance.x + transmission_factor * cook_torrance.y;
+    // Outgoing light to camera
+    return radiance * n_dot_l;
+}
+
 struct SamplePreCalc {
     f0: vec3<f32>,
     alpha: f32,
@@ -547,6 +593,111 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         let light_offset: u32 = i;
         // Read light from storage buffer
         let light: Light = lights[light_offset];
+
+        var light_dir: vec3<f32> = vec3<f32>(0.0f);
+        var color_for_light: vec3<f32> = vec3<f32>(0.0f);
+        
+        // Handle if light is an area light
+        if (light.is_area_light == 1.0f) {
+            // CASE 0: Area ligh
+            let instance_id: u32 = u32(light.position.x);
+            let triangle_count: f32 = light.position.y;
+
+            let random_triangle: Random = pcg(random_state);
+            random_state = random_triangle.state;
+
+            let triangle_instance_offset: u32 = instance_uint[instance_id * INSTANCE_UINT_SIZE];
+
+            // Choose random triangle from instance
+            let triangle_offset: u32 = triangle_instance_offset + u32(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
+            // Fetch triangle coordinates from scene graph texture
+            let t0 = access_triangle(triangle_offset);
+            let t1 = access_triangle(triangle_offset + 1u); 
+            let t2 = access_triangle(triangle_offset + 2u);
+            let t3 = access_triangle(triangle_offset + 3u);
+            let t4 = access_triangle(triangle_offset + 4u);
+
+            // Fetch triangle coordinates from scene graph texture
+            let transform: Transform = instance_transform[instance_id * 2u];
+            // Assemble and transform triangle with shift.
+            let t: mat3x3<f32> = transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
+
+            // Assemble and transform normals
+            let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
+            // Compute edge vectors
+            let edge1: vec3<f32> = t[1] - t[0];
+            let edge2: vec3<f32> = t[2] - t[0];
+            let edge3: vec3<f32> = t[2] - t[1];
+
+            let min_edge_length: f32 = min(length(edge1), min(length(edge2), length(edge3)));
+
+            let light_geometry_n: vec3<f32> = normalize(cross(edge2, edge1));
+            let diffs: vec3<f32> = vec3<f32>(
+                distance(camera_ray.origin, t[0]),
+                distance(camera_ray.origin, t[1]),
+                distance(camera_ray.origin, t[2])
+            );
+            // Choose random barycentric coordinates
+            let random_value_0: Random = pcg(random_state);
+            let random_value_1: Random = pcg(random_value_0.state);
+            random_state = random_value_1.state;
+
+            var u: vec2<f32> = vec2<f32>(random_value_0.value, random_value_1.value);
+            if (u.x + u.y > 1.0f) {
+                u = vec2<f32>(1.0f - u.x, 1.0f - u.y);
+            }
+            let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - u.x - u.y, u.x, u.y);
+            // Interpolate smooth normal
+            var light_smooth_n: vec3<f32> = normalize(normals * geometry_uvw);
+            // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
+            let angles: vec3<f32> = acos(abs(vec3<f32>(
+                dot(light_geometry_n, normalize(normals[0])),
+                dot(light_geometry_n, normalize(normals[1])),
+                dot(light_geometry_n, normalize(normals[2]))
+            )));
+            // Limit angles to 45 degrees
+            let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(PI * 0.25f));
+            // Keep geometry offset within reasonable range
+            let light_geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.5f);
+            // Interpolate point on triangle
+            let light_position_raw: vec3<f32> = t * geometry_uvw;
+            // Calculate normal
+            let edge_cross: vec3<f32> = cross(edge1, edge2);
+            let light_area: f32 = max(length(edge_cross) * 0.5f, BIAS);
+            // Offset light position to avoid self shadowing
+            let light_position: vec3<f32> = light_position_raw;
+            // Calculate light direction
+            let dir: vec3<f32> = light_position - camera_ray.origin;
+            let len: f32 = length(dir);
+
+            let l: vec3<f32> = normalize(dir);
+            // Outgoing angle at light source
+            let light_n_dot_ml: f32 = max(dot(light_smooth_n, - l), 0.0f);
+            // Calculate brightness
+            let brightness: vec3<f32> = light.color * light_area * triangle_count * light_n_dot_ml / (len * len);
+            // Calculate BSDF for light
+            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            light_dir = dir + light_smooth_n * light_geometry_offset;
+        } else if (light.is_area_light == 0.0f) {
+            // CASE 1: Point light
+            // Yeild random sphere and update state
+            let random_sphere: RandomSphere = random_sphere(random_state);
+            random_state = random_sphere.state;
+            let light_position = light.position + random_sphere.value * light.variance;
+            // Alter light source position according to variation.
+            let dir: vec3<f32> = light_position - camera_ray.origin;
+            let len: f32 = length(dir);
+            // Apply inverse square law
+            let brightness: vec3<f32> = light.color * light.intensity / (len * len);
+            let l: vec3<f32> = dir / len;
+            // Calculate BSDF for light
+            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            light_dir = dir;
+        }
+
+
+
+        /*
         // Yeild random sphere and update state
         let random_sphere: RandomSphere = random_sphere(random_state);
         random_state = random_sphere.state;
@@ -557,9 +708,10 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 
         // let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction, inv_v);
         let color_for_light: vec3<f32> = forwardTrace(material.transmission, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, pre_calc);
+        */
         let color_intensity: f32 = rgb_to_greyscale(color_for_light);
 
-        let unit_light_dir: vec3<f32> = normalize(dir);
+        let unit_light_dir: vec3<f32> = normalize(light_dir);
         // Compute quick exit criterion to potentially skip expensive shadow test
         let show_color: bool = color_intensity == 0.0f;
         let show_shadow: bool = dot(smooth_n, unit_light_dir) < 0.0f;
@@ -570,7 +722,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Apply geometry offset
             let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
             let light_ray: Ray = Ray(offset_target, unit_light_dir);
-            if (!shadowTraverseInstanceBVH(light_ray, length(dir))) {
+            if (!shadowTraverseInstanceBVH(light_ray, length(light_dir))) {
                 local_color += color_for_light;
             }
         }
@@ -803,7 +955,7 @@ fn compute(
     var final_color = vec3<f32>(0.0f);
 
 
-    var random_state: u32 = global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x;
+    var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
     // Generate sample
     
     let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, random_state);
