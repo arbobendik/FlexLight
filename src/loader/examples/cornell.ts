@@ -70,35 +70,22 @@ rightWall.material.color = new Vector(0, frac, 0);
 leftWall.material.color = new Vector(frac, 0, 0);
 shortBox.material.color = new Vector(frac, frac, frac);
 tallBox.material.color = new Vector(frac, frac, frac);
-*/
 tallBox.material.metallic = 1;
 tallBox.material.roughness = 0;
+*/
 
 let emissive: Vector<3> = light.material.emissive;//new Vector(16.86, 8.76, 3.2);
 
 let emissiveLength = vector_length(emissive);
-let emissiveColor: Vector<3> = normalize(vector_add(normalize(emissive), vector_scale(new Vector<3>(1, 1, 1), Math.sqrt(3) * 0)));
+let emissiveColor: Vector<3> = normalize(emissive);
 light.material.emissive = vector_scale(emissiveColor, emissiveLength * 8); // Emissive light
 
 
 console.log(emissiveColor.x, emissiveColor.y, emissiveColor.z, emissiveLength);
-// Add a point light at the center of the area light
 
-/*
-const pointLight = new PointLight(
-    new Vector(0, 1.97, 0),  // Center of the area light
-    emissiveColor,           // White light
-    emissiveLength * 0,    // Intensity
-    0.22                      // Variation
-);
-
-console.log(pointLight);
-
-scene.addPointLight(pointLight);
-*/
 
 // Set camera position and direction for a good view of the scene
-camera.position = new Vector(0, 1, 5);
+camera.position = new Vector(0, 1, 4);
 camera.direction = new Vector(0, 0);
 
 // Add ambient light

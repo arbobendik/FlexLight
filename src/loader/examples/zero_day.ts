@@ -1,5 +1,16 @@
 "use strict";
 
+/*
+@misc{ZeroDay,
+   title = {Zero-Day, Open Research Content Archive (ORCA)},
+   author = {Mike Winkelmann},
+   year = {2019},
+   month = {November},
+   note = {\small \texttt{https://developer.nvidia.com/orca/beeple-zero-day}},
+   url = {https://developer.nvidia.com/orca/beeple-zero-day}
+}
+*/
+
 import { createConfigUI } from "../../config-ui/config-ui.js";
 import { FlexLight, PointLight, Instance, Prototype, Vector, Camera, Scene, AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture, EnvironmentMap } from "../../flexlight/flexlight.js";
 
@@ -49,15 +60,6 @@ const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" 
 
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
-/*
-[
-	staticPath + "textures/grass.jpg",     // 0
-].forEach(item => {
-	let img = new Image();
-	img.src = item;
-	scene.textures.push(img);
-});
-*/
 
 // Set camera perspective and position.
 [camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
@@ -72,16 +74,16 @@ const loadObj = async function* (model: string): AsyncGenerator<Prototype> {
     for await (let prototype of prototypeGenerator) yield prototype;
 }
 
-let kitchen = loadObj('zero_day');
+let mesh = loadObj('zero_day');
 
-let kitchenInstances: Array<Instance> = [];
-for await (let prototype of kitchen) {
-	const kitchen_instance = scene.instance(prototype);
-	// kitchen_instance.transform.scale(0.01);
-	kitchen_instance.transform.position = new Vector(20, 0, 20);
-	kitchen_instance.material.roughness = 1.0;
-	kitchen_instance.material.metallic = 0.0;
-	kitchenInstances.push(kitchen_instance);
+let meshInstances: Array<Instance> = [];
+for await (let prototype of mesh) {
+	const mesh_instance = scene.instance(prototype);
+	// mesh_instance.transform.scale(0.01);
+	mesh_instance.transform.position = new Vector(20, 0, 20);
+	mesh_instance.material.roughness = 1.0;
+	mesh_instance.material.metallic = 0.0;
+	meshInstances.push(mesh_instance);
 }
 
 // Add ambient light
@@ -90,7 +92,7 @@ scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 // Start rendering
 engine.renderer.render();
 
-console.log("Kitchen instances:", kitchenInstances);
+console.log("Kitchen instances:", meshInstances);
 
 // Add FPS counter to top-right corner
 const fpsCounter = document.createElement("div");
