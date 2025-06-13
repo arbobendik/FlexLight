@@ -1,13 +1,14 @@
 "use strict";
 
-import { Parser } from "./obj-parser";
 import { BufferManager } from "../buffer/buffer-manager";
 import { TypedArrayView } from "../buffer/typed-array-view";
 import { Bounding, BVHArrays } from "./bvh";
 import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
-import { ObjectPrototype } from "./obj-parser";
+import { ObjectPrototype, Parser } from "./parser";
+import { ObjParser } from "./obj-parser";
+import { GltfParser } from "./gltf-parser";
 // import { Float16Array } from "../buffer/float-16-array";
 
 export const TRIANGLE_SIZE = 24;
@@ -64,13 +65,25 @@ export class Prototype {
         return new Prototype(objectPrototype.triangles, bvhArrays.bvh, bvhArrays.boundingVertices, bounding, objectPrototype.material, objectPrototype.label);
     }
 
+    // Construct from GLTF file
+    static async *fromGltf(gltfPath: string): AsyncGenerator<Prototype> {
+        // Parse GLTF file
+        const prototypeArrayGenerator: AsyncGenerator<ObjectPrototype> = GltfParser.parse(gltfPath);
+        // Construct prototype
+        for await (const prototypeArray of prototypeArrayGenerator) {
+            console.log("Object triangle count:", prototypeArray.triangles.length / TRIANGLE_SIZE);
+            console.log("Object prototype material", prototypeArray.material);
+            yield Prototype.fromTriangleArray(prototypeArray);
+        }
+    }
+
     // Construct from OBJ file
     static async *fromObj(objPath: string, mtlPath: string | undefined = undefined): AsyncGenerator<Prototype> {
         let materials: Map<string, Material> = new Map();
-        if (mtlPath) materials = await Parser.mtl(mtlPath);
+        if (mtlPath) materials = await ObjParser.loadMaterials(mtlPath);
         console.log("Materials", materials);
         // Parse OBJ file
-        const prototypeArrayGenerator: AsyncGenerator<ObjectPrototype> = Parser.obj(objPath, materials, true);
+        const prototypeArrayGenerator: AsyncGenerator<ObjectPrototype> = ObjParser.parse(objPath, materials, true);
         console.log("Prototype array generator", prototypeArrayGenerator);
         // Construct prototype
         for await (const prototypeArray of prototypeArrayGenerator) {
@@ -82,11 +95,11 @@ export class Prototype {
 
     static async fromObjStatic(objPath: string, mtlPath: string | undefined = undefined): Promise<Prototype> {
         let materials: Map<string, Material> = new Map();
-        if (mtlPath) materials = await Parser.mtl(mtlPath);
+        if (mtlPath) materials = await ObjParser.loadMaterials(mtlPath);
         // Accumulate triangles
         let triangles: Array<number> = [];
         // Parse OBJ file
-        const objectPrototypeGenerator: AsyncGenerator<ObjectPrototype> = Parser.obj(objPath, materials, false);
+        const objectPrototypeGenerator: AsyncGenerator<ObjectPrototype> = ObjParser.parse(objPath, materials, false);
         for await (const objectPrototype of objectPrototypeGenerator) {
             const oldLength = triangles.length;
             triangles.length += objectPrototype.triangles.length;
@@ -95,7 +108,7 @@ export class Prototype {
         
         console.log("Triangle count:", triangles.length / TRIANGLE_SIZE);
         // Construct prototype does not support imported materials as only one material per instance is supported
-        return Prototype.fromTriangleArray({ triangles, material: new Material() });
+        return Prototype.fromTriangleArray({ triangles, material: new Material(), label: objPath });
     }
 
     destroy() {
