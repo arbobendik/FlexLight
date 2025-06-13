@@ -631,10 +631,10 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
     return false;
 }
 
-fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
+fn trowbridgeReitz(alpha: f32, n_dot_h: f32) -> f32 {
     let numerator: f32 = alpha * alpha;
-    let denom: vec2<f32> = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
-    return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
+    let denom: f32 = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
+    return numerator / max(PI * denom * denom, BIAS);
 }
 
 fn oneOverSchlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
@@ -659,26 +659,25 @@ fn sampleGGX(alpha: f32, random1: f32, random2: f32) -> vec3<f32> {
     );
 }
 
-// Transform vector from tangent space to world space
-fn tangentToWorld(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    // Rotationally-invariant tangent frame construction (Frisvad method)
-    // Only depends on the normal, not absolute world orientation
-    var tangent: vec3<f32>;
-    var bitangent: vec3<f32>;
-    
-    if (n.z < -1.0f + BIAS) {
-        // Handle singularity when normal points down
-        tangent = vec3<f32>(0.0f, -1.0f, 0.0f);
-        bitangent = vec3<f32>(-1.0f, 0.0f, 0.0f);
-    } else {
-        let a: f32 = 1.0f / (1.0f + n.z);
-        let b: f32 = -n.x * n.y * a;
-        tangent = vec3<f32>(1.0f - n.x * n.x * a, b, -n.x);
-        bitangent = vec3<f32>(b, 1.0f - n.y * n.y * a, -n.y);
-    }
-    
-    return v.x * tangent + v.y * bitangent + v.z * n;
+fn throughputGGX(v_dot_h: f32, n_dot_v: f32, n_dot_l: f32, n_dot_h: f32, alpha: f32) -> f32 {
+    let k: f32 = alpha * 0.5;
+    let G1_v: f32 = n_dot_v / (n_dot_v * (1.0 - k) + k);
+    let G1_l: f32 = n_dot_l / (n_dot_l * (1.0 - k) + k);
+    let G: f32 = G1_v * G1_l;
+    return G * v_dot_h / max(n_dot_v * n_dot_h, BIAS);
 }
+
+
+fn tangentToWorld(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    var a: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+    if (abs(dot(n, a)) > 1.0f - BIAS) {
+        a = vec3<f32>(1.0, 0.0, 0.0);
+    }
+    let tangent: vec3<f32> = normalize(cross(n, a));
+    let bitangent: vec3<f32> = cross(n, tangent);
+    return v.x * tangent + v.y * n + v.z * bitangent;
+}
+
 
 struct ForwardPreCalc {
     reflected_view: vec3<f32>,
@@ -688,7 +687,6 @@ struct ForwardPreCalc {
     diffuse_component: vec3<f32>
 }
 
-
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
     // Minimum alpha for better looking smooth metals and caustics
@@ -696,10 +694,8 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material)
     let n_dot_v: f32 = abs(dot(n, - in_dir));
     let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
     let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
-    // Precaluclate reflected vector
-    let rv: vec3<f32> = reflect(- in_dir, n);
-    // let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, n_dot_v) * 4.0f;
     // Precaluclate diffuse component
+    // let oren_nayar: vec3<f32> = OrenNayar(out_dir, in_dir, n, material);
     let lambert: vec3<f32> = material.albedo * INV_PI;
     let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
 
@@ -708,28 +704,37 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material)
     let v_dot_h: f32 = abs(dot(in_dir, h));
     let n_dot_h: f32 = abs(dot(n, h));
 
-    let rh: vec3<f32> = normalize(out_dir + rv);
-    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
-
     let reflect_factor: vec3<f32> = fresnel(f0, v_dot_h);
     let diffuse_component: vec3<f32> = diffuse * lambert;
 
-    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_numerator: f32 = trowbridgeReitz(alpha, n_dot_h);
     let cook_torrance_denominator: f32 = max(4.0f * oneOverSchlickBeckmann(alpha, n_dot_v) * oneOverSchlickBeckmann(alpha, n_dot_l), BIAS);
-    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
+    let cook_torrance: f32 = cook_torrance_numerator / cook_torrance_denominator;
 
-    // Check for total internal reflection
-    let sign_dir: f32 = sign(dot(- in_dir, n));
-    let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-    let cos_theta_i: f32 = abs(dot(- in_dir, n));
-    let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
-    let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
-    
-    // Total internal reflection occurs when sin²θt > 1
-    let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
-    let transmission_factor: f32 = select(material.transmission, 0.0f, is_total_internal_reflection);
+    var radiance: vec3<f32> = diffuse_component + reflect_factor * cook_torrance;
 
-    let radiance: vec3<f32> = diffuse_component + reflect_factor * cook_torrance.x + transmission_factor * cook_torrance.y;
+    // Only calculate transmission contribution if material has transmission
+    if (material.transmission > BIAS) {
+        // Caluclate reflected vector for transmission
+        let rv: vec3<f32> = reflect(- in_dir, n);
+        let rh: vec3<f32> = normalize(out_dir + rv);
+        let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
+        // Calculate transmission factor
+        let refractive_cook_torrance: f32 = trowbridgeReitz(alpha, n_dot_rh) / cook_torrance_denominator;
+        // Check for total internal reflection
+        /*
+        let n_dot_in_dir: f32 = dot(- in_dir, n);
+        let sign_dir: f32 = sign(n_dot_in_dir);
+        let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign(n_dot_in_dir), 0.0f));
+        let cos_theta_i: f32 = abs(n_dot_in_dir);
+        let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
+        let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
+        
+        // Total internal reflection occurs when sin_theta_t > 1
+        let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
+        */
+        radiance += material.transmission * refractive_cook_torrance;//select(refractive_cook_torrance, 0.0f, is_total_internal_reflection);
+    }
     // Outgoing light to camera
     return radiance * n_dot_l;
 }
@@ -741,8 +746,10 @@ struct SampleBSDF {
     normal: vec3<f32>
 }
 // SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
-fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: u32, sign_dir: f32) -> SampleBSDF {
-    var sample: SampleBSDF = SampleBSDF(vec3<f32>(1.0f), vec3<f32>(1.0f), random_init, n);
+fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: u32, sign_dir: f32, screen_space: vec2<f32>) -> SampleBSDF {
+    // 
+
+    var random_state: u32 = random_init;
 
     let alpha: f32 = material.roughness * material.roughness; // Don't match BSDF alpha clamping
     let n_dot_v: f32 = abs(dot(n, - in_dir));
@@ -750,62 +757,96 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
 
     // Generate random values for sampling
-    let random1: Random = pcg(sample.random_state);
-    sample.random_state = random1.state;
-    let random2: Random = pcg(sample.random_state);
-    sample.random_state = random2.state;
-    let random3: Random = pcg(sample.random_state);
-    sample.random_state = random3.state;
+    let random1: Random = pcg(random_state);
+    random_state = random1.state;
+    let random2: Random = pcg(random_state);
+    random_state = random2.state;
+    let random3: Random = pcg(random_state);
+    random_state = random3.state;
 
     // Calculate component weights for importance sampling
-    let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
-    let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
-    let refract_component: f32 = material.transmission;
+    let F: vec3<f32> = fresnel(f0, n_dot_v);
+    let reflect_component: f32 = max(rgb_to_greyscale(F), BIAS);
+    let diffuse_component: f32 = max((1.0f - material.metallic) * (1.0f - material.transmission), BIAS);
+    let refract_component: f32 = max(material.transmission, BIAS);
 
     // Calculate sampling probabilities
     let total_component: f32 = reflect_component + diffuse_component + refract_component;
     let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
+    let diffuse_ratio: f32 = diffuse_component * total_component_inv;
     let reflect_ratio: f32 = reflect_component * total_component_inv;
     let refract_ratio: f32 = refract_component * total_component_inv;
 
-    // Generate diffuse direction for mixing
-    let random_sphere: RandomSphere = random_sphere(sample.random_state);
-    sample.random_state = random_sphere.state;
-    let diffuse_random_dir: vec3<f32> = normalize(n + random_sphere.value);
+    var sample: SampleBSDF = SampleBSDF(vec3<f32>(1.0f), vec3<f32>(1.0f), random_state, n);
 
-    if (random1.value < reflect_ratio) {
-        // Sample specular reflection using GGX importance sampling
+    // Diffuse case
+    if (random1.value < diffuse_ratio) {
+        let random4: Random = pcg(random_state);
+        random_state = random4.state;
+        let random5: Random = pcg(random_state);
+        sample.random_state = random5.state;
+
+        let r = sqrt(random4.value);
+        let theta = 2.0 * PI * random5.value;
+        let x = r * cos(theta);
+        let z = r * sin(theta);
+        let y = sqrt(max(0.0f, 1.0f - x * x - z * z));
+        let cosine_hemisphere: vec3<f32> = vec3<f32>(x, y, z);
+        sample.unit_direction = tangentToWorld(cosine_hemisphere, n);
+        sample.throughput = material.albedo * total_component;
+        return sample;
+    }
+
+    // Sample using GGX importance sampling for potential refractive or reflective case
+    var half_vector_ggx: vec3<f32> = n;
+
+    if (alpha > BIAS) {
         let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
-        let half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
-        sample.unit_direction = normalize(reflect(in_dir, half_vector));
-        // Throughput accounts for what's not captured by sampling
-        sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
-    } else if (random1.value < reflect_ratio + refract_ratio) {
-        // Sample transmission using GGX importance sampling
-        let half_vector_local: vec3<f32> = sampleGGX(alpha, random2.value, random3.value);
-        var half_vector: vec3<f32> = tangentToWorld(half_vector_local, n);
-        let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-        // Try refraction through the properly oriented half vector
-        let refracted: vec3<f32> = refract(in_dir, half_vector, eta);
-        // Check if total internal reflection occurred
-        if (length(refracted) < BIAS) {
-            // Total internal reflection - use half vector for reflection
-            sample.unit_direction = normalize(reflect(in_dir, half_vector));
-            // Throughput accounts for what's not captured by sampling
-            sample.throughput = mix(vec3<f32>(1.0f), material.albedo, material.metallic);
-        } else {
-            // Normal refraction through microfacet
-            sample.unit_direction = normalize(refracted);
-            // Flip normal for transmission (ray exits on opposite side)
-            sample.normal = - sample.normal;
-        }
-        sample.throughput = material.albedo;
-    } else {
-        // Sample diffuse using cosine-weighted hemisphere sampling
-        sample.unit_direction = diffuse_random_dir;
-        sample.throughput = material.albedo;
+        half_vector_ggx = tangentToWorld(half_vector_local.xzy, n);
     }
     
+
+    // Refractive case
+    if (random1.value < diffuse_ratio + refract_ratio) {
+        let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
+        // Try refraction through the properly oriented half vector
+        let refracted: vec3<f32> = refract(in_dir, half_vector_ggx, eta);
+        
+        // Check if total internal reflection occurred, if yes proceed to reflective case.
+        if (length(refracted) > BIAS) {
+            // Normalize refracted direction
+            sample.unit_direction = normalize(refracted);
+            let v: vec3<f32> = -in_dir;
+            let l: vec3<f32> = sample.unit_direction;
+            let n_dot_l: f32 = abs(dot(n, l));
+            let v_dot_h: f32 = abs(dot(v, half_vector_ggx));
+            let n_dot_h: f32 = abs(dot(n, half_vector_ggx));
+            let sample_throughput_factor_ggx: f32 = throughputGGX(v_dot_h, n_dot_v, n_dot_l, n_dot_h, alpha);
+            // Transmission does not get colored by albedo, this is handled by Beer's law in lightTrace
+            sample.throughput = vec3<f32>(sample_throughput_factor_ggx) * total_component;
+            // Flip normal for transmission (ray exits on opposite side)
+            sample.normal = - n;
+            return sample;
+        }
+    }
+
+    // Otherwise assume reflective case.
+    sample.unit_direction = normalize(reflect(in_dir, half_vector_ggx));
+    
+    let v: vec3<f32> = -in_dir;
+    let l: vec3<f32> = sample.unit_direction;
+    let n_dot_l: f32 = abs(dot(n, l));
+    let v_dot_h: f32 = abs(dot(v, half_vector_ggx));
+    let n_dot_h: f32 = abs(dot(n, half_vector_ggx));
+    let sample_throughput_factor_ggx: f32 = throughputGGX(v_dot_h, n_dot_v, n_dot_l, n_dot_h, alpha);
+
+    let F_reflect: vec3<f32> = fresnel(f0, v_dot_h);
+    // The weight for GGX importance sampling is F * G * (v.h) / (n.v * n.h)
+    // We also need to divide by the probability of choosing the reflection path.
+    let reflect_throughput: vec3<f32> = F_reflect * sample_throughput_factor_ggx;
+    
+    sample.throughput = reflect_throughput * total_component / max(reflect_component, BIAS);
+
     return sample;
 }
 
@@ -990,6 +1031,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
     var ray: Ray = Ray(origin, normalize(origin - camera));
     var random_state: u32 = init_random_state;
     var add_ambient: bool = false;
+    var is_inside: bool = false;
     var i: u32 = 0u;
     // Precalculate random sphere
     let light_offset_sphere: RandomSphere = random_sphere(random_state);
@@ -1043,6 +1085,18 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
         // Sample material
         var material: Material = instance_material[hit.instance_index];
+
+        // If the ray is inside a medium, apply Beer's law for absorption.
+        if (is_inside) {
+            // The amount of light transmitted is T = exp(-sigma_a * d).
+            // We can derive the absorption coefficient sigma_a from the albedo.
+            // albedo = exp(-sigma_a * 1) => sigma_a = -log(albedo).
+            // This assumes albedo is the color for a 1-unit thickness.
+            let absorption_coefficient: vec3<f32> = -log(max(material.albedo, vec3<f32>(BIAS)));
+            let transmittance: vec3<f32> = exp(-absorption_coefficient * hit.distance);
+            importancy_factor *= transmittance;
+        }
+
         let hit_instance_location: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
         // Read material textures
         let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
@@ -1113,8 +1167,14 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let sign_dir: f32 = sign(dot(ray.unit_direction, smooth_n));
         smooth_n *= - sign_dir;
 
-        let bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, smooth_n, material, random_state, sign_dir);
+        let bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, smooth_n, material, random_state, sign_dir, screen_space);
         random_state = bsdf_sampled.random_state;
+
+        // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
+        if (dot(bsdf_sampled.normal, smooth_n) < 0.0) {
+            is_inside = !is_inside;
+        }
+
         ray.unit_direction = bsdf_sampled.unit_direction;
         importancy_factor *= bsdf_sampled.throughput;
         smooth_n = bsdf_sampled.normal;
