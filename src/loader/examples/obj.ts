@@ -60,19 +60,19 @@ let scene: Scene = engine.scene;
 */
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-10, 10, 10];
+[camera.position.x, camera.position.y, camera.position.z] = [-10, 10, -10];
 [camera.direction.x, camera.direction.y] = [5 * Math.PI / 4, 0.4];
 
 
 let choose_lights = true;
 choose_lights = false;
+scene.ambientLight = new Vector(0, 0, 0);
 
 if (choose_lights) {
-	let light1 = new PointLight(new Vector(50, 100, 100), new Vector(1, 1, 1), 100000, 10);
-	let light2 = new PointLight(new Vector(-100, 100, -50), new Vector(1, 1, 1), 100000, 10);
-	let light3 = new PointLight(new Vector(-100, 100, 100), new Vector(1, 1, 1), 100000, 10);
+	let light1 = new PointLight(new Vector(50, 100, -100), new Vector(1, 1, 1), 10000, 10);
+	let light2 = new PointLight(new Vector(-100, 100, 50), new Vector(1, 1, 1), 10000, 10);
+	let light3 = new PointLight(new Vector(-100, 100, -100), new Vector(1, 1, 1), 10000, 10);
 
-	// scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 	scene.addPointLight(light1);
 	scene.addPointLight(light2);
 	scene.addPointLight(light3);
@@ -84,7 +84,7 @@ if (!choose_lights) {
 	scene.addPointLight(light1);
 	// engine.renderer.fpsLimit = 600;
 	let environmentMapURL = staticPath + "textures/house_2k.hdr";
-	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.25, 0.5));
+	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0625, 0.5));
 }
 // }
 /*
@@ -119,7 +119,7 @@ for (let i = 0; i < 5; i++) {
 	for (let j = 0; j < 5; j++) {
 		for (let k = 0; k < 5; k++) {
 			let dragon_instance = scene.instance(sphere);
-			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 22 );
+			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 2 );
 			
 			dragon_instance.material.roughness = j * 1 / 5;
 			dragon_instance.material.transmission = k / 5;
