@@ -70,11 +70,11 @@ camera.position = new Vector(8, 7, 11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightCenter = new PointLight(new Vector(0.5, 1.5, -0.5), new Vector(1, 1, 1), 750, 0.2);
-let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 300, 0.1);
+let pointLightCenter = new PointLight(new Vector(0.5, 1.5, -0.5), new Vector(1, 1, 1), 187.5, 0.2);
+let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 75, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
-scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+scene.ambientLight = new Vector(0.025, 0.025, 0.025);
 /*
 scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 // Make light dimmer (default = 200)
