@@ -37,11 +37,11 @@ const cornellGenerator = loadObj('cornell');
 const cornellInstances: Array<Instance> = [];
 for await (let prototype of cornellGenerator) {
     const instance = scene.instance(prototype);
-    // instance.material.metallic = 0;
-    // instance.material.roughness = 1;
-    if (instance.material.ior === 1.5) {
-        instance.material.ior = 1;
-    }
+    console.log(instance.material.metallic, instance.material.roughness, instance.material.ior);
+    instance.material.metallic = 0;
+    instance.material.roughness = 1;
+    instance.material.ior = 1;
+
     cornellInstances.push(instance);
 }
 
@@ -78,14 +78,14 @@ let emissive: Vector<3> = light.material.emissive;//new Vector(16.86, 8.76, 3.2)
 
 let emissiveLength = vector_length(emissive);
 let emissiveColor: Vector<3> = normalize(emissive);
-light.material.emissive = vector_scale(emissiveColor, emissiveLength * 8); // Emissive light
+light.material.emissive = vector_scale(emissiveColor, emissiveLength * 2); // Emissive light
 
-
+console.log(light.material.color.x, light.material.color.y, light.material.color.z);
 console.log(emissiveColor.x, emissiveColor.y, emissiveColor.z, emissiveLength);
 
 
 // Set camera position and direction for a good view of the scene
-camera.position = new Vector(0, 1, 4);
+camera.position = new Vector(0, 1, 5);
 camera.direction = new Vector(0, 0);
 
 // Add ambient light
