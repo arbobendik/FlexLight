@@ -766,9 +766,9 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
 
     // Calculate component weights for importance sampling
     let F: vec3<f32> = fresnel(f0, n_dot_v);
-    let reflect_component: f32 = max(rgb_to_greyscale(F), BIAS);
-    let diffuse_component: f32 = max((1.0f - material.metallic) * (1.0f - material.transmission), BIAS);
-    let refract_component: f32 = max(material.transmission, BIAS);
+    let reflect_component: f32 = max(rgb_to_greyscale(F), 0.0f);
+    let diffuse_component: f32 = max((1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
+    let refract_component: f32 = max(material.transmission, 0.0f);
 
     // Calculate sampling probabilities
     let total_component: f32 = reflect_component + diffuse_component + refract_component;
@@ -793,7 +793,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         let y = sqrt(max(0.0f, 1.0f - x * x - z * z));
         let cosine_hemisphere: vec3<f32> = vec3<f32>(x, y, z);
         sample.unit_direction = tangentToWorld(cosine_hemisphere, n);
-        sample.throughput = material.albedo * total_component;
+        sample.throughput = material.albedo * total_component / diffuse_component;
         return sample;
     }
 
@@ -823,7 +823,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
             let n_dot_h: f32 = abs(dot(n, half_vector_ggx));
             let sample_throughput_factor_ggx: f32 = throughputGGX(v_dot_h, n_dot_v, n_dot_l, n_dot_h, alpha);
             // Transmission does not get colored by albedo, this is handled by Beer's law in lightTrace
-            sample.throughput = vec3<f32>(sample_throughput_factor_ggx) * total_component;
+            sample.throughput = vec3<f32>(sample_throughput_factor_ggx) * total_component / refract_component;
             // Flip normal for transmission (ray exits on opposite side)
             sample.normal = - n;
             return sample;
@@ -845,7 +845,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     // We also need to divide by the probability of choosing the reflection path.
     let reflect_throughput: vec3<f32> = F_reflect * sample_throughput_factor_ggx;
     
-    sample.throughput = reflect_throughput * total_component / max(reflect_component, BIAS);
+    sample.throughput = reflect_throughput * total_component / reflect_component;
 
     return sample;
 }
@@ -1089,9 +1089,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // If the ray is inside a medium, apply Beer's law for absorption.
         if (is_inside) {
             // The amount of light transmitted is T = exp(-sigma_a * d).
-            // We can derive the absorption coefficient sigma_a from the albedo.
-            // albedo = exp(-sigma_a * 1) => sigma_a = -log(albedo).
-            // This assumes albedo is the color for a 1-unit thickness.
             let absorption_coefficient: vec3<f32> = -log(max(material.albedo, vec3<f32>(BIAS)));
             let transmittance: vec3<f32> = exp(-absorption_coefficient * hit.distance);
             importancy_factor *= transmittance;

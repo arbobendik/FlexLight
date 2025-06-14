@@ -43,7 +43,6 @@ const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" 
 	}
 }
 
-
 let camera: Camera = engine.camera;
 let scene: Scene = engine.scene;
 
