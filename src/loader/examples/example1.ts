@@ -1,6 +1,6 @@
 "use strict";
 
-import { Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
+import { Instance,Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
 import { createConfigUI } from '../../config-ui/config-ui.js';
 // import { vector_scale } from 'flexlight/common/lib/math';
 
@@ -59,22 +59,22 @@ const cubePrototype = await loadObj('cube');
 
 const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: number, zmax: number) => {
 	let cuboid = scene.instance(cubePrototype);
-	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.001);
+	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.0001);
 	cuboid.transform.position = new Vector(xmin + diff_half.x, ymin + diff_half.y, zmin + diff_half.z);
 	cuboid.transform.scale(diff_half);
 	return cuboid;
 }
 
 // Set camera perspective and position
-camera.position = new Vector(8, 7, -11);
+camera.position = new Vector(8, 7, 11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightCenter = new PointLight(new Vector(0.5, 1.5, 0.5), new Vector(1, 1, 1), 1000, 0.2);
-let pointLightTop = new PointLight(new Vector(0, 15, 2), new Vector(1, 1, 1), 300, 0.1);
+let pointLightCenter = new PointLight(new Vector(0.5, 1.5, -0.5), new Vector(1, 1, 1), 187.5, 0.2);
+let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 75, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
-scene.ambientLight = new Vector(0.1, 0.1, 0.1);
+scene.ambientLight = new Vector(0.025, 0.025, 0.025);
 /*
 scene.primaryLightSources = [[0.5, 1.5, 0.5], [0, 15, 2]];
 // Make light dimmer (default = 200)
@@ -127,10 +127,10 @@ cuboids[3]!.transform.scale(new Vector(0.5, 1.5, 0.5));
 
 // Generate a few translucent cuboids on surface
 let cuboids = [
-	cuboid(-1.5, 4.5, -1, 2, 1.5, 2.5),
-	cuboid(-1.5, 1.5, -1, 2, -2, -1),
-	cuboid(0.5, 1.5, -1, 2, -1, 0),
-	cuboid(-1.5, -0.5, -1, 2, - 1, 0)
+	cuboid(-1.5, 4.5, -1, 2, -2.5, -1.5),
+	cuboid(-1.5, 1.5, -1, 2, 1, 2),
+	cuboid(0.5, 1.5, -1, 2, 0, 1),
+	cuboid(-1.5, -0.5, -1, 2, 0, 1)
 ];
 
 
@@ -144,9 +144,9 @@ let cuboidColors = [
 // Color all cuboid in center
 cuboids.forEach((cuboid, i) => {
 	cuboid.material.roughness = 0;
-	cuboid.material.metallic = 0.5;
+	cuboid.material.metallic = 0;
 	cuboid.material.transmission = 1;
-	cuboid.material.ior = 1.3;
+	cuboid.material.ior = 1.5;
 	cuboid.material.color = new Vector(cuboidColors[i]![0]! / 255, cuboidColors[i]![1]! / 255, cuboidColors[i]![2]! / 255);
 	// Append to render-queue
 	// scene.queue.push(cuboid);
@@ -154,8 +154,8 @@ cuboids.forEach((cuboid, i) => {
 
 
 let grassCubes = [
-	cuboid(5.5, 6.5, 1.5, 2.5, 5.8, 6.8),
-	cuboid(-3, -2, -1, 0, -5.2, -4.2)
+	cuboid(5.5, 6.5, 1.5, 2.5, -6.8, -5.8),
+	cuboid(-3, -2, -1, 0, 4.2, 5.2)
 ];
 
 
@@ -169,16 +169,16 @@ grassCubes.forEach(cube => {
 */
 
 // Create diffuse white "wall" cuboid
-let wall = cuboid(2.5, 7.5, -1, 1.5, 5, 7);
+let wall = cuboid(2.5, 7.5, -1, 1.5, -7, -5);
 // Spawn red cube on top of "wall"
-let redCube = cuboid(4, 5, 1.5, 2.5, 5.2, 6.2);
+let redCube = cuboid(4, 5, 1.5, 2.5, -6.2, -5.2);
 // redCube.textureNums = [3, 0, -1];
 // scene.queue.push(redCube);
 // Spawn lantern on the floor
-let lantern = cuboid(-2.5, -1.5, -1, 0, -3.8, -2.8);
+let lantern = cuboid(-2.5, -1.5, -1, 0, 2.8, 3.8);
 // lantern.textureNums = [4, -1, -1];
 lantern.material.metallic = 1;
-lantern.material.emissive = new Vector(2, 2, 2);
+lantern.material.emissive = new Vector(4, 4, 4);
 
 
 engine.renderer.render();
@@ -224,6 +224,8 @@ setInterval(function(){
 	fpsCounter.textContent = engine.renderer.fps;
 }, 1000);
 */
+
+
 
 setTimeout(() => {
 	console.log(Texture.textureDataBufferManager.bufferView);
