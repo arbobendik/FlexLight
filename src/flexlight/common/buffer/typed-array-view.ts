@@ -1,6 +1,6 @@
 "use strict";
 
-import { Float16Array } from "./float-16-array";
+// import { Float16Array } from "./float-16-array";
 export type TypedArray = Uint8Array | Uint16Array | Float16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array;
 
 
