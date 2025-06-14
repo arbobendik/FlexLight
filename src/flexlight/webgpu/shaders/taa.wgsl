@@ -20,7 +20,7 @@ fn calculate_neighborhood_bounds(center_pos: vec2<i32>) -> mat2x3<f32> {
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
             let sample_pos = center_pos + vec2<i32>(x, y);
-            let weight = (1.0f - abs(f32(x)) * 0.5f) * (1.0f - abs(f32(y)) * 0.5f);
+            let weight = (1.0f - abs(f32(x)) * 0.35f) * (1.0f - abs(f32(y)) * 0.35f);
             let sample = textureLoad(input_texture, sample_pos, u32(uniforms.frame_index), 0).xyz;
             
             mean_color += sample * weight;
@@ -38,8 +38,8 @@ fn calculate_neighborhood_bounds(center_pos: vec2<i32>) -> mat2x3<f32> {
     let variance = max(mean_sq_color - mean_color * mean_color, vec3<f32>(0.0));
     let std_dev = sqrt(variance);
     
-    // Expand the color bounds based on local variance
-    let gamma = 1.25f;
+    // Expand the color bounds based on local variance with a more lenient gamma
+    let gamma = 1.75f;  // Increased from 1.25 to be more accepting
     min_color = max(min_color, mean_color - std_dev * gamma);
     max_color = min(max_color, mean_color + std_dev * gamma);
     
@@ -79,12 +79,33 @@ fn compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
         
         // Calculate confidence weight based on how much clamping was needed
         let clamp_amount = length(history_color - clamped_color);
-        let confidence = 1.0f - smoothstep(0.0f, 0.1f, clamp_amount);
+        let confidence = 1.0f - smoothstep(0.0f, 0.2f, clamp_amount);  // Increased range from 0.1 to 0.2
         
         final_color += clamped_color * confidence;
         weight_sum += confidence;
     }
 
     final_color /= weight_sum;
+
+    // Apply a small additional blur to the final result
+    var blurred_color = vec3<f32>(0.0f);
+    var blur_weight = 0.0f;
+    
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let sample_pos = vec2<i32>(screen_pos) + vec2<i32>(x, y);
+            if (sample_pos.x >= 0 && sample_pos.x < i32(texture_size.x) &&
+                sample_pos.y >= 0 && sample_pos.y < i32(texture_size.y)) {
+                let weight = (1.0f - abs(f32(x)) * 0.4f) * (1.0f - abs(f32(y)) * 0.4f);
+                let sample = textureLoad(input_texture, sample_pos, u32(uniforms.frame_index), 0).xyz;
+                blurred_color += sample * weight;
+                blur_weight += weight;
+            }
+        }
+    }
+    
+    // Mix the final color with the blurred result
+    final_color = mix(final_color, blurred_color / blur_weight, 0.3f);
+    
     textureStore(output_texture, screen_pos, vec4<f32>(final_color, 1.0f));
 }
