@@ -10,7 +10,7 @@ const translationMap: Map<string, Vector<3>> = new Map([
 	["left", new Vector(-1, 0, 0)],
 	["down", new Vector(0, -1, 0)],
 	["up", new Vector(0, 1, 0)],
-	["backward", new Vector(0, 0, -1)],
+	["backward", new Vector(0, 0, - 1)],
 	["forward", new Vector(0, 0, 1)]
 ]);
 
@@ -71,7 +71,7 @@ export class WebIO {
 		const direction: Vector<2> = this.camera.direction;
 		position.x += difference * (this.movement.x * Math.cos(direction.x) - this.movement.z * Math.sin(direction.x));
 		position.y += difference * this.movement.y;
-		position.z += difference * (this.movement.z * Math.cos(direction.x) + this.movement.x * Math.sin(direction.x));
+		position.z -= difference * (this.movement.z * Math.cos(direction.x) + this.movement.x * Math.sin(direction.x));
 		// console.log(this.movement.x, this.movement.y, this.movement.z);
 	}
 
