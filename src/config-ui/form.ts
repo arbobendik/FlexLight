@@ -25,7 +25,7 @@ export class ConfigForm<O extends Object> {
     addCheckbox<K extends keyof O>(name: string, key: KeyAssignable<O, K, boolean>, val: ValidInputType<"checkbox", O, K> | undefined = undefined) {
         const checkbox = new ConfigElement<"checkbox", O, K>(this._config, key, name, "checkbox", this._hook);
         // Set value if provided
-        if (val) checkbox.value = val;
+        if (val !== undefined) checkbox.value = val;
         this._form.appendChild(checkbox);
     }
 
@@ -35,14 +35,14 @@ export class ConfigForm<O extends Object> {
         slider.max = max.toString();
         slider.step = step.toString();
         // Set value if provided
-        if (val) slider.value = val;
+        if (val !== undefined) slider.value = val;
         this._form.appendChild(slider);
     }
 
     addSelect<K extends keyof O,>(name: string, key: KeyAssignable<O, K, string>, options: Array<string>, val: ValidInputType<"select", O, K> | undefined = undefined) {
         const select = new ConfigElement<"select", O, K>(this._config, key, name, "select", this._hook, options);
         // Set value if provided
-        if (val) select.value = val;
+        if (val !== undefined) select.value = val;
         this._form.appendChild(select);
     }
 }

@@ -13,14 +13,14 @@ export class Texture {
     // Save texture type properties
     private static instances: Set<Texture> = new Set();
     // Width, height, channels, dataOffset
-    private static _textureInstanceBufferManager: BufferManager<Uint32Array> = new BufferManager(Uint32Array);
+    private static _textureInstanceBufferManager: BufferManager<Uint32Array<ArrayBuffer>> = new BufferManager(Uint32Array);
     static get textureInstanceBufferManager () { return Texture._textureInstanceBufferManager; }
     // Texture data buffer
-    private static _textureDataBufferManager: BufferManager<Uint8Array> = new BufferManager(Uint8Array);
+    private static _textureDataBufferManager: BufferManager<Uint8Array<ArrayBuffer>> = new BufferManager(Uint8Array);
     static get textureDataBufferManager () { return Texture._textureDataBufferManager; }
 
-    private textureDataBuffer: TypedArrayView<Uint8Array> | undefined;
-    private _textureInstanceBuffer: TypedArrayView<Uint32Array> | undefined;
+    private textureDataBuffer: TypedArrayView<Uint8Array<ArrayBuffer>> | undefined;
+    private _textureInstanceBuffer: TypedArrayView<Uint32Array<ArrayBuffer>> | undefined;
     get textureInstanceBuffer () { return this._textureInstanceBuffer; }
 
     private static _textureInstanceBufferCounter: number = 0;
@@ -95,7 +95,7 @@ export class NormalTexture extends Texture {
 
 export class AlbedoTexture extends Texture {
     constructor(texture: HTMLImageElement, width: number | undefined = undefined, height: number | undefined = undefined) {
-        super(texture, 3, width, height);
+        super(texture, 4, width, height);
     }
 }
 

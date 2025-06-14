@@ -61,7 +61,7 @@ export class InstanceMaterial implements Material {
     }
 
     get color(): Vector<3> {
-        return new Vector<3>(this.materialArray[0] ?? 255, this.materialArray[1] ?? 255, this.materialArray[2] ?? 255);
+        return new Vector<3>(this.materialArray[0] ?? 1, this.materialArray[1] ?? 1, this.materialArray[2] ?? 1);
     }
 
     set emissive(emissive: Vector<3>) {

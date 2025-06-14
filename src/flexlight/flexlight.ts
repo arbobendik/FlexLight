@@ -44,6 +44,7 @@ export class FlexLight {
   get scene (): Scene { return this._scene; }
   get renderer (): Renderer { return this._renderer; }
   get rendererType (): RendererType { return this._renderer.type; }
+  get ui (): UI { return this._ui; }
   get io (): WebIO { return this._io; }
 
 
