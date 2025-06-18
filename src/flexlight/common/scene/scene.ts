@@ -134,6 +134,9 @@ export class Scene {
             const instance = emissiveInstanceList[i]!;
             const instanceID = emissiveInstanceIDList[i]!;
             const triangleCount = instance.prototype.triangles.length / TRIANGLE_SIZE;
+
+            // const scaleFa
+            // const surfaceArea = instance.prototype.surfaceArea * instance.prototype.triangles.length / 3;
             lightArray.push(
                 // instance ID, triangle count, 0, is_area_light_indicator
                 // Maybe include area heuristic here later as well.
