@@ -179,12 +179,12 @@ export class PathTracerWGPU extends RendererWGPU {
 
     if (this.engineState.temporal) {
       // Init canvas render texture
-      temporalIn = device.createTexture({ size: [width, height, this.engineState.temporal ? 2 : 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      temporalIn = device.createTexture({ size: [width, height, this.engineState.temporal ? 3 : 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init temporal screen space correction render target
-      shiftTargetFloat = device.createTexture({ size: [width, height, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      shiftTargetFloat = device.createTexture({ size: [width, height, 2], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       shiftTargetUint = device.createTexture({ size: [width, height, 4], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init temporal screen space correction render target
-      accumulatedTargetFloat = device.createTexture({ size: [width, height, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
+      accumulatedTargetFloat = device.createTexture({ size: [width, height, 2], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       accumulatedTargetUint = device.createTexture({ size: [width, height, 4], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
       // Init shift lock buffer
       shiftLock = device.createBuffer({ size: width * height * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
@@ -514,7 +514,7 @@ export class PathTracerWGPU extends RendererWGPU {
     let canvasTarget = context.getCurrentTexture();
     // Assemble lists to fill bind groups
     let computeTargetView =
-      this.engineState.temporal ? this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) :
+      this.engineState.temporal ? this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 3 }) :
       !this.antialiasingModule ? this.canvasSizeDependentResources!.canvasIn!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) :
       this.antialiasingModule.textureInView2dArray;
 
@@ -549,7 +549,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: { buffer: this.canvasSizeDependentResources!.offsetBuffer } },
         { binding: 2, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
         { binding: 3, resource: this.canvasSizeDependentResources!.uvTexture.createView() },
-        { binding: 4, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
+        { binding: 4, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: this.engineState.temporal ? 2 : 1 }) },
         { binding: 5, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: this.engineState.temporal ? 4 : 1 }) },
       ]
     });
@@ -568,9 +568,9 @@ export class PathTracerWGPU extends RendererWGPU {
       shiftGroup = device.createBindGroup({ 
         label: "bind group for motion correction pass", layout: bindGroupLayouts.shiftGroupLayout!, 
         entries: [
-          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
+          { binding: 0, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
           { binding: 1, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
-          { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
+          { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
           { binding: 3, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
           // { binding: 4, resource: { buffer: this.canvasSizeDependentResources!.depthBuffer } },
           { binding: 4, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
@@ -582,10 +582,10 @@ export class PathTracerWGPU extends RendererWGPU {
       selectiveAverageGroup = device.createBindGroup({ 
         label: "bind group accumulation pass", layout: bindGroupLayouts.selectiveAverageGroupLayout!, 
         entries: [
-          { binding: 0, resource: this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
-          { binding: 1, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
+          { binding: 0, resource: this.canvasSizeDependentResources!.temporalIn!.createView({ dimension: "2d-array", arrayLayerCount: 3 }) },
+          { binding: 1, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
           { binding: 2, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
-          { binding: 3, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 1 }) },
+          { binding: 3, resource: this.canvasSizeDependentResources!.accumulatedTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: 2 }) },
           { binding: 4, resource: this.canvasSizeDependentResources!.accumulatedTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: 4 }) },
           { binding: 5, resource: temporalTargetView }
         ] 
