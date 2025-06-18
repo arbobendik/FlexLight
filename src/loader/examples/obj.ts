@@ -65,7 +65,7 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-choose_lights = false;
+// choose_lights = false;
 scene.ambientLight = new Vector(0, 0, 0);
 
 if (choose_lights) {
@@ -84,7 +84,7 @@ if (!choose_lights) {
 	scene.addPointLight(light1);
 	// engine.renderer.fpsLimit = 600;
 	let environmentMapURL = staticPath + "textures/house_2k.hdr";
-	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0625, 0.5));
+	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 20, 0.9));
 }
 // }
 /*
