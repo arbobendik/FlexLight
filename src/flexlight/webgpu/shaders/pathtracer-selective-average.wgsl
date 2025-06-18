@@ -109,6 +109,7 @@ fn compute(
     // Get current color and position.
     let color_cur: vec4<f32> = textureLoad(compute_out, screen_pos, 0, 0);
     let geometry_context: vec4<f32> = textureLoad(compute_out, screen_pos, 1, 0);
+    var compute_reservoir_0: vec4<f32> = textureLoad(compute_out, screen_pos, 2, 0);
     // Current instance index is stored in the last channel of position
     var abs_position_cur: vec3<f32> = geometry_context.xyz;  
 
@@ -147,23 +148,10 @@ fn compute(
     var sum: f32 = 0.0f;
 
     if (is_pos) {
-        for(var i: i32 = 0; i < 4; i++) {
-                /*
-            let neigh_coord: vec2<u32> = vec2<u32>(local_invocation_id.x, local_invocation_id.y) + neighs[i];
-            let neigh_index: u32 = neigh_coord.y * 9u + neigh_coord.x;
-
-            var shift_out_float_0: vec4<f32> = preload_data_float0[neigh_index];//textureLoad(shift_out_float, neigh_coord, 0, 0);
-            var shift_out_float_1: vec4<f32> = preload_data_float1[neigh_index];//textureLoad(shift_out_float, neigh_coord, 1, 0);
-
-            var shift_out_uint_0: vec4<u32> = preload_data_uint0[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 0, 0);
-            var shift_out_uint_1: vec4<u32> = preload_data_uint1[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 1, 0);
-            var shift_out_uint_2: vec4<u32> = preload_data_uint2[neigh_index];//textureLoad(shift_out_uint, neigh_coord, 2, 0);
-            */
-            
+        for (var i: i32 = 0; i < 5; i++) {
             let neigh_coord: vec2<i32> = vec2<i32>(global_invocation_id.xy) + neighs[i];
             
             let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 0, 0);
-            // let shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, neigh_coord, 1, 0);
 
             let shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 0, 0);
             let shift_out_uint_1: vec4<u32> = textureLoad(shift_out_uint, neigh_coord, 1, 0);
@@ -206,7 +194,7 @@ fn compute(
                 old_coarse_count += f32(old_coarse_count_i);
                 sum += 1.0f;
                 // If center is a valid pixel only use center values
-                if(i == 0) {
+                if (i == 0) {
                     break;
                 }
             }
@@ -231,6 +219,7 @@ fn compute(
     var coarse_color: vec4<f32> = color_cur;
     var coarse_color_low: vec4<f32> = croped_cur_color;
     var coarse_count: f32 = 1.0f;
+
 
     if (sum != 0.0f) {
         // Add color to total and increase counter by one
@@ -262,6 +251,8 @@ fn compute(
     
     // Write to accumulate buffer
     textureStore(accumulated_float, screen_pos, 0, vec4<f32>(rel_position_cur, 1.0f));
+    textureStore(accumulated_float, screen_pos, 1, compute_reservoir_0);
+
 
     textureStore(accumulated_uint, screen_pos, 0, vec4<u32>(
         pack2x16float(fine_color.xy), pack2x16float(fine_color.zw),
