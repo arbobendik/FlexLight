@@ -14,7 +14,7 @@ export interface EnvironmentMap {
 }
 
 export class EnvironmentMap implements EnvironmentMap {
-    constructor(dataView: DataView, exposure: number = 1.0, gamma: number = 1.0 / 2.2) {
+    constructor(dataView: DataView, exposure: number = 1, gamma: number = 1, whitePoint: number = 16) {
 
         // console.log(DataView.prototype.buffer);
         
@@ -24,13 +24,13 @@ export class EnvironmentMap implements EnvironmentMap {
         this.imageArray = new Float16Array(hdriData.data.length);
 
         for (let i = 0, j = 0; i < hdriData.data.length; i += 3, j += 3) {
-            this.imageArray[j] = Math.pow(hdriData.data[i]! * this.exposure, this.gamma) / 255;
-            this.imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * this.exposure, this.gamma) / 255;
-            this.imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * this.exposure, this.gamma) / 255;
+            this.imageArray[j] = Math.pow(hdriData.data[i]! * this.exposure, 1 / this.gamma);
+            this.imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * this.exposure, 1 / this.gamma);
+            this.imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * this.exposure, 1 / this.gamma);
         }
 
         // Clamp to max float16
-        for (let i = 0; i < this.imageArray.length; i ++) this.imageArray[i] = Math.min(this.imageArray[i]!, 65519);
+        for (let i = 0; i < this.imageArray.length; i ++) this.imageArray[i] = Math.min(Math.min(this.imageArray[i]!, whitePoint), 65519);
 
         // this.imageData = new ImageData(imageArray, hdriData.width, hdriData.height);
         this.imageSize = new Vector(hdriData.width, hdriData.height);
