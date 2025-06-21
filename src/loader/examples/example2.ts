@@ -53,8 +53,8 @@ let scene: Scene = engine.scene;
 // scene.addPointLight(light1);
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
-let environmentMapURL = staticPath + "textures/house_2k.hdr";
-fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 20, 0.9));
+let environmentMapURL = staticPath + "textures/house_8k.hdr";
+fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0625, 1, 1));
 
 const loadObj = async (model: string) => {	
 	console.log('loading ' + model);
