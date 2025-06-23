@@ -122,10 +122,10 @@ sphere_diffuse.material.roughness = 0.5;
 sphere_diffuse.material.metallic = 1.0;
 
 sphere_rough_metal.material.roughness = 0.7;
-sphere_rough_metal.material.metallic = 0.5;
+sphere_rough_metal.material.metallic = 0.0;
 
-sphere_rough_diffuse.material.metallic = 0.0;
 sphere_rough_diffuse.material.roughness = 1.0;
+sphere_rough_diffuse.material.metallic = 0.0;
 sphere_rough_diffuse.material.emissive = new Vector(10, 2, 2);
 
 sphere_rusted.albedo = await loadTexture(staticPath + "textures/rusted/albedo.png", "albedo");

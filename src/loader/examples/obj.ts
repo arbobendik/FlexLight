@@ -65,18 +65,29 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-// choose_lights = false;
+choose_lights = false;
 scene.ambientLight = new Vector(0, 0, 0);
 
 if (choose_lights) {
-	let light1 = new PointLight(new Vector(50, 100, -100), new Vector(1, 1, 1), 10000, 10);
-	let light2 = new PointLight(new Vector(-100, 100, 50), new Vector(1, 1, 1), 10000, 10);
+	let light1 = new PointLight(new Vector(114, 100, -100), new Vector(1, 1, 1), 10000, 10);
+	let light2 = new PointLight(new Vector(-100, 100, 114), new Vector(1, 1, 1), 10000, 10);
 	let light3 = new PointLight(new Vector(-100, 100, -100), new Vector(1, 1, 1), 10000, 10);
+	let light4 = new PointLight(new Vector(114, 100, 114), new Vector(1, 1, 1), 10000, 10);
+
+	let light5 = new PointLight(new Vector(114, -97.5, -100), new Vector(1, 1, 1), 10000, 10);
+	let light6 = new PointLight(new Vector(-100, -97.5, 114), new Vector(1, 1, 1), 10000, 10);
+	let light7 = new PointLight(new Vector(-100, -97.5, -100), new Vector(1, 1, 1), 10000, 10);
+	let light8 = new PointLight(new Vector(114, -97.5, 114), new Vector(1, 1, 1), 10000, 10);
 
 	scene.addPointLight(light1);
 	scene.addPointLight(light2);
 	scene.addPointLight(light3);
+	scene.addPointLight(light4);
 
+	scene.addPointLight(light5);
+	scene.addPointLight(light6);
+	scene.addPointLight(light7);
+	scene.addPointLight(light8);
 }
 
 if (!choose_lights) {
@@ -84,7 +95,7 @@ if (!choose_lights) {
 	scene.addPointLight(light1);
 	// engine.renderer.fpsLimit = 600;
 	let environmentMapURL = staticPath + "textures/house_2k.hdr";
-	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 20, 0.9));
+	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0625, 1, 1));
 }
 // }
 /*
