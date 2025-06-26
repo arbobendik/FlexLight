@@ -1111,7 +1111,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Limit angles to 45 degrees
         let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(PI * 0.25f));
         // Keep geometry offset within reasonable range
-        let geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.5f);
+        let geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.125f);
         // Interpolate final barycentric texture coordinates between UV's of the respective vertices
         let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
         // Sample material
@@ -1120,8 +1120,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // If the ray is inside a medium, apply Beer's law for absorption.
         if (is_inside) {
             // The amount of light transmitted is T = exp(-sigma_a * d).
-            let absorption_coefficient: vec3<f32> = -log(max(material.albedo, vec3<f32>(BIAS)));
-            let transmittance: vec3<f32> = exp(-absorption_coefficient * hit.distance);
+            let absorption_coefficient: vec3<f32> = - log(max(material.albedo, vec3<f32>(BIAS)));
+            let transmittance: vec3<f32> = exp(- absorption_coefficient * hit.distance);
             importancy_factor *= transmittance;
         }
 
