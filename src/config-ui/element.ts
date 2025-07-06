@@ -107,7 +107,7 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
         // Clear label
         this.label.replaceChildren();
         // Write name to label
-        this.label.textContent = this.name;
+        this.label.textContent = this.name + ": ";
         this.label.htmlFor = this.name;
         // Test if type is valid
         switch (this.type) {

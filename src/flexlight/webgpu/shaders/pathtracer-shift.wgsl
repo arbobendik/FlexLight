@@ -16,7 +16,7 @@ struct UniformFloat {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    min_importancy: f32,
+    max_temporal_reproject: f32,
 };
 
 struct UniformUint {
