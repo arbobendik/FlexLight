@@ -1,9 +1,10 @@
 "use strict";
 
 import { BVH, BVHArrays, BVHLeaf, BVHNode, Bounding } from "./bvh";
-import { BIAS, POW32M1, Vector, matrix_vector_mul, vector_add, vector_difference } from "../lib/math";
+import { BIAS, POW32M1, POW32M2, Vector, matrix_vector_mul, vector_add, vector_difference } from "../lib/math";
 import { Instance } from "./instance";
 import { Transform } from "./transform";
+import { PointLight } from "./point-light";
 
 const USE_BFS = false;
 
@@ -21,7 +22,29 @@ export class IndexedInstance {
 
         // Calculate area of instance
         let boundingDiff = vector_difference(bounding.max, bounding.min);
-        this.area = boundingDiff.x * boundingDiff.y + boundingDiff.y * boundingDiff.z + boundingDiff.z * boundingDiff.x * 2;
+        this.area = (boundingDiff.x * boundingDiff.y + boundingDiff.y * boundingDiff.z + boundingDiff.z * boundingDiff.x) * 2;
+    }
+
+    *[Symbol.iterator]() {
+        yield this.bounding.min;
+        yield this.bounding.max;
+    }
+}
+
+export class IndexedPointLight {
+    pointLight: PointLight;
+    bounding: Bounding;
+    id: number;
+
+    area: number;
+
+    constructor(pointLight: PointLight, bounding: Bounding, id: number) {
+        this.pointLight = pointLight;
+        this.bounding = bounding;
+        this.id = id;
+
+        // Calculate area of point light sphere, is allowed to be zero
+        this.area = 4 * Math.PI * pointLight.variance * pointLight.variance;
     }
 
     *[Symbol.iterator]() {
@@ -31,12 +54,14 @@ export class IndexedInstance {
 }
 
 // Indexed Instance BVH class for constructing dynamic BVHs for instances
-export class IndexedInstanceBVH extends BVH<IndexedInstance> {
+export class SceneBVH extends BVH<IndexedInstance | IndexedPointLight> {
     _instanceIDMap: Map<number, IndexedInstance> = new Map();
 
-    constructor(instances: Array<IndexedInstance>) {
-        super(instances, USE_BFS);
-        for (let instance of instances) this._instanceIDMap.set(instance.id, instance); 
+    constructor(objects: Array<IndexedInstance | IndexedPointLight>) {
+        super(objects, USE_BFS);
+        for (let object of objects) {
+            if (object instanceof IndexedInstance) this._instanceIDMap.set(object.id, object); 
+        }
     }
 
     getInstanceById(id: number): IndexedInstance | null {
@@ -47,18 +72,35 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         const boundingVertices: Array<number> = [];
         const bvh: Array<number> = [];
 
-        const nodeHook = (node: BVHNode<IndexedInstance>) => {
-            // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
-            boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
-                                ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
-            bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
+        const leafHook = (leaf: BVHLeaf<IndexedInstance | IndexedPointLight>) => {
+            const firstIsPointLight: boolean = leaf.children[0] instanceof IndexedPointLight;
+            const secondIsPointLight: boolean = leaf.children[1] instanceof IndexedPointLight;
+
+            if (firstIsPointLight) {
+                let indexedPointLight: IndexedPointLight = leaf.children[0]! as IndexedPointLight;
+                boundingVertices.push(... (indexedPointLight.pointLight.position),  indexedPointLight.pointLight.variance, 0, indexedPointLight.id);
+            } else {
+                boundingVertices.push(...(leaf.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.bounding.max ?? new Vector(0, 0, 0)));
+            }
+
+            if (secondIsPointLight) {
+                let indexedPointLight: IndexedPointLight = leaf.children[1]! as IndexedPointLight;
+                boundingVertices.push(... (indexedPointLight.pointLight.position),  indexedPointLight.pointLight.variance, 0, indexedPointLight.id);
+            } else {
+                boundingVertices.push(...(leaf.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+            }
+
+            bvh.push(0,
+                firstIsPointLight ? POW32M2 : (leaf.children[0]?.id ?? POW32M1), 
+                secondIsPointLight ? POW32M2 : (leaf.children[1]?.id ?? POW32M1)
+            );
         }
 
-        const leafHook = (leaf: BVHLeaf<IndexedInstance>) => {
-            // boundingVertices.push(leaf.bounding.min.x, leaf.bounding.min.y, leaf.bounding.min.z, leaf.bounding.max.x, leaf.bounding.max.y, leaf.bounding.max.z);
-            boundingVertices.push(  ...(leaf.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
-                                    ...(leaf.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(leaf.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
-            bvh.push(0, leaf.children[0]?.id ?? POW32M1, leaf.children[1]?.id ?? POW32M1);
+        const nodeHook = (node: BVHNode<IndexedInstance | IndexedPointLight>) => {
+            // boundingVertices.push(node.bounding.min.x, node.bounding.min.y, node.bounding.min.z, node.bounding.max.x, node.bounding.max.y, node.bounding.max.z);
+            boundingVertices.push(  ...(node.children[0]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[0]?.bounding.max ?? new Vector(0, 0, 0)),
+                                    ...(node.children[1]?.bounding.min ?? new Vector(0, 0, 0)), ...(node.children[1]?.bounding.max ?? new Vector(0, 0, 0)));
+            bvh.push(1, node.children[0]?.id ?? POW32M1, node.children[1]?.id ?? POW32M1);
         }
         
         // Traverse tree using dfs or bfs starting from root
@@ -68,13 +110,13 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         return { boundingVertices, bvh };
     }
 
-    protected isObjectInBounding(instance: IndexedInstance, bound: Bounding): boolean {
-        return BVH.isVertexInBounding(instance.bounding.min, bound) && BVH.isVertexInBounding(instance.bounding.max, bound);
+    protected isObjectInBounding(object: IndexedInstance | IndexedPointLight, bound: Bounding): boolean {
+        return BVH.isVertexInBounding(object.bounding.min, bound) && BVH.isVertexInBounding(object.bounding.max, bound);
     }
 
-    protected tightenBounding(instances: Array<IndexedInstance>): Bounding {
+    protected tightenBounding(objects: Array<IndexedInstance | IndexedPointLight>): Bounding {
         let vertices: Array<Vector<3>> = [];
-        for (let instance of instances) vertices.push(instance.bounding.min, instance.bounding.max);
+        for (let object of objects) vertices.push(object.bounding.min, object.bounding.max);
         // Construct bounding
         let bounding: Bounding = { min: new Vector(Infinity, Infinity, Infinity), max: new Vector(-Infinity, -Infinity, -Infinity) };
         // Iterate over vertices, tightening bounding
@@ -89,9 +131,9 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
         return bounding;
     }
 
-    static fromInstances(instances: Array<Instance> | Set<Instance>): IndexedInstanceBVH {
-        let indexedInstances: Array<IndexedInstance> = [];
-        let id: number = 0;
+    static fromObjects(instances: Array<Instance> | Set<Instance>, pointLights: Array<PointLight> | Set<PointLight>): SceneBVH {
+        let objects: Array<IndexedInstance | IndexedPointLight> = [];
+        let instanceID: number = 0;
         // Iterate over instances, assigning ids and calculate boundings
         for (let instance of instances) {
             const untransformedBounding: Bounding = instance.prototype.bounding;
@@ -121,9 +163,18 @@ export class IndexedInstanceBVH extends BVH<IndexedInstance> {
                 transformedBounding.max.z = Math.max(transformedBounding.max.z, transformedCorner.z) + BIAS;
             }
             // Push indexed instance
-            indexedInstances.push(new IndexedInstance(instance, transformedBounding, id ++));
+            objects.push(new IndexedInstance(instance, transformedBounding, instanceID ++));
+        }
+
+        let pointLightID: number = 0;
+        // Iterate over point lights, assigning ids and calculate boundings
+        for (let pointLight of pointLights) {
+            // Calculate bounding by substracting / adding variance to center
+            const bounding: Bounding = { min: new Vector(pointLight.position.x - pointLight.variance, pointLight.position.y - pointLight.variance, pointLight.position.z - pointLight.variance),
+                                          max: new Vector(pointLight.position.x + pointLight.variance, pointLight.position.y + pointLight.variance, pointLight.position.z + pointLight.variance) };
+            objects.push(new IndexedPointLight(pointLight, bounding, pointLightID ++));
         }
         // Return indexed instance BVH
-        return new IndexedInstanceBVH(indexedInstances);
+        return new SceneBVH(objects);
     }
 }

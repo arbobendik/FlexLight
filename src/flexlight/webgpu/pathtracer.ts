@@ -103,7 +103,7 @@ interface PathTracerGPUBufferManagers {
 
 interface EngineState {
   temporal: boolean;
-  renderQuality: number;
+  renderResolution: number;
   antialiasing: WebGPUAntialiasingType;
 }
 
@@ -120,7 +120,7 @@ export class PathTracerWGPU extends RendererWGPU {
   private antialiasingModule: AntialiasingModule | undefined;
   private engineState: EngineState = {
     temporal: false,
-    renderQuality: 0, antialiasing: undefined
+    renderResolution: 0, antialiasing: undefined
   };
 
   // Create new PathTracer from canvas and setup movement
@@ -152,8 +152,8 @@ export class PathTracerWGPU extends RendererWGPU {
 
   
   private resize (device: GPUDevice): void {
-    let width = Math.round(this.canvas.clientWidth * this.config.renderQuality);
-    let height = Math.round(this.canvas.clientHeight * this.config.renderQuality);
+    let width = Math.round(this.canvas.clientWidth * this.config.renderResolution);
+    let height = Math.round(this.canvas.clientHeight * this.config.renderResolution);
 
     this.canvas.width = width;
     this.canvas.height = height;
@@ -401,8 +401,8 @@ export class PathTracerWGPU extends RendererWGPU {
     const renderPassColorAttachment: GPURenderPassColorAttachment = { view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 0], loadOp: "clear", storeOp: "store" };
     const renderPassDescriptor = { colorAttachments: [renderPassColorAttachment] };
     // Create uniform buffer for shader uniforms, calculate uniform buffer size
-    const uniformFloatBuffer: GPUBuffer = device.createBuffer({ size: 128 + 4 * 4 * 3, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const uniformUintBuffer: GPUBuffer = device.createBuffer({ size: 128 + 4 * 4 * 3, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const uniformFloatBuffer: GPUBuffer = device.createBuffer({ size: 10 * 4 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const uniformUintBuffer: GPUBuffer = device.createBuffer({ size: 4 * 4 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Link GPUBufferManagers to BufferManagers
     const gpuManagers: PathTracerGPUBufferManagers = {
       // Prototype GPU Managers
@@ -441,9 +441,9 @@ export class PathTracerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.renderQuality !== this.config.renderQuality) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.renderResolution !== this.config.renderResolution) {
       this.engineState.temporal = this.config.temporal;
-      this.engineState.renderQuality = this.config.renderQuality;
+      this.engineState.renderResolution = this.config.renderResolution;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
       Prototype.BVHManager.releaseGPUBuffer();
@@ -693,9 +693,9 @@ export class PathTracerWGPU extends RendererWGPU {
       // Camera
       this.camera.position.x, this.camera.position.y, this.camera.position.z, 0,
       // Ambient light
-      this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z, 0,
-      // min importancy of light ray
-      this.config.minImportancy
+      this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z,
+      // max temporal reproject
+      this.config.maxReprojections
     ]));
 
     //let firstEnvMapSide: HTMLImageElement | undefined = this.scene.environmentMap.cubeSideImages[0];
@@ -708,18 +708,20 @@ export class PathTracerWGPU extends RendererWGPU {
       temporalCount,
       // Temporal max
       TEMPORAL_MAX,
+
       // render for temporal or not
       (this.engineState.temporal ? 1 : 0),
       // amount of samples per ray
-      this.config.samplesPerRay,
+      this.config.samplesPerPixel,
       // max reflections of ray
-      this.config.maxReflections,
+      this.config.maxBounces,
       // Tonemapping operator
-      (this.config.hdr ? 1 : 0),
+      (this.config.tonemapping ? 1 : 0),
+
       // Environment map size
       envMapSize.x, envMapSize.y,
       // Point light count
-      this.scene.lightCount,
+      this.scene.lightCount, 0
       // Environment map mip level count
       // gpuBufferManagers.environmentMapGPUManager.mipLevelCount
     ]));
