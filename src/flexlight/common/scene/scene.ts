@@ -1,7 +1,7 @@
 "use strict";
 
 import { BVHArrays } from "./bvh.js";
-import { IndexedInstanceBVH } from "./instance-bvh.js";
+import { SceneBVH } from "./scene-bvh.js";
 import { BufferManager } from "../buffer/buffer-manager.js";
 import { Instance } from "./instance.js";
 import { PointLight } from "./point-light.js";
@@ -47,9 +47,9 @@ export class Scene {
         return count;
     }
 
-    private _instanceBVH: IndexedInstanceBVH | undefined = undefined;
+    private _instanceBVH: SceneBVH | undefined = undefined;
     get instanceBVH () {
-        if (!this._instanceBVH) this._instanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
+        if (!this._instanceBVH) this._instanceBVH = SceneBVH.fromObjects(this.instances, this.pointLights);
         return this._instanceBVH;
     }
     
@@ -112,7 +112,9 @@ export class Scene {
         this._instanceUintManager.overwriteAll(instanceUintArray);
 
         // Generate BVH
-        this._instanceBVH = IndexedInstanceBVH.fromInstances(this.instances);
+        this._instanceBVH = SceneBVH.fromObjects(this.instances, this.pointLights);
+
+        // console.log(this._instanceBVH);
         // Generate bounding vertices and BVH structure
         const bvhArrays: BVHArrays = this._instanceBVH.toArrays();
         // Allocate BVH buffers

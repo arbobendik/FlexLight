@@ -24,7 +24,7 @@ struct UniformFloat {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    min_importancy: f32,
+    max_temporal_reproject: f32,
 };
 
 struct UniformUint {
@@ -223,7 +223,7 @@ fn compute(
 
     if (sum != 0.0f) {
         // Add color to total and increase counter by one
-        fine_count = min(old_fine_count + 1.0f, 32.0f);
+        fine_count = min(old_fine_count + 1.0f, uniforms_float.max_temporal_reproject);
         fine_color = mix(fine_color_acc, color_cur, 1.0f / fine_count);
         fine_color_low = mix(fine_color_low_acc, croped_cur_color, 1.0f / fine_count);
 
