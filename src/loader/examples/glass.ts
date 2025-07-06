@@ -2,7 +2,7 @@
 // @ts-ignore
 import { createConfigUI } from "../../config-ui/config-ui.js";
 // import { vector_difference, vector_length } from "../../flexlight/common/lib/math.js";
-import { FlexLight, PointLight, Prototype, Vector, vector_difference, vector_length, EnvironmentMap } from "../../flexlight/flexlight.js";
+import { FlexLight, PointLight, Prototype, Vector, vector_difference, vector_length, EnvironmentMap, NormalTexture, AlbedoTexture, MetallicTexture, RoughnessTexture, EmissiveTexture, Texture } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -22,6 +22,29 @@ controlPanel.appendChild(configUI);
 let camera = engine.camera;
 let scene = engine.scene;
 
+const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" |  "emissive" | "roughness" | "metallic"): Promise<Texture> => {
+	let promise = new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.src = textureUrl;
+	});
+
+	let img = await promise;
+	switch (textureType) {
+		case "normal":
+			return new NormalTexture(img);
+		case "albedo":
+			return new AlbedoTexture(img);
+		case "emissive":
+			return new EmissiveTexture(img);
+		case "roughness":
+			return new RoughnessTexture(img);
+		case "metallic":
+			return new MetallicTexture(img);
+	}
+}
+
+
 const loadObj = async (model: string) => {
     console.log('loading ' + model);
     const objPath = staticPath + 'objects/' + model + '.obj';
@@ -40,25 +63,28 @@ fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuff
 
 
 */
-let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 500, 2);
+let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 2000, 2);
 
 scene.addPointLight(light1);
 scene.ambientLight = new Vector(0.025, 0.025, 0.025);
 
 
 const plane = await loadObj('plane');
-const dragon = await loadObj('glass_new');
+const glass = await loadObj('glass');
 
 let planeInstance = scene.instance(plane);
 planeInstance.transform.move(0, -1, 0);
-planeInstance.transform.scale(500);
+planeInstance.transform.scale(50);
+planeInstance.albedo = await loadTexture(staticPath + 'textures/wood.jpg', 'albedo');
 planeInstance.material.roughness = 1;
 planeInstance.material.metallic = 0;
 
 
-let glassInstance = scene.instance(dragon);
+let glassInstance = scene.instance(glass);
+glassInstance.normal = await loadTexture(staticPath + 'textures/wet_glass_normal.jpg', 'normal');
+glassInstance.roughness = await loadTexture(staticPath + 'textures/fingerprints.jpg', 'roughness');
 glassInstance.transform.move(15, -1, -15);
-glassInstance.transform.scale(new Vector(5, 5, 5));
+glassInstance.transform.scale(new Vector(20, 20, 20));
 glassInstance.material.color = new Vector(0.0, 0.25, 0.9);
 glassInstance.material.roughness = 0.025;
 glassInstance.material.metallic = 0;
