@@ -80,7 +80,7 @@ sphereInstance.material.ior = 1.5;
 // Start render engine.
 engine.renderer.render();
 
-
+/*
 let slider = document.createElement("input");
 slider.type = "range";
 slider.min = "0";
@@ -105,21 +105,16 @@ setInterval(() => {
     // dragonTransform.move(Math.sin(rotationAngle) * 20, 0, Math.cos(rotationAngle) * 20);
     // monkeTransform.move(Math.sin(rotationAngle) * 20, 1, Math.cos(rotationAngle) * 20);
     // dragonTransform.rotateSpherical(rotationAngle, 0);
-
+    
     let diff = vector_difference(camera.position, monkeInstance.transform.position);
     let r = vector_length(diff);
     let theta = Math.sign(diff.z) * Math.acos(diff.x / Math.sqrt(diff.x * diff.x + diff.z * diff.z)) - Math.PI * 0.5;
     let psi = Math.acos(diff.y / r) - Math.PI * 0.5;
     monkeInstance.transform.rotateSpherical(theta, psi);
-    /*
-    diff = Math.diff([camera.x, camera.y, camera.z], dragonTransform.position);
-    r = Math.length(diff);
-    theta = Math.sign(diff[2]) * Math.acos(diff[0] / Math.sqrt(diff[0] * diff[0] + diff[2] * diff[2])) - Math.PI;
-    psi = Math.acos(diff[1] / r);
-    dragonTransform.rotateSpherical(theta, 0);
-    */
-
+    
+   
 }, 1000 / 330);
+*/
 
 // Add FPS counter to top-right corner
 const fpsCounter = document.createElement("div");
