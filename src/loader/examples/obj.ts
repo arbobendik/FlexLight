@@ -65,7 +65,7 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-choose_lights = false;
+// choose_lights = false;
 scene.ambientLight = new Vector(0, 0, 0);
 
 if (choose_lights) {
@@ -91,9 +91,7 @@ if (choose_lights) {
 }
 
 if (!choose_lights) {
-	let light1 = new PointLight(new Vector(0, 0, 0), new Vector(1, 1, 1), 0, 10);
-	scene.addPointLight(light1);
-	// engine.renderer.fpsLimit = 600;
+	// scene.ambientLight = new Vector(0.1, 0.1, 0.1);
 	let environmentMapURL = staticPath + "textures/house_2k.hdr";
 	fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0625, 1, 1));
 }
@@ -130,7 +128,7 @@ for (let i = 0; i < 5; i++) {
 	for (let j = 0; j < 5; j++) {
 		for (let k = 0; k < 5; k++) {
 			let dragon_instance = scene.instance(sphere);
-			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 2 );
+			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 2);
 			
 			dragon_instance.material.roughness = j * 1 / 5;
 			dragon_instance.material.transmission = k / 5;

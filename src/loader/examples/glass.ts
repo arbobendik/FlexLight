@@ -63,7 +63,7 @@ fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuff
 
 
 */
-let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 2000, 2);
+let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 4000, 2);
 
 scene.addPointLight(light1);
 scene.ambientLight = new Vector(0.025, 0.025, 0.025);
@@ -82,11 +82,11 @@ planeInstance.material.metallic = 0;
 
 let glassInstance = scene.instance(glass);
 glassInstance.normal = await loadTexture(staticPath + 'textures/wet_glass_normal.jpg', 'normal');
-glassInstance.roughness = await loadTexture(staticPath + 'textures/fingerprints.jpg', 'roughness');
+// glassInstance.roughness = await loadTexture(staticPath + 'textures/fingerprints.jpg', 'roughness');
 glassInstance.transform.move(15, -1, -15);
 glassInstance.transform.scale(new Vector(20, 20, 20));
-glassInstance.material.color = new Vector(0.0, 0.25, 0.9);
-glassInstance.material.roughness = 0.025;
+glassInstance.material.color = new Vector(0, 0.2, 0.95);
+glassInstance.material.roughness = 0.05;
 glassInstance.material.metallic = 0;
 glassInstance.material.transmission = 1;
 glassInstance.material.ior = 1.5;
