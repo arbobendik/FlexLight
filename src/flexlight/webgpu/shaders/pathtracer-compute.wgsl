@@ -913,17 +913,28 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     
     let F: vec3<f32> = fresnel(f0, abs(v_dot_h));
     let F_greyscale: f32 = rgb_to_greyscale(F);
-    // Lobe weights for importance sampling
-    let reflect_component: f32 = max(F_greyscale, 0.0f);
-    let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission, 0.0f);
-    let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
 
+
+    let is_entering: bool = dot(n, v) < 0.0f;
+    // Incident side is air, outgoing side is material (entering)
+    var eta_i: f32 = select(1.0f, material.ior, is_entering);
+    // Incident side is material, outgoing side is air (exiting)
+    var eta_o: f32 = select(material.ior, 1.0f, is_entering);
+    // Try refraction through the properly oriented half vector
+    let eta: f32 = eta_i / eta_o;
+    let refracted: vec3<f32> = normalize(refract(in_dir, ggx_n, eta));
+    // Lobe weights for importance sampling
+    let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
+    let reflect_component: f32 = max(F_greyscale, 0.0f);
+    let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission * sign(length(refracted)), 0.0f);
+    let total_reflection_component: f32 = max((1.0f - F_greyscale) * material.transmission * (1.0f - sign(length(refracted))), 0.0f);
     // Calculate sampling probabilities
-    let total_component: f32 = reflect_component + diffuse_component + refract_component;
+    let total_component: f32 = reflect_component + diffuse_component + refract_component + total_reflection_component;
     let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
     let p_diffuse: f32 = diffuse_component * total_component_inv;
     let p_reflect: f32 = reflect_component * total_component_inv;
     let p_refract: f32 = refract_component * total_component_inv;
+    let p_total_reflect: f32 = total_reflection_component * total_component_inv;
 
     var sample: SampleBSDF = SampleBSDF(vec3<f32>(1.0f), vec3<f32>(1.0f), 0u, false);
     let random_p: Random = pcg(random_state);
@@ -951,21 +962,11 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
 
         // Since cosine_hemisphere.y is n_dot_l over the unit hemisphere, we can simplify the throughput to:
         // => throughput = albedo / p_diffuse
-        sample.throughput = material.albedo / p_diffuse;
+        sample.throughput = material.albedo;
         return sample;
     }
     // Refractive case
-    else if (random_p.value < p_diffuse + p_refract) {
-        let is_entering: bool = dot(n, v) < 0.0f;
-        // Incident side is air, outgoing side is material (entering)
-        var eta_i: f32 = select(1.0f, material.ior, is_entering);
-        // Incident side is material, outgoing side is air (exiting)
-        var eta_o: f32 = select(material.ior, 1.0f, is_entering);
-        // Try refraction through the properly oriented half vector
-        let eta: f32 = eta_i / eta_o;
-        let refracted: vec3<f32> = normalize(refract(in_dir, ggx_n, eta));
-        // Check if total internal reflection occurred, if yes proceed to reflective case.
-        if (length(refracted) > BIAS) {
+    if (random_p.value < p_diffuse + p_refract) {
             sample.unit_direction = refracted;
             let l: vec3<f32> = sample.unit_direction;
             let m_n_i_dot_l: f32 = - dot(n_i, l);
@@ -991,57 +992,49 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
 
             // G = G1_v * G1_l
             // => throughput = G1_l * (1 - F) / p_refract
-            sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale)) / p_refract;
+            sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale));
             sample.random_state = random_state;
             sample.refracted = true;
-            // return sample;
-        } else {
-            // Otherwise assume reflective case.
-            sample.unit_direction = normalize(reflect(in_dir, ggx_n));
-            let l: vec3<f32> = sample.unit_direction;
-            let n_i_dot_l: f32 = dot(n_i, l);
-            let G1_l: f32 = G1(alpha, max(n_i_dot_l, 0.0f));
-            sample.throughput = G1_l * F / p_reflect;
-            sample.random_state = random_state;
-        }
-    } else {
+            return sample;
+    }
+
+    if (random_p.value < p_diffuse + p_refract + p_total_reflect) {
         // Otherwise assume reflective case.
         sample.unit_direction = normalize(reflect(in_dir, ggx_n));
         let l: vec3<f32> = sample.unit_direction;
         let n_i_dot_l: f32 = dot(n_i, l);
-        // Torrance-Sparrow
-        // let G: f32 = smith(alpha, max(n_i_dot_v, 0.0f), max(n_i_dot_l, 0.0f));
-        let G1_l: f32 = G1(alpha, max(n_i_dot_l, 0.0f));
-        // BSDF = D * G * F / (4 * n_dot_v * n_dot_l)
-        // => BSDF * n_dot_l = D * G * F / (4 * n_dot_v)
-
-        // PDF_VNDF = G1_v * v_dot_h * D / n_dot_v
-        // JACOBIAN = 1 / (4 * v_dot_h)
-        // PDF_REFLECT = PDF_VNDF * JACOBIAN
-        // => PDF_REFLECT = G1_v * D / (4 * n_dot_v)
-
-        // PDF = PDF_REFLECT * p_reflect
-        // => PDF = G1_v * D / (4 * v_dot_n) * p_reflect
-
-        // throughput = BSDF * n_dot_l / PDF
-        //            = D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v) / p_reflect
-        //            = G * F / G1_v / p_reflect
-
-        // G = G1_v * G1_l
-        // => throughput = G1_l * F / p_reflect
-        sample.throughput = G1_l * F / p_reflect;
+        let G1_l: f32 = G1(alpha, max(abs(n_i_dot_l), 0.0f));
+        sample.throughput = vec3<f32>(G1_l);
         sample.random_state = random_state;
+        return sample;
     }
-    
-    if (false) {
-        let l: vec3<f32> = sample.unit_direction;
-        let m_n_i_dot_l: f32 = - dot(n_i, l);
-        let l_dot_h: f32 = dot(l, ggx_n);
-        // Microfacet term
-        // let GT: f32 = smith(alpha, n_i_dot_v, m_n_i_dot_l);
-        let G1_l: f32 = G1(alpha, abs(m_n_i_dot_l));
-        sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale)) * total_component;
-    }
+
+    // Otherwise assume reflective case.
+    sample.unit_direction = normalize(reflect(in_dir, ggx_n));
+    let l: vec3<f32> = sample.unit_direction;
+    let n_i_dot_l: f32 = dot(n_i, l);
+    // Torrance-Sparrow
+    // let G: f32 = smith(alpha, max(n_i_dot_v, 0.0f), max(n_i_dot_l, 0.0f));
+    let G1_l: f32 = G1(alpha, max(n_i_dot_l, 0.0f));
+    // BSDF = D * G * F / (4 * n_dot_v * n_dot_l)
+    // => BSDF * n_dot_l = D * G * F / (4 * n_dot_v)
+
+    // PDF_VNDF = G1_v * v_dot_h * D / n_dot_v
+    // JACOBIAN = 1 / (4 * v_dot_h)
+    // PDF_REFLECT = PDF_VNDF * JACOBIAN
+    // => PDF_REFLECT = G1_v * D / (4 * n_dot_v)
+
+    // PDF = PDF_REFLECT * p_reflect
+    // => PDF = G1_v * D / (4 * v_dot_n) * p_reflect
+
+    // throughput = BSDF * n_dot_l / PDF
+    //            = D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v) / p_reflect
+    //            = G * F / G1_v / p_reflect
+
+    // G = G1_v * G1_l
+    // => throughput = G1_l * F / p_reflect
+    sample.throughput = G1_l * F;
+    sample.random_state = random_state;
     return sample;  
 }
 
@@ -1403,7 +1396,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             if (false) {
                 survival_probability = 1.0f;
             } else {
-                survival_probability = max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z));
+                survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
             }
             
         }
