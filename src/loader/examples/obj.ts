@@ -65,7 +65,7 @@ let scene: Scene = engine.scene;
 
 
 let choose_lights = true;
-// choose_lights = false;
+choose_lights = false;
 scene.ambientLight = new Vector(0, 0, 0);
 
 if (choose_lights) {
@@ -127,13 +127,14 @@ let sphere = await loadObj('sphere');
 for (let i = 0; i < 5; i++) {
 	for (let j = 0; j < 5; j++) {
 		for (let k = 0; k < 5; k++) {
-			let dragon_instance = scene.instance(sphere);
-			dragon_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 2);
+			let sphere_instance = scene.instance(sphere);
+			sphere_instance.transform.position = new Vector(2*j + 2, 2*k - 2.5, 2*i + 2);
 			
-			dragon_instance.material.roughness = j * 1 / 5;
-			dragon_instance.material.transmission = k / 5;
-			dragon_instance.material.metallic = 1.0 - i / 5;
-			dragon_instance.material.color = new Vector(1.0, 0.5, 0.5);
+			sphere_instance.material.roughness = j * 1 / 5;
+			sphere_instance.material.transmission = k / 5;
+			sphere_instance.material.metallic = 1.0 - i / 5;
+			sphere_instance.material.color = new Vector(1.0, 0.5, 0.5);
+			sphere_instance.material.ior = 1.5;
 			/*
 			// init iterator variable for simple animations
 			let iterator = 0;
