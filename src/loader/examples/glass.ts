@@ -85,8 +85,8 @@ glassInstance.normal = await loadTexture(staticPath + 'textures/wet_glass_normal
 // glassInstance.roughness = await loadTexture(staticPath + 'textures/fingerprints.jpg', 'roughness');
 glassInstance.transform.move(15, -1, -15);
 glassInstance.transform.scale(new Vector(20, 20, 20));
-glassInstance.material.color = new Vector(0, 0.2, 0.95);
-glassInstance.material.roughness = 0.05;
+glassInstance.material.color = new Vector(0.0, 0.4, 0.99);
+glassInstance.material.roughness = 0;
 glassInstance.material.metallic = 0;
 glassInstance.material.transmission = 1;
 glassInstance.material.ior = 1.5;
