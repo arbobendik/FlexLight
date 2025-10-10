@@ -71,8 +71,8 @@ leftWall.material.color = new Vector(frac, 0, 0);
 shortBox.material.color = new Vector(frac, frac, frac);
 tallBox.material.color = new Vector(frac, frac, frac);
 */
-tallBox.material.roughness = 0;
-tallBox.material.metallic = 1;
+// tallBox.material.roughness = 0;
+// tallBox.material.metallic = 1;
 
 let emissive: Vector<3> = light.material.emissive;//new Vector(16.86, 8.76, 3.2);
 
