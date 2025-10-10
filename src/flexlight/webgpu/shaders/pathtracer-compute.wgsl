@@ -713,8 +713,9 @@ fn smithAlt(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     let k: f32 = alpha * 0.5f;
     return 1.0f / max((n_dot_v * (1.0f - k) + k) * (n_dot_l * (1.0f - k) + k), BIAS);
 }
-
-fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
+*/
+/*
+fn fresnel_schlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
@@ -739,12 +740,14 @@ fn fresnel(cos_theta: f32, eta_i: f32, eta_o: f32) -> f32 {
 
 // Helper function for GGX importance sampling
 // Corresponding PDF is: pdf = trowbridgeReitz(alpha, n_dot_h) * n_dot_h
+/*
 fn sampleTrowbridgeReitz(alpha: f32, random_1: f32, random_2: f32) -> vec3<f32> {
     let theta: f32 = atan(alpha * sqrt(random_1) / sqrt(1.0f - random_1));
     let phi: f32 = 2.0f * PI * random_2;
     let sin_theta: f32 = sin(theta);
     return vec3<f32>(sin_theta * cos(phi), sin_theta * sin(phi), cos(theta));
 }
+*/
 
 // Listing 1. Sampling the GGX VNDF: complete implementation.
 // Input Ve: view direction
@@ -803,18 +806,9 @@ fn worldToTangent(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(dot(v, tangent), dot(v, n), dot(v, bitangent));
 }
 
-
-struct ForwardPreCalc {
-    reflected_view: vec3<f32>,
-    one_over_4_schlick_beckmann_n_dot_v: f32,
-    f0: vec3<f32>,
-    alpha: f32,
-    diffuse_component: vec3<f32>
-}
-
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 // Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
-fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, material: Material, screen_space: vec2<f32>) -> vec3<f32> {
+fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, screen_space: vec2<f32>) -> vec3<f32> {
     let v = - in_dir;
     // Precalculate dot products
     let n_dot_v: f32 = dot(n, v);
@@ -824,22 +818,6 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, mat
     // Precalculate dot products for geometry normal
     let g_n_dot_v: f32 = dot(g_n, v);
     let g_n_dot_l: f32 = dot(g_n, out_dir);
-
-    // If v and l are on different sides of the surface do refractive term do BTDF
-    var eta_i: f32;
-    var eta_o: f32;
-    if (n_dot_v > 0.0f) {
-        // Incident side is air, outgoing side is material (entering)
-        eta_i = 1.0f;
-        eta_o = material.ior;
-    } else {
-        // Incident side is material, outgoing side is air (exiting)
-        eta_i = material.ior;
-        eta_o = 1.0f;
-    }
-
-    let f0_sqrt: f32 = (eta_i - eta_o) / (eta_i + eta_o);
-    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
     // Test if v and l are on the same side of the surface
     if (g_n_dot_v * g_n_dot_l > 0.0f) {
         // If v and l are on the same side of the surface do Torrance-Sparrow BRDF
@@ -904,7 +882,7 @@ struct SampleBSDF {
 }
 
 // SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
-fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: u32, screen_space: vec2<f32>) -> SampleBSDF {
+fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, random_init: u32, screen_space: vec2<f32>) -> SampleBSDF {
     var random_state: u32 = random_init;
     // Basic dot products
     let v: vec3<f32> = - in_dir;
@@ -926,25 +904,16 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     // Calculate shared half vector dot products
     let v_dot_h: f32 = dot(ggx_n, v);
     let n_dot_h: f32 = dot(n_i, ggx_n);
-    
-    let is_entering: bool = dot(n, v) < 0.0f;
-    // Incident side is air, outgoing side is material (entering)
-    var eta_i: f32 = select(1.0f, material.ior, is_entering);
-    // Incident side is material, outgoing side is air (exiting)
-    var eta_o: f32 = select(material.ior, 1.0f, is_entering);
     // Try refraction through the properly oriented half vector
     let eta: f32 = eta_i / eta_o;
     let refracted: vec3<f32> = normalize(refract(in_dir, ggx_n, eta));
     let refracted_sign = sign(length(refracted));
-
-    // let f0_sqrt: f32 = (eta_i - eta_o) / (eta_i + eta_o);
-    // let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+    // Calculate fresnel term
     let F: vec3<f32> = mix(vec3<f32>(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
     var F_greyscale: f32 = rgb_to_greyscale(F);
-
     // Lobe weights for importance sampling
-    let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
     let reflect_component: f32 = max(F_greyscale, 0.0f);
+    let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.transmission) * (1.0f - material.metallic), 0.0f);
     let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission * refracted_sign, 0.0f);
     let total_reflection_component: f32 = max((1.0f - F_greyscale) * material.transmission * (1.0f - refracted_sign), 0.0f);
     // Calculate sampling probabilities
@@ -973,14 +942,14 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         // => BSDF * n_dot_v = albedo * n_dot_l / PI
 
         // PDF_COSINE_HEMISPHERE = cosine_hemisphere.y / PI
-        // => PDF = cosine_hemisphere.y / PI * p_diffuse
+        // => PDF = cosine_hemisphere.y / PI
 
         // throughput = BSDF * n_dot_l / PDF
-        //            = albedo * n_dot_l / PI / cosine_hemisphere.y * PI / p_diffuse
-        //            = albedo * n_dot_l / cosine_hemisphere.y / p_diffuse
+        //            = albedo * n_dot_l / PI / cosine_hemisphere.y * PI
+        //            = albedo * n_dot_l / cosine_hemisphere.y
 
         // Since cosine_hemisphere.y is n_dot_l over the unit hemisphere, we can simplify the throughput to:
-        // => throughput = albedo / p_diffuse
+        // => throughput = albedo
         sample.throughput = material.albedo;
         return sample;
     }
@@ -1002,15 +971,15 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
         // PDF_REFRACT = PDF_VNDF * JACOBIAN
         //             = G1_v * v_dot_h * D / n_dot_v * JACOBIAN
 
-        // PDF = PDF_REFRACT * p_refract
-        //     = G1_v * v_dot_h * D / n_dot_v * JACOBIAN * p_refract
+        // PDF = PDF_REFRACT
+        //     = G1_v * v_dot_h * D / n_dot_v * JACOBIAN
 
         // throughput = BSDF * n_dot_l / PDF
-        //            = v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN / G1_v / v_dot_h / D * n_dot_v / JACOBIAN / p_refract
-        //            = G * (1 - F) / G1_v / p_refract
+        //            = v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN / G1_v / v_dot_h / D * n_dot_v / JACOBIAN
+        //            = G * (1 - F) / G1_v
 
         // G = G1_v * G1_l
-        // => throughput = G1_l * (1 - F) / p_refract
+        // => throughput = G1_l * (1 - F)
         sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale));
         sample.random_state = random_state;
         sample.refracted = true;
@@ -1033,7 +1002,6 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     let l: vec3<f32> = sample.unit_direction;
     let n_i_dot_l: f32 = dot(n_i, l);
     // Torrance-Sparrow
-    // let G: f32 = smith(alpha, max(n_i_dot_v, 0.0f), max(n_i_dot_l, 0.0f));
     let G1_l: f32 = G1(alpha, max(n_i_dot_l, 0.0f));
     // BSDF = D * G * F / (4 * n_dot_v * n_dot_l)
     // => BSDF * n_dot_l = D * G * F / (4 * n_dot_v)
@@ -1043,15 +1011,15 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, random_init: 
     // PDF_REFLECT = PDF_VNDF * JACOBIAN
     // => PDF_REFLECT = G1_v * D / (4 * n_dot_v)
 
-    // PDF = PDF_REFLECT * p_reflect
-    // => PDF = G1_v * D / (4 * v_dot_n) * p_reflect
+    // PDF = PDF_REFLECT
+    // => PDF = G1_v * D / (4 * v_dot_n)
 
     // throughput = BSDF * n_dot_l / PDF
-    //            = D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v) / p_reflect
-    //            = G * F / G1_v / p_reflect
+    //            = D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v)
+    //            = G * F / G1_v
 
     // G = G1_v * G1_l
-    // => throughput = G1_l * F / p_reflect
+    // => throughput = G1_l * F
     sample.throughput = G1_l * F;
     sample.random_state = random_state;
     return sample;  
@@ -1069,7 +1037,7 @@ struct SampledColor {
     random_state: u32
 }
 
-fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, random_sphere: vec3<f32>, screen_space: vec2<f32>) -> SampledColor {
+fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, random_sphere: vec3<f32>, screen_space: vec2<f32>) -> SampledColor {
     let m: u32 = uniforms_uint.light_count + 1u;
     // If no lights, return emissive color
     if (m <= 1u) {
@@ -1180,7 +1148,7 @@ fn reservoirSample(material: Material, camera_ray: Ray, init_random_state: u32, 
         // Apply inverse square law
         let brightness: vec3<f32> = light.color * intensity / max(len * len, BIAS);
         // Calculate BSDF for light
-        let color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, screen_space);
+        let color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, screen_space);
         let color_for_light: vec3<f32> = color_with_smooth * brightness;
         let w_i: f32 = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small
@@ -1242,8 +1210,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
     while (true) {
         var geometry_offset: f32 = 0.0f;
         var smooth_n: vec3<f32> = vec3<f32>(0.0f);
-
-
         var skip_hit: bool = false;
         let point_light_lighting: bool = hit.is_point_light == 1u && direct_light_emission;
         let current_direct_light_emission: bool = direct_light_emission;
@@ -1309,8 +1275,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
             if (albedo_texture_id != UINT_MAX) {
                 let albedo_data: vec4<f32> = textureSample(albedo_texture_id, barycentric) * INV_255;
-                material.albedo = albedo_data.xyz;
-                
+                material.albedo = albedo_data.xyz;  
                 // Enable transparent textures
                 // Yeild random value between 0 and 1 and update state
                 let transparancy_random_value: Random = pcg(random_state);
@@ -1349,35 +1314,26 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 }
 
                 let alpha: f32 = material.roughness * material.roughness;
-                // let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-                // let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
 
                 let n_dot_v: f32 = dot(smooth_n, - ray.unit_direction);
-                var eta_i: f32;
-                var eta_o: f32;
-                if (n_dot_v > 0.0f) {
-                    // Incident side is air, outgoing side is material (entering)
-                    eta_i = 1.0f;
-                    eta_o = material.ior;
-                } else {
-                    // Incident side is material, outgoing side is air (exiting)
-                    eta_i = material.ior;
-                    eta_o = 1.0f;
-                }
-
+                let is_entering: bool = n_dot_v < 0.0f;
+                // Incident side is air, outgoing side is material (entering)
+                let eta_i: f32 = select(1.0f, material.ior, is_entering);
+                // Incident side is material, outgoing side is air (exiting)
+                let eta_o: f32 = select(material.ior, 1.0f, is_entering);
+                // Calculate fresnel term
                 let F_n: vec3<f32> = mix(vec3<f32>(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
                 let F_n_greyscale: f32 = rgb_to_greyscale(F_n);
                 let diffuse_factor_estimate: f32 = max((1.0f - F_n_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
 
                 if (diffuse_factor_estimate > BIAS || material.roughness > 0.2f) {
-                    let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
+                    let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
                     random_state = local_sampled.random_state;
                     final_color += local_sampled.color * importancy_factor;
                 } else {
                     direct_light_emission = true;
                 }
                 
-
                 /*
                 // Conservative only NEE method
                 let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
@@ -1391,7 +1347,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 */
 
                 // Attempt ray bounce with material normal first
-                var bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, smooth_n, material, random_state, screen_space);
+                var bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state, screen_space);
                 random_state = bsdf_sampled.random_state;
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 let expected_out_dir_normal_aligned: bool = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
@@ -1399,7 +1355,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Continue sampling with geometry normal if ray points to incorrect side of the surface
                 if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
                     // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
-                    let geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, random_state, screen_space);
+                    let geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, screen_space);
                     random_state = geometry_bsdf_sampled.random_state;
                     // Redirect outgoing ray according to new bsdf sample.
                     bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
@@ -1421,22 +1377,12 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         }
 
         var survival_probability: f32 = 1.0f;
-        
-        
         if (!skip_hit) {
-            
-            if (false) {
-                survival_probability = 1.0f;
-            } else {
-                survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
-            }
-            
+            survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
         }
-        
 
         let random_value: Random = pcg(random_state);
         random_state = random_value.state;
-        
         // Test for early termination, avoiding last bounce
         if (survival_probability < random_value.value || i >= uniforms_uint.max_bounces ) {
             add_ambient = false;
@@ -1444,7 +1390,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         }
         // Continue with next bounce
         importancy_factor /= survival_probability;
-
 
         if (point_light_lighting && !skip_hit) {
             final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
@@ -1503,7 +1448,6 @@ fn compute(
     // Get texel position of screen
     let screen_pos: vec2<u32> = global_invocation_id.xy;
     let buffer_index: u32 = global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y;
-
     // Get based clip space coordinates (with 0.0 at upper left corner)
     // Load attributes from fragment shader out ofad(texture_triangle_id, screen_pos).x;
     // Subtract 1 to have 0 as invalid index
@@ -1538,7 +1482,6 @@ fn compute(
     let init_hit: Hit = Hit(uvw.yz, instance_index, triangle_index, 0u, distance(absolute_position, uniforms_float.camera_position.xyz));
     // Determine if additional samples are needed
     var sampleFactor: u32 = 1u;
-    
     
     if (uniforms_uint.is_temporal == 1u) {
         // Get count of shifted texture
