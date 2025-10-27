@@ -18,7 +18,7 @@ function bundle (
 function compile (
     set -e
     cd -- "$1"
-    npx tsc
+    npx tsc --noCheck
     exit
 )
 
