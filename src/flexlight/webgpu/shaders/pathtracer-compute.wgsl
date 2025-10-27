@@ -775,7 +775,6 @@ fn sampleGGXVNDF(Ve: vec3<f32>, alpha: f32, U1: f32, U2: f32) -> vec3<f32> {
     return normalize(vec3<f32>(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
 }
 
-
 // Corresponding PDF is: pdf = cos(theta) / PI
 fn sampleCosWeightedHemisphere(random_1: f32, random_2: f32) -> vec3<f32> {
     let r = sqrt(random_1);
@@ -867,7 +866,7 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, mat
             let walter = (numerator_geom / denominator_geom) * (1.0f - rgb_to_greyscale(FT)) * DT * GT * (eta_o * eta_o / denom_f_sq);
             return vec3<f32>(walter) * material.transmission * n_dot_l;
         }
-        // If refraction is not possible, return black
+        // If refraction is not possible, return black this case should never happen
         return vec3<f32>(0.0f, 0.0f, 0.0f);
     }
     // Theoretically this should never happen, but just in case return black
@@ -890,7 +889,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     var n_i: vec3<f32> = n * sign(n_dot_v);
     let n_i_dot_v: f32 = abs(n_dot_v);
     // Material constants
-    let alpha: f32 = material.roughness * material.roughness; // Don't match BSDF alpha clamping
+    let alpha: f32 = material.roughness * material.roughness;
     // Generate random values for sampling
     // Sample using GGX importance sampling for potential refractive or reflective case
     var ggx_n: vec3<f32> = n_i;
@@ -907,22 +906,30 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     // Try refraction through the properly oriented half vector
     let eta: f32 = eta_i / eta_o;
     let refracted: vec3<f32> = normalize(refract(in_dir, ggx_n, eta));
-    let refracted_sign = sign(length(refracted));
+    // let refracted_sign = sign(length(refracted));
     // Calculate fresnel term
-    let F: vec3<f32> = mix(vec3<f32>(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
+    var F: vec3<f32> = mix(vec3<f32>(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
+    /*
+    if (screen_space.x > 0.0f) {
+        let f0_sqrt = (eta_i - eta_o) / (eta_i + eta_o);
+        let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
+        F = fresnel_schlick(f0, n_i_dot_v);
+    }
+    */
+
     var F_greyscale: f32 = rgb_to_greyscale(F);
     // Lobe weights for importance sampling
     let reflect_component: f32 = max(F_greyscale, 0.0f);
     let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.transmission) * (1.0f - material.metallic), 0.0f);
-    let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission * refracted_sign, 0.0f);
-    let total_reflection_component: f32 = max((1.0f - F_greyscale) * material.transmission * (1.0f - refracted_sign), 0.0f);
+    let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission, 0.0f);
+    // let total_reflection_component: f32 = max((1.0f - F_greyscale) * material.transmission * (1.0f - refracted_sign), 0.0f);
     // Calculate sampling probabilities
-    let total_component: f32 = reflect_component + diffuse_component + refract_component + total_reflection_component;
+    let total_component: f32 = reflect_component + diffuse_component + refract_component;// + total_reflection_component;
     let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
     let p_diffuse: f32 = diffuse_component * total_component_inv;
     let p_reflect: f32 = reflect_component * total_component_inv;
     let p_refract: f32 = refract_component * total_component_inv;
-    let p_total_reflect: f32 = total_reflection_component * total_component_inv;
+    //let p_total_reflect: f32 = total_reflection_component * total_component_inv;
 
     var sample: SampleBSDF = SampleBSDF(vec3<f32>(1.0f), vec3<f32>(1.0f), 0u, false);
     let random_p: Random = pcg(random_state);
@@ -950,7 +957,9 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
         // Since cosine_hemisphere.y is n_dot_l over the unit hemisphere, we can simplify the throughput to:
         // => throughput = albedo
-        sample.throughput = material.albedo;
+
+        // Importance sampled lobe with weight (1 - F), so divide throughput by (1 - F)
+        sample.throughput = material.albedo / (1.0f - F_greyscale);
         return sample;
     }
     // Refractive case
@@ -974,29 +983,31 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         // PDF = PDF_REFRACT
         //     = G1_v * v_dot_h * D / n_dot_v * JACOBIAN
 
-        // throughput = BSDF * n_dot_l / PDF
+        // throughput = BSDF * n_dot_l
         //            = v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN / G1_v / v_dot_h / D * n_dot_v / JACOBIAN
         //            = G * (1 - F) / G1_v
 
         // G = G1_v * G1_l
         // => throughput = G1_l * (1 - F)
-        sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale));
+
+        // Importance sampled lobe with weight (1 - F), so divide  throughput by (1 - F)
+        sample.throughput = vec3<f32>(G1_l);
         sample.random_state = random_state;
         sample.refracted = true;
         return sample;
     }
-
+    /*
     if (random_p.value < p_diffuse + p_refract + p_total_reflect) {
         // Otherwise assume reflective case.
         sample.unit_direction = normalize(reflect(in_dir, ggx_n));
         let l: vec3<f32> = sample.unit_direction;
         let n_i_dot_l: f32 = dot(n_i, l);
         let G1_l: f32 = G1(alpha, max(abs(n_i_dot_l), 0.0f));
-        sample.throughput = vec3<f32>(G1_l);
+        sample.throughput = vec3<f32>(G1_l) * F;
         sample.random_state = random_state;
         return sample;
     }
-
+    */
     // Otherwise assume reflective case.
     sample.unit_direction = normalize(reflect(in_dir, ggx_n));
     let l: vec3<f32> = sample.unit_direction;
@@ -1020,9 +1031,11 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
     // G = G1_v * G1_l
     // => throughput = G1_l * F
-    sample.throughput = G1_l * F;
+
+    // Importance sampled lobe with weight F, so divide throughput by F, but keep it's chromaticity
+    sample.throughput = G1_l * normalize(F);
     sample.random_state = random_state;
-    return sample;  
+    return sample;
 }
 
 struct SamplePreCalc {
@@ -1072,7 +1085,7 @@ fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, 
             let triangle_offset: u32 = triangle_instance_offset + u32(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
             // Fetch triangle coordinates from scene graph texture
             let t0 = access_triangle(triangle_offset);
-            let t1 = access_triangle(triangle_offset + 1u); 
+            let t1 = access_triangle(triangle_offset + 1u);
             let t2 = access_triangle(triangle_offset + 2u);
             let t3 = access_triangle(triangle_offset + 3u);
             let t4 = access_triangle(triangle_offset + 4u);
@@ -1176,7 +1189,7 @@ fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, 
     // Apply geometry offset
     let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    
+
     if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
         return SampledColor(vec3<f32>(0.0f), random_state);
     } else {
@@ -1265,8 +1278,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).
-                let absorption_coefficient: vec3<f32> = - log(max(material.albedo, vec3<f32>(BIAS)));
-                let transmittance: vec3<f32> = exp(- absorption_coefficient * hit.distance);
+                let absorption_coefficient: vec3<f32> = max(material.albedo, vec3<f32>(BIAS));
+                let transmittance: vec3<f32> = exp(hit.distance * log(absorption_coefficient));
                 importancy_factor *= transmittance;
             }
 
@@ -1275,7 +1288,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
             if (albedo_texture_id != UINT_MAX) {
                 let albedo_data: vec4<f32> = textureSample(albedo_texture_id, barycentric) * INV_255;
-                material.albedo = albedo_data.xyz;  
+                material.albedo = albedo_data.xyz;
                 // Enable transparent textures
                 // Yeild random value between 0 and 1 and update state
                 let transparancy_random_value: Random = pcg(random_state);
@@ -1284,14 +1297,14 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                     skip_hit = true;
                 }
             }
-            
+
             if (!skip_hit) {
                 let normal_texture_id: u32 = instance_uint[hit_instance_location + 4u];
                 if (normal_texture_id != UINT_MAX) {
                     let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xzy * INV_255 * 2.0f - 1.0f);
                     smooth_n = tangentToWorld(normal_data, smooth_n);
                 }
-                
+
                 let emissive_texture_id: u32 = instance_uint[hit_instance_location + 5u];
                 if (emissive_texture_id != UINT_MAX) {
                     material.emissive = textureSample(emissive_texture_id, barycentric).xyz * INV_255;
@@ -1324,19 +1337,20 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Calculate fresnel term
                 let F_n: vec3<f32> = mix(vec3<f32>(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
                 let F_n_greyscale: f32 = rgb_to_greyscale(F_n);
-                let diffuse_factor_estimate: f32 = max((1.0f - F_n_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
 
+                let diffuse_factor_estimate: f32 = max((1.0f - F_n_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
                 if (diffuse_factor_estimate > BIAS || material.roughness > 0.2f) {
+                    // Do NEE
                     let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
                     random_state = local_sampled.random_state;
                     final_color += local_sampled.color * importancy_factor;
                 } else {
+                    // Sample directly next round
                     direct_light_emission = true;
                 }
-                
                 /*
                 // Conservative only NEE method
-                let local_sampled: SampledColor = reservoirSample(material, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
+                let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
                 random_state = local_sampled.random_state;
                 // Calculate primary light sources for this pass if ray hits non translucent object
                 final_color += local_sampled.color * importancy_factor;
@@ -1369,7 +1383,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 }
 
                 ray.unit_direction = bsdf_sampled.unit_direction;
-                importancy_factor *= abs(bsdf_sampled.throughput);
+                importancy_factor *= max(bsdf_sampled.throughput, vec3<f32>(0.0f));
 
                 let out_dir_aligned_normal: vec3<f32> = select(smooth_n, - smooth_n, is_inside);
                 ray.origin += geometry_offset * out_dir_aligned_normal;
@@ -1429,7 +1443,7 @@ fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
     if (dir.z < 0) {
         s = 2.0 * PI - s;
     }
-    
+
     s = s / (2.0 * PI);
     var tex_coord: vec2<f32> = vec2(s , ((asin(dir.y) * -2.0 / PI ) + 1.0) * 0.5);
     // return vec3<f32>(0.5f, 0.5f, 0.5f);
@@ -1456,7 +1470,7 @@ fn compute(
 
     let screen_space: vec2<f32> = vec2<f32>(global_invocation_id.xy) / vec2<f32>(uniforms_uint.render_size.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
     let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f));
-    
+
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
         var env_color: vec3<f32> = vec3<f32>(0.0f);
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
@@ -1465,7 +1479,7 @@ fn compute(
             // If no environment map is present, use ambient color
             env_color = uniforms_float.ambient;
         }
-        // If there is no triangle render ambient color 
+        // If there is no triangle render ambient color
         textureStore(compute_out, screen_pos, 0, vec4<f32>(env_color, 1.0f));
         // And overwrite position with 0 0 0 0
         if (uniforms_uint.is_temporal == 1u) {
@@ -1474,7 +1488,7 @@ fn compute(
         }
         return;
     }
-    
+
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
     let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
@@ -1482,7 +1496,7 @@ fn compute(
     let init_hit: Hit = Hit(uvw.yz, instance_index, triangle_index, 0u, distance(absolute_position, uniforms_float.camera_position.xyz));
     // Determine if additional samples are needed
     var sampleFactor: u32 = 1u;
-    
+
     if (uniforms_uint.is_temporal == 1u) {
         // Get count of shifted texture
         let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, screen_pos, 0, 0);
