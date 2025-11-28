@@ -2,7 +2,7 @@
 
 import { BufferManager } from "../buffer/buffer-manager";
 import { TypedArrayView } from "../buffer/typed-array-view";
-import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul, normalize, BIAS } from "../lib/math";
+import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul, normalize, BIAS_32 } from "../lib/math";
 
 
 
@@ -132,7 +132,7 @@ export class Transform {
     // Ensure the vector is normalized
     const normalized = normalize(direction);
     // Calculate yaw (horizontal angle, left/right)
-    const yaw = Math.atan2(normalized.x, - normalized.z) + Math.PI * Math.max(0, Math.sign(normalized.z + BIAS));
+    const yaw = Math.atan2(normalized.x, - normalized.z) + Math.PI * Math.max(0, Math.sign(normalized.z + BIAS_32));
     // Calculate pitch (vertical angle, up/down)
     const pitch = Math.asin(normalized.y) - Math.PI / 2;
 

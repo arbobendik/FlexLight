@@ -11,21 +11,22 @@ type Subtract1<N extends number> = BuildTuple<unknown, N> extends [...infer Rest
 
 // Helper type to create a tuple of length M*N by concatenating N tuples of length M
 /*
-type ConcatNTuples<T, M extends number, N extends number, R extends any[] = []> = 
-    N extends 0 ? R : 
+type ConcatNTuples<T, M extends number, N extends number, R extends any[] = []> =
+    N extends 0 ? R :
         ConcatNTuples<T, M, Subtract1<N>, [...R, ...BuildTuple<T, M>]>;
 */
 // Multiply two numbers M and N by creating a tuple of length M*N
 // type Mul<M extends number, N extends number> = ConcatNTuples<unknown, M, N>['length'];
 
 // Check if a number is greater than another
-type GreaterThan<T, N extends number, I extends number> = 
+type GreaterThan<T, N extends number, I extends number> =
     0 extends I ? T :
         I extends N ? never :
             GreaterThan<T, N, Subtract1<I>> extends never ? never : T;
 
-
-export const BIAS: number = 1e-10;
+export const BIAS_32: number = 2.3283064365386963e-10;
+export const BIAS_20: number = 0.0000009536743164;
+export const BIAS_16: number = 0.0000152587890625;
 export const POW32M1: number = 4294967295;
 export const POW32M2: number = 4294967294;
 export const E: number = 2.718281828459045;
@@ -192,7 +193,7 @@ export class SphericalRotationMatrix extends Matrix<3, 3> {
         let cT: number = Math.cos(theta);
         let sP: number = Math.sin(psi);
         let cP: number = Math.cos(psi);
-        
+
         super(
             [cT, 0, sT],
             [-sT * sP, cP, cT * sP],
@@ -248,7 +249,7 @@ export function normalize<N extends number>(a: Vector<N>): Vector<N> {
     let result: Vector<N> = new ZeroVector(a.length as N);
     let denominator: number = Math.sqrt(dot(a, a));
     // Return zero vector if denominator is too small
-    if (Math.abs(denominator) < BIAS) return result;
+    if (Math.abs(denominator) < BIAS_32) return result;
     for (let i = 0; i < a.length; i++) result[i] = a[i]! / denominator;
     return result;
 }
@@ -350,7 +351,7 @@ export function qr<M extends number, N extends number>(A: Matrix<M, N>): { Q: Ma
         for (let i = j; i < A.height; i++) x[i] = R[i]![j]!;
         // Calculate vector norm
         let xnorm: number = Math.sqrt(dot(x, x));
-        if (Math.abs(xnorm) < BIAS) continue;
+        if (Math.abs(xnorm) < BIAS_32) continue;
         
         // First component sign
         let s: number = - Math.sign(x[j]! || 1);
@@ -360,7 +361,7 @@ export function qr<M extends number, N extends number>(A: Matrix<M, N>): { Q: Ma
         let v: Vector<M> = normalize(vector_add(x, u));
         // Skip if vector is zero
         let vnorm: number = Math.sqrt(dot(v, v));
-        if (vnorm < BIAS) continue;
+        if (vnorm < BIAS_32) continue;
         // Normalize v
         for (let i = j; i < A.height; i++) v[i] = v[i]! / vnorm;
         // Construct and apply Householder matrix
@@ -423,23 +424,23 @@ export function moellerTrumbore(a: Vector<3>, b: Vector<3>, c: Vector<3>, ray: R
     let edge2: Vector<3> = vector_difference(c, a);
     let pvec: Vector<3> = cross(ray.unit_direction, edge2);
     let det: number = dot(edge1, pvec);
-    if(Math.abs(det) < BIAS) {
+    if(Math.abs(det) < BIAS_32) {
         return Infinity;
     }
     let inv_det: number = 1.0 / det;
     let tvec: Vector<3> = vector_difference(ray.origin, a);
     let u: number = dot(tvec, pvec) * inv_det;
-    if(u < BIAS || u > 1) {
+    if(u < BIAS_32 || u > 1) {
         return Infinity;
     }
     let qvec: Vector<3> = cross(tvec, edge1);
     let v: number = dot(ray.unit_direction, qvec) * inv_det;
     let uv_sum: number = u + v;
-    if(v < BIAS || uv_sum > 1) {
+    if(v < BIAS_32 || uv_sum > 1) {
         return Infinity;
     }
     let s: number = dot(edge2, qvec) * inv_det;
-    if(s <= l && s > BIAS) {
+    if(s <= l && s > BIAS_32) {
         return s;
     } else {
         return Infinity;
@@ -447,14 +448,14 @@ export function moellerTrumbore(a: Vector<3>, b: Vector<3>, c: Vector<3>, ray: R
 }
 
 export function ray_triangle(ray: Ray, triangle: Matrix<3, 3>, max_len: number): number {
-    // const BIAS = 2 ** (-12);
+    // const BIAS_32 = 2 ** (-12);
     const v0: Vector<3> = vector_difference(triangle[1]!, triangle[0]!);
     const v1: Vector<3> = vector_difference(triangle[2]!, triangle[0]!);
     const normal: Vector<3> = normalize(cross(v0, v1));
     // Get distance to intersection point
     const s: number = dot(normal, vector_difference(triangle[0]!, ray.origin)) / dot(normal, normalize(ray.unit_direction));
     // Ensure that ray triangle intersection is between light source and texture
-    if (s <= BIAS || s > max_len) return Infinity;
+    if (s <= BIAS_32 || s > max_len) return Infinity;
     // Calculate intersection point
     const d: Vector<3> = vector_add(vector_scale(normalize(ray.unit_direction), s), ray.origin);
     const v2: Vector<3> = vector_difference(d, triangle[0]!);
@@ -468,7 +469,7 @@ export function ray_triangle(ray: Ray, triangle: Matrix<3, 3>, max_len: number):
     const v: number = (d11 * d20 - d01 * d21) / denom;
     const w: number = (d00 * d21 - d01 * d20) / denom;
     const u: number =  1 - v - w;
-    if (Math.min(u, v) <= BIAS || u + v >= 1.0 - BIAS) return Infinity;
+    if (Math.min(u, v) <= BIAS_32 || u + v >= 1.0 - BIAS_32) return Infinity;
     // Return point of intersection.
     return s;
 }
