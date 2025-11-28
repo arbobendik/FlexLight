@@ -2,7 +2,7 @@
 
 import { Triangle } from "./triangle-bvh";
 import { IndexedInstance, IndexedPointLight } from "./scene-bvh";
-import { BIAS, Vector, vector_difference } from "../lib/math";
+import { BIAS_32, Vector, vector_difference } from "../lib/math";
 
 
 const BVH_MAX_INSTANCES_PER_LEAF = 2;
@@ -337,8 +337,8 @@ export abstract class BVH<T extends Triangle | IndexedInstance | IndexedPointLig
     }
 
     protected static isVertexInBounding(vertex: Vector<3>, bound: Bounding): boolean {
-        return bound.min.x - BIAS <= vertex.x && bound.min.y - BIAS <= vertex.y && bound.min.z - BIAS <= vertex.z &&
-               bound.max.x + BIAS >= vertex.x && bound.max.y + BIAS >= vertex.y && bound.max.z + BIAS >= vertex.z;
+        return bound.min.x - BIAS_32 <= vertex.x && bound.min.y - BIAS_32 <= vertex.y && bound.min.z - BIAS_32 <= vertex.z &&
+               bound.max.x + BIAS_32 >= vertex.x && bound.max.y + BIAS_32 >= vertex.y && bound.max.z + BIAS_32 >= vertex.z;
     }
 
     protected static longestAxis(bounding: Bounding): "x" | "y" | "z" {
