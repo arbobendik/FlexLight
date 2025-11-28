@@ -471,7 +471,7 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool) -> Hit {
         var node_index: u32 = stack[stack_index];
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
-        
+
         // let indicator_and_children: vec3<u32> = instance_bvh[bvh_offset];
         let indicator = instance_bvh[bvh_offset];
         let child0 = instance_bvh[bvh_offset + 1u];
@@ -495,7 +495,7 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool) -> Hit {
             // Child 0 is an instance
             dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, hit.distance);
         }
-        
+
         if (child1 == UINT_MAX_M1 && consider_point_lights) {
             // Child 1 is a point light
             let light_dist: f32 = raySphere(vec3<f32>(bv1.zw, bv2.x), bv2.y, ray, hit.distance);
@@ -562,10 +562,10 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
 
     let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
     let instance_vertex_offset: u32 = instance_uint[instance_uint_offset + 2u];
-    
+
     var stack: array<u32, 24> = array<u32, 24>();
     var stack_index: u32 = 1u;
-    
+
     while (stack_index > 0u && stack_index < 24u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
@@ -611,7 +611,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
             }
         }
     }
-    
+
     // If nothing was hit, return false (not in shadow)
     return false;
 }
@@ -628,7 +628,7 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
 
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
-        
+
         let indicator = instance_bvh[bvh_offset];
         let child0 = instance_bvh[bvh_offset + 1u];
         let child1 = instance_bvh[bvh_offset + 2u];
@@ -642,7 +642,7 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
         if (child0 != UINT_MAX_M1) {
             dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, l);
         }
-        
+
         if (child1 != UINT_MAX && child1 != UINT_MAX_M1) {
             dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, l);
         }
@@ -869,8 +869,6 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, mat
         // If refraction is not possible, return black this case should never happen
         return vec3<f32>(0.0f, 0.0f, 0.0f);
     }
-    // Theoretically this should never happen, but just in case return black
-    // return vec3<f32>(0.0f, 0.0f, 0.0f);
 }
 
 struct SampleBSDF {
@@ -916,13 +914,13 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         F = fresnel_schlick(f0, n_i_dot_v);
     }
     */
-
     var F_greyscale: f32 = rgb_to_greyscale(F);
     // Lobe weights for importance sampling
     let reflect_component: f32 = max(F_greyscale, 0.0f);
     let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.transmission) * (1.0f - material.metallic), 0.0f);
     let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission, 0.0f);
     // let total_reflection_component: f32 = max((1.0f - F_greyscale) * material.transmission * (1.0f - refracted_sign), 0.0f);
+    var colorless_reflection: f32 = material.transmission;
     // Calculate sampling probabilities
     let total_component: f32 = reflect_component + diffuse_component + refract_component;// + total_reflection_component;
     let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
@@ -957,13 +955,12 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
         // Since cosine_hemisphere.y is n_dot_l over the unit hemisphere, we can simplify the throughput to:
         // => throughput = albedo
-
-        // Importance sampled lobe with weight (1 - F), so divide throughput by (1 - F)
-        sample.throughput = material.albedo / (1.0f - F_greyscale);
+        sample.throughput = vec3<f32>(1.0f);//material.albedo;
         return sample;
     }
     // Refractive case
-    if (random_p.value < p_diffuse + p_refract) {
+    if (random_p.value < p_diffuse + p_refract && length(refracted) >= BIAS) {
+        // Refraction is valid
         sample.unit_direction = refracted;
         let l: vec3<f32> = sample.unit_direction;
         let m_n_i_dot_l: f32 = - dot(n_i, l);
@@ -989,13 +986,14 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
         // G = G1_v * G1_l
         // => throughput = G1_l * (1 - F)
-
-        // Importance sampled lobe with weight (1 - F), so divide  throughput by (1 - F)
-        sample.throughput = vec3<f32>(G1_l);
+        sample.throughput = vec3<f32>(1.0f);//vec3<f32>(G1_l * (1.0f - F_greyscale));
         sample.random_state = random_state;
         sample.refracted = true;
         return sample;
+    } else {
+        colorless_reflection = 1.0f;
     }
+
     /*
     if (random_p.value < p_diffuse + p_refract + p_total_reflect) {
         // Otherwise assume reflective case.
@@ -1031,9 +1029,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
     // G = G1_v * G1_l
     // => throughput = G1_l * F
-
-    // Importance sampled lobe with weight F, so divide throughput by F, but keep it's chromaticity
-    sample.throughput = G1_l * normalize(F);
+    sample.throughput = vec3<f32>(1.0f);//G1_l * mix(vec3<f32>(F_greyscale), F, colorless_reflection);
     sample.random_state = random_state;
     return sample;
 }
@@ -1274,7 +1270,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
             // Sample material
             var material: Material = instance_material[hit.instance_index];
-
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).
@@ -1338,8 +1333,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 let F_n: vec3<f32> = mix(vec3<f32>(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
                 let F_n_greyscale: f32 = rgb_to_greyscale(F_n);
 
+                // if (screen_space.x > 0.0f) {
                 let diffuse_factor_estimate: f32 = max((1.0f - F_n_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
-                if (diffuse_factor_estimate > BIAS || material.roughness > 0.2f) {
+                if (diffuse_factor_estimate > 0.04f || material.roughness > 0.2f) {
                     // Do NEE
                     let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
                     random_state = local_sampled.random_state;
@@ -1349,17 +1345,18 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                     direct_light_emission = true;
                 }
                 /*
-                // Conservative only NEE method
-                let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
-                random_state = local_sampled.random_state;
-                // Calculate primary light sources for this pass if ray hits non translucent object
-                final_color += local_sampled.color * importancy_factor;
-                // Add emissive color to final color only on first bounce otherwise rely on NEE
-                if (i == 0u) {
-                    final_color += material.emissive * importancy_factor;
+                } else {
+                    // Conservative only NEE method
+                    let local_sampled: SampledColor = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, screen_space);
+                    random_state = local_sampled.random_state;
+                    // Calculate primary light sources for this pass if ray hits non translucent object
+                    final_color += local_sampled.color * importancy_factor;
+                    // Add emissive color to final color only on first bounce otherwise rely on NEE
+                    if (i == 0u) {
+                        final_color += material.emissive * importancy_factor;
+                    }
                 }
                 */
-
                 // Attempt ray bounce with material normal first
                 var bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state, screen_space);
                 random_state = bsdf_sampled.random_state;
@@ -1411,7 +1408,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Increment hit iterator
         i = i + 1u;
         // Calculate next intersection
-        hit = traverseInstanceBVH(ray, current_direct_light_emission);
+        hit = traverseInstanceBVH(ray, direct_light_emission);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.instance_index == UINT_MAX) {
             add_ambient = true;
@@ -1420,8 +1417,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Project ray origin to hit point
         ray.origin += hit.distance * ray.unit_direction;
     }
-
-
     // Sample environment map if present
     if (add_ambient) {
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
