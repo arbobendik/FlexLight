@@ -1,6 +1,5 @@
-import { BIAS, normalize, vector_difference, cross, dot, Vector } from "../lib/math";
+import { BIAS_32, normalize, vector_difference, cross, dot, Vector } from "../lib/math";
 import { Material } from "./material";
-import { Prototype, TRIANGLE_SIZE } from "./prototype";
 
 
 export interface ObjectPrototype {
@@ -133,7 +132,7 @@ export class Parser implements Parser {
         
         // If the dot product of the cross product and normal is positive,
         // the vertex is convex 
-        return dot(crossProduct, normal) >= BIAS;
+        return dot(crossProduct, normal) >= BIAS_32;
     }
 
     // Checks if a point is inside a triangle using barycentric coordinates.
@@ -154,7 +153,7 @@ export class Parser implements Parser {
         const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
         
         // Check if point is in triangle
-        return Math.min(u, v) > BIAS && u + v < 1.0 - BIAS;
+        return Math.min(u, v) > BIAS_32 && u + v < 1.0 - BIAS_32;
         // return (u >= 0) && (v >= 0) && (u + v <= 1);
     };
 
