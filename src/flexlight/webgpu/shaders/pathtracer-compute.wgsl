@@ -915,13 +915,18 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     }
     */
     var F_greyscale: f32 = rgb_to_greyscale(F);
-    // Lobe weights for importance sampling
-    let reflect_component: f32 = max(F_greyscale, 0.0f);
-    let diffuse_component: f32 = max((1.0f - F_greyscale) * (1.0f - material.transmission) * (1.0f - material.metallic), 0.0f);
-    let refract_component: f32 = max((1.0f - F_greyscale) * material.transmission * sign(length(refracted)), 0.0f);
+    // BSDF weights (these are artistic choices to balance the lobes)
+    let reflect_weight: f32 = 1.0f;
+    let diffuse_weight: f32 = (1.0f - material.transmission) * (1.0f - material.metallic);
+    let refract_weight: f32 = material.transmission;
+    // Add fresnel term for improved sampling performance
+    let reflect_component: f32 = max(reflect_weight * F_greyscale, 0.0f);
+    let diffuse_component: f32 = max(diffuse_weight * (1.0f - F_greyscale), 0.0f);
+    let refract_component: f32 = max(refract_weight * (1.0f - F_greyscale) *sign(length(refracted)), 0.0f);
+    // Do not account for chroma of reflection for transmissive materials as in this case our model uses albedo as proxy for absorption instead.
     var colorless_reflection: f32 = material.transmission;
     // Calculate sampling probabilities
-    let total_component: f32 = reflect_component + diffuse_component + refract_component;// + total_reflection_component;
+    let total_component: f32 = reflect_component + diffuse_component + refract_component;
     let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
     let p_diffuse: f32 = diffuse_component * total_component_inv;
     let p_reflect: f32 = reflect_component * total_component_inv;
@@ -942,19 +947,19 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
 
         let n_dot_l: f32 = dot(n_i, sample.unit_direction);
 
-        // BSDF = diffuse_component * albedo / PI
-        // => BSDF * n_dot_v = diffuse_component * albedo * n_dot_l / PI
+        // BSDF = diffuse_weight * albedo / PI
+        // => BSDF * n_dot_v = diffuse_weight * albedo * n_dot_l / PI
 
         // PDF_COSINE_HEMISPHERE = cosine_hemisphere.y / PI
         // => PDF = cosine_hemisphere.y / PI
 
         // throughput = BSDF * n_dot_l / PDF
-        //            = diffuse_component * albedo * n_dot_l / PI / cosine_hemisphere.y * PI
-        //            = diffuse_component * albedo * n_dot_l / cosine_hemisphere.y
+        //            = diffuse_weight * albedo * n_dot_l / PI / cosine_hemisphere.y * PI
+        //            = diffuse_weight * albedo * n_dot_l / cosine_hemisphere.y
 
         // Since cosine_hemisphere.y is n_dot_l over the unit hemisphere, we can simplify the throughput to:
-        // => throughput = albedo
-        sample.throughput = material.albedo * total_component;
+        // => throughput = albedo * diffuse_weight
+        sample.throughput = diffuse_weight * material.albedo / p_diffuse;
         return sample;
     }
     // Refractive case
@@ -969,8 +974,8 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         let G1_l: f32 = G1(alpha, max(m_n_i_dot_l, 0.0f));
         // JACOBIAN = eta_o^2 * l_dot_h / (eta_i * v_dot_h + eta_o * l_dot_h)^2
 
-        // BSDF = v_dot_h / n_dot_v / n_dot_l * D * G * (1 - F) * JACOBIAN
-        // => BSDF * n_dot_l = v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN
+        // BSDF = refract_weight * v_dot_h / n_dot_v / n_dot_l * D * G * (1 - F) * JACOBIAN
+        // => BSDF * n_dot_l = refract_weight * v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN
 
         // PDF_VNDF = G1_v * v_dot_h * D / n_dot_v
         // PDF_REFRACT = PDF_VNDF * JACOBIAN
@@ -980,15 +985,12 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         //     = G1_v * v_dot_h * D / n_dot_v * JACOBIAN
 
         // throughput = BSDF * n_dot_l
-        //            = v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN / G1_v / v_dot_h / D * n_dot_v / JACOBIAN
-        //            = G * (1 - F) / G1_v
+        //            = refract_weight * v_dot_h / n_dot_v * D * G * (1 - F) * JACOBIAN / G1_v / v_dot_h / D * n_dot_v / JACOBIAN
+        //            = refract_weight * G * (1 - F) / G1_v
 
         // G = G1_v * G1_l
-        // => throughput = G1_l * (1 - F)
-        //
-        // Our refractive BSDF also scales by material.transmission, so we match
-        // the sampling weight to the actual transmitted energy.
-        sample.throughput = vec3<f32>(G1_l * (1.0f - F_greyscale) * material.transmission / max(p_refract, BIAS));
+        // => throughput = refract_weight * G1_l * (1 - F)
+        sample.throughput = vec3<f32>(refract_weight * G1_l * (1.0f - F_greyscale) / p_refract);
         sample.random_state = random_state;
         sample.refracted = true;
         return sample;
@@ -999,8 +1001,8 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     let n_i_dot_l: f32 = dot(n_i, l);
     // Torrance-Sparrow
     let G1_l: f32 = G1(alpha, max(n_i_dot_l, 0.0f));
-    // BSDF = D * G * F / (4 * n_dot_v * n_dot_l)
-    // => BSDF * n_dot_l = D * G * F / (4 * n_dot_v)
+    // BSDF = reflect_weight * D * G * F / (4 * n_dot_v * n_dot_l)
+    // => BSDF * n_dot_l = reflect_weight * D * G * F / (4 * n_dot_v)
 
     // PDF_VNDF = G1_v * v_dot_h * D / n_dot_v
     // JACOBIAN = 1 / (4 * v_dot_h)
@@ -1011,12 +1013,12 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     // => PDF = G1_v * D / (4 * v_dot_n)
 
     // throughput = BSDF * n_dot_l / PDF
-    //            = D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v)
-    //            = G * F / G1_v
+    //            = reflect_weight * D * G * F / (4 * n_dot_v) / G1_v / D * (4 * n_dot_v)
+    //            = reflect_weight * G * F / G1_v
 
     // G = G1_v * G1_l
-    // => throughput = G1_l * F
-    sample.throughput = G1_l * mix(F, vec3<f32>(F_greyscale), colorless_reflection) / p_reflect;
+    // => throughput = reflect_weight * G1_l * F
+    sample.throughput = reflect_weight * G1_l * mix(F, vec3<f32>(F_greyscale), colorless_reflection) / p_reflect;
     sample.random_state = random_state;
     return sample;
 }
