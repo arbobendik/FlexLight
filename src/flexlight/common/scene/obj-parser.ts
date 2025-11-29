@@ -1,6 +1,6 @@
 "use strict";
 
-import { cross, normalize, Vector, vector_difference, vector_scale, dot, BIAS, vector_length } from "../lib/math";
+import { cross, normalize, Vector, vector_difference, vector_scale, BIAS_32, vector_length } from "../lib/math";
 import { Material } from "./material";
 import { ObjectPrototype, Vertex } from "./parser";
 import { Parser } from "./parser";
@@ -191,10 +191,10 @@ export class ObjParser extends Parser {
                         let v1 = vector_difference(vertices[0]!.position, vertices[j - 1]!.position);
                         geometryNormal = normalize(cross(v1, v0));
                         // If all vectors are non-zero, break
-                        if (vector_length(v0) > BIAS && vector_length(v1) > BIAS && vector_length(geometryNormal) > BIAS) break;
+                        if (vector_length(v0) > BIAS_32 && vector_length(v1) > BIAS_32 && vector_length(geometryNormal) > BIAS_32) break;
                     }
 
-                    if (vector_length(geometryNormal) <= BIAS) {
+                    if (vector_length(geometryNormal) <= BIAS_32) {
                         console.warn("All vertices are on a line or polygon is degenerate.");
                         break;
                     }

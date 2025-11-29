@@ -75,14 +75,10 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     const configForm = new ConfigForm(form, engine.config, localStorageHook);
     configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"] as const, getStartValueSelect({ name: "Antialiasing", defaultValue: "undefined" as StringAntialiasingType }));
     configForm.addCheckbox("Temporal averaging", "temporal", getStartValueCheckbox({ name: "Temporal averaging", defaultValue: true }));
-    configForm.addCheckbox("Tonemapping", "hdr", getStartValueCheckbox({ name: "Tonemapping", defaultValue: true }));
-    configForm.addSlider("Render quality", "renderQuality", 0.1, 2, 0.1, getStartValueSlider({ name: "Render quality", defaultValue: 1 }));
-    configForm.addSlider("Samples per ray", "samplesPerRay", 1, 32, 1, getStartValueSlider({ name: "Samples per ray", defaultValue: 1 }));
-    configForm.addSlider("Max reflections", "maxReflections", 1, 16, 1, getStartValueSlider({ name: "Max reflections", defaultValue: 6 }));
-    configForm.addSlider("Min importancy", "minImportancy", 0, 1, 0.01, getStartValueSlider({ name: "Min importancy", defaultValue: 0.5 }));
-
-    console.log(engine.config);
-
-
+    configForm.addCheckbox("Tonemapping", "tonemapping", getStartValueCheckbox({ name: "Tonemapping", defaultValue: true }));
+    configForm.addSlider("Render resolution", "renderResolution", 0.1, 2, 0.1, getStartValueSlider({ name: "Render resolution", defaultValue: 1 }));
+    configForm.addSlider("Samples per pixel", "samplesPerPixel", 1, 32, 1, getStartValueSlider({ name: "Samples per pixel", defaultValue: 1 }));
+    configForm.addSlider("Max GI bounces", "maxBounces", 1, 16, 1, getStartValueSlider({ name: "Max GI bounces", defaultValue: 7 }));
+    configForm.addSlider("Reprojections", "maxReprojections", 4, 256, 1, getStartValueSlider({ name: "Max frame reprojections", defaultValue: 32 }));
     return form;
 };
