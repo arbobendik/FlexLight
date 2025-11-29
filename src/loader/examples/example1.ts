@@ -59,9 +59,9 @@ const cubePrototype = await loadObj('cube');
 
 const cuboid = (xmin: number, xmax: number, ymin: number, ymax: number, zmin: number, zmax: number) => {
 	let cuboid = scene.instance(cubePrototype);
-	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5 - 0.0001);
+	let diff_half: Vector<3> = vector_scale(new Vector(xmax - xmin, ymax - ymin, zmax - zmin), 0.5);
 	cuboid.transform.position = new Vector(xmin + diff_half.x, ymin + diff_half.y, zmin + diff_half.z);
-	cuboid.transform.scale(diff_half);
+	cuboid.transform.scale(vector_scale(diff_half, 1.0 - 0.0001));
 	return cuboid;
 }
 
@@ -70,8 +70,8 @@ camera.position = new Vector(8, 7, 11);
 camera.direction = new Vector(0.440, 0.55);
 
 
-let pointLightCenter = new PointLight(new Vector(0.5, 1.5, -0.5), new Vector(1, 1, 1), 187.5, 0.2);
-let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 75, 0.1);
+let pointLightCenter = new PointLight(new Vector(0, 1.5, -0.5), new Vector(1, 1, 1), 187.5 * 2, 0.2);
+let pointLightTop = new PointLight(new Vector(0, 15, -2), new Vector(1, 1, 1), 75 * 2, 0.1);
 scene.addPointLight(pointLightTop);
 scene.addPointLight(pointLightCenter);
 scene.ambientLight = new Vector(0.025, 0.025, 0.025);

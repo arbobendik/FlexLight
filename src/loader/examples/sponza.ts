@@ -101,15 +101,20 @@ for await (let prototype of sponzaGenerator) {
         instance.normal = normalTexture;
     }
 
-    instance.material.roughness = 1;
+    // instance.material.roughness = 1;
+    // instance.material.metallic = 0;
     // instance.material.roughness = 0;
     sponzaInstances.push(instance);
 }
 
 scene.ambientLight = new Vector(0.1, 0.1, 0.1);
-let environmentMapURL = staticPath + "textures/house_2k.hdr";
-fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.25, 0.5));
 
+let environmentMapURL = staticPath + "textures/house_2k.hdr";
+fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.125, 1, 2));
+
+
+let light = new PointLight(new Vector(0, 100, - 10), new Vector(1, 1, 1), 80000, 5);
+scene.addPointLight(light);
 
 // Set camera position and direction for a good view of the scene
 camera.position = new Vector(10, 1, 0);

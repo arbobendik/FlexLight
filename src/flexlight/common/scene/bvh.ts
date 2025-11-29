@@ -1,8 +1,8 @@
 "use strict";
 
 import { Triangle } from "./triangle-bvh";
-import { IndexedInstance } from "./instance-bvh";
-import { BIAS, Vector, vector_difference } from "../lib/math";
+import { IndexedInstance, IndexedPointLight } from "./scene-bvh";
+import { BIAS_32, Vector, vector_difference } from "../lib/math";
 
 
 const BVH_MAX_INSTANCES_PER_LEAF = 2;
@@ -14,7 +14,7 @@ export interface Bounding {
     max: Vector<3>;
 }
 
-export class BVHLeaf<T extends Triangle | IndexedInstance> {
+export class BVHLeaf<T extends Triangle | IndexedInstance | IndexedPointLight> {
     children: Array<T>;
     bounding: Bounding;
     id: number;
@@ -47,7 +47,7 @@ export class BVHLeaf<T extends Triangle | IndexedInstance> {
     }
 }
 
-export class BVHNode<T extends Triangle | IndexedInstance> {
+export class BVHNode<T extends Triangle | IndexedInstance | IndexedPointLight> {
     children: Array<BVHNode<T> | BVHLeaf<T>>;
     bounding: Bounding;
     id: number;
@@ -87,7 +87,7 @@ export interface BVHArrays {
 }
 
 
-export abstract class BVH<T extends Triangle | IndexedInstance> {
+export abstract class BVH<T extends Triangle | IndexedInstance | IndexedPointLight> {
     root: BVHNode<T> | BVHLeaf<T>;
 
     constructor(objects: Array<T>, useBFS: boolean = false) {
@@ -148,7 +148,7 @@ export abstract class BVH<T extends Triangle | IndexedInstance> {
                 }
             }
         }
-        // If no subdivision is happening, return flat tree to avoid infinite recursion and unnecessary 
+        // If no subdivision is happening, return flat tree to avoid infinite recursion
         if (minCost === Infinity) {
             return undefined;
         }
@@ -207,11 +207,16 @@ export abstract class BVH<T extends Triangle | IndexedInstance> {
             const bounding = this.tightenBounding(objects);
             // Base case: if there are less than BVH_MAX_INSTANCES_PER_LEAF instances, return a leaf
             if (objects.length <= BVH_MAX_INSTANCES_PER_LEAF || depth > maxDepth) return { node: new BVHLeaf(objects, bounding, startingId), nextId: startingId + 1 };
-
+            
             const split = this.split(objects, bounding);
             // If no split is possible, return flat tree to avoid infinite recursion
             if (!split) return fillFlatTreeDFS(objects, startingId);
             const { objectsInBound0, objectsInBound1 } = split;
+
+            if (objectsInBound0.length === 0 || objectsInBound1.length === 0) {
+                return fillFlatTreeDFS(objects, startingId);
+                // console.log(objects.length, objectsInBound0.length, objectsInBound1.length);
+            }
 
             let children: Array<BVHNode<T> | BVHLeaf<T>> = [];
             // Assign ids to children
@@ -332,8 +337,8 @@ export abstract class BVH<T extends Triangle | IndexedInstance> {
     }
 
     protected static isVertexInBounding(vertex: Vector<3>, bound: Bounding): boolean {
-        return bound.min.x - BIAS <= vertex.x && bound.min.y - BIAS <= vertex.y && bound.min.z - BIAS <= vertex.z &&
-               bound.max.x + BIAS >= vertex.x && bound.max.y + BIAS >= vertex.y && bound.max.z + BIAS >= vertex.z;
+        return bound.min.x - BIAS_32 <= vertex.x && bound.min.y - BIAS_32 <= vertex.y && bound.min.z - BIAS_32 <= vertex.z &&
+               bound.max.x + BIAS_32 >= vertex.x && bound.max.y + BIAS_32 >= vertex.y && bound.max.z + BIAS_32 >= vertex.z;
     }
 
     protected static longestAxis(bounding: Bounding): "x" | "y" | "z" {

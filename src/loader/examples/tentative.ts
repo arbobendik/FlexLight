@@ -90,14 +90,14 @@ monkeyInstanceRed.transform.position = new Vector(0, -2, 0);
 monkeyInstanceRed.transform.scale(5);
 monkeyInstanceRed.material.roughness = 1;
 monkeyInstanceRed.material.metallic = 0;
-monkeyInstanceRed.material.emissive = new Vector(500, 0, 0);
+monkeyInstanceRed.material.emissive = new Vector(100, 0, 0);
 
 const monkeyInstanceBlue = scene.instance(monkey);
 monkeyInstanceBlue.transform.position = new Vector(0, -2, -50);
 monkeyInstanceBlue.transform.scale(5);
 monkeyInstanceBlue.material.roughness = 1;
 monkeyInstanceBlue.material.metallic = 0;
-monkeyInstanceBlue.material.emissive = new Vector(0, 0, 500);
+monkeyInstanceBlue.material.emissive = new Vector(0, 0, 100);
 
 
 // Add FPS counter to top-right corner

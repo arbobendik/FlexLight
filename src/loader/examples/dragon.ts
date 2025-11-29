@@ -2,7 +2,7 @@
 // @ts-ignore
 import { createConfigUI } from "../../config-ui/config-ui.js";
 // import { vector_difference, vector_length } from "../../flexlight/common/lib/math.js";
-import { FlexLight, PointLight, Prototype, Vector, vector_difference, vector_length } from "../../flexlight/flexlight.js";
+import { AlbedoTexture, EmissiveTexture, FlexLight, MetallicTexture, NormalTexture, PointLight, Prototype, RoughnessTexture, Vector, vector_difference, vector_length } from "../../flexlight/flexlight.js";
 
 export const staticPath = './static/';
 // Create new canvas
@@ -22,6 +22,28 @@ controlPanel.appendChild(configUI);
 let camera = engine.camera;
 let scene = engine.scene;
 
+const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" |  "emissive" | "roughness" | "metallic"): Promise<Texture> => {
+	let promise = new Promise<HTMLImageElement>((resolve) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.src = textureUrl;
+	});
+
+	let img = await promise;
+	switch (textureType) {
+		case "normal":
+			return new NormalTexture(img);
+		case "albedo":
+			return new AlbedoTexture(img);
+		case "emissive":
+			return new EmissiveTexture(img);
+		case "roughness":
+			return new RoughnessTexture(img);
+		case "metallic":
+			return new MetallicTexture(img);
+	}
+}
+
 const loadObj = async (model: string) => {
     console.log('loading ' + model);
     const objPath = staticPath + 'objects/' + model + '.obj';
@@ -32,10 +54,10 @@ const loadObj = async (model: string) => {
 };
 
 // Set camera perspective and position.
-[camera.position.x, camera.position.y, camera.position.z] = [-10, 14, 10];
-[camera.direction.x, camera.direction.y] = [-.9, .45];
+[camera.position.x, camera.position.y, camera.position.z] = [0, 14, 20];
+[camera.direction.x, camera.direction.y] = [-.4, .45];
 
-let light1 = new PointLight(new Vector(50, 70, -50), new Vector(1, 1, 1), 3750, 5);
+let light1 = new PointLight(new Vector(50, 70, -50), new Vector(1, 1, 1), 5000, 5);
 
 scene.addPointLight(light1);
 
@@ -45,6 +67,7 @@ const plane = await loadObj('plane');
 const dragon = await loadObj('dragon_lp_flipped');
 const monke = await loadObj('monke_smooth');
 const sphere = await loadObj('sphere');
+const cube = await loadObj('cube');
 
 let planeInstance = scene.instance(plane);
 planeInstance.transform.move(0, -1, 0);
@@ -56,7 +79,7 @@ let dragonInstance = scene.instance(dragon);
 dragonInstance.transform.move(15, 0, -15);
 dragonInstance.transform.scale(0.5);
 // dragonInstance.transform.rotateAxis(new Vector(0, 1, 0), 0.2);
-dragonInstance.material.color = new Vector(1.0, 0.05, 0.05);
+dragonInstance.material.color = new Vector(1.0, 0.1, 0.1);
 dragonInstance.material.roughness = 0;
 dragonInstance.material.metallic = 0;
 dragonInstance.material.transmission = 1;
@@ -77,10 +100,20 @@ sphereInstance.material.metallic = 0;
 sphereInstance.material.transmission = 1;
 sphereInstance.material.ior = 1.5;
 
+let waterBlockInstance = scene.instance(cube);
+waterBlockInstance.transform.move(5, 2.5, -2.5);
+waterBlockInstance.transform.scale(2);
+waterBlockInstance.material.color = new Vector(0.95, 0.98, 1.0);
+waterBlockInstance.normal = await loadTexture(staticPath + 'textures/water_flat.jpg', 'normal');
+waterBlockInstance.material.roughness = 0;
+waterBlockInstance.material.metallic = 0;
+waterBlockInstance.material.transmission = 1;
+waterBlockInstance.material.ior = 1.33;
+
 // Start render engine.
 engine.renderer.render();
 
-
+/*
 let slider = document.createElement("input");
 slider.type = "range";
 slider.min = "0";
@@ -105,21 +138,16 @@ setInterval(() => {
     // dragonTransform.move(Math.sin(rotationAngle) * 20, 0, Math.cos(rotationAngle) * 20);
     // monkeTransform.move(Math.sin(rotationAngle) * 20, 1, Math.cos(rotationAngle) * 20);
     // dragonTransform.rotateSpherical(rotationAngle, 0);
-
+    
     let diff = vector_difference(camera.position, monkeInstance.transform.position);
     let r = vector_length(diff);
     let theta = Math.sign(diff.z) * Math.acos(diff.x / Math.sqrt(diff.x * diff.x + diff.z * diff.z)) - Math.PI * 0.5;
     let psi = Math.acos(diff.y / r) - Math.PI * 0.5;
     monkeInstance.transform.rotateSpherical(theta, psi);
-    /*
-    diff = Math.diff([camera.x, camera.y, camera.z], dragonTransform.position);
-    r = Math.length(diff);
-    theta = Math.sign(diff[2]) * Math.acos(diff[0] / Math.sqrt(diff[0] * diff[0] + diff[2] * diff[2])) - Math.PI;
-    psi = Math.acos(diff[1] / r);
-    dragonTransform.rotateSpherical(theta, 0);
-    */
-
+    
+   
 }, 1000 / 330);
+*/
 
 // Add FPS counter to top-right corner
 const fpsCounter = document.createElement("div");

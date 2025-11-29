@@ -16,7 +16,7 @@ struct UniformFloat {
     camera_position: vec3<f32>,
     ambient: vec3<f32>,
 
-    min_importancy: f32,
+    max_temporal_reproject: f32,
 };
 
 struct UniformUint {
@@ -57,7 +57,8 @@ fn compute(
     let screen_pos: vec2<u32> = global_invocation_id.xy;
 
     let accumulated_float_0: vec4<f32> = textureLoad(accumulated_float, screen_pos, 0, 0);
-    // let accumulated_float_1: vec4<f32> = textureLoad(accumulated_float, screen_pos, 1, 0);
+    let accumulated_float_1: vec4<f32> = textureLoad(accumulated_float, screen_pos, 1, 0);
+
     let accumulated_uint_0: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 0, 0);
     let accumulated_uint_1: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 1, 0);
     let accumulated_uint_2: vec4<u32> = textureLoad(accumulated_uint, screen_pos, 2, 0);
@@ -116,6 +117,7 @@ fn compute(
         }
         // Write to shift buffer
         textureStore(shift_out_float, coord, 0, accumulated_float_0);
+        textureStore(shift_out_float, coord, 1, accumulated_float_1);
         
         textureStore(shift_out_uint, coord, 0, accumulated_uint_0);
         textureStore(shift_out_uint, coord, 1, accumulated_uint_1);

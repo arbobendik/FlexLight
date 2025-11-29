@@ -6,28 +6,33 @@ import { decodeRGBE } from "./hdri";
 
 
 export interface EnvironmentMap {
-    imageData: ImageData;
+    // imageData: ImageData;
+    imageArray: Float16Array;
     imageSize: Vector<2>;
     gamma: number;
     exposure: number;
 }
 
 export class EnvironmentMap implements EnvironmentMap {
-    constructor(dataView: DataView, exposure: number = 1.0, gamma: number = 1.0 / 2.2) {
+    constructor(dataView: DataView, exposure: number = 1, gamma: number = 1, whitePoint: number = 16) {
+
+        // console.log(DataView.prototype.buffer);
         
         const hdriData = decodeRGBE(dataView);
         this.exposure = exposure * hdriData.exposure;
         this.gamma = gamma * hdriData.gamma;
-        const imageArray = new Uint8ClampedArray(hdriData.data.length / 3 * 4);
+        this.imageArray = new Float16Array(hdriData.data.length);
 
-        for (let i = 0, j = 0; i < hdriData.data.length; i += 3, j += 4) {
-            imageArray[j] = Math.pow(hdriData.data[i]! * this.exposure, this.gamma) * 255;
-            imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * this.exposure, this.gamma) * 255;
-            imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * this.exposure, this.gamma) * 255;
-            imageArray[j + 3] = 255;
+        for (let i = 0, j = 0; i < hdriData.data.length; i += 3, j += 3) {
+            this.imageArray[j] = Math.pow(hdriData.data[i]! * this.exposure, 1 / this.gamma);
+            this.imageArray[j + 1] = Math.pow(hdriData.data[i + 1]! * this.exposure, 1 / this.gamma);
+            this.imageArray[j + 2] = Math.pow(hdriData.data[i + 2]! * this.exposure, 1 / this.gamma);
         }
 
-        this.imageData = new ImageData(imageArray, hdriData.width, hdriData.height);
+        // Clamp to max float16
+        for (let i = 0; i < this.imageArray.length; i ++) this.imageArray[i] = Math.min(Math.min(this.imageArray[i]!, whitePoint), 65519);
+
+        // this.imageData = new ImageData(imageArray, hdriData.width, hdriData.height);
         this.imageSize = new Vector(hdriData.width, hdriData.height);
         /*
         var canvas = document.createElement('canvas');
@@ -54,7 +59,7 @@ export class EnvironmentMapManager {
     }
 
     constructor(environmentMap: EnvironmentMap | undefined = undefined) {
-        this._environmentMap = environmentMap ?? { imageData: new ImageData(1, 1), imageSize: new Vector(1, 1), gamma: 1, exposure: 1 };
+        this._environmentMap = environmentMap ?? { imageArray: new Float16Array([1, 1, 1]), imageSize: new Vector(1, 1), gamma: 1, exposure: 1 };
     }
 
     bindGPUBuffer(gpuBuffer: BufferToGPU) {
