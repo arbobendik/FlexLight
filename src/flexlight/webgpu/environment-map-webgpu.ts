@@ -5,7 +5,6 @@ import { Scene } from "../common/scene/scene";
 import { Texture } from "../common/scene/texture";
 import { EnvironmentMap } from "../flexlight";
 
-
 export class EnvironmentMapWebGPU {
     private gpuTextureSize: Vector<2>;
     private _gpuTexture: GPUTexture;
