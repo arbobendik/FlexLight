@@ -3,7 +3,7 @@
 import { Vector } from "../common/lib/math";
 import { Scene } from "../common/scene/scene";
 import { Texture } from "../common/scene/texture";
-
+import { EnvironmentMap } from "../flexlight";
 
 export class EnvironmentMapWebGPU {
     private gpuTextureSize: Vector<2>;
@@ -50,20 +50,19 @@ export class EnvironmentMapWebGPU {
         if (source) {
             console.log("EnvironmentMapWebGPU.constructor(): source is not null", source);
             // Copy image data to GPUTexture
-            this.loadHDRImage(source.imageData, source.gamma);  
+            this.loadHDRImage(source);  
             // this.copySourcesToCubeMap(device, this.scene.environmentMap.cubeSideImages);
         }
     }
 
-    loadHDRImage(img: ImageData, gamma: number) {
-        const f16Array = new Float16Array(img.width * img.height * 4);
-        const oneOverGamma = 1 / gamma;
+    loadHDRImage(source: EnvironmentMap) {
+        const f16Array = new Float16Array(source.imageSize.x * source.imageSize.y * 4);
     
-        for (let i = 0; i < img.data.length; i += 4) {
-            f16Array[i] = Math.pow(img.data[i]! / 0xff, oneOverGamma);
-            f16Array[i + 1] = Math.pow(img.data[i + 1]! / 0xff, oneOverGamma);
-            f16Array[i + 2] = Math.pow(img.data[i + 2]! / 0xff, oneOverGamma);
-            f16Array[i + 3] = 1;
+        for (let i = 0, j = 0; i < source.imageArray.length; i += 3, j += 4) {
+            f16Array[j] = source.imageArray[i]!;
+            f16Array[j + 1] = source.imageArray[i + 1]!;
+            f16Array[j + 2] = source.imageArray[i + 2]!;
+            f16Array[j + 3] = 1;
         }
 
         // Helper functions for bilinear filtering
@@ -139,12 +138,12 @@ export class EnvironmentMapWebGPU {
         };
         
         // Generate all mip levels
-        const mips = generateMips(f16Array, img.width, img.height);
+        const mips = generateMips(f16Array, source.imageSize.x, source.imageSize.y);
         this._mipLevelCount = mips.length;
 
         // Create texture with all mip levels
         this._gpuTexture = this.device.createTexture({
-            size: [img.width, img.height],
+            size: [source.imageSize.x, source.imageSize.y],
             format: 'rgba16float',
             usage: GPUTextureUsage.TEXTURE_BINDING | 
             GPUTextureUsage.COPY_DST | 
@@ -156,8 +155,8 @@ export class EnvironmentMapWebGPU {
         this.device.queue.writeTexture(
             { texture: this._gpuTexture },
             f16Array.buffer,
-            { bytesPerRow: img.width * 8 },
-            { width: img.width, height: img.height }
+            { bytesPerRow: source.imageSize.x * 8 },
+            { width: source.imageSize.x, height: source.imageSize.y }
         );
 
         // Write mip levels

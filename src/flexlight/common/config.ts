@@ -22,9 +22,9 @@ export class Config {
   set antialiasing(value: WebGPUAntialiasingType) { this._antialiasing = value; }
 
   temporal: boolean = true;
-  hdr: boolean = true;
-  renderQuality: number = 1;
-  samplesPerRay: number = 1;
-  maxReflections: number = 5;
-  minImportancy: number = 0.3;
+  tonemapping: boolean = true;
+  renderResolution: number = 1;
+  samplesPerPixel: number = 1;
+  maxBounces: number = 7;
+  maxReprojections: number = 32;
 }

@@ -43,8 +43,8 @@ let scene: Scene = engine.scene;
 [camera.direction.x, camera.direction.y] = [-2.38, 0.4];
 
 // for (let i = 0; i < 10; i++) {
-let light1 = new PointLight(new Vector(110, 100, 110), new Vector(0, 0, 1), 5000, 50);
-let light2 = new PointLight(new Vector(-110, 100, -110), new Vector(0, 1, 0), 5000, 50);
+let light1 = new PointLight(new Vector(110, 100, 110), new Vector(0, 0, 1), 1000, 50);
+let light2 = new PointLight(new Vector(110, 100, 110), new Vector(0, 1, 0), 1000, 50);
 let light3 = new PointLight(new Vector(-110, 100, 110), new Vector(1, 1, 1), 250000, 10);
 
 
