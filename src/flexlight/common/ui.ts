@@ -6,7 +6,7 @@ import { Transform } from "./scene/transform.js";
 import { Ray, Vector, ray_bounding, POW32M1, normalize, Matrix, moore_penrose, vector_scale, matrix_vector_mul, vector_add, vector_length, ray_triangle, matrix_mul, transpose, moellerTrumbore } from "./lib/math.js";
 import { BVHNode } from "./scene/bvh.js";
 import { BVHLeaf } from "./scene/bvh.js";
-import { IndexedInstance } from "./scene/instance-bvh.js";
+import { IndexedInstance } from "./scene/scene-bvh.js";
 import { TypedArrayView } from "./buffer/typed-array-view.js";
 import { Instance } from "./scene/instance.js";
 import { Prototype } from "./scene/prototype.js";
