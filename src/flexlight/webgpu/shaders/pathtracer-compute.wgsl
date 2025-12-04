@@ -390,7 +390,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
     // Stack for BVH traversal
     var stack = array<u32, 24>();
     var stack_index: u32 = 1u;
-    
+
     while (stack_index > 0u && stack_index < 24u) {
         stack_index -= 1u;
         var node_index: u32 = stack[stack_index];
@@ -405,7 +405,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
         let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
         let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
         let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-        
+
         if (indicator_and_children.x == 0u) {
             // Run Moeller-Trumbore algorithm for both triangles
             // Test if ray even intersects
@@ -429,7 +429,7 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
                     hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z;
                 }
             }
-            
+
         } else {
             let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, hit.distance * len_factor);
             var dist1: f32 = POW32;
@@ -589,7 +589,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
                 let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
                 if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len)) {
                     return true;
-                }   
+                }
             }
         } else {
             let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, max_len);
@@ -749,11 +749,7 @@ fn sampleTrowbridgeReitz(alpha: f32, random_1: f32, random_2: f32) -> vec3<f32> 
 }
 */
 
-// Listing 1. Sampling the GGX VNDF: complete implementation.
-// Input Ve: view direction
-// Input alpha_x, alpha_y: roughness parameters
-// Input U1, U2: uniform random numbers
-// Output Ne: normal sampled with PDF D_Ve(Ne) = G1(Ve) * max(0, dot(Ve, Ne)) * D(Ne) / Ve.z
+// Sampling of the GGX VNDF
 fn sampleGGXVNDF(Ve: vec3<f32>, alpha: f32, U1: f32, U2: f32) -> vec3<f32> {
     // The Ve argument is the view direction in tangent space, where the normal is (0, 0, 1).
     // Section 3.2: transforming the view direction to the hemisphere configuration.
@@ -779,7 +775,7 @@ fn sampleGGXVNDF(Ve: vec3<f32>, alpha: f32, U1: f32, U2: f32) -> vec3<f32> {
 fn sampleCosWeightedHemisphere(random_1: f32, random_2: f32) -> vec3<f32> {
     let r = sqrt(random_1);
     let theta: f32 = 2.0f * PI * random_2;
-    let x = r * cos(theta); // cos(theta) is the cosine of the angle between the normal and the sampled direction
+    let x = r * cos(theta);
     let z = r * sin(theta);
     let y = sqrt(max(0.0f, 1.0f - x * x - z * z));
     return vec3<f32>(x, y, z);
@@ -836,7 +832,6 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, mat
         let D: f32 = trowbridgeReitz(alpha, n_dot_h);
         // let G = smithAlt(alpha, pd_n_dot_v, pd_n_dot_l);
         let G: f32 = smith(alpha, pd_n_dot_v, pd_n_dot_l);
-        // let oren_nayar: vec3<f32> = OrenNayar(out_dir, in_dir, n, material);
         let diffuse_factor: f32 = (1.0f - F_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission);
         let torrance_sparrow: vec3<f32> = D * F * G / max(4.0f * pd_n_dot_v * pd_n_dot_l, BIAS);
         let radiance: vec3<f32> = diffuse_factor * lambert + torrance_sparrow;
@@ -914,7 +909,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         F = fresnel_schlick(f0, n_i_dot_v);
     }
     */
-    var F_greyscale: f32 = rgb_to_greyscale(F);
+    let F_greyscale: f32 = rgb_to_greyscale(F);
     // BSDF weights (these are artistic choices to balance the lobes)
     let reflect_weight: f32 = 1.0f;
     let diffuse_weight: f32 = (1.0f - material.transmission) * (1.0f - material.metallic);
@@ -922,7 +917,7 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
     // Add fresnel term for improved sampling performance
     let reflect_component: f32 = max(reflect_weight * F_greyscale, 0.0f);
     let diffuse_component: f32 = max(diffuse_weight * (1.0f - F_greyscale), 0.0f);
-    let refract_component: f32 = max(refract_weight * (1.0f - F_greyscale) *sign(length(refracted)), 0.0f);
+    let refract_component: f32 = max(refract_weight * (1.0f - F_greyscale) * sign(length(refracted)), 0.0f);
     // Do not account for chroma of reflection for transmissive materials as in this case our model uses albedo as proxy for absorption instead.
     var colorless_reflection: f32 = material.transmission;
     // Calculate sampling probabilities
@@ -944,8 +939,6 @@ fn sampleBSDF(in_dir: vec3<f32>, n: vec3<f32>, material: Material, eta_i: f32, e
         // Sample cosine weighted hemisphere
         let cosine_hemisphere: vec3<f32> = sampleCosWeightedHemisphere(random_d_1.value, random_d_2.value);
         sample.unit_direction = tangentToWorld(cosine_hemisphere, n_i);
-
-        let n_dot_l: f32 = dot(n_i, sample.unit_direction);
 
         // BSDF = diffuse_weight * albedo / PI
         // => BSDF * n_dot_v = diffuse_weight * albedo * n_dot_l / PI
@@ -1261,8 +1254,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             var material: Material = instance_material[hit.instance_index];
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
+                // Convert absorption color from sRGB to linear space for physically correct Beer-Lambert
+                let linear_albedo: vec3<f32> = pow(material.albedo, vec3<f32>(2.2));
                 // The amount of light transmitted is T = exp(-sigma_a * d).
-                let absorption_coefficient: vec3<f32> = max(material.albedo, vec3<f32>(BIAS));
+                let absorption_coefficient: vec3<f32> = max(linear_albedo, vec3<f32>(BIAS));
                 let transmittance: vec3<f32> = exp(hit.distance * log(absorption_coefficient));
                 importancy_factor *= transmittance;
             }
