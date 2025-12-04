@@ -1255,9 +1255,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // Convert absorption color from sRGB to linear space for physically correct Beer-Lambert
-                let linear_albedo: vec3<f32> = pow(material.albedo, vec3<f32>(2.2));
                 // The amount of light transmitted is T = exp(-sigma_a * d).
-                let absorption_coefficient: vec3<f32> = max(linear_albedo, vec3<f32>(BIAS));
+                let absorption_coefficient: vec3<f32> = max(material.albedo, vec3<f32>(BIAS));
                 let transmittance: vec3<f32> = exp(hit.distance * log(absorption_coefficient));
                 importancy_factor *= transmittance;
             }
