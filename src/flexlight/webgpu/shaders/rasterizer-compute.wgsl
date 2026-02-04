@@ -280,6 +280,20 @@ fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
     }
 }
 
+// Apply normal map perturbation using UV-aware tangent space.
+// This properly considers texture coordinate orientation so normal perturbations rotate with the geometry.
+fn applyNormalMap(normal_data: vec3<f32>, edge1: vec3<f32>, edge2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> vec3<f32> {
+    let delta_uv1: vec2<f32> = uv1 - uv0;
+    let delta_uv2: vec2<f32> = uv2 - uv0;
+    // Compute inverse determinant for UV to world space transformation.
+    let f: f32 = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
+    // Compute tangent vector aligned with U direction of UV mapping.
+    let tangent: vec3<f32> = f * (delta_uv2.y * edge1 - delta_uv1.y * edge2);
+    // Build TBN matrix with orthogonalized bitangent.
+    let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(n, tangent)), n);
+    return normalize(tbn * normal_data);
+}
+
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
     let edge1 = b - a;
@@ -808,16 +822,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     let normal_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 4u];
     if (normal_texture_id != UINT_MAX) {
         let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * 2.0f - 255.0f);
-        let delta_uv1: vec2<f32> = t4.zw - t5.xy;
-        let delta_uv2: vec2<f32> = t5.zw - t5.xy;  
-        // With the required data for calculating tangents and bitangents we can start following the equation from the previous section:
-        let f: f32 = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
-        let tangent: vec3<f32> = f * (delta_uv2.y * edge1 - delta_uv1.y * edge2);
-        let bitangent: vec3<f32> = f * (delta_uv1.x * edge2 - delta_uv2.x * edge1);
-
-        let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(smooth_n, tangent)), smooth_n);
-
-        smooth_n = normalize(tbn * normal_data);
+        // Apply normal map with UV-aware tangent space using triangle UVs: t4.zw=UV0, t5.xy=UV1, t5.zw=UV2.
+        smooth_n = applyNormalMap(normal_data, edge1, edge2, t4.zw, t5.xy, t5.zw, smooth_n);
     }
     
     let emissive_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 5u];
