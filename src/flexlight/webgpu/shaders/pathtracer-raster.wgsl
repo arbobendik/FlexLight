@@ -80,18 +80,15 @@ fn access_triangle(index: u32) -> vec4<f32> {
 fn binary_search_instance(triangle_number: u32) -> u32 {
     var left: u32 = 0u;
     var right: u32 = arrayLength(&instance_uint) / INSTANCE_UINT_SIZE;
-    
     while (left < right - 1u) {
         let mid: u32 = left + (right - left) / 2u;
         let start_number: u32 = instance_uint[mid * INSTANCE_UINT_SIZE + 8u];
-        
         if (start_number <= triangle_number) {
             left = mid;
         } else {
             right = mid;
         }
     }
-    
     return left;
 }
 
@@ -139,7 +136,6 @@ fn vertex(
     out.clip_space = uniform_float.view_matrix * (out.absolute_position - uniform_float.camera_position);
     // Set triangle position in clip space
     out.pos = vec4<f32>(out.clip_space.xy, 0.0, out.clip_space.z);
-    
     return out;
 }
 
