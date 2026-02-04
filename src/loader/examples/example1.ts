@@ -1,6 +1,6 @@
 "use strict";
 
-import { Instance,Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
+import { Camera, FlexLight, Prototype, Scene, Vector, Texture, AlbedoTexture, PointLight, vector_scale, RoughnessTexture, MetallicTexture, EmissiveTexture, NormalTexture } from '../../flexlight/flexlight.js';
 import { createConfigUI } from '../../config-ui/config-ui.js';
 // import { vector_scale } from 'flexlight/common/lib/math';
 
@@ -45,7 +45,7 @@ const loadTexture = async (textureUrl: string, textureType: "normal" | "albedo" 
 	}
 }
 
-const loadObj = async (model: string) => {	
+const loadObj = async (model: string) => {
 	console.log('loading ' + model);
 	const objPath = staticPath + 'objects/' + model + '.obj';
 	// const mtlPath = staticPath + 'objects/' + model + '.mtl';
@@ -199,7 +199,7 @@ let recreateBVH = (subTree) => {
 
 	disasembleGraph(subTree);
 	let newSubTree = scene.generateBVH(list);
-	
+
 	for (let i = 0; i < Math.max(subTree.length, newSubTree.length); i++) {
 		if (i < newSubTree.length) {
 			subTree[i] = newSubTree[i];
