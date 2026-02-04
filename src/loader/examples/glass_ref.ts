@@ -63,7 +63,7 @@ let environmentMapURL = staticPath + "textures/house_2k.hdr";
 fetch(environmentMapURL).then(response => response.arrayBuffer()).then(arrayBuffer => scene.environmentMap = new EnvironmentMap(new DataView(arrayBuffer), 0.0125, 1, 1));
 
 */
-let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 1500, 2);
+let light1 = new PointLight(new Vector(30, 20.5, -30), new Vector(1, 1, 1), 2000, 2);
 scene.ambientLight = new Vector(0.0, 0.0, 0.0);
 scene.addPointLight(light1);
 // scene.ambientLight = new Vector(0.025, 0.025, 0.025);
