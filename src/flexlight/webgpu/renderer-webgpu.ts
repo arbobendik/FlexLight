@@ -24,7 +24,7 @@ export abstract class RendererWGPU extends Renderer {
         // Check for WebGPU support first by seeing if navigator.gpu even exists
         if (!navigator.gpu) throw new Error("WebGPU not supported");
     }
-    
+
     protected async requestWebGPUReferences(): Promise<WebGPUReferences> {
         let context = this.canvas.getContext("webgpu");
         if (!context) throw new Error("Failed to get webgpu context");
