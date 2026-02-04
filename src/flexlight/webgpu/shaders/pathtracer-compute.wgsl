@@ -801,6 +801,20 @@ fn worldToTangent(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(dot(v, tangent), dot(v, n), dot(v, bitangent));
 }
 
+// Apply normal map perturbation using UV-aware tangent space.
+// This properly considers texture coordinate orientation so normal perturbations rotate with the geometry.
+fn applyNormalMap(normal_data: vec3<f32>, edge1: vec3<f32>, edge2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> vec3<f32> {
+    let delta_uv1: vec2<f32> = uv1 - uv0;
+    let delta_uv2: vec2<f32> = uv2 - uv0;
+    // Compute inverse determinant for UV to world space transformation.
+    let f: f32 = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
+    // Compute tangent vector aligned with U direction of UV mapping.
+    let tangent: vec3<f32> = f * (delta_uv2.y * edge1 - delta_uv1.y * edge2);
+    // Build TBN matrix with orthogonalized bitangent.
+    let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(n, tangent)), n);
+    return normalize(tbn * normal_data);
+}
+
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 // Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
 fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, screen_space: vec2<f32>) -> vec3<f32> {
@@ -1280,7 +1294,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 let normal_texture_id: u32 = instance_uint[hit_instance_location + 4u];
                 if (normal_texture_id != UINT_MAX) {
                     let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xzy * INV_255 * 2.0f - 1.0f);
-                    smooth_n = tangentToWorld(normal_data, smooth_n);
+                    // Apply normal map with UV-aware tangent space using triangle UVs: t4.zw=UV0, t5.xy=UV1, t5.zw=UV2.
+                    smooth_n = applyNormalMap(normal_data, edge1, edge2, t4.zw, t5.xy, t5.zw, smooth_n);
                 }
 
                 let emissive_texture_id: u32 = instance_uint[hit_instance_location + 5u];
