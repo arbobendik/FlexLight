@@ -196,7 +196,7 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
         abs(difference[2].x * difference[2].y),
         abs(difference[3].x * difference[3].y),
     );
-    
+
     // Convert to index
 
     // let texel_index_00: u32 = texture_data_offset + u32(texel_pos[0].x) + u32(texel_pos[0].y) * width;
@@ -217,7 +217,7 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
         f32(uint_data_01.x), f32(uint_data_01.y), f32(uint_data_01.z), f32(uint_data_01.w),
         f32(uint_data_11.x), f32(uint_data_11.y), f32(uint_data_11.z), f32(uint_data_11.w)
     );
-    
+
 
     // Add weighted texels
     return float_data * texel_weights.wzyx;
@@ -280,18 +280,32 @@ fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
     }
 }
 
-// Apply normal map perturbation using UV-aware tangent space.
-// This properly considers texture coordinate orientation so normal perturbations rotate with the geometry.
-fn applyNormalMap(normal_data: vec3<f32>, edge1: vec3<f32>, edge2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> vec3<f32> {
-    let delta_uv1: vec2<f32> = uv1 - uv0;
-    let delta_uv2: vec2<f32> = uv2 - uv0;
+// Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
+// tangent (U direction) and bitangent (V direction), with handedness fix.
+fn normalMapTBN(p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> mat3x3<f32> {
+    let e1: vec3<f32> = p1 - p0;
+    let e2: vec3<f32> = p2 - p0;
+    let duv1: vec2<f32> = uv1 - uv0;
+    let duv2: vec2<f32> = uv2 - uv0;
     // Compute inverse determinant for UV to world space transformation.
-    let f: f32 = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
-    // Compute tangent vector aligned with U direction of UV mapping.
-    let tangent: vec3<f32> = f * (delta_uv2.y * edge1 - delta_uv1.y * edge2);
-    // Build TBN matrix with orthogonalized bitangent.
-    let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(n, tangent)), n);
-    return normalize(tbn * normal_data);
+    let det: f32 = duv1.x * duv2.y - duv1.y * duv2.x;
+    let inv_det: f32 = 1.0f / det;
+    var t: vec3<f32> = (e1 * duv2.y - e2 * duv1.y) * inv_det;
+    let b_geom: vec3<f32> = (e2 * duv1.x - e1 * duv2.x) * inv_det;
+
+    // Gram-Schmidt: make tangent perpendicular to interpolated normal.
+    t = normalize(t - n * dot(n, t));
+    // Handedness: ensure TBN is right-handed; flip T if geometric b disagrees with cross(n,t).
+    if (dot(cross(n, t), b_geom) > 0.0f) {
+        t = -t;
+    }
+    let b: vec3<f32> = cross(n, t);
+
+    return mat3x3<f32>(t, b, n);
+}
+
+fn tangentToWorldNormalMap(v: vec3<f32>, tbn: mat3x3<f32>) -> vec3<f32> {
+    return tbn * v;
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
@@ -349,10 +363,10 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
 
     let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
     let instance_vertex_offset: u32 = instance_uint[instance_uint_offset + 2u];
-    
+
     var stack: array<u32, 24> = array<u32, 24>();
     var stack_index: u32 = 1u;
-    
+
     while (stack_index > 0u && stack_index < 24u) {
         stack_index -= 1u;
         let node_index: u32 = stack[stack_index];
@@ -398,7 +412,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
             }
         }
     }
-    
+
     // If nothing was hit, return false (not in shadow)
     return false;
 }
@@ -415,7 +429,7 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
 
         let bvh_offset: u32 = node_index * BVH_INSTANCE_SIZE;
         let vertex_offset: u32 = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
-        
+
         let indicator = instance_bvh[bvh_offset];
         let child0 = instance_bvh[bvh_offset + 1u];
         let child1 = instance_bvh[bvh_offset + 2u];
@@ -425,7 +439,7 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
         let bv2 = instance_bounding_vertices[vertex_offset + 2u];
 
         let dist0 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), ray, l);
-        
+
         var dist1: f32 = POW32;
         if (child1 != UINT_MAX) {
             dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, ray, l);
@@ -556,7 +570,7 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material)
     let cos_theta_i: f32 = abs(dot(- in_dir, n));
     let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
     let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
-    
+
     // Total internal reflection occurs when sin²θt > 1
     let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
     let transmission_factor: f32 = select(material.transmission, 0.0f, is_total_internal_reflection);
@@ -610,7 +624,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 
         var light_dir: vec3<f32> = vec3<f32>(0.0f);
         var color_for_light: vec3<f32> = vec3<f32>(0.0f);
-        
+
         // Handle if light is an area light
         if (light.is_area_light == 1.0f) {
             // CASE 0: Area ligh
@@ -795,7 +809,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         distance(offset_ray_target, t[1]),
         distance(offset_ray_target, t[2])
     );
-    
+
     // Calculate barycentric coordinates
     let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - hit.uv.x - hit.uv.y, hit.uv.x, hit.uv.y);
     // Interpolate smooth normal
@@ -806,7 +820,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         dot(geometry_n, normalize(normals[1])),
         dot(geometry_n, normalize(normals[2]))
     )));
-    
+
     let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(1.0f));
     let geometry_offset: f32 = dot(diffs * angle_tan, geometry_uvw);
     // Interpolate final barycentric texture coordinates between UV's of the respective vertices
@@ -821,11 +835,15 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
     let normal_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 4u];
     if (normal_texture_id != UINT_MAX) {
-        let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * 2.0f - 255.0f);
-        // Apply normal map with UV-aware tangent space using triangle UVs: t4.zw=UV0, t5.xy=UV1, t5.zw=UV2.
-        smooth_n = applyNormalMap(normal_data, edge1, edge2, t4.zw, t5.xy, t5.zw, smooth_n);
+        let uv0: vec2<f32> = t4.zw;
+        let uv1: vec2<f32> = t5.xy;
+        let uv2: vec2<f32> = t5.zw;
+        let tbn: mat3x3<f32> = normalMapTBN(t[0], t[1], t[2], uv0, uv1, uv2, smooth_n);
+        var normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * INV_255 * 2.0f - 1.0f);
+        normal_data.y = -normal_data.y;
+        smooth_n = normalize(tangentToWorldNormalMap(normal_data, tbn));
     }
-    
+
     let emissive_texture_id: u32 = instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 5u];
     if (emissive_texture_id != UINT_MAX) {
         material.emissive = textureSample(emissive_texture_id, barycentric).xyz * INV_255;
@@ -927,12 +945,12 @@ fn compute(
     let screen_space: vec2<f32> = vec2<f32>(f32(global_invocation_id.x) / f32(uniforms_uint.render_size.x), - f32(global_invocation_id.y) / f32(uniforms_uint.render_size.y)) * 2.0f + vec2<f32>(-1.0f, 1.0f);
     // let clip_space: vec3<f32> = vec3<f32>(screen_space.x, - screen_space.y, 1.0f);
     let view_direction: vec3<f32> = normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f) * vec3<f32>(1.0f, 1.0f, -1.0f));
-    
+
     if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
 
         var env_color: vec3<f32> = vec3<f32>(0.0f);
         if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-            
+
             // let env_color: vec3<f32> = textureSample(shift_out_float, environment_map_sampler, vec2(0.0f,0.0f)).xyz;
             env_color = env_map_sample(view_direction, 0.0f);
         } else {
@@ -949,7 +967,7 @@ fn compute(
         }
         return;
     }
-    
+
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
     let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
 
@@ -963,11 +981,11 @@ fn compute(
 
     var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
     // Generate sample
-    
+
     let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, random_state);
     random_state = sampled_color.random_state;
     final_color += sampled_color.color;
-    
+
     // Render to compute target
     textureStore(compute_out, screen_pos, 0, vec4<f32>(final_color, 1.0f));
 }
