@@ -801,18 +801,32 @@ fn worldToTangent(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(dot(v, tangent), dot(v, n), dot(v, bitangent));
 }
 
-// Apply normal map perturbation using UV-aware tangent space.
-// This properly considers texture coordinate orientation so normal perturbations rotate with the geometry.
-fn applyNormalMap(normal_data: vec3<f32>, edge1: vec3<f32>, edge2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> vec3<f32> {
-    let delta_uv1: vec2<f32> = uv1 - uv0;
-    let delta_uv2: vec2<f32> = uv2 - uv0;
+// Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
+// tangent (U direction) and bitangent (V direction), with handedness fix.
+fn normalMapTBN(p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> mat3x3<f32> {
+    let e1: vec3<f32> = p1 - p0;
+    let e2: vec3<f32> = p2 - p0;
+    let duv1: vec2<f32> = uv1 - uv0;
+    let duv2: vec2<f32> = uv2 - uv0;
     // Compute inverse determinant for UV to world space transformation.
-    let f: f32 = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
-    // Compute tangent vector aligned with U direction of UV mapping.
-    let tangent: vec3<f32> = f * (delta_uv2.y * edge1 - delta_uv1.y * edge2);
-    // Build TBN matrix with orthogonalized bitangent.
-    let tbn: mat3x3<f32> = mat3x3<f32>(normalize(tangent), normalize(cross(n, tangent)), n);
-    return normalize(tbn * normal_data);
+    let det: f32 = duv1.x * duv2.y - duv1.y * duv2.x;
+    let inv_det: f32 = 1.0f / det;
+    var t: vec3<f32> = (e1 * duv2.y - e2 * duv1.y) * inv_det;
+    let b_geom: vec3<f32> = (e2 * duv1.x - e1 * duv2.x) * inv_det;
+
+    // Gram-Schmidt: make tangent perpendicular to interpolated normal.
+    t = normalize(t - n * dot(n, t));
+    // Handedness: ensure TBN is right-handed; flip T if geometric b disagrees with cross(n,t).
+    if (dot(cross(n, t), b_geom) > 0.0f) {
+        t = -t;
+    }
+    let b: vec3<f32> = cross(n, t);
+
+    return mat3x3<f32>(t, b, n);
+}
+
+fn tangentToWorldNormalMap(v: vec3<f32>, tbn: mat3x3<f32>) -> vec3<f32> {
+    return tbn * v;
 }
 
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
@@ -1293,9 +1307,13 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             if (!skip_hit) {
                 let normal_texture_id: u32 = instance_uint[hit_instance_location + 4u];
                 if (normal_texture_id != UINT_MAX) {
-                    let normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xzy * INV_255 * 2.0f - 1.0f);
-                    // Apply normal map with UV-aware tangent space using triangle UVs: t4.zw=UV0, t5.xy=UV1, t5.zw=UV2.
-                    smooth_n = applyNormalMap(normal_data, edge1, edge2, t4.zw, t5.xy, t5.zw, smooth_n);
+                    let uv0: vec2<f32> = t4.zw;
+                    let uv1: vec2<f32> = t5.xy;
+                    let uv2: vec2<f32> = t5.zw;
+                    let tbn: mat3x3<f32> = normalMapTBN(t[0], t[1], t[2], uv0, uv1, uv2, smooth_n);
+                    var normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * INV_255 * 2.0f - 1.0f);
+                    normal_data.y = -normal_data.y;
+                    smooth_n = normalize(tangentToWorldNormalMap(normal_data, tbn));
                 }
 
                 let emissive_texture_id: u32 = instance_uint[hit_instance_location + 5u];
