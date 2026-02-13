@@ -31,6 +31,8 @@ export class EnvironmentMapWebGPU {
         const source = this.scene.environmentMap;
         // this.gpuTextureSize = this.scene.environmentMap.imageSize;
         this.gpuTextureSize = new Vector(source ? source.imageSize.x : 1, source ? source.imageSize.y : 1);
+        const [w, h] = [this.gpuTextureSize.x, this.gpuTextureSize.y];
+        const maxMips = Math.max(1, Math.floor(Math.log2(Math.min(w, h))) + 1);
         // Initialize GPUTexture
         this._gpuTexture = device.createTexture({
           format: 'rgba16float',
@@ -38,7 +40,7 @@ export class EnvironmentMapWebGPU {
           usage: GPUTextureUsage.TEXTURE_BINDING |
                  GPUTextureUsage.COPY_DST |
                  GPUTextureUsage.RENDER_ATTACHMENT,
-          mipLevelCount: 8
+          mipLevelCount: Math.min(8, maxMips)
         });
         // Create sampler with mipmap filtering
         this._gpuSampler = device.createSampler({ 
