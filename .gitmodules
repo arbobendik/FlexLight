@@ -1,0 +1,3 @@
+[submodule "agentic"]
+	path = agentic
+	url = git@github.com:arbobendik/agentic.git
