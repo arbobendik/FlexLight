@@ -1,658 +1,921 @@
-#version 300 es
-#define TRIANGLES_PER_ROW_POWER 8
-#define TRIANGLES_PER_ROW 256
-#define PI 3.141592653589793
-#define PHI 1.61803398874989484820459
-#define SQRT3 1.7320508075688772
-#define POW32 4294967296.0
-#define BIAS 0.0000152587890625
-#define THIRD 0.3333333333333333
-#define INV_PI 0.3183098861837907
-#define INV_256 0.00390625
-#define INV_255 0.00392156862745098
-#define INV_65536 0.0000152587890625
 
-precision highp int;
-precision highp float;
-precision highp sampler2D;
+// Previous frame and count of frames it has accumulated
+uniform sampler2D accumulated;
+uniform float accumulation_count;
 
-struct Ray {
-    vec3 origin;
-    vec3 unitDirection;
+struct Intersect {
+    vec2 uv;
+    float dist;
 };
 
-struct Material {
-    vec3 albedo;
-    vec3 rme;
-    vec3 tpo;
-};
-
-struct Hit {
-    vec3 suv;
-    int transformId;
-    int triangleId;
-};
-
-in vec3 relativePosition;
-in vec3 absolutePosition;
-in vec2 uv;
-in vec3 clipSpace;
-
-flat in vec3 camera;
-flat in int initTriangleId;
-flat in int transformationId;
-
-layout (std140) uniform transformMatrix
-{
-    mat3 rotation[MAX_TRANSFORMS];
-    vec3 shift[MAX_TRANSFORMS];
-};
-
-// Quality configurators
-uniform int samples;
-uniform int maxReflections;
-uniform float minImportancy;
-uniform int hdr;
-uniform int isTemporal;
-
-// Get global illumination color, intensity
-uniform vec3 ambient;
-
-uniform float randomSeed;
-// Textures in parallel for texture atlas
-uniform vec2 textureDims;
-
-// Texture with information about all triangles in scene
-uniform sampler2D geometryTex;
-uniform sampler2D sceneTex;
-uniform sampler2D translucencyTex;
-uniform sampler2D pbrTex;
-uniform sampler2D tex;
-
-// Texture with all primary light sources of scene
-uniform sampler2D lightTex;
-
-layout(location = 0) out vec4 renderColor;
-layout(location = 1) out vec4 renderColorIp;
-layout(location = 2) out vec4 renderId;
-
-const Hit NO_HIT = Hit(vec3(0.0), 0, -1);
-
-// Prevent blur over shadow border or over (close to) perfect reflections
-float firstRayLength = 1.0f;
-// Accumulate color of mirror reflections
-// float glassFilter = 0.0f;
-float originalRMEx = 0.0f;
-float originalTPOx = 0.0f;
-vec3 originalColor;
-
-float to4BitRepresentation(float a, float b) {
-    uint aui = uint(a * 255.0f) & uint(240);
-    uint bui = (uint(b * 255.0f) & uint(240)) >> 4;
-    return float(aui | bui) * INV_255;
-}
-
-float normalToSphearical4BitRepresentation(vec3 n) {
-    float phi = (atan(n.z, n.x) * INV_PI) * 0.5f + 0.5f;
-    float theta = (atan(n.x, n.y) * INV_PI) * 0.5f + 0.5f;
-    return to4BitRepresentation(phi, theta);
-}
-
-vec3 combineNormalRME(vec3 n, vec3 rme) {
-    return vec3(normalToSphearical4BitRepresentation(n), rme.x, to4BitRepresentation(rme.y, rme.z));
-}
-
-// Lookup values for texture atlases
-vec3 fetchTexVal(sampler2D atlas, vec2 uv, float texNum, vec3 defaultVal) {
-    if (texNum == - 1.0) return defaultVal;
-
-    vec2 atlasSize = vec2(textureSize(atlas, 0));
-    vec2 offset = vec2(
-        mod((textureDims.x * texNum), atlasSize.x),
-        floor((textureDims.x * texNum) / atlasSize.x) * textureDims.y
-    );
-    vec2 atlasCoords = (offset + uv * textureDims) / atlasSize;
-    // Return texel on requested location
-    return texture(atlas, atlasCoords).xyz;
-}
-
-vec4 noise(vec2 n, float seed) {
-    return fract(sin(dot(n.xy, vec2(12.9898f, 78.233f)) + vec4(53.0f, 59.0f, 61.0f, 67.0f) * (seed + randomSeed * PHI)) * 43758.5453f) * 2.0f - 1.0f;
-    // fract(sin(dot(n.xy, vec2<f32>(12.9898f, 78.233f)) + vec4<f32>(53.0f, 59.0f, 61.0f, 67.0f) * sin(seed + uniforms.temporal_target * PHI)) * 43758.5453f) * 2.0f - 1.0f;
-}
-
-vec3 moellerTrumbore(mat3 t, Ray ray, float l) {
-    vec3 edge1 = t[1] - t[0];
-    vec3 edge2 = t[2] - t[0];
-    vec3 pvec = cross(ray.unitDirection, edge2);
+Intersect moellerTrumbore(vec3 a, vec3 b, vec3 c, Ray ray, float l) {
+    vec3 edge1 = b - a;
+    vec3 edge2 = c - a;
+    vec3 pvec = cross(ray.unit_direction, edge2);
     float det = dot(edge1, pvec);
-    if(abs(det) < BIAS) return vec3(0.0f);
-    float inv_det = 1.0f / det;
-    vec3 tvec = ray.origin - t[0];
+    if (abs(det) < BIAS) {
+        return Intersect(vec2(0.0, 0.0), 0.0);
+    }
+    float inv_det = 1.0 / det;
+    vec3 tvec = ray.origin - a;
     float u = dot(tvec, pvec) * inv_det;
-    if(u < BIAS || u > 1.0f) return vec3(0.0f);
+    if (u < BIAS || u > 1.0) {
+        return Intersect(vec2(0.0, 0.0), 0.0);
+    }
     vec3 qvec = cross(tvec, edge1);
-    float v = dot(ray.unitDirection, qvec) * inv_det;
-    float uvSum = u + v;
-    if(v < BIAS || uvSum > 1.0f) return vec3(0.0f);
+    float v = dot(ray.unit_direction, qvec) * inv_det;
+    float uv_sum = u + v;
+    if (v < BIAS || uv_sum > 1.0) {
+        return Intersect(vec2(0.0, 0.0), 0.0);
+    }
     float s = dot(edge2, qvec) * inv_det;
-    if(s > l || s <= BIAS) return vec3(0.0f);
-    return vec3(s, u, v);
+    if (s <= l && s > BIAS) {
+        return Intersect(vec2(u, v), s);
+    } else {
+        return Intersect(vec2(0.0, 0.0), 0.0);
+    }
 }
 
-// Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(mat3 t, Ray ray, float l) {
-    vec3 edge1 = t[1] - t[0];
-    vec3 edge2 = t[2] - t[0];
-    vec3 pvec = cross(ray.unitDirection, edge2);
-    float det = dot(edge1, pvec);
-    float invDet = 1.0f / det;
-    if(det < BIAS) return false;
-    vec3 tvec = ray.origin - t[0];
-    float u = dot(tvec, pvec) * invDet;
-    if(u < BIAS || u > 1.0f) return false;
-    vec3 qvec = cross(tvec, edge1);
-    float v = dot(ray.unitDirection, qvec) * invDet;
-    if(v < BIAS || u + v > 1.0f) return false;
-    float s = dot(edge2, qvec) * invDet;
-    return (s <= l && s > BIAS);
-}
+// Ray sphere intersection test.
+float raySphere(vec3 center, float radius, Ray ray, float max_len) {
+    vec3 L = center - ray.origin;
+    float tca = dot(L, ray.unit_direction);
 
-// Don't return intersection point, because we're looking for a specific triangle not bounding box
-bool rayCuboid(float l, Ray ray, vec3 minCorner, vec3 maxCorner) {
-    vec3 v0 = (minCorner - ray.origin) / ray.unitDirection;
-    vec3 v1 = (maxCorner - ray.origin) / ray.unitDirection;
-    float tmin = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
-    float tmax = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-    return tmax >= max(tmin, BIAS) && tmin < l;
+    float d2 = dot(L, L) - tca * tca;
+    if (d2 > radius * radius) {
+        return POW32;
+    }
+
+    float thc = sqrt(radius * radius - d2);
+    float t0 = tca - thc;
+    float t1 = tca + thc;
+
+    if (t0 > BIAS && t0 < max_len) {
+        return t0;
+    }
+
+    if (t1 > BIAS && t1 < max_len) {
+        return t1;
+    }
+
+    return POW32;
 }
 
 // Test for closest ray triangle intersection
-// return intersection position in world space and index of target triangle in geometryTex
-// plus triangle and transformation Id
-Hit rayTracer(Ray ray) {
-    // Cache transformed ray attributes
-    Ray tR = Ray(ray.origin, ray.unitDirection);
-    int cachedTI = 0;
-    // Latest intersection which is now closest to origin
-    Hit hit = NO_HIT;
-    // Length to latest intersection
-    float minLen = POW32;
-    // Get texture size as max iteration value
-    ivec2 geometryTexSize = textureSize(geometryTex, 0).xy;
-    int size = geometryTexSize.y * TRIANGLES_PER_ROW;
-    // Iterate through lines of texture
-    for(int i = 0; i < size; i++) {
-        // Get position of current triangle/vertex in geometryTex
-        int triangleColumn = i >> TRIANGLES_PER_ROW_POWER;
-        ivec2 index = ivec2((i - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
-        // Fetch triangle coordinates from scene graph
-        vec4 t0 = texelFetch(geometryTex, index, 0);
-        vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
-        vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
+Hit traverseTriangleBVH(uint instance_index, Ray ray, float max_len) {
+    // Maximal distance a triangle can be away from the ray origin
+    uint instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
-        int tI = int(t2.y) << 1;
-        // Test if cached transformed variables are still valid
-        if (tI != cachedTI) {
-            int iI = tI + 1;
-            mat3 rotationII = rotation[iI];
-            cachedTI = tI;
-            tR = Ray(
-                rotationII * (ray.origin + shift[iI]),
-                rotationII * ray.unitDirection
-            );
-        }
-        // Three cases:
-        // t2.z = 0        => end of list: stop loop
-        // t2.z = 1        => is bounding volume: do AABB intersection test
-        // t2.z = 2        => is triangle: do triangle intersection test
-        if (t2.z == 0.0) return hit;
+    Transform inverse_transform = access_instance_transform(instance_index * 2u + 1u);
+    vec3 inverse_dir = inverse_transform.rotation * ray.unit_direction;
+    float len_factor = length(inverse_dir);
+    float len_factor_inv = 1.0 / len_factor;
 
-        if (t2.z == 1.0) {
-            if (!rayCuboid(minLen, tR, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
-        } else {
-            mat3 triangle = mat3 (t0, t1, t2.x);
-            // Test if triangle intersects ray
-            vec3 intersection = moellerTrumbore(triangle, tR, minLen);
+    Ray t_ray = Ray(
+        inverse_transform.rotation * (ray.origin + inverse_transform.shift),
+        inverse_dir * len_factor_inv
+    );
+
+    uint triangle_instance_offset = access_instance_uint(instance_uint_offset);
+    uint instance_bvh_offset = access_instance_uint(instance_uint_offset + 1u);
+    uint instance_vertex_offset = access_instance_uint(instance_uint_offset + 2u);
+
+    // Hit object
+    // First element of vector is current closest intersection point
+    Hit hit = Hit(vec2(0.0, 0.0), UINT_MAX, UINT_MAX, 0u, max_len);
+    // Stack for BVH traversal
+    uint stack[24];
+    stack[0] = 0u;
+    uint stack_index = 1u;
+
+    while (stack_index > 0u && stack_index < 24u) {
+        stack_index -= 1u;
+        uint node_index = stack[stack_index];
+
+        uint bvh_offset = instance_bvh_offset + node_index * BVH_TRIANGLE_SIZE;
+        uint vertex_offset = instance_vertex_offset + node_index * TRIANGLE_BOUNDING_VERTICES_SIZE;
+
+        uvec3 indicator_and_children = access_triangle_bvh(bvh_offset).xyz;
+
+        vec4 bv0 = access_triangle_bounding_vertices(vertex_offset);
+        vec4 bv1 = access_triangle_bounding_vertices(vertex_offset + 1u);
+        vec4 bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
+        vec4 bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
+        vec4 bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
+
+        if (indicator_and_children.x == 0u) {
+            // Run Moeller-Trumbore algorithm for both triangles
             // Test if ray even intersects
-            if(intersection.x != 0.0) {
+            Intersect intersect0 = moellerTrumbore(bv0.xyz, vec3(bv0.w, bv1.xy), vec3(bv1.zw, bv2.x), t_ray, hit.dist * len_factor);
+            if (intersect0.dist != 0.0) {
                 // Calculate intersection point
-                hit = Hit(intersection, tI, i);
-                // Update maximum object distance for future rays
-                minLen = intersection.x;
+                hit.dist = intersect0.dist * len_factor_inv;
+                hit.uv = intersect0.uv;
+                hit.instance_index = instance_index;
+                hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y;
+            }
+
+            if (indicator_and_children.z != UINT_MAX) {
+                // Test if ray even intersects
+                Intersect intersect1 = moellerTrumbore(bv2.yzw, bv3.xyz, vec3(bv3.w, bv4.xy), t_ray, hit.dist * len_factor);
+                if (intersect1.dist != 0.0) {
+                    // Calculate intersection point
+                    hit.dist = intersect1.dist * len_factor_inv;
+                    hit.uv = intersect1.uv;
+                    hit.instance_index = instance_index;
+                    hit.triangle_index = triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z;
+                }
+            }
+
+        } else {
+            float dist0 = rayBoundingVolume(bv0.xyz, vec3(bv0.w, bv1.xy), t_ray, hit.dist * len_factor);
+            float dist1 = POW32;
+            if (indicator_and_children.z != UINT_MAX) {
+                dist1 = rayBoundingVolume(vec3(bv1.zw, bv2.x), bv2.yzw, t_ray, hit.dist * len_factor);
+            }
+
+            uint near_child = dist0 < dist1 ? indicator_and_children.y : indicator_and_children.z;
+            uint far_child = dist0 < dist1 ? indicator_and_children.z : indicator_and_children.y;
+
+            // If node is an AABB, push children to stack, furthest first
+            if (max(dist0, dist1) != POW32) {
+                stack[stack_index] = far_child;
+                stack_index += 1u;
+            }
+            if (min(dist0, dist1) != POW32) {
+                stack[stack_index] = near_child;
+                stack_index += 1u;
             }
         }
     }
-    // Return ray hit with all required information
+    // Return hit object
     return hit;
 }
 
+// Find closest intersection with instances and optionally point lights
+Hit traverseInstanceBVH(Ray ray, bool consider_point_lights) {
+    // Hit object
+    // Maximal distance a triangle can be away from the ray origin is POW32 at initialisation
+    Hit hit = Hit(vec2(0.0, 0.0), UINT_MAX, UINT_MAX, 0u, POW32);
+    // Stack for BVH traversal
+    uint stack[16];
+    stack[0] = 0u;
+    uint stack_index = 1u;
 
-// Simplified rayTracer to only test if ray intersects anything
-bool shadowTest(Ray ray, float l) {
-    // Cache transformed ray attributes
-    Ray tR = Ray(ray.origin, ray.unitDirection);
-    int cachedTI = 0;
-    // Precompute max length
-    float minLen = l;
-    // Get texture size as max iteration value
-    int size = textureSize(geometryTex, 0).y * TRIANGLES_PER_ROW;
-    // Iterate through lines of texture
-    for(int i = 0; i < size; i++) {
-        // Get position of current triangle/vertex in geometryTex
-        int triangleColumn = i >> TRIANGLES_PER_ROW_POWER;
-        ivec2 index = ivec2((i - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
-        // Fetch triangle coordinates from scene graph
-        vec4 t0 = texelFetch(geometryTex, index, 0);
-        vec4 t1 = texelFetch(geometryTex, index + ivec2(1, 0), 0);
-        vec4 t2 = texelFetch(geometryTex, index + ivec2(2, 0), 0);
+    while (stack_index > 0u && stack_index < 16u) {
+        stack_index -= 1u;
+        uint node_index = stack[stack_index];
+        uint bvh_offset = node_index * BVH_INSTANCE_SIZE;
+        uint vertex_offset = node_index * INSTANCE_BOUNDING_VERTICES_SIZE;
 
-        int tI = int(t2.y) << 1;
-        // Test if cached transformed variables are still valid
-        if (tI != cachedTI) {
-            int iI = tI + 1;
-            mat3 rotationII = rotation[iI];
-            cachedTI = tI;
-            tR = Ray(
-                rotationII * (ray.origin + shift[iI]),
-                normalize(rotationII * ray.unitDirection)
-            );
+        uint indicator = access_instance_bvh(bvh_offset);
+        uint child0 = access_instance_bvh(bvh_offset + 1u);
+        uint child1 = access_instance_bvh(bvh_offset + 2u);
+
+        vec4 bv0 = access_instance_bounding_vertices(vertex_offset);
+        vec4 bv1 = access_instance_bounding_vertices(vertex_offset + 1u);
+        vec4 bv2 = access_instance_bounding_vertices(vertex_offset + 2u);
+
+        float dist0 = POW32;
+        float dist1 = POW32;
+        if (child0 == UINT_MAX_M1 && consider_point_lights) {
+            // Child 0 is a point light
+            float light_dist = raySphere(bv0.xyz, bv0.w, ray, hit.dist);
+            if (light_dist != POW32) {
+                hit.dist = light_dist;
+                hit.is_point_light = 1u;
+                hit.instance_index = uint(bv1.y);
+            }
+        } else if (child0 != UINT_MAX_M1) {
+            // Child 0 is an instance
+            dist0 = rayBoundingVolume(bv0.xyz, vec3(bv0.w, bv1.xy), ray, hit.dist);
         }
-        // Three cases:
-        // t2.z = 0        => end of list: stop loop
-        // t2.z = 1        => is bounding volume: do AABB intersection test
-        // t2.z = 2        => is triangle: do triangle intersection test
-        if (t2.z == 0.0) return false;
 
-        if (t2.z == 1.0) {
-            if (!rayCuboid(minLen, tR, t0.xyz, vec3(t0.w, t1.xy))) i += int(t1.z);
+        if (child1 == UINT_MAX_M1 && consider_point_lights) {
+            // Child 1 is a point light
+            float light_dist = raySphere(vec3(bv1.zw, bv2.x), bv2.y, ray, hit.dist);
+            if (light_dist != POW32) {
+                hit.dist = light_dist;
+                hit.is_point_light = 1u;
+                hit.instance_index = uint(bv2.w);
+            }
+        } else if (child0 != UINT_MAX && child1 != UINT_MAX_M1) {
+            // Child 1 is an instance
+            dist1 = rayBoundingVolume(vec3(bv1.zw, bv2.x), bv2.yzw, ray, hit.dist);
+        }
+
+        float dist_near = min(dist0, dist1);
+        float dist_far = max(dist0, dist1);
+        uint near_child = dist0 < dist1 ? child0 : child1;
+        uint far_child = dist0 < dist1 ? child1 : child0;
+
+        if (indicator == 0u) {
+            // If node is an instance, test for intersection, closest first
+            if (dist_near != POW32) {
+                Hit new_hit = traverseTriangleBVH(near_child, ray, hit.dist);
+                if (new_hit.dist < hit.dist) {
+                    hit = new_hit;
+                }
+            }
+            if (dist_far != POW32 && dist_far < hit.dist) {
+                Hit new_hit = traverseTriangleBVH(far_child, ray, hit.dist);
+                if (new_hit.dist < hit.dist) {
+                    hit = new_hit;
+                }
+            }
         } else {
-            mat3 triangle = mat3 (t0, t1, t2.x);
-            // Test for triangle intersection in positive light ray direction
-            if (moellerTrumboreCull(triangle, tR, minLen)) return true;
+            // If node is an AABB, push children to stack, furthest first
+            if (dist_far != POW32) {
+                stack[stack_index] = far_child;
+                stack_index += 1u;
+            }
+            if (dist_near != POW32) {
+                stack[stack_index] = near_child;
+                stack_index += 1u;
+            }
         }
     }
-    // Tested all triangles, but there is no intersection
-    return false;
+    // Return hit object
+    return hit;
 }
 
-float trowbridgeReitz(float alpha, float NdotH) {
+float trowbridgeReitz(float alpha, float n_dot_h) {
     float numerator = alpha * alpha;
-    float denom = NdotH * NdotH * (numerator - 1.0f) + 1.0f;
+    float denom = n_dot_h * n_dot_h * (numerator - 1.0) + 1.0;
     return numerator / max(PI * denom * denom, BIAS);
 }
 
-float schlickBeckmann(float alpha, float NdotX) {
-    float k = alpha * 0.5f;
-    float denominator = NdotX * (1.0f - k) + k;
-    denominator = max(denominator, BIAS);
-    return NdotX / denominator;
+float G1(float alpha, float n_dot_x) {
+    float k = alpha * 0.5;
+    return n_dot_x / max(n_dot_x * (1.0 - k) + k, BIAS);
 }
 
-float smith(float alpha, float NdotV, float NdotL) {
-    return schlickBeckmann(alpha, NdotV) * schlickBeckmann(alpha, NdotL);
+float schlickBeckmann(float k, float n_dot_x) {
+    return n_dot_x / max(n_dot_x * (1.0 - k) + k, BIAS);
 }
 
-vec3 fresnel(vec3 F0, float theta) {
-    // Use Schlick approximation
-    return F0 + (1.0f - F0) * pow(1.0f - theta, 5.0f);
+float smith(float alpha, float n_dot_v, float n_dot_l) {
+    float k = alpha * 0.5;
+    return schlickBeckmann(k, n_dot_v) * schlickBeckmann(k, n_dot_l);
 }
 
-vec3 forwardTrace(Material material, vec3 lightDir, float strength, vec3 N, vec3 V) {
-    float lenP1 = 1.0f + length(lightDir);
-    // Apply inverse square law
-    float brightness = strength / (lenP1 * lenP1);
+float fresnel(float cos_theta, float eta_i, float eta_o) {
+    // Compute sini using Snell's law
+    float sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
+    float sin_psi = (eta_i / eta_o) * sin_theta;
+    // Total internal reflection
+    float kr = 1.0;
+    if (sin_psi < 1.0) {
+        float cos_psi = sqrt(max(0.0, 1.0 - sin_psi * sin_psi));
+        float Rs = ((eta_o * cos_theta) - (eta_i * cos_psi)) / ((eta_o * cos_theta) + (eta_i * cos_psi));
+        float Rp = ((eta_i * cos_theta) - (eta_o * cos_psi)) / ((eta_i * cos_theta) + (eta_o * cos_psi));
+        kr = (Rs * Rs + Rp * Rp) / 2.0;
+    }
 
-    vec3 L = normalize(lightDir);
-    vec3 H = normalize(V + L);
-
-    float VdotH = max(dot(V, H), 0.0f);
-    float NdotL = max(dot(N, L), 0.0f);
-    float NdotH = max(dot(N, H), 0.0f);
-    float NdotV = max(dot(N, V), 0.0f);
-
-    float alpha = material.rme.x * material.rme.x;
-    float BRDF = mix(1.0f, NdotV, material.rme.y);
-    vec3 F0 = material.albedo * BRDF;
-
-    vec3 Ks = fresnel(F0, VdotH);
-    vec3 Kd = (1.0f - Ks) * (1.0f - material.rme.y);
-    vec3 lambert = material.albedo * INV_PI;
-
-    vec3 cookTorranceNumerator = Ks * trowbridgeReitz(alpha, NdotH) * smith(alpha, NdotV, NdotL);
-    float cookTorranceDenominator = 4.0f * NdotV * NdotL;
-    cookTorranceDenominator = max(cookTorranceDenominator, BIAS);
-
-    vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
-    vec3 radiance = Kd * lambert + cookTorrance;
-
-    // Outgoing light to camera
-    return radiance * NdotL * brightness;
+    return kr;
 }
 
-/*
-vec3 referenceSample (sampler2D lightTex, vec4 randomVec, vec3 N, vec3 target, vec3 V, Material material, bool dontFilter, int triangleId, int i) {
-    vec3 localColor = vec3(0);
-    int lights = textureSize(lightTex, 0).y;
+// Sampling of the GGX VNDF
+vec3 sampleGGXVNDF(vec3 Ve, float alpha, float U1, float U2) {
+    // The Ve argument is the view direction in tangent space, where the normal is (0, 0, 1).
+    // Section 3.2: transforming the view direction to the hemisphere configuration.
+    vec3 Vh = normalize(vec3(alpha * Ve.x, alpha * Ve.y, Ve.z));
+    // Section 4.1: orthonormal basis (with special case if cross product is zero).
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) * inversesqrt(lensq) : vec3(1.0, 0.0, 0.0);
+    vec3 T2 = cross(Vh, T1);
+    // Section 4.2: parameterization of the projected area.
+    float r = sqrt(U1);
+    float phi = 2.0 * PI * U2;
+    float t1 = r * cos(phi);
+    float t2 = r * sin(phi);
+    float s = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+    // Section 4.3: reprojection onto hemisphere.
+    vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    // Section 3.4: transforming the normal back to the ellipsoid configuration.
+    return normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+}
 
-    for (int j = 0; j < lights; j++) {
-        // Read light position
-        vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz;
-        // Read light strength from texture
-        vec2 strengthVariation = texelFetch(lightTex, ivec2(1, j), 0).xy;
-        // Skip if strength is negative or zero
-        // if (strengthVariation.x <= 0.0) continue;
-        // Alter light source position according to variation.
-        light = randomVec.xyz * strengthVariation.y + light;
-        vec3 lightDir = light - target;
-        vec3 lightColor = forwardTrace(lightDir, N, V, material, strengthVariation.x);
-        // Compute quick exit criterion to potentially skip expensive shadow test
-        bool quickExitCriterion = dot(lightDir, N) <= BIAS;
-        Ray lightRay = Ray(light, target, lightDir, normalize(lightDir));
-        // Test if in shadow
-        if (quickExitCriterion || shadowTest(lightRay, triangleId)) {
-            if (dontFilter || i == 0) renderId.w = float(((j % 128) << 1) + 1) * INV_255;
-        } else {
-            if (dontFilter || i == 0) renderId.w = float((j % 128) << 1) * INV_255;
-            // localColor *= (totalWeight / reservoirLength) / reservoirWeight;
-            localColor += lightColor;
+// Corresponding PDF is: pdf = cos(theta) / PI
+vec3 sampleCosWeightedHemisphere(float random_1, float random_2) {
+    float r = sqrt(random_1);
+    float theta = 2.0 * PI * random_2;
+    float x = r * cos(theta);
+    float z = r * sin(theta);
+    float y = sqrt(max(0.0, 1.0 - x * x - z * z));
+    return vec3(x, y, z);
+}
+
+vec3 tangentToWorld(vec3 v, vec3 n) {
+    vec3 a = vec3(0.0, 1.0, 0.0);
+    if (abs(dot(n, a)) > 1.0 - BIAS) {
+        a = vec3(1.0, 0.0, 0.0);
+    }
+    vec3 tangent = normalize(cross(n, a));
+    vec3 bitangent = cross(n, tangent);
+    return v.x * tangent + v.y * n + v.z * bitangent;
+}
+
+vec3 worldToTangent(vec3 v, vec3 n) {
+    vec3 a = vec3(0.0, 1.0, 0.0);
+    if (abs(dot(n, a)) > 1.0 - BIAS) {
+        a = vec3(1.0, 0.0, 0.0);
+    }
+    vec3 tangent = normalize(cross(n, a));
+    vec3 bitangent = cross(n, tangent);
+    return vec3(dot(v, tangent), dot(v, n), dot(v, bitangent));
+}
+
+// BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
+// Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
+vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float eta_i, float eta_o) {
+    vec3 v = - in_dir;
+    // Precalculate dot products
+    float n_dot_v = dot(n, v);
+    float n_dot_l = dot(n, out_dir);
+    // Calculate material constants needed for BRDF and BTDF
+    float alpha = material.roughness * material.roughness;
+    // Precalculate dot products for geometry normal
+    float g_n_dot_v = dot(g_n, v);
+    float g_n_dot_l = dot(g_n, out_dir);
+    // Test if v and l are on the same side of the surface
+    if (g_n_dot_v * g_n_dot_l > 0.0) {
+        // If v and l are on the same side of the surface do Torrance-Sparrow BRDF
+        // Positive definite dot products
+        float pd_n_dot_v = max(n_dot_v, 0.0);
+        float pd_n_dot_l = max(n_dot_l, 0.0);
+        // Precaluclate dot products and half vectors
+        vec3 h_r = normalize(out_dir + v);
+        float v_dot_h = max(dot(v, h_r), 0.0);
+        float n_dot_h = max(dot(n, h_r), 0.0);
+        // Lambertian diffuse
+        vec3 lambert = material.albedo * INV_PI;
+        // Torrance-Sparrow
+        vec3 F = mix(vec3(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
+
+        float F_greyscale = rgb_to_greyscale(F);
+        float D = trowbridgeReitz(alpha, n_dot_h);
+        float G = smith(alpha, pd_n_dot_v, pd_n_dot_l);
+        float diffuse_factor = (1.0 - F_greyscale) * (1.0 - material.metallic) * (1.0 - material.transmission);
+        vec3 torrance_sparrow = D * F * G / max(4.0 * pd_n_dot_v * pd_n_dot_l, BIAS);
+        vec3 radiance = diffuse_factor * lambert + torrance_sparrow;
+        return radiance * n_dot_l;
+    } else {
+        // Refractive half-vector (eq. 16)
+        vec3 ht_unorm = - (eta_i * v + eta_o * out_dir);
+        vec3 ht = normalize(ht_unorm);
+        // Precalculate dot products
+        float v_dot_ht = dot(v, ht);
+        float l_dot_ht = dot(out_dir, ht);
+        float n_dot_ht = abs(dot(n, ht));
+        // Microfacet terms
+        float DT = trowbridgeReitz(alpha, abs(n_dot_ht));
+        float GT = smith(alpha, abs(n_dot_v), abs(n_dot_l));
+
+        vec3 FT = mix(vec3(fresnel(abs(v_dot_ht), eta_i, eta_o)), material.albedo, material.metallic);
+        // Geometry term numerator and denominator
+        float numerator_geom = abs(v_dot_ht) * abs(l_dot_ht);
+        float denominator_geom = abs(n_dot_v) * abs(n_dot_l);
+        // Refractive term denominator
+        float denom_f = eta_i * v_dot_ht + eta_o * l_dot_ht;
+        float denom_f_sq = denom_f * denom_f;
+        // Check if refraction is possible
+        if (abs(denom_f) > BIAS && denominator_geom > BIAS) {
+            // Term is uncolored by albedo, this is handled by Beer's law in lightTrace
+            float walter = (numerator_geom / denominator_geom) * (1.0 - rgb_to_greyscale(FT)) * DT * GT * (eta_o * eta_o / denom_f_sq);
+            return vec3(walter) * material.transmission * n_dot_l;
+        }
+        // If refraction is not possible, return black this case should never happen
+        return vec3(0.0, 0.0, 0.0);
+    }
+}
+
+struct SampleBSDF {
+    vec3 unit_direction;
+    vec3 throughput;
+    uint random_state;
+    bool refracted;
+};
+
+// SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
+SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float eta_o, uint random_init) {
+    uint random_state = random_init;
+    // Basic dot products
+    vec3 v = - in_dir;
+    float n_dot_v = dot(n, v);
+    vec3 n_i = n * sign(n_dot_v);
+    // Material constants
+    float alpha = material.roughness * material.roughness;
+    // Sample using GGX importance sampling for potential refractive or reflective case
+    vec3 ggx_n = n_i;
+    // Generate random values for sampling
+    Random random_h_1 = pcg(random_state);
+    Random random_h_2 = pcg(random_h_1.state);
+    random_state = random_h_2.state;
+    vec3 v_tangent = worldToTangent(v, n_i);
+    ggx_n = sampleGGXVNDF(v_tangent.xzy, alpha, random_h_1.value, random_h_2.value).xzy;
+    // Transform half vector back to world space
+    ggx_n = tangentToWorld(ggx_n, n_i);
+    // Calculate shared half vector dot products
+    float v_dot_h = dot(ggx_n, v);
+    // Try refraction through the properly oriented half vector
+    float eta = eta_i / eta_o;
+    vec3 refracted = normalize(refract(in_dir, ggx_n, eta));
+    // Calculate fresnel term
+    vec3 F = mix(vec3(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
+    float F_greyscale = rgb_to_greyscale(F);
+    // BSDF weights (these are artistic choices to balance the lobes)
+    float reflect_weight = 1.0;
+    float diffuse_weight = (1.0 - material.transmission) * (1.0 - material.metallic);
+    float refract_weight = material.transmission;
+    // Add fresnel term for improved sampling performance
+    float reflect_component = max(reflect_weight * F_greyscale, 0.0);
+    float diffuse_component = max(diffuse_weight * (1.0 - F_greyscale), 0.0);
+    float refract_component = max(refract_weight * (1.0 - F_greyscale) * sign(length(refracted)), 0.0);
+    // Do not account for chroma of reflection for transmissive materials as in this case our model uses albedo as proxy for absorption instead.
+    float colorless_reflection = material.transmission;
+    // Calculate sampling probabilities
+    float total_component = reflect_component + diffuse_component + refract_component;
+    float total_component_inv = 1.0 / max(total_component, BIAS);
+    float p_diffuse = diffuse_component * total_component_inv;
+    float p_reflect = reflect_component * total_component_inv;
+    float p_refract = refract_component * total_component_inv;
+
+    SampleBSDF bsdf_sample = SampleBSDF(vec3(1.0), vec3(1.0), 0u, false);
+    Random random_p = pcg(random_state);
+    random_state = random_p.state;
+    // Diffuse case
+    if (random_p.value < p_diffuse) {
+        Random random_d_1 = pcg(random_state);
+        Random random_d_2 = pcg(random_d_1.state);
+        bsdf_sample.random_state = random_d_2.state;
+        // Sample cosine weighted hemisphere
+        vec3 cosine_hemisphere = sampleCosWeightedHemisphere(random_d_1.value, random_d_2.value);
+        bsdf_sample.unit_direction = tangentToWorld(cosine_hemisphere, n_i);
+        // throughput = BSDF * n_dot_l / PDF = albedo * diffuse_weight, see WebGPU implementation for derivation
+        bsdf_sample.throughput = diffuse_weight * material.albedo / p_diffuse;
+        return bsdf_sample;
+    }
+    // Refractive case
+    if (random_p.value < p_diffuse + p_refract) {
+        // Refraction is valid
+        bsdf_sample.unit_direction = refracted;
+        vec3 l = bsdf_sample.unit_direction;
+        float m_n_i_dot_l = - dot(n_i, l);
+        // Microfacet term
+        float G1_l = G1(alpha, max(m_n_i_dot_l, 0.0));
+        // throughput = refract_weight * G1_l * (1 - F), see WebGPU implementation for derivation
+        bsdf_sample.throughput = vec3(refract_weight * G1_l * (1.0 - F_greyscale) / p_refract);
+        bsdf_sample.random_state = random_state;
+        bsdf_sample.refracted = true;
+        return bsdf_sample;
+    }
+    // Otherwise assume reflective case.
+    bsdf_sample.unit_direction = normalize(reflect(in_dir, ggx_n));
+    vec3 l = bsdf_sample.unit_direction;
+    float n_i_dot_l = dot(n_i, l);
+    // Torrance-Sparrow
+    float G1_l = G1(alpha, max(n_i_dot_l, 0.0));
+    // throughput = reflect_weight * G1_l * F, see WebGPU implementation for derivation
+    bsdf_sample.throughput = reflect_weight * G1_l * mix(F, vec3(F_greyscale), colorless_reflection) / p_reflect;
+    bsdf_sample.random_state = random_state;
+    return bsdf_sample;
+}
+
+struct SampledColor {
+    vec3 color;
+    uint random_state;
+};
+
+SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray camera_ray, uint init_random_state, vec3 smooth_n, vec3 geometry_n, float geometry_offset, vec3 light_offset_dir) {
+    uint m = light_count + 1u;
+    // If no lights, return emissive color
+    if (m <= 1u) {
+        return SampledColor(vec3(0.0), init_random_state);
+    }
+
+    float w_sum = 0.0;
+    vec3 reservoir_color = vec3(0.0);
+    vec3 reservoir_dir = vec3(0.0);
+    uint random_state = init_random_state;
+    // Iterate over lights
+    for (uint i = 0u; i < light_count; i++) {
+        // Read light from storage buffer
+        Light light = access_light(i + 1u);
+
+        vec3 light_position = vec3(0.0);
+        vec3 dir = vec3(0.0);
+        vec3 light_offset = vec3(0.0);
+        float intensity = 0.0;
+        // Handle if light is an area light
+        if (light.is_area_light == 1.0) {
+            // CASE 0: Area ligh
+            uint instance_id = uint(light.position.x);
+            float triangle_count = light.position.y;
+
+            Random random_triangle = pcg(random_state);
+            random_state = random_triangle.state;
+
+            uint triangle_instance_offset = access_instance_uint(instance_id * INSTANCE_UINT_SIZE);
+
+            // Choose random triangle from instance
+            uint triangle_offset = triangle_instance_offset + uint(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
+            // Fetch triangle coordinates from scene graph texture
+            vec4 t0 = access_triangle(triangle_offset);
+            vec4 t1 = access_triangle(triangle_offset + 1u);
+            vec4 t2 = access_triangle(triangle_offset + 2u);
+            vec4 t3 = access_triangle(triangle_offset + 3u);
+            vec4 t4 = access_triangle(triangle_offset + 4u);
+
+            // Fetch triangle coordinates from scene graph texture
+            Transform transform = access_instance_transform(instance_id * 2u);
+            // Assemble and transform triangle with shift.
+            mat3 t = transform.rotation * mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x)) + mat3(transform.shift, transform.shift, transform.shift);
+
+            // Assemble and transform normals
+            mat3 normals = transform.rotation * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
+            // Compute edge vectors
+            vec3 edge1 = t[1] - t[0];
+            vec3 edge2 = t[2] - t[0];
+            vec3 edge3 = t[2] - t[1];
+
+            float min_edge_length = min(length(edge1), min(length(edge2), length(edge3)));
+
+            vec3 light_geometry_n = normalize(cross(edge1, edge2));
+            vec3 diffs = vec3(
+                distance(camera_ray.origin, t[0]),
+                distance(camera_ray.origin, t[1]),
+                distance(camera_ray.origin, t[2])
+            );
+            // Choose random barycentric coordinates
+            Random random_value_0 = pcg(random_state);
+            Random random_value_1 = pcg(random_value_0.state);
+            random_state = random_value_1.state;
+
+            vec2 u = vec2(random_value_0.value, random_value_1.value);
+            if (u.x + u.y > 1.0) {
+                u = vec2(1.0 - u.x, 1.0 - u.y);
+            }
+            vec3 geometry_uvw = vec3(1.0 - u.x - u.y, u.x, u.y);
+            // Interpolate smooth normal
+            vec3 light_smooth_n = normalize(normals * geometry_uvw);
+            // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
+            vec3 angles = acos(abs(vec3(
+                dot(light_geometry_n, normalize(normals[0])),
+                dot(light_geometry_n, normalize(normals[1])),
+                dot(light_geometry_n, normalize(normals[2]))
+            )));
+            // Limit angles to 45 degrees
+            vec3 angle_tan = clamp(tan(angles), vec3(0.0), vec3(PI * 0.25));
+            // Keep geometry offset within reasonable range
+            float light_geometry_offset = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0, min_edge_length * 0.5);
+            // Interpolate point on triangle
+            light_position = t * geometry_uvw;
+            // Calculate normal
+            vec3 edge_cross = cross(edge1, edge2);
+            float light_area = max(length(edge_cross) * 0.5, BIAS);
+
+            // Calculate light direction
+            dir = light_position - camera_ray.origin;
+            // Outgoing angle at light source
+            float light_n_dot_ml = max(dot(light_smooth_n, - normalize(dir)), 0.0);
+            // Offset light position to avoid self shadowing
+            light_offset = light_smooth_n * light_geometry_offset;
+            // Calculate intensity with respect to sampling probability of triangle and point on triangle
+            intensity = light_area * triangle_count * light_n_dot_ml;
+        } else if (light.is_area_light == 0.0) {
+            // CASE 1: Point light
+            // Yeild random vector in sphere to simulate point light volume and update state
+            light_position = light.position + light_offset_dir * light.variance;
+            // Calculate light direction
+            dir = light_position - camera_ray.origin;
+            light_offset = vec3(0.0);
+            intensity = light.intensity;
+        }
+
+        float len = length(dir);
+        vec3 l = dir / len;
+        // Apply inverse square law
+        vec3 brightness = light.color * intensity / max(len * len, BIAS);
+        // Calculate BSDF for light
+        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o);
+        vec3 color_for_light = color_with_smooth * brightness;
+        float w_i = rgb_to_greyscale(color_for_light);
+        // Skip light if its contribution is too small
+        if (w_i <= BIAS) {
+            continue;
+        }
+
+        w_sum += w_i;
+        // Yeild random value between 0 and 1 and update state
+        Random random_value = pcg(random_state);
+        random_state = random_value.state;
+        if (random_value.value * w_sum <= w_i) {
+            reservoir_color = color_for_light / w_i;
+            reservoir_dir = dir + light_offset;
         }
     }
 
-    return localColor + material.rme.z + ambient * material.rme.y;
-}
-
-
-vec3 randomSample (vec4 randomVec, vec3 N, vec3 smoothNormal, vec3 target,  vec3 V, Material material, bool dontFilter, int triangleId, int i) {
-    int lights = textureSize(lightTex, 0).y;
-
-    int randIndex = int(floor(abs(randomVec.y) * float(lights)));
-
-    
-    // Read light position
-    vec3 light = texelFetch(lightTex, ivec2(0, randIndex), 0).xyz;
-    // Read light strength from texture
-    vec2 strengthVariation = texelFetch(lightTex, ivec2(1, randIndex), 0).xy;
-    // Skip if strength is negative or zero
-    // if (strengthVariation.x <= 0.0) continue;
-    // Alter light source position according to variation.
-    light = randomVec.xyz * strengthVariation.y + light;
-    vec3 lightDir = light - target;
-    vec3 lightColor = forwardTrace(material, lightDir, strengthVariation.x, N, V);
+    vec3 unit_light_dir = normalize(reservoir_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
-    bool quickExitCriterion = dot(lightDir, N) <= BIAS;
-    // Ray lightRay = Ray(light, target, lightDir, normalize(lightDir));
-    Ray lightRay = Ray(target, light, lightDir, normalize(lightDir));
+    bool show_shadow = w_sum == 0.0 || dot(smooth_n, unit_light_dir) < 0.0;
     // Test if in shadow
-    if (quickExitCriterion || shadowTest(lightRay, triangleId)) {
-        if (dontFilter || i == 0) renderId.w = float(((randIndex % 128) << 1) + 1) * INV_255;
-        return vec3(material.rme.z);
-    } else {
-        if (dontFilter || i == 0) renderId.w = float((randIndex % 128) << 1) * INV_255;
-        return lightColor * float(lights) + material.rme.z;
-    }
-}
-*/
-
-vec3 reservoirSample (Material material, Ray ray, vec4 randomVec, vec3 N, vec3 smoothNormal, float geometryOffset, bool dontFilter, int i) {
-    vec3 localColor = vec3(0);
-    float reservoirLength = 0.0f;
-    float totalWeight = 0.0f;
-    int reservoirNum = 0;
-    float reservoirWeight = 0.0f;
-    vec3 reservoirLight;
-    vec3 reservoirLightDir;
-    vec2 lastRandom = noise(randomVec.zw, BIAS).xy;
-
-    int size = textureSize(lightTex, 0).y;
-    for (int j = 0; j < size; j++) {
-      // Read light strength from texture
-      vec2 strengthVariation = texelFetch(lightTex, ivec2(1, j), 0).xy;
-      // Skip if strength is negative or zero
-      if (strengthVariation.x <= 0.0) continue;
-      // Increment light weight
-      reservoirLength ++;
-      // Alter light source position according to variation.
-      vec3 light = texelFetch(lightTex, ivec2(0, j), 0).xyz + randomVec.xyz * strengthVariation.y;
-      vec3 dir = light - ray.origin;
-    
-      vec3 colorForLight = forwardTrace(material, dir, strengthVariation.x, N, - ray.unitDirection);
-      localColor += colorForLight;
-      float weight = length(colorForLight);
-      totalWeight += weight;
-      if (abs(lastRandom.y) * totalWeight <= weight) {
-        reservoirNum = j;
-        reservoirWeight = weight;
-        reservoirLight = light;
-        reservoirLightDir = dir;
-      }
-      // Update pseudo random variable.
-      lastRandom = noise(lastRandom, BIAS).zw;
-    }
-
-    vec3 unitLightDir = normalize(reservoirLightDir);
-    // Compute quick exit criterion to potentially skip expensive shadow test
-    bool showColor = reservoirLength == 0.0 || reservoirWeight == 0.0;
-    bool showShadow = dot(smoothNormal, unitLightDir) <= BIAS;
-    // Apply emissive texture and ambient light
-    vec3 baseLuminance = vec3(material.rme.z) * material.albedo;
-    // Update filter
-    if (dontFilter || i == 0) renderId.w = float((reservoirNum % 128) << 1) * INV_255;
-    // Test if in shadow
-    if (showColor) return localColor + baseLuminance;
-
-    if (showShadow) {
-        if (dontFilter || i == 0) renderId.w += INV_255;
-        return baseLuminance;
+    if (show_shadow) {
+        return SampledColor(vec3(0.0), random_state);
     }
     // Apply geometry offset
-    vec3 offsetTarget = ray.origin + geometryOffset * smoothNormal;
-    Ray lightRay = Ray(offsetTarget, unitLightDir);
+    vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
+    Ray light_ray = Ray(offset_target, unit_light_dir);
 
-    if (shadowTest(lightRay, length(reservoirLightDir))) {
-        if (dontFilter || i == 0) renderId.w += INV_255;
-        return baseLuminance;
+    if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
+        return SampledColor(vec3(0.0), random_state);
     } else {
-        return localColor + baseLuminance;
+        return SampledColor(reservoir_color * w_sum, random_state);
     }
 }
 
+vec3 calculatePointLightContrib(uint point_light_index) {
+    Light point_light = access_light(point_light_index);
+    return point_light.color * point_light.intensity / (4.0 * PI * point_light.variance * point_light.variance);
+}
 
-vec3 lightTrace(Hit hit, vec3 target, vec3 camera, float cosSampleN, int bounces) {
-    // Set bool to false when filter becomes necessary
-    bool dontFilter = true;
+vec3 env_map_sample(vec3 dir) {
+    float len = sqrt(dir.x * dir.x + dir.z * dir.z);
+    float s = acos(dir.x / len);
+    if (dir.z < 0.0) {
+        s = 2.0 * PI - s;
+    }
+
+    s = s / (2.0 * PI);
+    vec2 tex_coord = vec2(s, ((asin(dir.y) * -2.0 / PI) + 1.0) * 0.5);
+    return textureLod(environment_map, tex_coord, 0.0).xyz * 255.0;
+}
+
+SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random_state) {
     // Use additive color mixing technique, so start with black
-    vec3 finalColor = vec3(0);
-    vec3 importancyFactor = vec3(1);
-    vec3 filterFactor = vec3(1);
-    originalColor = vec3(1);
+    vec3 final_color = vec3(0.0);
+    vec3 importancy_factor = vec3(1.0);
+    Hit hit = init_hit;
+    Ray ray = Ray(origin, normalize(origin - camera));
+    uint random_state = init_random_state;
+    bool add_ambient = false;
+    bool is_inside = false;
+    uint i = 0u;
+    // Precalculate random sphere
+    RandomSphere light_offset_sphere = random_sphere(random_state);
+    vec3 light_offset_dir = light_offset_sphere.value;
 
-    Ray ray = Ray(camera, normalize(target - camera));
-    vec3 lastHitPoint = camera;
+    random_state = light_offset_sphere.state;
+    bool direct_light_emission = true;
     // Iterate over each bounce and modify color accordingly
-    for (int i = 0; i < bounces && length(filterFactor) >= minImportancy * SQRT3; i++) {
-        float fi = float(i);
-        mat3 rTI = rotation[hit.transformId];
-        vec3 sTI = shift[hit.transformId];
-        // Transform hit point
-        ray.origin = hit.suv.x * ray.unitDirection + ray.origin;
-        // Calculate barycentric coordinates
-        vec3 uvw = vec3(1.0 - hit.suv.y - hit.suv.z, hit.suv.y, hit.suv.z);
+    while (true) {
+        float geometry_offset = 0.0;
+        vec3 smooth_n = vec3(0.0);
+        bool skip_hit = false;
+        bool point_light_lighting = hit.is_point_light == 1u && direct_light_emission;
+        bool current_direct_light_emission = direct_light_emission;
 
-        // Get position of current triangle/vertex in sceneTex
-        int triangleColumn = hit.triangleId >> TRIANGLES_PER_ROW_POWER;
-        // Fetch triangle coordinates from scene graph texture
-        ivec2 indexGeometry = ivec2((hit.triangleId - triangleColumn * TRIANGLES_PER_ROW) * 3, triangleColumn);
-        vec4 g0 = texelFetch(geometryTex, indexGeometry, 0);
-        vec4 g1 = texelFetch(geometryTex, indexGeometry + ivec2(1, 0), 0);
-        vec4 g2 = texelFetch(geometryTex, indexGeometry + ivec2(2, 0), 0);
+        if (!point_light_lighting) {
+            uint triangle_offset = hit.triangle_index * TRIANGLE_SIZE;
+            // Fetch triangle coordinates from scene graph texture
+            vec4 t0 = access_triangle(triangle_offset);
+            vec4 t1 = access_triangle(triangle_offset + 1u);
+            vec4 t2 = access_triangle(triangle_offset + 2u);
+            vec4 t3 = access_triangle(triangle_offset + 3u);
+            vec4 t4 = access_triangle(triangle_offset + 4u);
+            vec4 t5 = access_triangle(triangle_offset + 5u);
+            // Fetch triangle coordinates from scene graph texture
+            Transform transform = access_instance_transform(hit.instance_index * 2u);
+            // Assemble and transform triangle
+            mat3 t = transform.rotation * mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x));
+            // Assemble and transform normals
+            mat3 normals = transform.rotation * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
+            vec3 offset_ray_target = ray.origin - transform.shift;
+            // Compute edge vectors
+            vec3 edge1 = t[1] - t[0];
+            vec3 edge2 = t[2] - t[0];
+            vec3 edge3 = t[2] - t[1];
 
-        mat3 triangle = rTI * mat3(g0, g1, g2.x);
-        vec3 offsetRayTarget = ray.origin - sTI;
+            float min_edge_length = min(length(edge1), min(length(edge2), length(edge3)));
 
-        vec3 geometryNormal = normalize(cross(triangle[0] - triangle[1], triangle[0] - triangle[2]));
-        vec3 diffs = vec3(
-            distance(offsetRayTarget, triangle[0]),
-            distance(offsetRayTarget, triangle[1]),
-            distance(offsetRayTarget, triangle[2])
-        );
-        // Fetch scene texture data
-        ivec2 indexScene = ivec2((hit.triangleId - triangleColumn * TRIANGLES_PER_ROW) * 7, triangleColumn);
-        // Fetch texture data
-        vec4 t0 = texelFetch(sceneTex, indexScene, 0);
-        vec4 t1 = texelFetch(sceneTex, indexScene + ivec2(1, 0), 0);
-        vec4 t2 = texelFetch(sceneTex, indexScene + ivec2(2, 0), 0);
-        vec4 t3 = texelFetch(sceneTex, indexScene + ivec2(3, 0), 0);
-        vec4 t4 = texelFetch(sceneTex, indexScene + ivec2(4, 0), 0);
-        vec4 t5 = texelFetch(sceneTex, indexScene + ivec2(5, 0), 0);
-        vec4 t6 = texelFetch(sceneTex, indexScene + ivec2(6, 0), 0);
-        // Pull normals
-        mat3 normals = rTI * mat3(t0, t1, t2.x);
-        // Interpolate smooth normal
-        vec3 smoothNormal = normalize(normals * uvw);
-        // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-        vec3 angles = acos(abs(geometryNormal * normals));
-        vec3 angleTan = clamp(tan(angles), 0.0, 1.0);
-        float geometryOffset = dot(diffs * angleTan, uvw);
-        // Interpolate final barycentric texture coordinates between UV's of the respective vertices
-        vec2 barycentric = mat3x2(t2.yzw, t3.xyz) * uvw;
-        // Gather material attributes (albedo, roughness, metallicity, emissiveness, translucency, partical density and optical density aka. IOR) out of world texture
-        Material material = Material(
-            fetchTexVal(tex, barycentric, t3.w, vec3(t4.zw, t5.x)),
-            fetchTexVal(pbrTex, barycentric, t4.x, t5.yzw),
-            fetchTexVal(translucencyTex, barycentric, t4.y, t6.xyz)
-        );
-        
-        ray = Ray(ray.origin, normalize(ray.origin - lastHitPoint));
-        // If ray reflects from inside or onto an transparent object,
-        // the surface faces in the opposite direction as usual
-        float signDir = sign(dot(ray.unitDirection, smoothNormal));
-        smoothNormal *= - signDir;
-
-        // Generate pseudo random vector
-        vec4 randomVec = noise(clipSpace.xy * length(ray.origin - lastHitPoint), fi + cosSampleN * PHI);
-        vec3 randomSpheareVec = normalize(smoothNormal + normalize(randomVec.xyz));
-        float BRDF = mix(1.0f, abs(dot(smoothNormal, ray.unitDirection)), material.rme.y);
-
-        // Alter normal according to roughness value
-        float roughnessBRDF = material.rme.x * BRDF;
-        vec3 roughNormal = normalize(mix(smoothNormal, randomSpheareVec, roughnessBRDF));
-
-        vec3 H = normalize(roughNormal - ray.unitDirection);
-        float VdotH = max(dot(- ray.unitDirection, H), 0.0f);
-        vec3 F0 = material.albedo * BRDF;
-        vec3 f = fresnel(F0, VdotH);
-
-        float fresnelReflect = max(f.x, max(f.y, f.z));
-        // object is solid or translucent by chance because of the fresnel effect
-        bool isSolid = material.tpo.x * fresnelReflect <= abs(randomVec.w);
-
-        // Determine local color considering PBR attributes and lighting
-        vec3 localColor = reservoirSample(material, ray, randomVec, - signDir * roughNormal, - signDir * smoothNormal, geometryOffset, dontFilter, i);
-        // Calculate primary light sources for this pass if ray hits non translucent object
-        finalColor += localColor * importancyFactor;
-        // Multiply albedo with either absorption value or filter colo
-        if (dontFilter) {
-            originalColor *= (material.albedo + INV_255);
-            finalColor /= (material.albedo + INV_255);
-            
-            // importancyFactor /= material.albedo;
-            // importancyFactor *= material.albedo;
-            // Update last used tpo.x value
-            originalTPOx = material.tpo.x;
-            // Add filtering intensity for respective surface
-            originalRMEx += material.rme.x;
-            // Update render id
-            vec4 renderIdUpdate = pow(2.0f, - fi) * vec4(combineNormalRME(smoothNormal, material.rme), 0.0f);
-
-            renderId += renderIdUpdate;
-            // if (i == 0) renderOriginalId += renderIdUpdate;
-            // Test if filter is already necessary
-            dontFilter = (material.rme.x < 0.01f && isSolid) || !isSolid;
-
-            if(isSolid && material.tpo.x > 0.01f) {
-                // glassFilter += 1.0f;
-                dontFilter = false;
+            vec3 geometry_n = normalize(cross(edge1, edge2));
+            vec3 diffs = vec3(
+                distance(offset_ray_target, t[0]),
+                distance(offset_ray_target, t[1]),
+                distance(offset_ray_target, t[2])
+            );
+            // Calculate barycentric coordinates
+            vec3 geometry_uvw = vec3(1.0 - hit.uv.x - hit.uv.y, hit.uv.x, hit.uv.y);
+            // Interpolate smooth normal
+            smooth_n = normalize(normals * geometry_uvw);
+            // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
+            vec3 angles = acos(abs(vec3(
+                dot(geometry_n, normalize(normals[0])),
+                dot(geometry_n, normalize(normals[1])),
+                dot(geometry_n, normalize(normals[2]))
+            )));
+            // Limit angles to 45 degrees
+            vec3 angle_tan = clamp(tan(angles), vec3(0.0), vec3(PI * 0.25));
+            // Keep geometry offset within reasonable range
+            geometry_offset = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0, min_edge_length * 0.125);
+            // Interpolate final barycentric texture coordinates between UV's of the respective vertices
+            vec2 barycentric = fract(mat3x2(t4.zw, t5.xy, t5.zw) * geometry_uvw);
+            // Sample material
+            Material material = access_instance_material(hit.instance_index);
+            // If the ray is inside a medium, apply Beer's law for absorption.
+            if (is_inside) {
+                // The amount of light transmitted is T = exp(-sigma_a * d).
+                vec3 absorption_coefficient = max(material.albedo, vec3(BIAS));
+                vec3 transmittance = exp(hit.dist * log(absorption_coefficient));
+                importancy_factor *= transmittance;
             }
-            
-        } else {
-            importancyFactor *= material.albedo;
+
+            uint hit_instance_location = hit.instance_index * INSTANCE_UINT_SIZE;
+            // Read material textures
+            uint albedo_texture_id = access_instance_uint(hit_instance_location + 3u);
+            if (albedo_texture_id != UINT_MAX) {
+                vec4 albedo_data = textureSample(albedo_texture_id, barycentric) * INV_255;
+                material.albedo = albedo_data.xyz;
+                // Enable transparent textures
+                // Yeild random value between 0 and 1 and update state
+                Random transparancy_random_value = pcg(random_state);
+                random_state = transparancy_random_value.state;
+                if (1.0 - albedo_data.w > transparancy_random_value.value) {
+                    skip_hit = true;
+                }
+            }
+
+            if (!skip_hit) {
+                uint normal_texture_id = access_instance_uint(hit_instance_location + 4u);
+                if (normal_texture_id != UINT_MAX) {
+                    vec2 uv0 = t4.zw;
+                    vec2 uv1 = t5.xy;
+                    vec2 uv2 = t5.zw;
+                    mat3 tbn = normalMapTBN(t[0], t[1], t[2], uv0, uv1, uv2, smooth_n);
+                    vec3 normal_data = normalize(textureSample(normal_texture_id, barycentric).xyz * INV_255 * 2.0 - 1.0);
+                    normal_data.y = -normal_data.y;
+                    smooth_n = normalize(tangentToWorldNormalMap(normal_data, tbn));
+                }
+
+                uint emissive_texture_id = access_instance_uint(hit_instance_location + 5u);
+                if (emissive_texture_id != UINT_MAX) {
+                    material.emissive = textureSample(emissive_texture_id, barycentric).xyz * INV_255;
+                }
+
+                uint roughness_texture_id = access_instance_uint(hit_instance_location + 6u);
+                if (roughness_texture_id != UINT_MAX) {
+                    material.roughness = textureSample(roughness_texture_id, barycentric).x * INV_255;
+                }
+
+                uint metallic_texture_id = access_instance_uint(hit_instance_location + 7u);
+                if (metallic_texture_id != UINT_MAX) {
+                    material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
+                }
+                // Determine local color considering PBR attributes and lighting
+                // Hybrid method
+                if (current_direct_light_emission) {
+                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0);
+                    direct_light_emission = false;
+                }
+
+                float n_dot_v = dot(smooth_n, - ray.unit_direction);
+                bool is_entering = n_dot_v < 0.0;
+                // Incident side is air, outgoing side is material (entering)
+                float eta_i = is_entering ? material.ior : 1.0;
+                // Incident side is material, outgoing side is air (exiting)
+                float eta_o = is_entering ? 1.0 : material.ior;
+                // Calculate fresnel term
+                vec3 F_n = mix(vec3(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
+                float F_n_greyscale = rgb_to_greyscale(F_n);
+
+                float diffuse_factor_estimate = max((1.0 - F_n_greyscale) * (1.0 - material.metallic) * (1.0 - material.transmission), 0.0);
+                if (diffuse_factor_estimate > 0.04 || material.roughness > 0.2) {
+                    // Do NEE
+                    SampledColor local_sampled = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir);
+                    random_state = local_sampled.random_state;
+                    final_color += local_sampled.color * importancy_factor;
+                } else {
+                    // Sample directly next round
+                    direct_light_emission = true;
+                }
+                // Attempt ray bounce with material normal first
+                SampleBSDF bsdf_sampled = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state);
+                random_state = bsdf_sampled.random_state;
+                // Meassure if outgoing ray points towards incorrect side of the sphere.
+                bool expected_out_dir_normal_aligned = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
+                bool out_dir_normal_aligned = dot(bsdf_sampled.unit_direction, geometry_n) > 0.0;
+                // Continue sampling with geometry normal if ray points to incorrect side of the surface
+                if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
+                    // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
+                    SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state);
+                    random_state = geometry_bsdf_sampled.random_state;
+                    // Redirect outgoing ray according to new bsdf sample.
+                    bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
+                    bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
+                    // Multiply to compute combined throughput, doing proper self shadowing.
+                    bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                }
+                // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
+                if (bsdf_sampled.refracted) {
+                    is_inside = !is_inside;
+                }
+
+                ray.unit_direction = bsdf_sampled.unit_direction;
+                importancy_factor *= max(bsdf_sampled.throughput, vec3(0.0));
+
+                vec3 out_dir_aligned_normal = is_inside ? - smooth_n : smooth_n;
+                ray.origin += geometry_offset * out_dir_aligned_normal;
+            }
         }
 
-        filterFactor *= material.albedo;
-        // Update length of first fector to control blur intensity
-        if (i == 1) firstRayLength = min(length(ray.origin - lastHitPoint) / length(lastHitPoint - camera), firstRayLength);
-
-        // Handle translucency and skip rest of light calculation
-        if(isSolid) {
-            // Calculate reflecting ray
-            ray.unitDirection = normalize(mix(reflect(ray.unitDirection, smoothNormal), randomSpheareVec, roughnessBRDF));
-        } else {
-            float eta = mix(1.0f / material.tpo.z, material.tpo.z, max(signDir, 0.0f));
-            // Refract ray depending on IOR (material.tpo.z)
-            ray.unitDirection = normalize(mix(refract(ray.unitDirection, smoothNormal, eta),randomSpheareVec, roughnessBRDF));
+        float survival_probability = 1.0;
+        if (!skip_hit) {
+            survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0, 1.0);
         }
+
+        Random random_value = pcg(random_state);
+        random_state = random_value.state;
+        // Test for early termination, avoiding last bounce
+        if (survival_probability < random_value.value || i >= max_bounces) {
+            add_ambient = false;
+            break;
+        }
+        // Continue with next bounce
+        importancy_factor /= survival_probability;
+
+        if (point_light_lighting && !skip_hit) {
+            final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
+        }
+        // Increment hit iterator
+        i = i + 1u;
         // Calculate next intersection
-        hit = rayTracer(ray);
+        hit = traverseInstanceBVH(ray, direct_light_emission);
         // Stop loop if there is no intersection and ray goes in the void
-        if (hit.triangleId == - 1) break;
-        // Update other parameters
-        lastHitPoint = ray.origin;
+        if (hit.instance_index == UINT_MAX) {
+            add_ambient = true;
+            break;
+        }
+        // Project ray origin to hit point
+        ray.origin += hit.dist * ray.unit_direction;
+    }
+    // Sample environment map if present
+    if (add_ambient) {
+        if (environment_map_size.x > 1u && environment_map_size.y > 1u) {
+            final_color += importancy_factor * env_map_sample(ray.unit_direction);
+        } else {
+            // If no environment map is present, use ambient color
+            final_color += importancy_factor * ambient;
+        }
     }
     // Return final pixel color
-    return finalColor + importancyFactor * ambient;
+    return SampledColor(final_color, random_state);
 }
 
 void main() {
-    // Transform normal according to object transform
-    int tI = transformationId << 1;
-    vec3 uvw = vec3(uv, 1.0f - uv.x - uv.y);
-    // Generate hit struct for pathtracer
-    Hit hit = Hit(vec3(distance(absolutePosition, camera), uvw.yz), tI, initTriangleId);
-    // vec3 finalColor = material.rme;
-    vec3 finalColor = vec3(0);
-    // Generate multiple samples
-    for(int i = 0; i < samples; i++) {
-        // Use cosine as noise in random coordinate picker
-        float cosSampleN = cos(float(i));
-        finalColor += lightTrace(hit, absolutePosition, camera, cosSampleN, maxReflections);
-    }
-    // Average ray colors over samples.
-    float invSamples = 1.0f / float(samples);
-    finalColor *= invSamples;
+    // Get texel position of screen
+    ivec2 screen_pos = ivec2(gl_FragCoord.xy);
+    // Row counted from the top, like the screen position of the WebGPU compute shader
+    uint row = render_size.y - 1u - uint(screen_pos.y);
+    // Subtract 1 to have 0 as invalid index
+    uvec4 offset = texelFetch(texture_offset, screen_pos, 0);
+    uint instance_index = offset.x - 1u;
+    uint triangle_index = offset.y - 1u;
 
-    /*if(useFilter == 1) {
-        // Render all relevant information to 4 textures for the post processing shader
-        renderColor = vec4(fract(finalColor), 1.0f);
-        // 16 bit HDR for improved filtering
-        renderColorIp = vec4(floor(finalColor) * INV_255, glassFilter);
+    vec2 screen_space = vec2(float(screen_pos.x), float(row)) / vec2(render_size) * vec2(2.0, -2.0) + vec2(-1.0, 1.0);
+    vec3 view_direction = normalize(inv_view_matrix * vec3(screen_space, 1.0));
+
+    vec3 final_color = vec3(0.0);
+    if (instance_index == UINT_MAX && triangle_index == UINT_MAX) {
+        if (environment_map_size.x > 1u && environment_map_size.y > 1u) {
+            final_color = env_map_sample(view_direction);
+        } else {
+            // If no environment map is present, use ambient color
+            final_color = ambient;
+        }
     } else {
-    */
-    finalColor *= originalColor;
-
-    if (isTemporal == 0 && hdr == 1) {
-        // Apply Reinhard tone mapping
-        finalColor = finalColor / (finalColor + vec3(1.0f));
-        // Gamma correction
-        // float gamma = 0.8f;
-        // finalColor = pow(4.0f * finalColor, vec3(1.0f / gamma)) / 4.0f * 1.3f;
+        vec3 absolute_position = texelFetch(texture_absolute_position, screen_pos, 0).xyz;
+        vec2 uv = uintBitsToFloat(offset.zw);
+        vec3 uvw = vec3(uv, 1.0 - uv.x - uv.y);
+        // Generate hit struct for pathtracer
+        Hit init_hit = Hit(uvw.yz, instance_index, triangle_index, 0u, distance(absolute_position, camera_position));
+        // Init random state
+        uint random_state = (temporal_target + 1u) * (row * render_size.x + uint(screen_pos.x));
+        // Generate multiple samples
+        for (uint i = 0u; i < samples; i++) {
+            SampledColor sampled_color = lightTrace(init_hit, absolute_position, camera_position, random_state);
+            random_state = sampled_color.random_state;
+            final_color += sampled_color.color;
+        }
+        // Average ray colors over samples.
+        final_color *= 1.0 / float(samples);
+        // Clamp color to 16 bit float
+        // Maximal representable number in f16 is 65520
+        final_color = clamp(final_color, vec3(0.0), vec3(65519.0));
     }
-
-
-    if (isTemporal == 1) {
-        renderColor = vec4(fract(finalColor), 1.0f);
-        // 16 bit HDR for improved filtering
-        renderColorIp = vec4(floor(finalColor) * INV_255, 1.0f);
-    } else {
-        renderColor = vec4(finalColor, 1.0f);
+    // Average with previous frames while camera is still, skip read on reset to not carry over invalid values
+    if (accumulation_count > 0.0) {
+        final_color = mix(texelFetch(accumulated, screen_pos, 0).xyz, final_color, 1.0 / (accumulation_count + 1.0));
     }
-    //}
-    /*
-    
-    */
-    // render normal (last in transparency)
-    renderId += vec4(0.0f, 0.0f, 0.0f, INV_255);
-    // render modulus of absolute position (last in transparency)´
-    // renderColor = vec4(smoothNormal, 1.0);
-    // renderColorIp = vec4(0.0);
+    render_out = vec4(final_color, 1.0);
 }
