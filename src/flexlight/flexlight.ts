@@ -7,9 +7,9 @@ import { Scene } from "./common/scene/scene.js";
 // import { Vector, ZeroVector, Matrix, ZeroMatrix, IdentityMatrix, HouseholderMatrix } from "./common/lib/math.js";
 // import { Transform } from "./common/scene/transform.js";
 import { ApiType, RendererType } from "./common/renderer.js";
-// import { PathTracerWGL2 } from "./webgl2/pathtracer.js";
+import { PathTracerWGL2 } from "./webgl2/pathtracer.js";
 import { PathTracerWGPU } from "./webgpu/pathtracer.js";
-// import { RasterizerWGL2 } from "./webgl2/rasterizer.js";
+import { RasterizerWGL2 } from "./webgl2/rasterizer.js";
 // import { RasterizerWGPU } from "./webgpu/rasterizer.js";
 import { IoType, WebIO } from "./common/io.js";
 import { UI } from "./common/ui.js";
@@ -53,13 +53,13 @@ export class FlexLight {
     const wasRunning: boolean = this._renderer.halt();
     switch (rendererType + this._api) {
       case "pathtracerwebgl2":
-        // this._renderer = new PathTracerWGL2(this._canvas, this._scene, this._camera, this._config);
+        this._renderer = new PathTracerWGL2(this._canvas, this._scene, this._camera, this._config);
         break;
       case "pathtracerwebgpu":
         this._renderer = new PathTracerWGPU(this._canvas, this._scene, this._camera, this._config);
         break;
       case "rasterizerwebgl2":
-        // this._renderer = new RasterizerWGL2(this._canvas, this._scene, this._camera, this._config);
+        this._renderer = new RasterizerWGL2(this._canvas, this._scene, this._camera, this._config);
         break;
       case "rasterizerwebgpu":
         this._renderer = new RasterizerWGPU(this._canvas, this._scene, this._camera, this._config);
