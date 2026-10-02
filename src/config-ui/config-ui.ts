@@ -3,7 +3,7 @@
 import { FlexLight } from "flexlight";
 import { ValueType, ConfigForm } from "./form.js";
 import { RendererType } from "flexlight/common/renderer.js";
-// import { ApiType } from "flexlight/common/renderer.js";
+import { ApiType } from "flexlight/common/renderer.js";
 import { StringAntialiasingType } from "flexlight/common/config.js";
 // Types for ConfigUI
 interface Property<T extends ValueType> {
@@ -68,7 +68,7 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     };
     // Add FlexLight settings to parameter form
     const flexLightForm = new ConfigForm(form, engine, localStorageHook);
-    // flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"] as const, getStartValueSelect({ name: "Backend", defaultValue: "webgl2" as ApiType }));
+    flexLightForm.addSelect("Backend", "api", ["webgl2", "webgpu"] as const, getStartValueSelect({ name: "Backend", defaultValue: "webgpu" as ApiType }));
     flexLightForm.addSelect("Renderer", "rendererType", ["rasterizer", "pathtracer"] as const, getStartValueSelect({ name: "Renderer", defaultValue: "pathtracer" as RendererType }));
     
     // Add Config settings to parameter form
