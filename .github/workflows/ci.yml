@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm install -g esbuild typescript
+      - run: bash ./build-script
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # pointing the website's submodule at this commit triggers its deploy workflow
+      - uses: actions/checkout@v7
+        with:
+          repository: arbobendik/arbogast.dev
+          ssh-key: ${{ secrets.WEBSITE_DEPLOY_KEY }}
+      - run: |
+          git config user.name "Bendik Arbogast"
+          git config user.email "arbobendik@gmail.com"
+          git update-index --cacheinfo 160000,"$GITHUB_SHA",projects/FlexLight
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(flexlight): deploy ${GITHUB_SHA::7}"
+          git push || { git pull --rebase && git push; }
