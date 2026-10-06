@@ -75,6 +75,9 @@ export function createConfigUI(engine: FlexLight): HTMLFormElement {
     const configForm = new ConfigForm(form, engine.config, localStorageHook);
     configForm.addSelect("Antialiasing", "antialiasingAsString", ["undefined", "fxaa", "taa"] as const, getStartValueSelect({ name: "Antialiasing", defaultValue: "undefined" as StringAntialiasingType }));
     configForm.addCheckbox("Temporal averaging", "temporal", getStartValueCheckbox({ name: "Temporal averaging", defaultValue: true }));
+    configForm.addCheckbox("ReSTIR PT", "restir", getStartValueCheckbox({ name: "ReSTIR PT", defaultValue: false }));
+    configForm.addCheckbox("ReSTIR decorrelation (biased)", "restirDecorrelation", getStartValueCheckbox({ name: "ReSTIR decorrelation (biased)", defaultValue: false }));
+    configForm.addSlider("ReSTIR spatial neighbours", "restirNeighbours", 1, 3, 1, getStartValueSlider({ name: "ReSTIR spatial neighbours", defaultValue: 3 }));
     configForm.addCheckbox("Tonemapping", "tonemapping", getStartValueCheckbox({ name: "Tonemapping", defaultValue: true }));
     configForm.addSlider("Render resolution", "renderResolution", 0.1, 2, 0.1, getStartValueSlider({ name: "Render resolution", defaultValue: 1 }));
     configForm.addSlider("Samples per pixel", "samplesPerPixel", 1, 32, 1, getStartValueSlider({ name: "Samples per pixel", defaultValue: 1 }));

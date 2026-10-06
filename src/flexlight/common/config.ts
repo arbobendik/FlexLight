@@ -22,6 +22,11 @@ export class Config {
   set antialiasing(value: WebGPUAntialiasingType) { this._antialiasing = value; }
 
   temporal: boolean = true;
+  restir: boolean = false;
+  // Duplication based decorrelation of ReSTIR, trades correlation artifacts for bias
+  restirDecorrelation: boolean = false;
+  // Spatial neighbours of ReSTIR (1 - 3), fewer trade quality for speed
+  restirNeighbours: number = 3;
   tonemapping: boolean = true;
   renderResolution: number = 1;
   samplesPerPixel: number = 1;
