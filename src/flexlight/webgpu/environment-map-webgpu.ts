@@ -5,6 +5,37 @@ import { Scene } from "../common/scene/scene";
 import { Texture } from "../common/scene/texture";
 import { EnvironmentMap } from "../flexlight";
 
+// Maximal width of the luminance distribution used to importance sample the environment map
+const CDF_WIDTH = 1024;
+
+// Per row CDFs of texel luminance times solid angle, the last column holds the marginal CDF of the rows.
+// The second channel holds the probability of each cell, respectively each row.
+const luminanceCDF = (device: GPUDevice, source: EnvironmentMap): GPUTexture => {
+    const { x: width, y: height } = source.imageSize;
+    const scale = Math.ceil(width / CDF_WIDTH);
+    const [w, h] = [Math.ceil(width / scale), Math.ceil(height / scale)];
+    const cells = new Float64Array(w * h);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 3, a = source.imageArray, cell = Math.floor(y / scale) * w + Math.floor(x / scale);
+        cells[cell] = cells[cell]! + (0.299 * a[i]! + 0.587 * a[i + 1]! + 0.114 * a[i + 2]!) * Math.sin(Math.PI * (y + 0.5) / height);
+    }
+    const rows = Array.from({ length: h }, (_, y) => cells.subarray(y * w, (y + 1) * w).reduce((sum, cell) => sum + cell, 0));
+    const total = rows.reduce((sum, row) => sum + row, 0) || 1;
+    const data = new Float32Array((w + 1) * h * 2);
+    for (let y = 0, row = 0; y < h; y++) {
+        const rowMass = rows[y]! || 1;
+        for (let x = 0, cell = 0; x < w; x++) {
+            cell += cells[y * w + x]!;
+            data.set([cell / rowMass, cells[y * w + x]! / rowMass], (y * (w + 1) + x) * 2);
+        }
+        row += rows[y]!;
+        data.set([row / total, rows[y]! / total], (y * (w + 1) + w) * 2);
+    }
+    const texture = device.createTexture({ size: [w + 1, h], format: "rg32float", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture }, data, { bytesPerRow: (w + 1) * 8 }, [w + 1, h]);
+    return texture;
+};
+
 export class EnvironmentMapWebGPU {
     private gpuTextureSize: Vector<2>;
     private _gpuTexture: GPUTexture;
@@ -12,6 +43,8 @@ export class EnvironmentMapWebGPU {
 
     private _gpuSampler: GPUSampler;
     get gpuSampler() { return this._gpuSampler; }
+    // Luminance distribution for next event estimation toward the environment map
+    readonly cdf: GPUTexture;
     
     private device: GPUDevice;
     // private environmentMapTexture: GPUTexture;
@@ -55,6 +88,7 @@ export class EnvironmentMapWebGPU {
             this.loadHDRImage(source);  
             // this.copySourcesToCubeMap(device, this.scene.environmentMap.cubeSideImages);
         }
+        this.cdf = luminanceCDF(device, source);
     }
 
     loadHDRImage(source: EnvironmentMap) {
