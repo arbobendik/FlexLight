@@ -18,6 +18,7 @@ import { WebGPUAntialiasingType } from "./antialiasing/antialiasing-module.js";
 
 import { FXAA } from "./antialiasing/fxaa.js";
 import { TAA } from "./antialiasing/taa.js";
+import { ReSTIR, ReSTIRResources } from "./restir.js";
 
 // Ignore all shader imports, the bundler will handle them as intended.
 // @ts-ignore
@@ -61,6 +62,7 @@ interface CanvasSizeDependentResources {
   accumulatedTargetUint: GPUTexture | undefined;
   shiftLock: GPUBuffer | undefined;
   temporalIn: GPUTexture | undefined;
+  restirResources: ReSTIRResources | undefined;
 }
 
 
@@ -103,6 +105,7 @@ interface PathTracerGPUBufferManagers {
 
 interface EngineState {
   temporal: boolean;
+  restir: boolean;
   renderResolution: number;
   antialiasing: WebGPUAntialiasingType;
 }
@@ -118,8 +121,11 @@ export class PathTracerWGPU extends RendererWGPU {
   
   private canvasSizeDependentResources: CanvasSizeDependentResources | undefined;
   private antialiasingModule: AntialiasingModule | undefined;
+  private restir: ReSTIR | undefined;
+  // View matrix and camera position of the previous frame for reprojection
+  private previousView: Array<number> = new Array(16).fill(0);
   private engineState: EngineState = {
-    temporal: false,
+    temporal: false, restir: false,
     renderResolution: 0, antialiasing: undefined
   };
 
@@ -197,11 +203,12 @@ export class PathTracerWGPU extends RendererWGPU {
 
     // Init antialiasing module texture if antialiasing module exists
     if (this.antialiasingModule) this.antialiasingModule.createTexture();
+    const restirResources = this.restir?.createResources(width, height);
 
     // Create new canvas size dependent resources
     this.canvasSizeDependentResources = {
       depthBuffer, offsetBuffer, absolutePositionTexture, uvTexture, canvasIn,
-      temporalIn, shiftTargetFloat, shiftTargetUint, accumulatedTargetFloat, accumulatedTargetUint, shiftLock
+      temporalIn, shiftTargetFloat, shiftTargetUint, accumulatedTargetFloat, accumulatedTargetUint, shiftLock, restirResources
     }
   }
   
@@ -265,6 +272,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },                                    // texture instance buffer
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float", viewDimension: "2d" } },                    // environment map
         { binding: 3, visibility: GPUShaderStage.COMPUTE, sampler: { type: "filtering" } },                                           // environment map sampler
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d" } },       // environment map luminance cdf
       ]
     });
 
@@ -397,11 +405,12 @@ export class PathTracerWGPU extends RendererWGPU {
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
+    this.restir = this.engineState.restir ? new ReSTIR(device, PathtracerComputeShader, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout]) : undefined;
     // Render passes are given attachments to write into.
     const renderPassColorAttachment: GPURenderPassColorAttachment = { view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 0], loadOp: "clear", storeOp: "store" };
     const renderPassDescriptor = { colorAttachments: [renderPassColorAttachment] };
     // Create uniform buffer for shader uniforms, calculate uniform buffer size
-    const uniformFloatBuffer: GPUBuffer = device.createBuffer({ size: 10 * 4 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const uniformFloatBuffer: GPUBuffer = device.createBuffer({ size: 12 * 4 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const uniformUintBuffer: GPUBuffer = device.createBuffer({ size: 4 * 4 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Link GPUBufferManagers to BufferManagers
     const gpuManagers: PathTracerGPUBufferManagers = {
@@ -441,8 +450,9 @@ export class PathTracerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.renderResolution !== this.config.renderResolution) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.restir !== this.config.restir || this.engineState.renderResolution !== this.config.renderResolution) {
       this.engineState.temporal = this.config.temporal;
+      this.engineState.restir = this.config.restir;
       this.engineState.renderResolution = this.config.renderResolution;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
@@ -641,7 +651,8 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 0, resource: gpuBufferManagers.textureDataGPUManager.gpuResource },
         { binding: 1, resource: { buffer: gpuBufferManagers.textureInstanceGPUManager.gpuResource } },
         { binding: 2, resource: gpuBufferManagers.environmentMapGPUManager.gpuResource },
-        { binding: 3, resource: gpuBufferManagers.environmentMapGPUManager.gpuSampler }
+        { binding: 3, resource: gpuBufferManagers.environmentMapGPUManager.gpuSampler },
+        { binding: 4, resource: gpuBufferManagers.environmentMapGPUManager.cdf.createView() }
       ]
     });
 
@@ -680,23 +691,30 @@ export class PathTracerWGPU extends RendererWGPU {
 
     const invViewMatrix: Matrix<3, 3> = moore_penrose(viewMatrix);
     const temporalCount = this.engineState.temporal ? this.frameCounter : 0;
-    // Update uniform values on GPU
-    if (uniformFloatBuffer) device.queue.writeBuffer(uniformFloatBuffer, 0, new Float32Array([
-      // View matrix
+    const view: Array<number> = [
       viewMatrix[0]![0]!, viewMatrix[1]![0]!, viewMatrix[2]![0]!, 0,
       viewMatrix[0]![1]!, viewMatrix[1]![1]!, viewMatrix[2]![1]!, 0,
       viewMatrix[0]![2]!, viewMatrix[1]![2]!, viewMatrix[2]![2]!, 0,
+      this.camera.position.x, this.camera.position.y, this.camera.position.z, 0
+    ];
+    // Update uniform values on GPU
+    if (uniformFloatBuffer) device.queue.writeBuffer(uniformFloatBuffer, 0, new Float32Array([
+      // View matrix
+      ...view.slice(0, 12),
       // View matrix inverse
       invViewMatrix[0]![0]!, invViewMatrix[1]![0]!, invViewMatrix[2]![0]!, 0,
       invViewMatrix[0]![1]!, invViewMatrix[1]![1]!, invViewMatrix[2]![1]!, 0,
       invViewMatrix[0]![2]!, invViewMatrix[1]![2]!, invViewMatrix[2]![2]!, 0,
       // Camera
-      this.camera.position.x, this.camera.position.y, this.camera.position.z, 0,
+      ...view.slice(12),
       // Ambient light
       this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z,
       // max temporal reproject
-      this.config.maxReprojections
+      this.config.maxReprojections,
+      // Previous view matrix and camera
+      ...this.previousView
     ]));
+    this.previousView = view;
 
     //let firstEnvMapSide: HTMLImageElement | undefined = this.scene.environmentMap.cubeSideImages[0];
     let envMapSize: Vector<2> = this.scene.environmentMap.imageSize;
@@ -720,8 +738,8 @@ export class PathTracerWGPU extends RendererWGPU {
 
       // Environment map size
       envMapSize.x, envMapSize.y,
-      // Point light count
-      this.scene.lightCount, 0
+      // Point light count, frame index, ReSTIR decorrelation and spatial neighbours
+      this.scene.lightCount, this.frameCounter, (this.config.restirDecorrelation ? 1 : 0), this.config.restirNeighbours
       // Environment map mip level count
       // gpuBufferManagers.environmentMapGPUManager.mipLevelCount
     ]));
@@ -826,17 +844,22 @@ export class PathTracerWGPU extends RendererWGPU {
 
     let computeClusterDims: Vector<2> = new Vector(Math.ceil(this.canvas.width / 8), Math.ceil(this.canvas.height / 8));
     
-    // Run compute shader
-    let computeEncoder = commandEncoder.beginComputePass();
-    // Set the storage buffers and textures for compute pass
-    computeEncoder.setPipeline(pipelines.computePipeline);
-    computeEncoder.setBindGroup(0, computeRenderGroup);
-    computeEncoder.setBindGroup(1, computeTextureGroup);
-    computeEncoder.setBindGroup(2, computeGeometryGroup);
-    computeEncoder.setBindGroup(3, computeDynamicGroup);
-    computeEncoder.dispatchWorkgroups(computeClusterDims.x, computeClusterDims.y);
-    // End compute pass
-    computeEncoder.end();
+    if (this.restir) {
+      const { offsetBuffer, absolutePositionTexture, uvTexture, restirResources } = this.canvasSizeDependentResources;
+      this.restir.encode(commandEncoder, computeTargetView, offsetBuffer, absolutePositionTexture, uvTexture, restirResources!, [computeTextureGroup, computeGeometryGroup, computeDynamicGroup], this.canvas.width, this.canvas.height);
+    } else {
+      // Run compute shader
+      let computeEncoder = commandEncoder.beginComputePass();
+      // Set the storage buffers and textures for compute pass
+      computeEncoder.setPipeline(pipelines.computePipeline);
+      computeEncoder.setBindGroup(0, computeRenderGroup);
+      computeEncoder.setBindGroup(1, computeTextureGroup);
+      computeEncoder.setBindGroup(2, computeGeometryGroup);
+      computeEncoder.setBindGroup(3, computeDynamicGroup);
+      computeEncoder.dispatchWorkgroups(computeClusterDims.x, computeClusterDims.y);
+      // End compute pass
+      computeEncoder.end();
+    }
 
     // Execute temporal pass if activated
     if (this.engineState.temporal) {
