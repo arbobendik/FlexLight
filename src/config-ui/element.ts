@@ -67,6 +67,8 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
                 rangeDisplay.textContent = this._value?.toString() ?? "";
                 this.rangeDisplay = rangeDisplay;
                 this.label.appendChild(rangeDisplay);
+                // Show value while dragging, apply on release
+                input.addEventListener("input", () => rangeDisplay.textContent = input.value);
                 // Add event listener
                 input.addEventListener("change", (event: Event) => {
                     if (!(event.target instanceof HTMLInputElement)) return;
@@ -107,7 +109,9 @@ export class ConfigElement<IT extends InputType, O extends Object, K extends key
         // Clear label
         this.label.replaceChildren();
         // Write name to label
-        this.label.textContent = this.name + ": ";
+        const name = document.createElement("span");
+        name.textContent = this.name;
+        this.label.appendChild(name);
         this.label.htmlFor = this.name;
         // Test if type is valid
         switch (this.type) {
