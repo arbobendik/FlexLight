@@ -27,6 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Start with collapsed settings on phones
+    if (matchMedia('(max-width: 640px)').matches) (document.getElementById('controlPanel') as HTMLDetailsElement).open = false;
+
     const sceneName: string = urlParams.get('v') ?? 'example1';
     loadScript(`./build/loader/examples/${sceneName}.js`, 'module');
 });
