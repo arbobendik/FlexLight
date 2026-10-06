@@ -19,49 +19,173 @@ div {
 	top: 0;
 }
 
-select {
-	background-color: #909090;
-  font-size: inherit;
-  font-weight: bolder;
-  padding: .7vh;
-  margin: .3vh;
-  border: 0 none;
-  border-radius: 1vh;
-}
-
-button {
-  background-color: #909090;
-  font-size: inherit;
-  font-weight: bolder;
-  padding: .7vh;
-  margin: .3vh;
-  border: 0 none;
-  border-radius: 1vh;
-}
-
-label {
-  display: inline-block;
-}
-
-output {
-  display: inline-block;
-}
-
-.slider {
-  width: 70%;
-}
-
 #controlPanel {
-  box-shadow: -1rem -1rem 2.5rem #5556, 1rem 1rem 2.5rem #0006;
+  --accent: #3b6fd8;
+  --track: #0000002a;
+  --control: #ffffff70;
   position: fixed;
-  padding: 1rem;
-	left: 3rem;
-	top: 14rem;
-  width: 26rem;
-  word-wrap: break-word;
-  background-color: #c0c0c060;
-  font-size: 2rem;
+  left: 1rem;
+  top: calc(min(8vh, 400px) + 1rem);
+  box-sizing: border-box;
+  width: min(20em, calc(100vw - 2rem));
+  max-height: calc(100vh - min(8vh, 400px) - 2rem);
+  overflow-y: auto;
+  padding: .5em .9em;
+  font: 13px/1.3 system-ui, sans-serif;
   color: #333;
-  backdrop-filter: blur(3vmin);
-  border-radius: 1.5rem;
+  background-color: #c0c0c060;
+  backdrop-filter: blur(3vmin) saturate(1.3);
+  -webkit-backdrop-filter: blur(3vmin) saturate(1.3);
+  border: 1px solid #ffffff40;
+  border-radius: 1.2em;
+  box-shadow: -1rem -1rem 2.5rem #5556, 1rem 1rem 2.5rem #0006;
+}
+
+#controlPanel:not([open]) {
+  width: auto;
+}
+
+#controlPanel summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+#controlPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+#controlPanel summary::after {
+  content: "\25BE";
+  display: inline-block;
+  margin-left: .5em;
+  transition: rotate .2s;
+}
+
+#controlPanel:not([open]) summary::after {
+  rotate: -90deg;
+}
+
+#controlPanel h2 {
+  margin: .8em 0 .2em;
+  font-size: .75em;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .55;
+}
+
+#controlPanel #scriptForm {
+  margin-top: .5em;
+}
+
+/* Every setting is one row: name | control (slider rows: name | slider | value) */
+#controlPanel #scriptForm, #controlPanel config-element label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9.5em;
+  align-items: center;
+  column-gap: .5em;
+  min-height: 2em;
+}
+
+#controlPanel config-element label:has([type="range"]) {
+  grid-template-columns: minmax(0, 1fr) 7em 2em;
+}
+
+#controlPanel label > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#controlPanel label > span + span {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#controlPanel select, #controlPanel button {
+  height: 1.9em;
+  padding: 0 .6em;
+  font: inherit;
+  color: inherit;
+  background-color: var(--control);
+  border: 0 none;
+  border-radius: .6em;
+  cursor: pointer;
+}
+
+#controlPanel select, #controlPanel button {
+  width: 100%;
+}
+
+#controlPanel button {
+  margin: .8em 0 .3em;
+  font-weight: 600;
+}
+
+#controlPanel button:hover, #controlPanel select:hover {
+  background-color: #ffffffa0;
+}
+
+#controlPanel input[type="checkbox"] {
+  appearance: none;
+  justify-self: end;
+  width: 2.2em;
+  height: 1.25em;
+  margin: 0;
+  background: radial-gradient(circle, #fff .45em, transparent .5em) no-repeat left center / 1.25em 1.25em, var(--track);
+  border-radius: 1em;
+  cursor: pointer;
+  transition: background-position .15s, background-color .15s;
+}
+
+#controlPanel input[type="checkbox"]:checked {
+  background-position: right center;
+  background-color: var(--accent);
+}
+
+#controlPanel input[type="range"] {
+  grid-column: 2;
+  grid-row: 1;
+  appearance: none;
+  width: 100%;
+  height: 1.25em;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+#controlPanel input[type="range"]::-webkit-slider-runnable-track {
+  height: .25em;
+  background: var(--track);
+  border-radius: 1em;
+}
+
+#controlPanel input[type="range"]::-moz-range-track {
+  height: .25em;
+  background: var(--track);
+  border-radius: 1em;
+}
+
+#controlPanel input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: .95em;
+  height: .95em;
+  margin-top: -.35em;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+#controlPanel input[type="range"]::-moz-range-thumb {
+  width: .95em;
+  height: .95em;
+  box-sizing: border-box;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
 }
