@@ -1,16 +1,18 @@
 # FlexLight Render Engine for the Web
 
-## TypeScript + WebGPU (WebGL 2 fallback planned)
+## TypeScript + WebGPU and WebGL 2
 
 ### [Live Demo]( https://arbogast.dev/FlexLight/loader.html?v=example2)
 
 ### Description
 
-FlexLight is a high-performance rendering engine designed for the web, built with TypeScript. It leverages modern web technologies like WebGPU (with plans for WebGL 2 fallback) to render complex 3D scenes in real-time directly within a browser canvas.
+FlexLight is a real-time path tracer for the web, built with TypeScript. It renders complex, dynamic 3D scenes directly in a browser canvas through WebGPU, with a WebGL 2 backend at feature parity.
 
-The engine currently supports path tracing and rasterization techniques. It can load `.obj` models, manage materials (including PBR properties like roughness, metallic, and emissive), handle various light types (PointLights, AmbientLight, Environment Maps), and apply post-processing effects like FXAA and TAA.
-
-Scenes are structured efficiently using internal acceleration structures (like BVHs) to optimize rendering performance.
+*   **ReSTIR PT Enhanced**: NVIDIA's ReSTIR PT Enhanced (Lin et al., 2026) reuses paths across pixels and frames and converges over 20x faster than plain path tracing (WebGPU).
+*   **Path tracing**: BSDFs with importance sampling, environment map importance sampling, a two-level BVH and dynamic scenes.
+*   **Rasterization**: a rasterizer on the WebGL 2 backend.
+*   **Assets and lights**: `.obj` models, PBR materials (roughness, metallic, emission), point lights and environment maps.
+*   **Post-processing**: temporal accumulation, FXAA, TAA and tone mapping.
 
 ### Core Concepts
 
@@ -139,36 +141,42 @@ You can adjust rendering quality and features via the `engine.config` object:
 // Access the configuration object.
 const config: Config = engine.config;
 
-// Set the number of samples per ray (for path tracing). Higher values mean less noise but lower performance.
-config.samplesPerRay = 4;
+// Paths traced per pixel and frame. Higher values mean less noise but lower performance.
+config.samplesPerPixel = 1;
 
-// Set the maximum number of light bounces (for path tracing).
-config.maxReflections = 8;
+// Maximum number of bounces of a path.
+config.maxBounces = 7;
+
+// Reuse paths across pixels and frames with ReSTIR PT Enhanced (WebGPU).
+config.restir = true;
+// Spatial neighbours ReSTIR reuses from (1 - 3), fewer trade quality for speed.
+config.restirNeighbours = 3;
+// Duplication based decorrelation, trades correlation artifacts for bias.
+config.restirDecorrelation = false;
 
 // Set the anti-aliasing method ('fxaa', 'taa', or undefined).
-config.antialiasing = 'fxaa'; 
+config.antialiasing = 'fxaa';
 
-// Enable/disable temporal accumulation (smooths results over time, requires TAA or temporal flag).
+// Enable/disable temporal accumulation and set how many frames it reprojects.
 config.temporal = true;
+config.maxReprojections = 32;
 
-// Enable/disable High Dynamic Range rendering pipeline.
-config.hdr = true;
+// Enable/disable tone mapping.
+config.tonemapping = true;
 
 // Adjust render resolution scaling (1 = native, <1 = lower res, >1 = supersampling).
-config.renderQuality = 1.0; 
-
-// Minimum importance for a ray path to be continued (path tracing optimization).
-config.minImportancy = 0.2; 
+config.renderResolution = 1;
 ```
 
-*(Note: Changes to `config` might require the renderer to be updated or recreated depending on the specific setting.)*
+Switch backend or renderer at runtime with `engine.api = 'webgl2'` and `engine.rendererType = 'rasterizer'`.
 
 ### Performance
 
 FlexLight uses several techniques to achieve high performance:
 
-*   **GPU Acceleration**: Leverages WebGPU (or WebGL 2) for massively parallel rendering calculations.
-*   **Optimized Data Structures**: Scene geometry is organized in Bounding Volume Hierarchies (BVHs) for efficient ray intersection tests (especially relevant for path tracing).
+*   **GPU Acceleration**: Runs entirely on the GPU through WebGPU or WebGL 2.
+*   **Path Reuse**: ReSTIR PT Enhanced shares paths across pixels and frames, converging over 20x faster than plain path tracing.
+*   **Optimized Data Structures**: Scene geometry is organized in a two-level Bounding Volume Hierarchy (BVH) for fast ray traversal in dynamic scenes.
 *   **Efficient Updates**: Buffer managers handle updates to scene data on the GPU efficiently.
 
 ### Screenshots
