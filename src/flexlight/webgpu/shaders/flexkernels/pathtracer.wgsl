@@ -582,3 +582,28 @@ fn BSDF( in_dir_3 : vec3<f32>,  out_dir_1 : vec3<f32>,  n_4 : vec3<f32>,  g_n_0 
     return refraction_0.throughput * vec3<f32>(refraction_0.pdf);
 }
 
+fn beerLambert( distance_0 : f32,  material_6 : Surface) -> vec3<f32>
+{
+    var depth_0 : f32 = distance_0 * material_6.density;
+    return vec3<f32>(exp(depth_0 * (material_6.absorption.x - 1.0f)), exp(depth_0 * (material_6.absorption.y - 1.0f)), exp(depth_0 * (material_6.absorption.z - 1.0f)));
+}
+
+fn neeDecision( material_7 : Surface,  n_dot_v_2 : f32,  eta_i_8 : f32,  eta_o_8 : f32) -> bool
+{
+    var _S129 : vec3<f32> = tinted(material_7, abs(n_dot_v_2), eta_i_8, eta_o_8);
+    var F_n_0 : vec3<f32> = mix_0(_S129, material_7.albedo, material_7.metallic);
+    var F_n_greyscale_0 : f32 = rgb_to_greyscale(F_n_0);
+    var _S130 : f32 = max((1.0f - F_n_greyscale_0) * (1.0f - material_7.metallic) * (1.0f - material_7.transparency), 0.0f);
+    var _S131 : bool = _S130 > 0.03999999910593033f;
+    var _S132 : bool;
+    if(_S131)
+    {
+        _S132 = true;
+    }
+    else
+    {
+        _S132 = (material_7.roughness) > 0.20000000298023224f;
+    }
+    return _S132;
+}
+
