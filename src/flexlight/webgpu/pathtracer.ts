@@ -28,13 +28,17 @@ import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import PathtracerShiftShader from './shaders/pathtracer-shift.wgsl';
 // @ts-ignore
-import PathtracerComputeShader from './shaders/pathtracer-compute.wgsl';
+import FlexKernelsShader from './shaders/flexkernels/bsdf.wgsl';
+// @ts-ignore
+import PathtracerComputeSource from './shaders/pathtracer-compute.wgsl';
 // @ts-ignore
 import PathtracerSelectiveAverageShader from './shaders/pathtracer-selective-average.wgsl';
 // @ts-ignore
 import PathtracerReprojectShader from './shaders/pathtracer-reproject.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
+// WGSL has no includes, the shared kernels precede the shader of the path tracer and of ReSTIR
+const PATHTRACER_COMPUTE_SHADER = FlexKernelsShader + PathtracerComputeSource;
 
 
 interface PathTracerPipelines {
@@ -374,7 +378,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // Init pipelines
     const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const computePipeline = this.createComputePipeline(device, PathtracerComputeShader, "compute pipeline",
+    const computePipeline = this.createComputePipeline(device, PATHTRACER_COMPUTE_SHADER, "compute pipeline",
       bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout);
 
     let shiftPipeline: GPUComputePipeline | undefined = undefined;
@@ -405,7 +409,7 @@ export class PathTracerWGPU extends RendererWGPU {
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
-    this.restir = this.engineState.restir ? new ReSTIR(device, PathtracerComputeShader, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout]) : undefined;
+    this.restir = this.engineState.restir ? new ReSTIR(device, PATHTRACER_COMPUTE_SHADER, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout]) : undefined;
     // Render passes are given attachments to write into.
     const renderPassColorAttachment: GPURenderPassColorAttachment = { view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 0], loadOp: "clear", storeOp: "store" };
     const renderPassDescriptor = { colorAttachments: [renderPassColorAttachment] };
