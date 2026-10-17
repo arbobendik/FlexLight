@@ -27,9 +27,13 @@ import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
 // @ts-ignore
 import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
-import RasterizerComputeShader from './shaders/rasterizer-compute.wgsl';
+import FlexKernelsRandomShader from './shaders/flexkernels/random.wgsl';
+// @ts-ignore
+import RasterizerComputeSource from './shaders/rasterizer-compute.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
+// WGSL has no includes, the shared random numbers precede the rasterizer's shader, whose BSDF terms are its own
+const RASTERIZER_COMPUTE_SHADER = FlexKernelsRandomShader + RasterizerComputeSource;
 
 
 interface RasterizerPipelines {
@@ -272,7 +276,7 @@ export class RasterizerWGPU extends RendererWGPU {
     // Init pipelines
     const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const computePipeline = this.createComputePipeline(device, RasterizerComputeShader, "compute pipeline",
+    const computePipeline = this.createComputePipeline(device, RASTERIZER_COMPUTE_SHADER, "compute pipeline",
       bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout);
     // Pipeline for rendering to canvas
     const canvasPipeline = this.createComputePipeline(device, PathtracerCanvasShader, "canvas pipeline", bindGroupLayouts.canvasGroupLayout, bindGroupLayouts.postDynamicGroupLayout);
