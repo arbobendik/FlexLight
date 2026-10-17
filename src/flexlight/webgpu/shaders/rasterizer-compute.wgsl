@@ -421,12 +421,6 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
 }
 
 
-fn trowbridgeReitz(alpha: f32, n_dot_h: vec2<f32>) -> vec2<f32> {
-    let numerator: f32 = alpha * alpha;
-    let denom: vec2<f32> = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
-    return numerator / max(PI * denom * denom, vec2<f32>(BIAS));
-}
-
 fn oneOverSchlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
     let k: f32 = alpha * 0.5f;
     return max(n_dot_x * (1.0f - k) + k, BIAS);
@@ -437,7 +431,7 @@ fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
 }
 */
 
-fn fresnel(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
+fn fresnelSchlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
@@ -466,9 +460,9 @@ fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>,
     let rh: vec3<f32> = normalize(l + pre.reflected_view);
     let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
 
-    let reflect: vec3<f32> = fresnel(pre.f0, v_dot_h);
+    let reflect: vec3<f32> = fresnelSchlick(pre.f0, v_dot_h);
 
-    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(pre.alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_numerator: vec2<f32> = vec2<f32>(trowbridgeReitz(pre.alpha, n_dot_h), trowbridgeReitz(pre.alpha, n_dot_rh));
     let cook_torrance_denominator: f32 = max(pre.one_over_4_schlick_beckmann_n_dot_v * oneOverSchlickBeckmann(pre.alpha, n_dot_l), BIAS);
     let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
 
@@ -499,10 +493,10 @@ fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material)
     let rh: vec3<f32> = normalize(out_dir + rv);
     let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
 
-    let reflect_factor: vec3<f32> = fresnel(f0, v_dot_h);
+    let reflect_factor: vec3<f32> = fresnelSchlick(f0, v_dot_h);
     let diffuse_component: vec3<f32> = diffuse * lambert;
 
-    let cook_torrance_numerator: vec2<f32> = trowbridgeReitz(alpha, vec2<f32>(n_dot_h, n_dot_rh));
+    let cook_torrance_numerator: vec2<f32> = vec2<f32>(trowbridgeReitz(alpha, n_dot_h), trowbridgeReitz(alpha, n_dot_rh));
     let cook_torrance_denominator: f32 = max(4.0f * oneOverSchlickBeckmann(alpha, n_dot_v) * oneOverSchlickBeckmann(alpha, n_dot_l), BIAS);
     let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
 
@@ -830,7 +824,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
 
     // Sample environment map if present
     if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-            let reflect_component: f32 = rgb_to_greyscale(fresnel(f0, n_dot_v));
+            let reflect_component: f32 = rgb_to_greyscale(fresnelSchlick(f0, n_dot_v));
             let diffuse_component: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
             let refract_component: f32 = material.transmission;
             // Calculate ratio of reflection and transmission
