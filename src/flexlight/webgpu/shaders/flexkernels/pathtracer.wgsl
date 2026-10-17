@@ -607,3 +607,46 @@ fn neeDecision( material_7 : Surface,  n_dot_v_2 : f32,  eta_i_8 : f32,  eta_o_8
     return _S132;
 }
 
+struct Matrix
+{
+     x : vec3<f32>,
+     y : vec3<f32>,
+     z : vec3<f32>,
+};
+
+fn Matrix_x24init_0( x_2 : vec3<f32>,  y_0 : vec3<f32>,  z_0 : vec3<f32>) -> Matrix
+{
+    var _S133 : Matrix;
+    _S133.x = x_2;
+    _S133.y = y_0;
+    _S133.z = z_0;
+    return _S133;
+}
+
+fn normalMapTBN( p0_0 : vec3<f32>,  p1_0 : vec3<f32>,  p2_0 : vec3<f32>,  uv0_0 : vec2<f32>,  uv1_0 : vec2<f32>,  uv2_0 : vec2<f32>,  n_5 : vec3<f32>) -> Matrix
+{
+    var e1_0 : vec3<f32> = p1_0 - p0_0;
+    var e2_0 : vec3<f32> = p2_0 - p0_0;
+    var duv1_0 : vec2<f32> = uv1_0 - uv0_0;
+    var duv2_0 : vec2<f32> = uv2_0 - uv0_0;
+    var _S134 : f32 = duv1_0.x;
+    var _S135 : f32 = duv2_0.y;
+    var _S136 : f32 = duv1_0.y;
+    var _S137 : f32 = duv2_0.x;
+    var det_0 : f32 = _S134 * _S135 - _S136 * _S137;
+    var inv_det_0 : f32 = 1.0f / det_0;
+    var _S138 : vec3<f32> = vec3<f32>(inv_det_0);
+    var t_1 : vec3<f32> = (e1_0 * vec3<f32>(_S135) - e2_0 * vec3<f32>(_S136)) * _S138;
+    var b_geom_0 : vec3<f32> = (e2_0 * vec3<f32>(_S134) - e1_0 * vec3<f32>(_S137)) * _S138;
+    var t_2 : vec3<f32> = (normalize((t_1 - n_5 * vec3<f32>(dot(n_5, t_1)))));
+    var _S139 : vec3<f32> = cross(n_5, t_2);
+    var _S140 : f32 = sign_0(dot(_S139, b_geom_0));
+    var b_2 : vec3<f32> = _S139 * vec3<f32>(_S140);
+    return Matrix_x24init_0(t_2, b_2, n_5);
+}
+
+fn tangentToWorldNormalMap( v_7 : vec3<f32>,  tbn_0 : Matrix) -> vec3<f32>
+{
+    return tbn_0.x * vec3<f32>(v_7.x) + tbn_0.y * vec3<f32>(v_7.y) + tbn_0.z * vec3<f32>(v_7.z);
+}
+

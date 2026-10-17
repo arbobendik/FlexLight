@@ -222,35 +222,6 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
     return float_data * texel_weights.wzyx;
 }
 
-// Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
-// tangent (U direction) and bitangent (V direction), with handedness fix.
-fn normalMapTBN(p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> mat3x3<f32> {
-    let e1: vec3<f32> = p1 - p0;
-    let e2: vec3<f32> = p2 - p0;
-    let duv1: vec2<f32> = uv1 - uv0;
-    let duv2: vec2<f32> = uv2 - uv0;
-    // Compute inverse determinant for UV to world space transformation.
-    let det: f32 = duv1.x * duv2.y - duv1.y * duv2.x;
-    let inv_det: f32 = 1.0f / det;
-    var t: vec3<f32> = (e1 * duv2.y - e2 * duv1.y) * inv_det;
-    let b_geom: vec3<f32> = (e2 * duv1.x - e1 * duv2.x) * inv_det;
-
-    // Gram-Schmidt: make tangent perpendicular to interpolated normal.
-    t = normalize(t - n * dot(n, t));
-    // Handedness: ensure TBN is right-handed; flip T if geometric b disagrees with cross(n,t).
-    if (dot(cross(n, t), b_geom) > 0.0f) {
-        t = -t;
-    }
-    let b: vec3<f32> = cross(n, t);
-
-    return mat3x3<f32>(t, b, n);
-}
-
-fn tangentToWorldNormalMap(v: vec3<f32>, tbn: mat3x3<f32>) -> vec3<f32> {
-    return tbn * v;
-}
-
-// Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
 fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> bool {
     let edge1 = b - a;
     let edge2 = c - a;
@@ -774,9 +745,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         let uv0: vec2<f32> = t4.zw;
         let uv1: vec2<f32> = t5.xy;
         let uv2: vec2<f32> = t5.zw;
-        let tbn: mat3x3<f32> = normalMapTBN(t[0], t[1], t[2], uv0, uv1, uv2, smooth_n);
-        var normal_data: vec3<f32> = normalize(textureSample(normal_texture_id, barycentric).xyz * INV_255 * 2.0f - 1.0f);
-        normal_data.y = -normal_data.y;
+        let tbn: Matrix = normalMapTBN(t[0], t[1], t[2], uv0, uv1, uv2, smooth_n);
+        // The normal in tangent space as flex-cuda-pt's NORMAL_MAP decodes it, in Blender's tangent space
+        let normal_data: vec3<f32> = textureSample(normal_texture_id, barycentric).xyz * INV_255 * 2.0f - 1.0f;
         smooth_n = normalize(tangentToWorldNormalMap(normal_data, tbn));
     }
 
