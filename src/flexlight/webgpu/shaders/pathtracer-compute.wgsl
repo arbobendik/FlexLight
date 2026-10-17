@@ -1090,7 +1090,7 @@ fn calculatePointLightContrib(point_light_index: u32) -> vec3<f32> {
     return point_light.color * point_light.intensity / (4.0f * PI * point_light.variance * point_light.variance);
 }
 
-struct Surface {
+struct SurfaceHit {
     smooth_n: vec3<f32>,
     geometry_n: vec3<f32>,
     geometry_offset: f32,
@@ -1100,7 +1100,7 @@ struct Surface {
 }
 
 // Fetch geometry and textured material of a triangle hit, transparent texels are skipped stochastically
-fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
+fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> SurfaceHit {
     var random_state: u32 = init_random_state;
     var skip_hit: bool = false;
     let triangle_offset: u32 = hit.triangle_index * TRIANGLE_SIZE;
@@ -1191,7 +1191,7 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
             material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
         }
     }
-    return Surface(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
+    return SurfaceHit(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
 }
 
 // If the ray is inside a medium, apply Beer's law for absorption.
@@ -1239,7 +1239,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let current_direct_light_emission: bool = direct_light_emission;
 
         if (!point_light_lighting) {
-            let surface: Surface = surfaceAt(hit, ray.origin, random_state);
+            let surface: SurfaceHit = surfaceAt(hit, ray.origin, random_state);
             random_state = surface.random_state;
             smooth_n = surface.smooth_n;
             geometry_offset = surface.geometry_offset;
@@ -1420,7 +1420,7 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 
 // Radiance the path tracer's ray from a vertex along dir receives from the environment map if it hits nothing on the way.
 // Escapes passing transparent texels are left to BSDF sampling.
-fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
+fn skyRadiance(origin: vec3<f32>, surface: SurfaceHit, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
     let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
     return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true));
@@ -1435,7 +1435,7 @@ struct SkySample {
 }
 
 // Next event estimation toward the environment map, drawing a direction by its luminance. lobe_state is the random state of skyBSDF.
-fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
+fn sampleSky(ray: Ray, surface: SurfaceHit, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
     let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
     let random_0: Random = pcg(init_random_state);
     let random_1: Random = pcg(random_0.state);
@@ -1457,7 +1457,7 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
 
 // BSDF times cosine toward an environment sample over its density, each lobe weighted against the BSDF sampled escape by the
 // balance heuristic. Lobes the first sampling attempt can't produce toward dir are left to the geometry normal fallback.
-fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
+fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: SurfaceHit, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
     let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
     var f: vec3<f32> = vec3<f32>(0.0f);
     for (var lobe: u32 = 0u; lobe < 3u; lobe++) {
@@ -1860,7 +1860,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     for (var b: u32 = 0u; ; b++) {
         let point_light_lighting: bool = hit.is_point_light == 1u && direct_light_emission;
         // Loop scoped variables are initialized explicitly, some compilers keep the previous iteration's value otherwise
-        var surface: Surface = Surface();
+        var surface: SurfaceHit = SurfaceHit();
         var scatter: bool = false;
         var geometry_density: f32 = 0.0f;
         if (!point_light_lighting) {
@@ -2490,7 +2490,7 @@ fn restir_spatial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
     offerShifted(&sel, r, Shift(r.f, 1.0f), canonical_mis);
     storeReservoir(reservoir_prev_out, p, finalize(sel, c_sum), dom.hit);
     textureStore(reservoir_prev_out, p, 5, vec4<u32>(bitcast<vec2<u32>>(dom.hit.uv), 0u, 0u));
-    let primary: Surface = surfaceAt(dom.hit, dom.x1, sel.random_state);
+    let primary: SurfaceHit = surfaceAt(dom.hit, dom.x1, sel.random_state);
     let emission: vec3<f32> = select(primary.material.emissive * max(sign(dot(normalize(dom.x0 - dom.x1), primary.smooth_n)), 0.0f), vec3<f32>(0.0f), primary.skip);
     // Clamp color to 16 bit float
     let final_color: vec3<f32> = clamp(sel.color + emission, vec3<f32>(0.0f), vec3<f32>(65519.0f));
