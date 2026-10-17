@@ -650,3 +650,100 @@ fn tangentToWorldNormalMap( v_7 : vec3<f32>,  tbn_0 : Matrix) -> vec3<f32>
     return tbn_0.x * vec3<f32>(v_7.x) + tbn_0.y * vec3<f32>(v_7.y) + tbn_0.z * vec3<f32>(v_7.z);
 }
 
+struct Reservoir
+{
+     seed : u32,
+     path : u32,
+     w : f32,
+     c : f32,
+     f : vec3<f32>,
+     jac : f32,
+     rc : vec4<u32>,
+     dir : vec3<f32>,
+     radiance : vec3<f32>,
+};
+
+struct Selection
+{
+     r : Reservoir,
+     w_sum : f32,
+     color : vec3<f32>,
+     random_state : u32,
+};
+
+fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 : vec3<f32>)
+{
+    var w_0 : f32 = rgb_to_greyscale(weight_0);
+    var _S141 : bool = w_0 > 0.0f;
+    var _S142 : bool;
+    if(_S141)
+    {
+        _S142 = w_0 < 3.00000000549775576e+38f;
+    }
+    else
+    {
+        _S142 = false;
+    }
+    var _S143 : bool = !_S142;
+    if(_S143)
+    {
+        return;
+    }
+    var _S144 : f32 = (*sel_0).w_sum + w_0;
+    (*sel_0).w_sum = _S144;
+    var _S145 : vec3<f32> = (*sel_0).color + weight_0;
+    (*sel_0).color = _S145;
+    var random_value_0 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = random_value_0.state;
+    var _S146 : bool = (random_value_0.value * (*sel_0).w_sum) <= w_0;
+    if(_S146)
+    {
+        (*sel_0).r = candidate_0;
+    }
+    return;
+}
+
+struct Shift
+{
+     f : vec3<f32>,
+     jac : f32,
+};
+
+fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
+{
+    var candidate_1 : Reservoir = r_0;
+    var _S147 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S147;
+    var _S148 : f32 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S148;
+    offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_0.w));
+    return;
+}
+
+fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
+{
+    var r_1 : Reservoir = sel_2.r;
+    var p_hat_0 : f32 = rgb_to_greyscale(r_1.f);
+    var _S149 : f32;
+    if(p_hat_0 > 0.0f)
+    {
+        _S149 = sel_2.w_sum / p_hat_0;
+    }
+    else
+    {
+        _S149 = 0.0f;
+    }
+    r_1.w = _S149;
+    r_1.c = c_0;
+    return r_1;
+}
+
+fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_0 : vec3<f32>) -> Reservoir
+{
+    var candidate_2 : Reservoir = r_2;
+    var _S150 : u32 = ((((r_2.path) | (((end_0 << (u32(0))))))) | (((end_type_0 << (u32(12))))));
+    candidate_2.path = _S150;
+    candidate_2.f = f_0;
+    return candidate_2;
+}
+
