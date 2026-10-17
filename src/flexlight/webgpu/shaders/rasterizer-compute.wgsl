@@ -21,7 +21,6 @@ const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
-const MAX_SAFE_INTEGER_FOR_F32: f32 = 8388607.0;
 const MAX_SAFE_INTEGER_FOR_F32_U: u32 = 8388607u;
 const UINT_MAX: u32 = 4294967295u;
 const BIAS: f32 = 0.0000152587890625;
@@ -221,63 +220,6 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
 
     // Add weighted texels
     return float_data * texel_weights.wzyx;
-}
-
-struct Random {
-    state: u32,
-    value: f32
-};
-
-struct RandomSphere {
-    state: u32,
-    value: vec3<f32>
-};
-
-struct RandomHemisphere {
-    state: u32,
-    value: vec3<f32>
-};
-
-fn rgb_to_greyscale(rgb: vec3<f32>) -> f32 {
-    return dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
-}
-
-fn pcg(state: u32) -> Random {
-    // PCG random number generator
-    // Reference: http://www.pcg-random.org/
-    var new_state: u32 = state * 747796405u + 2891336453u;
-    let word: u32 = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
-    let result: u32 = (word >> 22u) ^ word;
-    // Return random f32 between 0 and 1
-    let random: f32 = f32(result) / f32(UINT_MAX);
-    return Random(new_state, random);
-}
-
-fn normal_distribution(state: u32) -> Random {
-    let r1: Random = pcg(state);
-    let r2: Random = pcg(r1.state);
-    // Sample normal distribution
-    let theta: f32 = 2.0f * PI * r1.value;
-    let rho: f32 = sqrt(-2.0f * clamp(log(r2.value), - MAX_SAFE_INTEGER_FOR_F32, 0.0f));
-    return Random(r2.state, rho * cos(theta));
-}
-
-fn random_sphere(state: u32) -> RandomSphere {
-    let x: Random = normal_distribution(state);
-    let y: Random = normal_distribution(x.state);
-    let z: Random = normal_distribution(y.state);
-    return RandomSphere(z.state, normalize(vec3<f32>(x.value, y.value, z.value)));
-}
-
-fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
-    let random_sphere: RandomSphere = random_sphere(state);
-    // If the random sphere is in the same hemisphere as the normal, return it
-    if(dot(random_sphere.value, normal) > 0.0f) {
-        return RandomHemisphere(random_sphere.state, random_sphere.value);
-    } else {
-        // Otherwise, return the opposite direction
-        return RandomHemisphere(random_sphere.state, - random_sphere.value);
-    }
 }
 
 // Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
