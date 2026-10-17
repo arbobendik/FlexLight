@@ -27,13 +27,13 @@ import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
 // @ts-ignore
 import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
-import FlexKernelsRandomShader from './shaders/flexkernels/random.wgsl';
+import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
 // @ts-ignore
 import RasterizerComputeSource from './shaders/rasterizer-compute.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-// WGSL has no includes, the shared random numbers precede the rasterizer's shader, whose BSDF terms are its own
-const RASTERIZER_COMPUTE_SHADER = FlexKernelsRandomShader + RasterizerComputeSource;
+// WGSL has no includes, the shared kernels precede the rasterizer's shader
+const RASTERIZER_COMPUTE_SHADER = FlexKernelsShader + RasterizerComputeSource;
 
 
 interface RasterizerPipelines {
