@@ -21,7 +21,6 @@ const PI: f32 = 3.141592653589793;
 const PHI: f32 = 1.61803398874989484820459;
 const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
-const MAX_SAFE_INTEGER_FOR_F32: f32 = 8388607.0;
 const MAX_SAFE_INTEGER_FOR_F32_U: u32 = 8388607u;
 const UINT_MAX: u32 = 4294967295u;
 const UINT_MAX_M1: u32 = 4294967294u;
@@ -222,63 +221,6 @@ fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
     );
     // Add weighted texels
     return float_data * texel_weights.wzyx;
-}
-
-struct Random {
-    state: u32,
-    value: f32
-};
-
-struct RandomSphere {
-    state: u32,
-    value: vec3<f32>
-};
-
-struct RandomHemisphere {
-    state: u32,
-    value: vec3<f32>
-};
-
-fn rgb_to_greyscale(rgb: vec3<f32>) -> f32 {
-    return dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
-}
-
-fn pcg(state: u32) -> Random {
-    // PCG random number generator
-    // Reference: http://www.pcg-random.org/
-    var new_state: u32 = state * 747796405u + 2891336453u;
-    let word: u32 = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
-    let result: u32 = (word >> 22u) ^ word;
-    // Return random f32 between 0 and 1
-    let random: f32 = f32(result) / f32(UINT_MAX);
-    return Random(new_state, random);
-}
-
-fn normal_distribution(state: u32) -> Random {
-    let r1: Random = pcg(state);
-    let r2: Random = pcg(r1.state);
-    // Sample normal distribution
-    let theta: f32 = 2.0f * PI * r1.value;
-    let rho: f32 = sqrt(-2.0f * clamp(log(r2.value), - MAX_SAFE_INTEGER_FOR_F32, 0.0f));
-    return Random(r2.state, rho * cos(theta));
-}
-
-fn random_sphere(state: u32) -> RandomSphere {
-    let x: Random = normal_distribution(state);
-    let y: Random = normal_distribution(x.state);
-    let z: Random = normal_distribution(y.state);
-    return RandomSphere(z.state, normalize(vec3<f32>(x.value, y.value, z.value)));
-}
-
-fn random_hemisphere(state: u32, normal: vec3<f32>) -> RandomHemisphere {
-    let random_sphere: RandomSphere = random_sphere(state);
-    // If the random sphere is in the same hemisphere as the normal, return it
-    if(dot(random_sphere.value, normal) > 0.0f) {
-        return RandomHemisphere(random_sphere.state, random_sphere.value);
-    } else {
-        // Otherwise, return the opposite direction
-        return RandomHemisphere(random_sphere.state, - random_sphere.value);
-    }
 }
 
 fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Intersect {
@@ -688,90 +630,9 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
     return false;
 }
 
-fn trowbridgeReitz(alpha: f32, n_dot_h: f32) -> f32 {
-    let numerator: f32 = alpha * alpha;
-    let denom: f32 = n_dot_h * n_dot_h * (numerator - 1.0f) + 1.0f;
-    return numerator / max(PI * denom * denom, BIAS);
-}
-
 fn G1(alpha: f32, n_dot_x: f32) -> f32 {
     let k: f32 = alpha * 0.5f;
     return n_dot_x / max(n_dot_x * (1.0f - k) + k, BIAS);
-}
-
-// Exact Smith masking of GGX, the visible normal density sampleGGXVNDF draws from
-fn smithG1(alpha: f32, n_dot_x: f32) -> f32 {
-    let alpha_sq: f32 = alpha * alpha;
-    return 2.0f * n_dot_x / (n_dot_x + sqrt(alpha_sq + (1.0f - alpha_sq) * n_dot_x * n_dot_x));
-}
-
-fn fresnel(cos_theta: f32, eta_i: f32, eta_o: f32) -> f32 {
-    // Compute sini using Snell's law
-    let sin_theta = sqrt(max(0.0f, 1.0f - cos_theta * cos_theta));
-    let sin_psi = (eta_i / eta_o) * sin_theta;
-    // Total internal reflection
-    var kr: f32 = 1.0f;
-    if (sin_psi < 1.0f) {
-        let cos_psi = sqrt(max(0.0f, 1.0f - sin_psi * sin_psi));
-        // cos = abs(cosi);
-        let Rs = ((eta_o * cos_theta) - (eta_i * cos_psi)) / ((eta_o * cos_theta) + (eta_i * cos_psi));
-        let Rp = ((eta_i * cos_theta) - (eta_o * cos_psi)) / ((eta_i * cos_theta) + (eta_o * cos_psi));
-        kr = (Rs * Rs + Rp * Rp) / 2.0f;
-    }
-
-    return kr;
-}
-
-// Sampling of the GGX VNDF
-fn sampleGGXVNDF(Ve: vec3<f32>, alpha: f32, U1: f32, U2: f32) -> vec3<f32> {
-    // The Ve argument is the view direction in tangent space, where the normal is (0, 0, 1).
-    // Section 3.2: transforming the view direction to the hemisphere configuration.
-    let Vh: vec3<f32> = normalize(vec3<f32>(alpha * Ve.x, alpha * Ve.y, Ve.z));
-    // Section 4.1: orthonormal basis (with special case if cross product is zero).
-    let lensq: f32 = Vh.x * Vh.x + Vh.y * Vh.y;
-    let T1: vec3<f32> = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-Vh.y, Vh.x, 0.0) * inverseSqrt(lensq), lensq > 0.0);
-    let T2: vec3<f32> = cross(Vh, T1);
-    // Section 4.2: parameterization of the projected area.
-    let r: f32 = sqrt(U1);
-    let phi: f32 = 2.0 * PI * U2;
-    let t1: f32 = r * cos(phi);
-    var t2: f32 = r * sin(phi);
-    let s: f32 = 0.5 * (1.0 + Vh.z);
-    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
-    // Section 4.3: reprojection onto hemisphere.
-    let Nh: vec3<f32> = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
-    // Section 3.4: transforming the normal back to the ellipsoid configuration.
-    return normalize(vec3<f32>(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
-}
-
-// Corresponding PDF is: pdf = cos(theta) / PI
-fn sampleCosWeightedHemisphere(random_1: f32, random_2: f32) -> vec3<f32> {
-    let r = sqrt(random_1);
-    let theta: f32 = 2.0f * PI * random_2;
-    let x = r * cos(theta);
-    let z = r * sin(theta);
-    let y = sqrt(max(0.0f, 1.0f - x * x - z * z));
-    return vec3<f32>(x, y, z);
-}
-
-fn tangentToWorld(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    var a: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
-    if (abs(dot(n, a)) > 1.0f - BIAS) {
-        a = vec3<f32>(1.0, 0.0, 0.0);
-    }
-    let tangent: vec3<f32> = normalize(cross(n, a));
-    let bitangent: vec3<f32> = cross(n, tangent);
-    return v.x * tangent + v.y * n + v.z * bitangent;
-}
-
-fn worldToTangent(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    var a: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
-    if (abs(dot(n, a)) > 1.0f - BIAS) {
-        a = vec3<f32>(1.0, 0.0, 0.0);
-    }
-    let tangent: vec3<f32> = normalize(cross(n, a));
-    let bitangent: vec3<f32> = cross(n, tangent);
-    return vec3<f32>(dot(v, tangent), dot(v, n), dot(v, bitangent));
 }
 
 // Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
@@ -839,17 +700,6 @@ struct BSDFLobes {
     p_diffuse: f32,
     p_reflect: f32,
     p_refract: f32,
-}
-
-fn sampleHalfVector(v: vec3<f32>, n_i: vec3<f32>, alpha: f32, random_state: ptr<function, u32>) -> vec3<f32> {
-    // Generate random values for sampling
-    let random_h_1: Random = pcg(*random_state);
-    let random_h_2: Random = pcg(random_h_1.state);
-    *random_state = random_h_2.state;
-    let v_tangent: vec3<f32> = worldToTangent(v, n_i);
-    let ggx_n: vec3<f32> = sampleGGXVNDF(v_tangent.xzy, alpha, random_h_1.value, random_h_2.value).xzy;
-    // Transform half vector back to world space
-    return tangentToWorld(ggx_n, n_i);
 }
 
 fn bsdfLobes(in_dir: vec3<f32>, v: vec3<f32>, n_i: vec3<f32>, ggx_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32) -> BSDFLobes {
@@ -1851,16 +1701,6 @@ struct Selection {
     random_state: u32,
 }
 
-fn hash(x: u32) -> u32 {
-    let state: u32 = x * 747796405u + 2891336453u;
-    let word: u32 = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-fn stream(seed: u32, index: u32) -> u32 {
-    return hash(seed ^ hash(index));
-}
-
 fn loadReservoir(source: texture_2d_array<u32>, p: vec2<i32>) -> Reservoir {
     let l0: vec4<u32> = textureLoad(source, p, 0, 0);
     let l1: vec4<u32> = textureLoad(source, p, 1, 0);
@@ -1939,10 +1779,6 @@ fn environment(dir: vec3<f32>) -> vec3<f32> {
 fn vertexEta(material: Material, n_dot_v: f32) -> vec2<f32> {
     let is_entering: bool = n_dot_v < 0.0f;
     return vec2<f32>(select(1.0f, material.ior, is_entering), select(material.ior, 1.0f, is_entering));
-}
-
-fn safeDivide(a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
-    return select(a / b, vec3<f32>(0.0f), b == vec3<f32>(0.0f));
 }
 
 // Weighted reservoir sampling step, weight is the vector-valued resampling weight (Sec. 6.3)
