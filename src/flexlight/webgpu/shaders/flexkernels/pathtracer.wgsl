@@ -747,3 +747,49 @@ fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_0 : vec3<f32>) 
     return candidate_2;
 }
 
+fn Shift_x24init_0( f_1 : vec3<f32>,  jac_0 : f32) -> Shift
+{
+    var _S151 : Shift;
+    _S151.f = f_1;
+    _S151.jac = jac_0;
+    return _S151;
+}
+
+fn temporalReuse( sel_3 : Selection,  r_3 : Reservoir,  temporal_0 : Reservoir,  to_current_0 : Shift,  to_previous_0 : Shift,  duplicated_0 : f32) -> Reservoir
+{
+    var _S152 : Selection = sel_3;
+    var cap_0 : f32 = 20.0f + -19.0f * pow(duplicated_0, 0.10000000149011612f);
+    var _S153 : f32 = min(temporal_0.c, cap_0);
+    var p_c_0 : f32 = rgb_to_greyscale(r_3.f);
+    var p_t_0 : f32 = rgb_to_greyscale(temporal_0.f);
+    var _S154 : Shift = Shift_x24init_0(r_3.f, 1.0f);
+    var _S155 : f32 = r_3.c * p_c_0;
+    var _S156 : f32 = rgb_to_greyscale(to_previous_0.f);
+    offerShifted(&(_S152), r_3, _S154, _S155 / (_S155 + _S153 * _S156));
+    var _S157 : f32 = _S153 * p_t_0;
+    var _S158 : f32 = rgb_to_greyscale(to_current_0.f);
+    offerShifted(&(_S152), temporal_0, to_current_0, _S157 / (_S157 + r_3.c * _S158));
+    var _S159 : Reservoir = finalize(_S152, r_3.c + _S153);
+    return _S159;
+}
+
+fn offerNeighbor( sel_4 : ptr<function, Selection>,  canonical_mis_0 : ptr<function, f32>,  neighbor_0 : Reservoir,  to_here_0 : Shift,  to_there_0 : Shift,  p_c_1 : f32,  c_pair_0 : f32,  c_sum_0 : f32)
+{
+    var share_0 : f32 = (neighbor_0.c + c_pair_0) / c_sum_0;
+    var p_n_0 : f32 = rgb_to_greyscale(neighbor_0.f);
+    var _S160 : bool = p_c_1 > 0.0f;
+    if(_S160)
+    {
+        var _S161 : f32 = share_0 * c_pair_0 * p_c_1;
+        var _S162 : f32 = c_pair_0 * p_c_1;
+        var _S163 : f32 = rgb_to_greyscale(to_there_0.f);
+        var _S164 : f32 = (*canonical_mis_0) + _S161 / (_S162 + neighbor_0.c * _S163);
+        (*canonical_mis_0) = _S164;
+    }
+    var _S165 : f32 = share_0 * neighbor_0.c * p_n_0;
+    var _S166 : f32 = neighbor_0.c * p_n_0;
+    var _S167 : f32 = rgb_to_greyscale(to_here_0.f);
+    offerShifted(&((*sel_4)), neighbor_0, to_here_0, _S165 / (_S166 + c_pair_0 * _S167));
+    return;
+}
+
