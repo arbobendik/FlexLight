@@ -634,7 +634,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
 
 vec3 calculatePointLightContrib(uint point_light_index) {
     Light point_light = access_light(point_light_index);
-    return point_light.color * point_light.intensity / (4.0 * PI * point_light.variance * point_light.variance);
+    return point_light.color * point_light.intensity / (PI * point_light.variance * point_light.variance);
 }
 
 vec3 env_map_sample(vec3 dir) {
