@@ -630,39 +630,6 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
     return false;
 }
 
-fn G1(alpha: f32, n_dot_x: f32) -> f32 {
-    let k: f32 = alpha * 0.5f;
-    return n_dot_x / max(n_dot_x * (1.0f - k) + k, BIAS);
-}
-
-// Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
-// tangent (U direction) and bitangent (V direction), with handedness fix.
-fn normalMapTBN(p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>, uv0: vec2<f32>, uv1: vec2<f32>, uv2: vec2<f32>, n: vec3<f32>) -> mat3x3<f32> {
-    let e1: vec3<f32> = p1 - p0;
-    let e2: vec3<f32> = p2 - p0;
-    let duv1: vec2<f32> = uv1 - uv0;
-    let duv2: vec2<f32> = uv2 - uv0;
-    // Compute inverse determinant for UV to world space transformation.
-    let det: f32 = duv1.x * duv2.y - duv1.y * duv2.x;
-    let inv_det: f32 = 1.0f / det;
-    var t: vec3<f32> = (e1 * duv2.y - e2 * duv1.y) * inv_det;
-    let b_geom: vec3<f32> = (e2 * duv1.x - e1 * duv2.x) * inv_det;
-
-    // Gram-Schmidt: make tangent perpendicular to interpolated normal.
-    t = normalize(t - n * dot(n, t));
-    // Handedness: ensure TBN is right-handed; flip T if geometric b disagrees with cross(n,t).
-    if (dot(cross(n, t), b_geom) > 0.0f) {
-        t = -t;
-    }
-    let b: vec3<f32> = cross(n, t);
-
-    return mat3x3<f32>(t, b, n);
-}
-
-fn tangentToWorldNormalMap(v: vec3<f32>, tbn: mat3x3<f32>) -> vec3<f32> {
-    return tbn * v;
-}
-
 // BSDF times cosine toward out_dir as the path tracer samples it: the lobes of sampleBSDF on the side of the geometry normal
 // out_dir lies on, evaluated by connectBSDF. random_state replays the visible normal steering the diffuse lobe choice.
 fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, random_state: u32) -> vec3<f32> {
