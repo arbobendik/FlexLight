@@ -1398,23 +1398,6 @@ struct ShiftQueue {
     jobs: array<u32>,
 }
 
-struct Reservoir {
-    seed: u32,
-    path: u32,
-    // Unbiased contribution weight and confidence
-    w: f32,
-    c: f32,
-    // Integrand of the sample in the owning pixel
-    f: vec3<f32>,
-    // Source densities p(x_k-1 -> x_k) G(x_k-1 -> x_k) p(x_k -> x_k+1) of the reconnection
-    jac: f32,
-    // Triangle hit (instance, triangle, uv) of the reconnection vertex or NEE light (index, random state)
-    rc: vec4<u32>,
-    // Direction leaving the reconnection vertex and the radiance arriving along it
-    dir: vec3<f32>,
-    radiance: vec3<f32>,
-}
-
 struct Domain {
     x0: vec3<f32>,
     x1: vec3<f32>,
@@ -1428,18 +1411,6 @@ struct Vertex {
     pdf: f32,
     cos: f32,
     inside: bool,
-}
-
-struct Shift {
-    f: vec3<f32>,
-    jac: f32,
-}
-
-struct Selection {
-    r: Reservoir,
-    w_sum: f32,
-    color: vec3<f32>,
-    random_state: u32,
 }
 
 fn loadReservoir(source: texture_2d_array<u32>, p: vec2<i32>) -> Reservoir {
@@ -1520,45 +1491,6 @@ fn environment(dir: vec3<f32>) -> vec3<f32> {
 fn vertexEta(material: Material, n_dot_v: f32) -> vec2<f32> {
     let is_entering: bool = n_dot_v < 0.0f;
     return vec2<f32>(select(1.0f, material.ior, is_entering), select(material.ior, 1.0f, is_entering));
-}
-
-// Weighted reservoir sampling step, weight is the vector-valued resampling weight (Sec. 6.3)
-fn offer(sel: ptr<function, Selection>, candidate: Reservoir, weight: vec3<f32>) {
-    let w: f32 = rgb_to_greyscale(weight);
-    // Also rejects NaN and infinite weights of degenerate samples
-    if (!(w > 0.0f && w < 3.0e38f)) {
-        return;
-    }
-    (*sel).w_sum += w;
-    (*sel).color += weight;
-    let random_value: Random = pcg((*sel).random_state);
-    (*sel).random_state = random_value.state;
-    if (random_value.value * (*sel).w_sum <= w) {
-        (*sel).r = candidate;
-    }
-}
-
-// Resample a shifted sample with MIS weight mis, keeping its Jacobian for later shifts
-fn offerShifted(sel: ptr<function, Selection>, r: Reservoir, shifted: Shift, mis: f32) {
-    var candidate: Reservoir = r;
-    candidate.f = shifted.f / shifted.jac;
-    candidate.jac = r.jac * shifted.jac;
-    offer(sel, candidate, mis * shifted.f * r.w);
-}
-
-fn finalize(sel: Selection, c: f32) -> Reservoir {
-    var r: Reservoir = sel.r;
-    let p_hat: f32 = rgb_to_greyscale(r.f);
-    r.w = select(0.0f, sel.w_sum / p_hat, p_hat > 0.0f);
-    r.c = c;
-    return r;
-}
-
-fn withEnd(r: Reservoir, end_type: u32, end: u32, f: vec3<f32>) -> Reservoir {
-    var candidate: Reservoir = r;
-    candidate.path = insertBits(insertBits(r.path, end, PATH_END, 5u), end_type, PATH_TYPE, 3u);
-    candidate.f = f;
-    return candidate;
 }
 
 // Whether the path tracer considers dir to point towards the incorrect side of the surface
