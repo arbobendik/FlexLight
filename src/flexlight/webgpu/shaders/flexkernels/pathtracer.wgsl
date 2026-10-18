@@ -268,12 +268,70 @@ fn sampleHalfVector( v_3 : vec3<f32>,  n_i_0 : vec3<f32>,  alpha_4 : f32,  rando
     return _S90;
 }
 
+struct BSDFLobes
+{
+     v_dot_h : f32,
+     n_dot_h : f32,
+     refracted : vec3<f32>,
+     F : vec3<f32>,
+     F_greyscale : f32,
+     reflect_weight : f32,
+     diffuse_weight : f32,
+     refract_weight : f32,
+     colorless_reflection : f32,
+     p_diffuse : f32,
+     p_reflect : f32,
+     p_refract : f32,
+};
+
+fn BSDFLobes_x24init_0( v_dot_h_0 : f32,  n_dot_h_1 : f32,  refracted_0 : vec3<f32>,  F_0 : vec3<f32>,  F_greyscale_0 : f32,  reflect_weight_0 : f32,  diffuse_weight_0 : f32,  refract_weight_0 : f32,  colorless_reflection_0 : f32,  p_diffuse_0 : f32,  p_reflect_0 : f32,  p_refract_0 : f32) -> BSDFLobes
+{
+    var _S91 : BSDFLobes;
+    _S91.v_dot_h = v_dot_h_0;
+    _S91.n_dot_h = n_dot_h_1;
+    _S91.refracted = refracted_0;
+    _S91.F = F_0;
+    _S91.F_greyscale = F_greyscale_0;
+    _S91.reflect_weight = reflect_weight_0;
+    _S91.diffuse_weight = diffuse_weight_0;
+    _S91.refract_weight = refract_weight_0;
+    _S91.colorless_reflection = colorless_reflection_0;
+    _S91.p_diffuse = p_diffuse_0;
+    _S91.p_reflect = p_reflect_0;
+    _S91.p_refract = p_refract_0;
+    return _S91;
+}
+
+fn bsdfLobes( in_dir_0 : vec3<f32>,  v_4 : vec3<f32>,  n_i_1 : vec3<f32>,  ggx_n_0 : vec3<f32>,  material_0 : Material,  eta_i_1 : f32,  eta_o_1 : f32) -> BSDFLobes
+{
+    var _S92 : f32 = dot(ggx_n_0, v_4);
+    var _S93 : f32 = dot(n_i_1, ggx_n_0);
+    var _S94 : f32 = eta_i_1 / eta_o_1;
+    var _S95 : vec3<f32> = (normalize((refract(in_dir_0, ggx_n_0, _S94))));
+    var _S96 : f32 = fresnel(abs(_S92), eta_i_1, eta_o_1);
+    var F_1 : vec3<f32> = (mix((vec3<f32>(_S96)), (material_0.albedo), (material_0.metallic)));
+    var _S97 : f32 = rgb_to_greyscale(F_1);
+    var _S98 : f32 = (1.0f - material_0.transmission) * (1.0f - material_0.metallic);
+    var _S99 : f32 = max(_S97, 0.0f);
+    var _S100 : f32 = 1.0f - _S97;
+    var _S101 : f32 = max(_S98 * _S100, 0.0f);
+    var _S102 : f32 = material_0.transmission * _S100;
+    var _S103 : f32 = (sign((length(_S95))));
+    var _S104 : f32 = max(_S102 * _S103, 0.0f);
+    var _S105 : f32 = _S99 + _S101 + _S104;
+    var _S106 : f32 = 1.0f / max(_S105, 0.0000152587890625f);
+    var _S107 : f32 = _S101 * _S106;
+    var _S108 : f32 = _S99 * _S106;
+    var _S109 : f32 = _S104 * _S106;
+    return BSDFLobes_x24init_0(_S92, _S93, _S95, F_1, _S97, 1.0f, _S98, material_0.transmission, material_0.transmission, _S107, _S108, _S109);
+}
+
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S91 : vec3<f32> = a_4 / b_0;
-    var _S92 : vec3<f32> = vec3<f32>(0.0f);
-    var _S93 : vec3<bool> = b_0 == _S92;
-    var _S94 : vec3<f32> = select(_S91, _S92, _S93);
-    return _S94;
+    var _S110 : vec3<f32> = a_4 / b_0;
+    var _S111 : vec3<f32> = vec3<f32>(0.0f);
+    var _S112 : vec3<bool> = b_0 == _S111;
+    var _S113 : vec3<f32> = select(_S110, _S111, _S112);
+    return _S113;
 }
 
