@@ -653,51 +653,6 @@ struct SampleBSDF {
     pdf: f32
 }
 
-// Half vector dependent terms of sampleBSDF, shared with connections to a given direction
-struct BSDFLobes {
-    v_dot_h: f32,
-    n_dot_h: f32,
-    refracted: vec3<f32>,
-    F: vec3<f32>,
-    F_greyscale: f32,
-    reflect_weight: f32,
-    diffuse_weight: f32,
-    refract_weight: f32,
-    colorless_reflection: f32,
-    p_diffuse: f32,
-    p_reflect: f32,
-    p_refract: f32,
-}
-
-fn bsdfLobes(in_dir: vec3<f32>, v: vec3<f32>, n_i: vec3<f32>, ggx_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32) -> BSDFLobes {
-    // Calculate shared half vector dot products
-    let v_dot_h: f32 = dot(ggx_n, v);
-    let n_dot_h: f32 = dot(n_i, ggx_n);
-    // Try refraction through the properly oriented half vector
-    let eta: f32 = eta_i / eta_o;
-    let refracted: vec3<f32> = normalize(refract(in_dir, ggx_n, eta));
-    // Calculate fresnel term
-    var F: vec3<f32> = mix(vec3<f32>(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
-    let F_greyscale: f32 = rgb_to_greyscale(F);
-    // BSDF weights (these are artistic choices to balance the lobes)
-    let reflect_weight: f32 = 1.0f;
-    let diffuse_weight: f32 = (1.0f - material.transmission) * (1.0f - material.metallic);
-    let refract_weight: f32 = material.transmission;
-    // Add fresnel term for improved sampling performance
-    let reflect_component: f32 = max(reflect_weight * F_greyscale, 0.0f);
-    let diffuse_component: f32 = max(diffuse_weight * (1.0f - F_greyscale), 0.0f);
-    let refract_component: f32 = max(refract_weight * (1.0f - F_greyscale) * sign(length(refracted)), 0.0f);
-    // Do not account for chroma of reflection for transmissive materials as in this case our model uses albedo as proxy for absorption instead.
-    var colorless_reflection: f32 = material.transmission;
-    // Calculate sampling probabilities
-    let total_component: f32 = reflect_component + diffuse_component + refract_component;
-    let total_component_inv: f32 = 1.0f / max(total_component, BIAS);
-    let p_diffuse: f32 = diffuse_component * total_component_inv;
-    let p_reflect: f32 = reflect_component * total_component_inv;
-    let p_refract: f32 = refract_component * total_component_inv;
-    return BSDFLobes(v_dot_h, n_dot_h, refracted, F, F_greyscale, reflect_weight, diffuse_weight, refract_weight, colorless_reflection, p_diffuse, p_reflect, p_refract);
-}
-
 // Throughput of sampleBSDF leaving along l by lobe
 fn lobeThroughput(l: vec3<f32>, n_i: vec3<f32>, alpha: f32, material: Material, lobes: BSDFLobes, lobe: u32) -> vec3<f32> {
     if (lobe == LOBE_DIFFUSE) {
