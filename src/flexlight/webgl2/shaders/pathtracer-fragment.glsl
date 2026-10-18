@@ -843,6 +843,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
 
         if (point_light_lighting && !skip_hit) {
             final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
+            direct_light_emission = false;
         }
         // Increment hit iterator
         i = i + 1u;
