@@ -147,7 +147,7 @@ cuboids.forEach((cuboid, i) => {
 	cuboid.material.metallic = 0;
 	cuboid.material.transmission = 1;
 	cuboid.material.ior = 1.5;
-	cuboid.material.color = new Vector(cuboidColors[i]![0]! / 255, cuboidColors[i]![1]! / 255, cuboidColors[i]![2]! / 255);
+	cuboid.material.absorption = new Vector(cuboidColors[i]![0]! / 255, cuboidColors[i]![1]! / 255, cuboidColors[i]![2]! / 255);
 	// Append to render-queue
 	// scene.queue.push(cuboid);
 });
