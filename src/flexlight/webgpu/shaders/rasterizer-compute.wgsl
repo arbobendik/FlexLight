@@ -444,7 +444,7 @@ fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>,
 }
 
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
-fn BSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
+fn directBSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
     // Minimum alpha for better looking smooth metals and caustics
     let alpha: f32 = max(material.roughness * material.roughness, 0.04f);
     let n_dot_v: f32 = abs(dot(n, - in_dir));
@@ -612,7 +612,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate brightness
             let brightness: vec3<f32> = light.color * light_area * triangle_count * light_n_dot_ml / (len * len);
             // Calculate BSDF for light
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            color_for_light = directBSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
             light_dir = dir + light_smooth_n * light_geometry_offset;
         } else if (light.is_area_light == 0.0f) {
             // CASE 1: Point light
@@ -627,7 +627,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             let brightness: vec3<f32> = light.color * light.intensity / (len * len);
             let l: vec3<f32> = dir / len;
             // Calculate BSDF for light
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            color_for_light = directBSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
             light_dir = dir;
         }
 
