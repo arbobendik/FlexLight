@@ -658,12 +658,31 @@ fn sampleBSDF( in_dir_6 : vec3<f32>,  n_6 : vec3<f32>,  material_9 : Material,  
     return _S207;
 }
 
+fn neeDecision( material_10 : Material,  n_dot_v_0 : f32,  eta_i_11 : f32,  eta_o_11 : f32) -> bool
+{
+    var _S208 : f32 = fresnel(abs(n_dot_v_0), eta_i_11, eta_o_11);
+    var _S209 : vec3<f32> = (mix((vec3<f32>(_S208)), (material_10.albedo), (material_10.metallic)));
+    var _S210 : f32 = rgb_to_greyscale(_S209);
+    var _S211 : f32 = max((1.0f - _S210) * (1.0f - material_10.metallic) * (1.0f - material_10.transmission), 0.0f);
+    var _S212 : bool = _S211 > 0.03999999910593033f;
+    var _S213 : bool;
+    if(_S212)
+    {
+        _S213 = true;
+    }
+    else
+    {
+        _S213 = (material_10.roughness) > 0.20000000298023224f;
+    }
+    return _S213;
+}
+
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S208 : vec3<f32> = a_4 / b_0;
-    var _S209 : vec3<f32> = vec3<f32>(0.0f);
-    var _S210 : vec3<bool> = b_0 == _S209;
-    var _S211 : vec3<f32> = select(_S208, _S209, _S210);
-    return _S211;
+    var _S214 : vec3<f32> = a_4 / b_0;
+    var _S215 : vec3<f32> = vec3<f32>(0.0f);
+    var _S216 : vec3<bool> = b_0 == _S215;
+    var _S217 : vec3<f32> = select(_S214, _S215, _S216);
+    return _S217;
 }
 
