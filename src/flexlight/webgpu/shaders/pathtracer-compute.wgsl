@@ -106,7 +106,8 @@ struct Material {
     roughness: f32,
     metallic: f32,
     transmission: f32,
-    ior: f32
+    ior: f32,
+    absorption: vec3<f32>
 };
 
 struct Light {
@@ -944,14 +945,6 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     return Surface(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
 }
 
-// If the ray is inside a medium, apply Beer's law for absorption.
-fn beerLambert(distance: f32, instance_index: u32) -> vec3<f32> {
-    // Convert absorption color from sRGB to linear space for physically correct Beer-Lambert
-    // The amount of light transmitted is T = exp(-sigma_a * d).
-    let absorption_coefficient: vec3<f32> = max(instance_material[instance_index].albedo, vec3<f32>(BIAS));
-    return exp(distance * log(absorption_coefficient));
-}
-
 fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32, screen_space: vec2<f32>) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
@@ -988,7 +981,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             let geometry_n: vec3<f32> = surface.geometry_n;
             let material: Material = surface.material;
             if (is_inside) {
-                importancy_factor *= beerLambert(hit.distance, hit.instance_index);
+                importancy_factor *= beerLambert(hit.distance, material.absorption);
             }
             // Environment next event estimation never passes texels, escapes through them take the full weight
             escape_pdf = 0.0f;
@@ -1539,7 +1532,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         if (!point_light_lighting) {
             surface = surfaceAt(hit, ray.origin, stream(r.seed, b));
             if (is_inside) {
-                throughput *= beerLambert(hit.distance, hit.instance_index);
+                throughput *= beerLambert(hit.distance, surface.material.absorption);
             }
             scatter = !surface.skip;
             geometry_density = abs(dot(surface.geometry_n, ray.unit_direction)) / (hit.distance * hit.distance);
