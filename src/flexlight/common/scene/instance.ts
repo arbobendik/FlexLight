@@ -39,6 +39,7 @@ export class Instance {
         this._material.metallic = material.metallic;
         this._material.transmission = material.transmission;
         this._material.ior = material.ior;
+        this._material.absorption = material.absorption;
     }
 
     get material(): Material {
