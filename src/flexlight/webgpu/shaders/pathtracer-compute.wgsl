@@ -1082,6 +1082,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
 
         if (point_light_lighting && !skip_hit) {
             final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
+            direct_light_emission = false;
         }
         // Increment hit iterator
         i = i + 1u;
@@ -1752,6 +1753,9 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 }
                 offer(sel, withEnd(candidate, END_POINT, b, f), f * scale / density);
             }
+        }
+        if (point_light_lighting) {
+            direct_light_emission = false;
         }
         // Only occluders in front of the reconnection vertex matter
         hit = traverseInstanceBVH(ray, direct_light_emission, select(POW32, distance(reconnection, ray.origin) * 1.001f, replay && b == stop && rc == RC_SURFACE));
