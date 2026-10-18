@@ -838,7 +838,7 @@ fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, 
 
 fn calculatePointLightContrib(point_light_index: u32) -> vec3<f32> {
     let point_light: Light = lights[point_light_index];
-    return point_light.color * point_light.intensity / (4.0f * PI * point_light.variance * point_light.variance);
+    return pointLightRadiance(point_light.color, point_light.intensity, point_light.variance);
 }
 
 struct Surface {
