@@ -952,15 +952,6 @@ fn beerLambert(distance: f32, instance_index: u32) -> vec3<f32> {
     return exp(distance * log(absorption_coefficient));
 }
 
-// Decide between next event estimation and emission on the next hit, as the path tracer does
-fn neeDecision(material: Material, n_dot_v: f32, eta_i: f32, eta_o: f32) -> bool {
-    // Calculate fresnel term
-    let F_n: vec3<f32> = mix(vec3<f32>(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
-    let F_n_greyscale: f32 = rgb_to_greyscale(F_n);
-    let diffuse_factor_estimate: f32 = max((1.0f - F_n_greyscale) * (1.0f - material.metallic) * (1.0f - material.transmission), 0.0f);
-    return diffuse_factor_estimate > 0.04f || material.roughness > 0.2f;
-}
-
 fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32, screen_space: vec2<f32>) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
