@@ -326,12 +326,97 @@ fn bsdfLobes( in_dir_0 : vec3<f32>,  v_4 : vec3<f32>,  n_i_1 : vec3<f32>,  ggx_n
     return BSDFLobes_x24init_0(_S92, _S93, _S95, F_1, _S97, 1.0f, _S98, material_0.transmission, material_0.transmission, _S107, _S108, _S109);
 }
 
+fn lobeThroughput( l_0 : vec3<f32>,  n_i_2 : vec3<f32>,  alpha_5 : f32,  material_1 : Material,  lobes_0 : BSDFLobes,  lobe_0 : u32) -> vec3<f32>
+{
+    var _S110 : bool = lobe_0 == u32(0);
+    if(_S110)
+    {
+        return vec3<f32>(lobes_0.diffuse_weight) * material_1.albedo / vec3<f32>(lobes_0.p_diffuse);
+    }
+    var _S111 : bool = lobe_0 == u32(1);
+    if(_S111)
+    {
+        var _S112 : f32 = - dot(n_i_2, l_0);
+        var _S113 : f32 = G1(alpha_5, max(_S112, 0.0f));
+        return vec3<f32>((lobes_0.refract_weight * _S113 * (1.0f - lobes_0.F_greyscale) / lobes_0.p_refract));
+    }
+    var _S114 : f32 = dot(n_i_2, l_0);
+    var _S115 : f32 = G1(alpha_5, max(_S114, 0.0f));
+    var _S116 : f32 = lobes_0.reflect_weight * _S115;
+    var _S117 : vec3<f32> = (mix((lobes_0.F), (vec3<f32>(lobes_0.F_greyscale)), (lobes_0.colorless_reflection)));
+    return vec3<f32>(_S116) * _S117 / vec3<f32>(lobes_0.p_reflect);
+}
+
+fn lobeDensity( n_i_dot_l_0 : f32,  l_dot_h_0 : f32,  n_i_dot_v_0 : f32,  alpha_6 : f32,  lobes_1 : BSDFLobes,  eta_i_2 : f32,  eta_o_2 : f32,  lobe_1 : u32) -> f32
+{
+    var _S118 : bool = lobe_1 == u32(0);
+    if(_S118)
+    {
+        var _S119 : f32 = lobes_1.p_diffuse * n_i_dot_l_0 * 0.31830987334251404f;
+        var _S120 : bool = n_i_dot_v_0 > 0.0f;
+        var _S121 : f32 = select(0.0f, _S119, _S120);
+        return _S121;
+    }
+    var _S122 : f32 = smithG1(alpha_6, n_i_dot_v_0);
+    var _S123 : f32 = _S122 * lobes_1.v_dot_h;
+    var _S124 : f32 = trowbridgeReitz(alpha_6, lobes_1.n_dot_h);
+    var _S125 : f32 = _S123 * _S124 / n_i_dot_v_0;
+    var _S126 : bool = alpha_6 > 0.0f;
+    var _S127 : bool;
+    if(_S126)
+    {
+        _S127 = (lobes_1.v_dot_h) > 0.0f;
+    }
+    else
+    {
+        _S127 = false;
+    }
+    if(_S127)
+    {
+        _S127 = (lobes_1.n_dot_h) > 0.0f;
+    }
+    else
+    {
+        _S127 = false;
+    }
+    if(_S127)
+    {
+        _S127 = n_i_dot_v_0 > 0.0f;
+    }
+    else
+    {
+        _S127 = false;
+    }
+    var _S128 : f32 = select(0.0f, _S125, _S127);
+    var _S129 : bool = lobe_1 == u32(1);
+    if(_S129)
+    {
+        var _S130 : f32 = eta_i_2 * lobes_1.v_dot_h + eta_o_2 * l_dot_h_0;
+        var _S131 : f32 = lobes_1.p_refract * _S128 * eta_o_2 * eta_o_2 * abs(l_dot_h_0) / (_S130 * _S130);
+        var _S132 : bool = eta_i_2 != eta_o_2;
+        if(_S132)
+        {
+            _S127 = l_dot_h_0 < 0.0f;
+        }
+        else
+        {
+            _S127 = false;
+        }
+        var _S133 : f32 = select(0.0f, _S131, _S127);
+        return _S133;
+    }
+    var _S134 : f32 = lobes_1.p_reflect * _S128 / (4.0f * lobes_1.v_dot_h);
+    var _S135 : bool = _S128 > 0.0f;
+    var _S136 : f32 = select(0.0f, _S134, _S135);
+    return _S136;
+}
+
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S110 : vec3<f32> = a_4 / b_0;
-    var _S111 : vec3<f32> = vec3<f32>(0.0f);
-    var _S112 : vec3<bool> = b_0 == _S111;
-    var _S113 : vec3<f32> = select(_S110, _S111, _S112);
-    return _S113;
+    var _S137 : vec3<f32> = a_4 / b_0;
+    var _S138 : vec3<f32> = vec3<f32>(0.0f);
+    var _S139 : vec3<bool> = b_0 == _S138;
+    var _S140 : vec3<f32> = select(_S137, _S138, _S139);
+    return _S140;
 }
 
