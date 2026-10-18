@@ -101,7 +101,7 @@ groundPlane.roughness = await loadTexture(staticPath + "textures/stonework/rough
 monkey1.transform.position = new Vector(5, 1, 0);
 monkey1.transform.rotateAxis(new Vector(0, 1, 0), Math.PI * 3 / 4);
 monkey1.transform.scale(2);
-monkey1.material.color = new Vector(0.75, 0.75, 1);
+monkey1.material.absorption = new Vector(0.75, 0.75, 1);
 monkey1.material.roughness = 0;
 monkey1.material.metallic = 0;
 monkey1.material.transmission = 1;

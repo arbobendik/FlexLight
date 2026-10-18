@@ -84,7 +84,7 @@ let glassInstance = scene.instance(glass);
 // glassInstance.roughness = await loadTexture(staticPath + 'textures/fingerprints.jpg', 'roughness');
 glassInstance.transform.move(15, -1 + BIAS_16, -15);
 glassInstance.transform.scale(new Vector(5, 5, 5));
-glassInstance.material.color = new Vector(0.0, 0.4, 1.0);
+glassInstance.material.absorption = new Vector(0.0, 0.4, 1.0);
 glassInstance.material.roughness = 0;
 glassInstance.material.metallic = 0;
 glassInstance.material.transmission = 1;

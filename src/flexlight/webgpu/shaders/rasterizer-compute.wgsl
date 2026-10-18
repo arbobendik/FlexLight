@@ -92,7 +92,8 @@ struct Material {
     roughness: f32,
     metallic: f32,
     transmission: f32,
-    ior: f32
+    ior: f32,
+    absorption: vec3<f32>
 };
 
 struct Light {

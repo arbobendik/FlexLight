@@ -12,19 +12,21 @@ export class Material {
     metallic: number;
     transmission: number;
     ior: number;
+    absorption: Vector<3>;
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1)) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
         this.metallic = metallic;
         this.transmission = transmission;
         this.ior = ior;
+        this.absorption = absorption;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -44,7 +46,10 @@ export class InstanceMaterial implements Material {
             // Transmission
             material.transmission,
             // IOR
-            material.ior, 0
+            material.ior, 0,
+
+            // Absorption
+            material.absorption.x, material.absorption.y, material.absorption.z, 0
         ]);
     }
 
@@ -114,5 +119,17 @@ export class InstanceMaterial implements Material {
 
     get ior(): number {
         return this.materialArray[10] ?? 1.5;
+    }
+
+    set absorption(absorption: Vector<3>) {
+        this.materialArray[12] = absorption.x;
+        this.materialArray[13] = absorption.y;
+        this.materialArray[14] = absorption.z;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 12 * this.materialArray.BYTES_PER_ELEMENT, 3);
+    }
+
+    get absorption(): Vector<3> {
+        return new Vector<3>(this.materialArray[12] ?? 1, this.materialArray[13] ?? 1, this.materialArray[14] ?? 1);
     }
 }
