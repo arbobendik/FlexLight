@@ -45,6 +45,7 @@ struct Material {
     float metallic;
     float transmission;
     float ior;
+    vec3 absorption;
 };
 
 struct Light {
@@ -141,13 +142,14 @@ Transform access_instance_transform(uint index) {
     );
 }
 
-// Albedo, pad | emissive, roughness | metallic, transmission, ior, pad
+// Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad
 Material access_instance_material(uint index) {
-    uint offset = index * 3u;
+    uint offset = index * 4u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
     vec4 m1 = texelFetch(instance_material, buffer_position(offset + 1u), 0);
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);
-    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z);
+    vec4 m3 = texelFetch(instance_material, buffer_position(offset + 3u), 0);
+    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz);
 }
 
 // Position, is area light | color, intensity | variance, pad

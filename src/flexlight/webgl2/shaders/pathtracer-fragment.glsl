@@ -382,9 +382,8 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         float denom_f_sq = denom_f * denom_f;
         // Check if refraction is possible
         if (abs(denom_f) > BIAS && denominator_geom > BIAS) {
-            // Term is uncolored by albedo, this is handled by Beer's law in lightTrace
             float walter = (numerator_geom / denominator_geom) * (1.0 - rgb_to_greyscale(FT)) * DT * GT * (eta_o * eta_o / denom_f_sq);
-            return vec3(walter) * material.transmission * n_dot_l;
+            return walter * material.albedo * material.transmission * n_dot_l;
         }
         // If refraction is not possible, return black this case should never happen
         return vec3(0.0, 0.0, 0.0);
@@ -433,8 +432,6 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     float reflect_component = max(reflect_weight * F_greyscale, 0.0);
     float diffuse_component = max(diffuse_weight * (1.0 - F_greyscale), 0.0);
     float refract_component = max(refract_weight * (1.0 - F_greyscale) * sign(length(refracted)), 0.0);
-    // Do not account for chroma of reflection for transmissive materials as in this case our model uses albedo as proxy for absorption instead.
-    float colorless_reflection = material.transmission;
     // Calculate sampling probabilities
     float total_component = reflect_component + diffuse_component + refract_component;
     float total_component_inv = 1.0 / max(total_component, BIAS);
@@ -465,8 +462,8 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
         float m_n_i_dot_l = - dot(n_i, l);
         // Microfacet term
         float G1_l = G1(alpha, max(m_n_i_dot_l, 0.0));
-        // throughput = refract_weight * G1_l * (1 - F), see WebGPU implementation for derivation
-        bsdf_sample.throughput = vec3(refract_weight * G1_l * (1.0 - F_greyscale) / p_refract);
+        // throughput = refract_weight * G1_l * (1 - F) * albedo, see WebGPU implementation for derivation
+        bsdf_sample.throughput = refract_weight * G1_l * (1.0 - F_greyscale) * material.albedo / p_refract;
         bsdf_sample.random_state = random_state;
         bsdf_sample.refracted = true;
         return bsdf_sample;
@@ -478,7 +475,7 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     // Torrance-Sparrow
     float G1_l = G1(alpha, max(n_i_dot_l, 0.0));
     // throughput = reflect_weight * G1_l * F, see WebGPU implementation for derivation
-    bsdf_sample.throughput = reflect_weight * G1_l * mix(F, vec3(F_greyscale), colorless_reflection) / p_reflect;
+    bsdf_sample.throughput = reflect_weight * G1_l * F / p_reflect;
     bsdf_sample.random_state = random_state;
     return bsdf_sample;
 }
@@ -726,7 +723,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).
-                vec3 absorption_coefficient = max(material.albedo, vec3(BIAS));
+                vec3 absorption_coefficient = max(material.absorption, vec3(BIAS));
                 vec3 transmittance = exp(hit.dist * log(absorption_coefficient));
                 importancy_factor *= transmittance;
             }
