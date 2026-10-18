@@ -108,29 +108,35 @@ fn trowbridgeReitz( alpha_0 : f32,  n_dot_h_0 : f32) -> f32
     return _S22 / max(3.14159274101257324f * _S23 * _S23, 0.0000152587890625f);
 }
 
-fn smithG1( alpha_1 : f32,  n_dot_x_0 : f32) -> f32
+fn G1( alpha_1 : f32,  n_dot_x_0 : f32) -> f32
 {
-    var _S24 : f32 = alpha_1 * alpha_1;
-    return 2.0f * n_dot_x_0 / (n_dot_x_0 + sqrt(_S24 + (1.0f - _S24) * n_dot_x_0 * n_dot_x_0));
+    var _S24 : f32 = alpha_1 * 0.5f;
+    return n_dot_x_0 / max(n_dot_x_0 * (1.0f - _S24) + _S24, 0.0000152587890625f);
+}
+
+fn smithG1( alpha_2 : f32,  n_dot_x_1 : f32) -> f32
+{
+    var _S25 : f32 = alpha_2 * alpha_2;
+    return 2.0f * n_dot_x_1 / (n_dot_x_1 + sqrt(_S25 + (1.0f - _S25) * n_dot_x_1 * n_dot_x_1));
 }
 
 fn fresnel( cos_theta_0 : f32,  eta_i_0 : f32,  eta_o_0 : f32) -> f32
 {
-    var _S25 : f32 = sqrt(max(0.0f, 1.0f - cos_theta_0 * cos_theta_0));
-    var _S26 : f32 = eta_i_0 / eta_o_0 * _S25;
-    var _S27 : bool = _S26 < 1.0f;
+    var _S26 : f32 = sqrt(max(0.0f, 1.0f - cos_theta_0 * cos_theta_0));
+    var _S27 : f32 = eta_i_0 / eta_o_0 * _S26;
+    var _S28 : bool = _S27 < 1.0f;
     var kr_0 : f32;
-    if(_S27)
+    if(_S28)
     {
-        var _S28 : f32 = sqrt(max(0.0f, 1.0f - _S26 * _S26));
-        var _S29 : f32 = eta_o_0 * cos_theta_0;
-        var _S30 : f32 = eta_i_0 * _S28;
-        var _S31 : f32 = (_S29 - _S30) / (_S29 + _S30);
-        var _S32 : f32 = eta_i_0 * cos_theta_0;
-        var _S33 : f32 = eta_o_0 * _S28;
-        var _S34 : f32 = (_S32 - _S33) / (_S32 + _S33);
-        var _S35 : f32 = (_S31 * _S31 + _S34 * _S34) / 2.0f;
-        kr_0 = _S35;
+        var _S29 : f32 = sqrt(max(0.0f, 1.0f - _S27 * _S27));
+        var _S30 : f32 = eta_o_0 * cos_theta_0;
+        var _S31 : f32 = eta_i_0 * _S29;
+        var _S32 : f32 = (_S30 - _S31) / (_S30 + _S31);
+        var _S33 : f32 = eta_i_0 * cos_theta_0;
+        var _S34 : f32 = eta_o_0 * _S29;
+        var _S35 : f32 = (_S33 - _S34) / (_S33 + _S34);
+        var _S36 : f32 = (_S32 * _S32 + _S35 * _S35) / 2.0f;
+        kr_0 = _S36;
     }
     else
     {
@@ -139,99 +145,135 @@ fn fresnel( cos_theta_0 : f32,  eta_i_0 : f32,  eta_o_0 : f32) -> f32
     return kr_0;
 }
 
-fn sampleGGXVNDF( Ve_0 : vec3<f32>,  alpha_2 : f32,  U1_0 : f32,  U2_0 : f32) -> vec3<f32>
+fn sampleGGXVNDF( Ve_0 : vec3<f32>,  alpha_3 : f32,  U1_0 : f32,  U2_0 : f32) -> vec3<f32>
 {
-    var _S36 : vec3<f32> = (normalize((vec3<f32>(alpha_2 * Ve_0.x, alpha_2 * Ve_0.y, Ve_0.z))));
-    var _S37 : f32 = _S36.x;
-    var _S38 : f32 = _S36.y;
-    var _S39 : f32 = _S37 * _S37 + _S38 * _S38;
-    const _S40 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
-    var _S41 : vec3<f32> = vec3<f32>(- _S38, _S37, 0.0f);
-    var _S42 : f32 = (inverseSqrt((_S39)));
-    var _S43 : vec3<f32> = _S41 * vec3<f32>(_S42);
-    var _S44 : bool = _S39 > 0.0f;
-    var _S45 : vec3<f32> = select(_S40, _S43, _S44);
-    var _S46 : vec3<f32> = cross(_S36, _S45);
-    var _S47 : f32 = sqrt(U1_0);
-    var _S48 : f32 = 6.28318548202514648f * U2_0;
-    var _S49 : f32 = _S47 * cos(_S48);
-    var t2_0 : f32 = _S47 * sin(_S48);
-    var _S50 : f32 = 0.5f * (1.0f + _S36.z);
-    var t2_1 : f32 = (1.0f - _S50) * sqrt(max(0.0f, 1.0f - _S49 * _S49)) + _S50 * t2_0;
-    var _S51 : vec3<f32> = vec3<f32>(_S49) * _S45 + vec3<f32>(t2_1) * _S46;
-    var _S52 : f32 = ((_S49));
-    var _S53 : f32 = ((_S49));
-    var _S54 : vec3<f32> = _S51 + vec3<f32>(sqrt(max(0.0f, 1.0f - _S52 * _S53 - t2_1 * t2_1))) * _S36;
-    var _S55 : vec3<f32> = (normalize((vec3<f32>(alpha_2 * _S54.x, alpha_2 * _S54.y, max(0.0f, _S54.z)))));
-    return _S55;
+    var _S37 : vec3<f32> = (normalize((vec3<f32>(alpha_3 * Ve_0.x, alpha_3 * Ve_0.y, Ve_0.z))));
+    var _S38 : f32 = _S37.x;
+    var _S39 : f32 = _S37.y;
+    var _S40 : f32 = _S38 * _S38 + _S39 * _S39;
+    const _S41 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
+    var _S42 : vec3<f32> = vec3<f32>(- _S39, _S38, 0.0f);
+    var _S43 : f32 = (inverseSqrt((_S40)));
+    var _S44 : vec3<f32> = _S42 * vec3<f32>(_S43);
+    var _S45 : bool = _S40 > 0.0f;
+    var _S46 : vec3<f32> = select(_S41, _S44, _S45);
+    var _S47 : vec3<f32> = cross(_S37, _S46);
+    var _S48 : f32 = sqrt(U1_0);
+    var _S49 : f32 = 6.28318548202514648f * U2_0;
+    var _S50 : f32 = _S48 * cos(_S49);
+    var t2_0 : f32 = _S48 * sin(_S49);
+    var _S51 : f32 = 0.5f * (1.0f + _S37.z);
+    var t2_1 : f32 = (1.0f - _S51) * sqrt(max(0.0f, 1.0f - _S50 * _S50)) + _S51 * t2_0;
+    var _S52 : vec3<f32> = vec3<f32>(_S50) * _S46 + vec3<f32>(t2_1) * _S47;
+    var _S53 : f32 = ((_S50));
+    var _S54 : f32 = ((_S50));
+    var _S55 : vec3<f32> = _S52 + vec3<f32>(sqrt(max(0.0f, 1.0f - _S53 * _S54 - t2_1 * t2_1))) * _S37;
+    var _S56 : vec3<f32> = (normalize((vec3<f32>(alpha_3 * _S55.x, alpha_3 * _S55.y, max(0.0f, _S55.z)))));
+    return _S56;
 }
 
 fn sampleCosWeightedHemisphere( random_1_0 : f32,  random_2_0 : f32) -> vec3<f32>
 {
-    var _S56 : f32 = sqrt(random_1_0);
-    var _S57 : f32 = 6.28318548202514648f * random_2_0;
-    var _S58 : f32 = _S56 * cos(_S57);
-    var _S59 : f32 = _S56 * sin(_S57);
-    var _S60 : f32 = sqrt(max(0.0f, 1.0f - _S58 * _S58 - _S59 * _S59));
-    return vec3<f32>(_S58, _S60, _S59);
+    var _S57 : f32 = sqrt(random_1_0);
+    var _S58 : f32 = 6.28318548202514648f * random_2_0;
+    var _S59 : f32 = _S57 * cos(_S58);
+    var _S60 : f32 = _S57 * sin(_S58);
+    var _S61 : f32 = sqrt(max(0.0f, 1.0f - _S59 * _S59 - _S60 * _S60));
+    return vec3<f32>(_S59, _S61, _S60);
 }
 
 fn tangentToWorld( v_0 : vec3<f32>,  n_0 : vec3<f32>) -> vec3<f32>
 {
     const a_0 : vec3<f32> = vec3<f32>(0.0f, 1.0f, 0.0f);
-    var _S61 : bool = (abs(dot(n_0, a_0))) > 0.9999847412109375f;
+    var _S62 : bool = (abs(dot(n_0, a_0))) > 0.9999847412109375f;
     var a_1 : vec3<f32>;
-    if(_S61)
+    if(_S62)
     {
-        const _S62 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
-        a_1 = _S62;
+        const _S63 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
+        a_1 = _S63;
     }
     else
     {
         a_1 = a_0;
     }
-    var _S63 : vec3<f32> = (normalize((cross(n_0, a_1))));
-    var _S64 : vec3<f32> = cross(n_0, _S63);
-    return vec3<f32>(v_0.x) * _S63 + vec3<f32>(v_0.y) * n_0 + vec3<f32>(v_0.z) * _S64;
+    var _S64 : vec3<f32> = (normalize((cross(n_0, a_1))));
+    var _S65 : vec3<f32> = cross(n_0, _S64);
+    return vec3<f32>(v_0.x) * _S64 + vec3<f32>(v_0.y) * n_0 + vec3<f32>(v_0.z) * _S65;
 }
 
 fn worldToTangent( v_1 : vec3<f32>,  n_1 : vec3<f32>) -> vec3<f32>
 {
     const a_2 : vec3<f32> = vec3<f32>(0.0f, 1.0f, 0.0f);
-    var _S65 : bool = (abs(dot(n_1, a_2))) > 0.9999847412109375f;
+    var _S66 : bool = (abs(dot(n_1, a_2))) > 0.9999847412109375f;
     var a_3 : vec3<f32>;
-    if(_S65)
+    if(_S66)
     {
-        const _S66 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
-        a_3 = _S66;
+        const _S67 : vec3<f32> = vec3<f32>(1.0f, 0.0f, 0.0f);
+        a_3 = _S67;
     }
     else
     {
         a_3 = a_2;
     }
-    var _S67 : vec3<f32> = (normalize((cross(n_1, a_3))));
-    var _S68 : vec3<f32> = cross(n_1, _S67);
-    return vec3<f32>(dot(v_1, _S67), dot(v_1, n_1), dot(v_1, _S68));
+    var _S68 : vec3<f32> = (normalize((cross(n_1, a_3))));
+    var _S69 : vec3<f32> = cross(n_1, _S68);
+    return vec3<f32>(dot(v_1, _S68), dot(v_1, n_1), dot(v_1, _S69));
 }
 
-fn sampleHalfVector( v_2 : vec3<f32>,  n_i_0 : vec3<f32>,  alpha_3 : f32,  random_state_0 : ptr<function, u32>) -> vec3<f32>
+fn normalMapTBN( p0_0 : vec3<f32>,  p1_0 : vec3<f32>,  p2_0 : vec3<f32>,  uv0_0 : vec2<f32>,  uv1_0 : vec2<f32>,  uv2_0 : vec2<f32>,  n_2 : vec3<f32>) -> mat3x3<f32>
 {
-    var _S69 : Random = pcg((*random_state_0));
-    var _S70 : Random = pcg(_S69.state);
-    (*random_state_0) = _S70.state;
-    var _S71 : vec3<f32> = worldToTangent(v_2, n_i_0);
-    var _S72 : vec3<f32> = sampleGGXVNDF(_S71.xzy, alpha_3, _S69.value, _S70.value);
-    var _S73 : vec3<f32> = _S72.xzy;
-    var _S74 : vec3<f32> = tangentToWorld(_S73, n_i_0);
-    return _S74;
+    var _S70 : vec3<f32> = p1_0 - p0_0;
+    var _S71 : vec3<f32> = p2_0 - p0_0;
+    var _S72 : vec2<f32> = uv1_0 - uv0_0;
+    var _S73 : vec2<f32> = uv2_0 - uv0_0;
+    var _S74 : f32 = _S72.x;
+    var _S75 : f32 = _S73.y;
+    var _S76 : f32 = _S72.y;
+    var _S77 : f32 = _S73.x;
+    var _S78 : f32 = _S74 * _S75 - _S76 * _S77;
+    var _S79 : f32 = 1.0f / _S78;
+    var _S80 : vec3<f32> = vec3<f32>(_S79);
+    var t_0 : vec3<f32> = (_S70 * vec3<f32>(_S75) - _S71 * vec3<f32>(_S76)) * _S80;
+    var _S81 : vec3<f32> = (_S71 * vec3<f32>(_S74) - _S70 * vec3<f32>(_S77)) * _S80;
+    var t_1 : vec3<f32> = (normalize((t_0 - n_2 * vec3<f32>(dot(n_2, t_0)))));
+    var _S82 : bool = (dot(cross(n_2, t_1), _S81)) > 0.0f;
+    var t_2 : vec3<f32>;
+    if(_S82)
+    {
+        var _S83 : vec3<f32> = ((-(t_1)));
+        t_2 = _S83;
+    }
+    else
+    {
+        t_2 = t_1;
+    }
+    var _S84 : vec3<f32> = cross(n_2, t_2);
+    return mat3x3<f32>(t_2, _S84, n_2);
+}
+
+fn tangentToWorldNormalMap( v_2 : vec3<f32>,  tbn_0 : mat3x3<f32>) -> vec3<f32>
+{
+    return (((tbn_0) * (v_2)));
+}
+
+fn sampleHalfVector( v_3 : vec3<f32>,  n_i_0 : vec3<f32>,  alpha_4 : f32,  random_state_0 : ptr<function, u32>) -> vec3<f32>
+{
+    var _S85 : Random = pcg((*random_state_0));
+    var _S86 : Random = pcg(_S85.state);
+    (*random_state_0) = _S86.state;
+    var _S87 : vec3<f32> = worldToTangent(v_3, n_i_0);
+    var _S88 : vec3<f32> = sampleGGXVNDF(_S87.xzy, alpha_4, _S85.value, _S86.value);
+    var _S89 : vec3<f32> = _S88.xzy;
+    var _S90 : vec3<f32> = tangentToWorld(_S89, n_i_0);
+    return _S90;
 }
 
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S75 : vec3<f32> = a_4 / b_0;
-    var _S76 : vec3<f32> = vec3<f32>(0.0f);
-    var _S77 : vec3<bool> = b_0 == _S76;
-    var _S78 : vec3<f32> = select(_S75, _S76, _S77);
-    return _S78;
+    var _S91 : vec3<f32> = a_4 / b_0;
+    var _S92 : vec3<f32> = vec3<f32>(0.0f);
+    var _S93 : vec3<bool> = b_0 == _S92;
+    var _S94 : vec3<f32> = select(_S91, _S92, _S93);
+    return _S94;
 }
 
