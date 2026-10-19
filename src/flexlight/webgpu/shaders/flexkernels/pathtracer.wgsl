@@ -97,8 +97,8 @@ fn random_hemisphere( state_6 : u32,  normal_0 : vec3<f32>) -> RandomHemisphere
 fn trowbridgeReitz( alpha_0 : f32,  n_dot_h_0 : f32) -> f32
 {
     var _S20 : f32 = alpha_0 * alpha_0;
-    var _S21 : f32 = n_dot_h_0 * n_dot_h_0 * (_S20 - 1.0f) + 1.0f;
-    return _S20 / max(3.14159274101257324f * _S21 * _S21, 0.0000152587890625f);
+    var _S21 : f32 = (1.0f - n_dot_h_0) * (1.0f + n_dot_h_0) + _S20 * n_dot_h_0 * n_dot_h_0;
+    return _S20 / max(3.14159274101257324f * _S21 * _S21, 1.17549435082228751e-38f);
 }
 
 fn G1( alpha_1 : f32,  n_dot_x_0 : f32) -> f32
