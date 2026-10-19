@@ -567,20 +567,70 @@ fn neeDecision( material_5 : Material,  n_dot_v_0 : f32,  eta_i_6 : f32,  eta_o_
     return _S188;
 }
 
+fn neeBSDF( in_dir_4 : vec3<f32>,  dir_0 : vec3<f32>,  n_6 : vec3<f32>,  material_6 : Material,  eta_i_7 : f32,  eta_o_7 : f32,  refracted_2 : bool,  pdf_1 : f32,  power_0 : bool,  random_state_5 : u32) -> vec3<f32>
+{
+    var _S189 : vec3<f32> = vec3<f32>(0.0f);
+    var lobe_4 : u32 = u32(0);
+    var f_0 : vec3<f32> = _S189;
+    loop
+    {
+        if(lobe_4 < u32(3))
+        {
+        }
+        else
+        {
+            break;
+        }
+        var _S190 : bool = (lobe_4 == u32(1)) == refracted_2;
+        var f_1 : vec3<f32>;
+        if(_S190)
+        {
+            var _S191 : SampleBSDF = connectBSDF(in_dir_4, dir_0, n_6, material_6, eta_i_7, eta_o_7, lobe_4, random_state_5);
+            var _S192 : bool = (_S191.pdf) > 0.0f;
+            if(_S192)
+            {
+                if(power_0)
+                {
+                    var _S193 : f32 = _S191.pdf / pdf_1;
+                    var f_2 : vec3<f32> = f_0 + _S191.throughput * vec3<f32>(_S191.pdf) / vec3<f32>((pdf_1 * (1.0f + _S193 * _S193)));
+                    f_1 = f_2;
+                }
+                else
+                {
+                    var f_3 : vec3<f32> = f_0 + _S191.throughput * vec3<f32>(_S191.pdf) / vec3<f32>((_S191.pdf + pdf_1));
+                    f_1 = f_3;
+                }
+            }
+            else
+            {
+                f_1 = f_0;
+            }
+        }
+        else
+        {
+            f_1 = f_0;
+        }
+        var lobe_5 : u32 = lobe_4 + u32(1);
+        lobe_4 = lobe_5;
+        f_0 = f_1;
+    }
+    return f_0;
+}
+
 fn stream( seed_0 : u32,  index_0 : u32) -> u32
 {
-    var _S189 : u32 = hash(index_0);
-    var _S190 : u32 = hash((seed_0 ^ (_S189)));
-    return _S190;
+    var _S194 : u32 = hash(index_0);
+    var _S195 : u32 = hash((seed_0 ^ (_S194)));
+    return _S195;
 }
 
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S191 : vec3<f32> = a_4 / b_0;
-    var _S192 : vec3<f32> = vec3<f32>(0.0f);
-    var _S193 : vec3<bool> = b_0 == _S192;
-    var _S194 : vec3<f32> = select(_S191, _S192, _S193);
-    return _S194;
+    var _S196 : vec3<f32> = a_4 / b_0;
+    var _S197 : vec3<f32> = vec3<f32>(0.0f);
+    var _S198 : vec3<bool> = b_0 == _S197;
+    var _S199 : vec3<f32> = select(_S196, _S197, _S198);
+    return _S199;
 }
 
 struct Reservoir
@@ -606,30 +656,30 @@ struct Selection
 
 fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 : vec3<f32>)
 {
-    var _S195 : f32 = rgb_to_greyscale(weight_0);
-    var _S196 : bool = _S195 > 0.0f;
-    var _S197 : bool;
-    if(_S196)
+    var _S200 : f32 = rgb_to_greyscale(weight_0);
+    var _S201 : bool = _S200 > 0.0f;
+    var _S202 : bool;
+    if(_S201)
     {
-        _S197 = _S195 < 3.00000000549775576e+38f;
+        _S202 = _S200 < 3.00000000549775576e+38f;
     }
     else
     {
-        _S197 = false;
+        _S202 = false;
     }
-    var _S198 : bool = !_S197;
-    if(_S198)
+    var _S203 : bool = !_S202;
+    if(_S203)
     {
         return;
     }
-    var _S199 : f32 = (*sel_0).w_sum + _S195;
-    (*sel_0).w_sum = _S199;
-    var _S200 : vec3<f32> = (*sel_0).color + weight_0;
-    (*sel_0).color = _S200;
-    var _S201 : Random = pcg((*sel_0).random_state);
-    (*sel_0).random_state = _S201.state;
-    var _S202 : bool = (_S201.value * (*sel_0).w_sum) <= _S195;
-    if(_S202)
+    var _S204 : f32 = (*sel_0).w_sum + _S200;
+    (*sel_0).w_sum = _S204;
+    var _S205 : vec3<f32> = (*sel_0).color + weight_0;
+    (*sel_0).color = _S205;
+    var _S206 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = _S206.state;
+    var _S207 : bool = (_S206.value * (*sel_0).w_sum) <= _S200;
+    if(_S207)
     {
         (*sel_0).r = candidate_0;
     }
@@ -645,10 +695,10 @@ struct Shift
 fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
 {
     var candidate_1 : Reservoir = r_0;
-    var _S203 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
-    candidate_1.f = _S203;
-    var _S204 : f32 = r_0.jac * shifted_0.jac;
-    candidate_1.jac = _S204;
+    var _S208 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S208;
+    var _S209 : f32 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S209;
     offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_0.w));
     return;
 }
@@ -656,22 +706,22 @@ fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 
 fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 {
     var r_1 : Reservoir = sel_2.r;
-    var _S205 : f32 = rgb_to_greyscale(r_1.f);
-    var _S206 : f32 = sel_2.w_sum / _S205;
-    var _S207 : bool = _S205 > 0.0f;
-    var _S208 : f32 = select(0.0f, _S206, _S207);
-    r_1.w = _S208;
+    var _S210 : f32 = rgb_to_greyscale(r_1.f);
+    var _S211 : f32 = sel_2.w_sum / _S210;
+    var _S212 : bool = _S210 > 0.0f;
+    var _S213 : f32 = select(0.0f, _S211, _S212);
+    r_1.w = _S213;
     r_1.c = c_0;
     return r_1;
 }
 
-fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_0 : vec3<f32>) -> Reservoir
+fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_4 : vec3<f32>) -> Reservoir
 {
     var candidate_2 : Reservoir = r_2;
-    var _S209 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
-    var _S210 : u32 = (insertBits((_S209), (end_type_0), (u32(12)), (u32(3))));
-    candidate_2.path = _S210;
-    candidate_2.f = f_0;
+    var _S214 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
+    var _S215 : u32 = (insertBits((_S214), (end_type_0), (u32(12)), (u32(3))));
+    candidate_2.path = _S215;
+    candidate_2.f = f_4;
     return candidate_2;
 }
 
