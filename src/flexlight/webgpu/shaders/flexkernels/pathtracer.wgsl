@@ -825,20 +825,28 @@ fn neeBSDF( in_dir_8 : vec3<f32>,  dir_1 : vec3<f32>,  n_8 : vec3<f32>,  materia
     return _S232;
 }
 
+fn straightThrough( dir_2 : vec3<f32>,  n_9 : vec3<f32>,  material_13 : Material) -> vec3<f32>
+{
+    var _S233 : f32 = rgb_to_greyscale(material_13.albedo * vec3<f32>(material_13.metallic));
+    var _S234 : f32 = material_13.roughness;
+    var _S235 : f32 = G1(_S234 * _S234, abs(dot(n_9, dir_2)));
+    return vec3<f32>((material_13.transmission * _S235 * (1.0f - _S233))) * material_13.albedo;
+}
+
 fn stream( seed_0 : u32,  index_0 : u32) -> u32
 {
-    var _S233 : u32 = hash(index_0);
-    var _S234 : u32 = hash((seed_0 ^ (_S233)));
-    return _S234;
+    var _S236 : u32 = hash(index_0);
+    var _S237 : u32 = hash((seed_0 ^ (_S236)));
+    return _S237;
 }
 
 fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S235 : vec3<f32> = a_4 / b_0;
-    var _S236 : vec3<f32> = vec3<f32>(0.0f);
-    var _S237 : vec3<bool> = b_0 == _S236;
-    var _S238 : vec3<f32> = select(_S235, _S236, _S237);
-    return _S238;
+    var _S238 : vec3<f32> = a_4 / b_0;
+    var _S239 : vec3<f32> = vec3<f32>(0.0f);
+    var _S240 : vec3<bool> = b_0 == _S239;
+    var _S241 : vec3<f32> = select(_S238, _S239, _S240);
+    return _S241;
 }
 
 struct Reservoir
@@ -864,30 +872,30 @@ struct Selection
 
 fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 : vec3<f32>)
 {
-    var _S239 : f32 = rgb_to_greyscale(weight_0);
-    var _S240 : bool = _S239 > 0.0f;
-    var _S241 : bool;
-    if(_S240)
+    var _S242 : f32 = rgb_to_greyscale(weight_0);
+    var _S243 : bool = _S242 > 0.0f;
+    var _S244 : bool;
+    if(_S243)
     {
-        _S241 = _S239 < 3.00000000549775576e+38f;
+        _S244 = _S242 < 3.00000000549775576e+38f;
     }
     else
     {
-        _S241 = false;
+        _S244 = false;
     }
-    var _S242 : bool = !_S241;
-    if(_S242)
+    var _S245 : bool = !_S244;
+    if(_S245)
     {
         return;
     }
-    var _S243 : f32 = (*sel_0).w_sum + _S239;
-    (*sel_0).w_sum = _S243;
-    var _S244 : vec3<f32> = (*sel_0).color + weight_0;
-    (*sel_0).color = _S244;
-    var _S245 : Random = pcg((*sel_0).random_state);
-    (*sel_0).random_state = _S245.state;
-    var _S246 : bool = (_S245.value * (*sel_0).w_sum) <= _S239;
-    if(_S246)
+    var _S246 : f32 = (*sel_0).w_sum + _S242;
+    (*sel_0).w_sum = _S246;
+    var _S247 : vec3<f32> = (*sel_0).color + weight_0;
+    (*sel_0).color = _S247;
+    var _S248 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = _S248.state;
+    var _S249 : bool = (_S248.value * (*sel_0).w_sum) <= _S242;
+    if(_S249)
     {
         (*sel_0).r = candidate_0;
     }
@@ -903,10 +911,10 @@ struct Shift
 fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
 {
     var candidate_1 : Reservoir = r_0;
-    var _S247 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
-    candidate_1.f = _S247;
-    var _S248 : f32 = r_0.jac * shifted_0.jac;
-    candidate_1.jac = _S248;
+    var _S250 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S250;
+    var _S251 : f32 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S251;
     offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_0.w));
     return;
 }
@@ -914,11 +922,11 @@ fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 
 fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 {
     var r_1 : Reservoir = sel_2.r;
-    var _S249 : f32 = rgb_to_greyscale(r_1.f);
-    var _S250 : f32 = sel_2.w_sum / _S249;
-    var _S251 : bool = _S249 > 0.0f;
-    var _S252 : f32 = select(0.0f, _S250, _S251);
-    r_1.w = _S252;
+    var _S252 : f32 = rgb_to_greyscale(r_1.f);
+    var _S253 : f32 = sel_2.w_sum / _S252;
+    var _S254 : bool = _S252 > 0.0f;
+    var _S255 : f32 = select(0.0f, _S253, _S254);
+    r_1.w = _S255;
     r_1.c = c_0;
     return r_1;
 }
@@ -926,9 +934,9 @@ fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_4 : vec3<f32>) -> Reservoir
 {
     var candidate_2 : Reservoir = r_2;
-    var _S253 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
-    var _S254 : u32 = (insertBits((_S253), (end_type_0), (u32(12)), (u32(3))));
-    candidate_2.path = _S254;
+    var _S256 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
+    var _S257 : u32 = (insertBits((_S256), (end_type_0), (u32(12)), (u32(3))));
+    candidate_2.path = _S257;
     candidate_2.f = f_4;
     return candidate_2;
 }
