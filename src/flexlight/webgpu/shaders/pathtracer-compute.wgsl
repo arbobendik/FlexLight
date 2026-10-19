@@ -798,7 +798,7 @@ fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, 
             continue;
         }
         // Calculate BSDF for light
-        let color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, bsdf_state);
+        let color_with_smooth = faceBSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, bsdf_state);
         let color_for_light: vec3<f32> = color_with_smooth * brightness;
         let w_i: f32 = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small
@@ -1186,17 +1186,26 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
     return SkySample(dir, radiance, f * radiance, random_3.state);
 }
 
+// BSDF toward out_dir, across the face where in_dir and out_dir lie on opposite sides of g_n
+fn faceBSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, g_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32,
+    random_state: u32) -> vec3<f32> {
+    var throughputs: array<vec3<f32>, 3>;
+    var pdfs: array<f32, 3>;
+    return BSDF(in_dir, out_dir, n, material, eta_i, eta_o, dot(g_n, - in_dir) * dot(g_n, out_dir) <= 0.0f, random_state,
+        &throughputs, &pdfs);
+}
+
 // BSDF times cosine toward an environment sample over its density, each lobe weighted against the BSDF sampled escape by the
 // balance heuristic. Lobes the first sampling attempt can't produce toward dir are left to the geometry normal fallback.
 fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
     let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
+    var throughputs: array<vec3<f32>, 3>;
+    var pdfs: array<f32, 3>;
+    _ = BSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, refracted, random_state, &throughputs, &pdfs);
     var f: vec3<f32> = vec3<f32>(0.0f);
-    for (var lobe: u32 = 0u; lobe < 3u; lobe++) {
-        if ((lobe == LOBE_REFRACT) == refracted) {
-            let l: SampleBSDF = lobeBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, lobe, random_state);
-            if (l.pdf > 0.0f) {
-                f += l.throughput * l.pdf / (l.pdf + pdf);
-            }
+    for (var i: u32 = 0u; i < 3u; i++) {
+        if (pdfs[i] > 0.0f) {
+            f += throughputs[i] * pdfs[i] / (pdfs[i] + pdf);
         }
     }
     return f;
@@ -1569,7 +1578,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (!nee) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, r.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * r.radiance / r.jac, density / r.jac);
+                return Shift(throughput * faceBSDF(ray.unit_direction, r.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * r.radiance / r.jac, density / r.jac);
             }
             if (k == end && end_type == END_SKY) {
                 if (!nee) {
@@ -1592,7 +1601,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (occluded(ray.origin, surface.smooth_n, surface.geometry_offset, light.dir + light.offset)) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, light.dir / length(light.dir), surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.brightness / light.inv_pdf, 1.0f);
+                return Shift(throughput * faceBSDF(ray.unit_direction, light.dir / length(light.dir), surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.brightness / light.inv_pdf, 1.0f);
             }
             if (rc == RC_NONE && end_type == END_POINT && point_light_lighting) {
                 return Shift(throughput * calculatePointLightContrib(hit.instance_index), 1.0f);
