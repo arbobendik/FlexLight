@@ -1194,16 +1194,7 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
 // balance heuristic. Lobes the first sampling attempt can't produce toward dir are left to the geometry normal fallback.
 fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
     let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
-    var f: vec3<f32> = vec3<f32>(0.0f);
-    for (var lobe: u32 = 0u; lobe < 3u; lobe++) {
-        if ((lobe == LOBE_REFRACT) == refracted) {
-            let l: SampleBSDF = connectBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, lobe, random_state);
-            if (l.pdf > 0.0f) {
-                f += l.throughput * l.pdf / (l.pdf + pdf);
-            }
-        }
-    }
-    return f;
+    return neeBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, refracted, pdf, false, random_state);
 }
 
 // MIS weight of a BSDF sampled escape from a vertex doing next event estimation, pdf is the density of the sampled lobe.
