@@ -242,14 +242,14 @@ RandomSphere random_sphere(uint state) {
     return RandomSphere(z.state, normalize(vec3(x.value, y.value, z.value)));
 }
 
-// Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles
-bool moellerTrumboreCull(vec3 a, vec3 b, vec3 c, Ray ray, float l) {
+// Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles, or both sides if two_sided
+bool moellerTrumboreCull(vec3 a, vec3 b, vec3 c, Ray ray, float l, bool two_sided) {
     vec3 edge1 = b - a;
     vec3 edge2 = c - a;
     vec3 pvec = cross(ray.unit_direction, edge2);
     float det = dot(edge1, pvec);
     float inv_det = 1.0 / det;
-    if (det < BIAS) {
+    if ((two_sided ? abs(det) : det) < BIAS) {
         return false;
     }
     vec3 tvec = ray.origin - a;
@@ -282,7 +282,7 @@ float rayBoundingVolume(vec3 min_corner, vec3 max_corner, Ray ray, float max_len
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l) {
+bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l, bool two_sided) {
     // Maximal distance a triangle can be away from the ray origin
     uint instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -316,14 +316,14 @@ bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l) {
         vec4 bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
 
         if (indicator_and_children.x == 0u) {
-            if (moellerTrumboreCull(bv0.xyz, vec3(bv0.w, bv1.xy), vec3(bv1.zw, bv2.x), t_ray, max_len)) {
+            if (moellerTrumboreCull(bv0.xyz, vec3(bv0.w, bv1.xy), vec3(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
                 return true;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 vec4 bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
                 vec4 bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3(bv3.w, bv4.xy), t_ray, max_len)) {
+                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
                     return true;
                 }
             }
@@ -353,7 +353,7 @@ bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l) {
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTraverseInstanceBVH(Ray ray, float l) {
+bool shadowTraverseInstanceBVH(Ray ray, float l, bool two_sided) {
     uint stack[16];
     stack[0] = 0u;
     uint stack_index = 1u;
@@ -391,12 +391,12 @@ bool shadowTraverseInstanceBVH(Ray ray, float l) {
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                if (shadowTraverseTriangleBVH(near_child, ray, l)) {
+                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided)) {
                     return true;
                 }
             }
             if (dist_far != POW32) {
-                if (shadowTraverseTriangleBVH(far_child, ray, l)) {
+                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided)) {
                     return true;
                 }
             }
