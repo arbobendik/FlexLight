@@ -3,7 +3,6 @@
 import { BufferToGPU } from "../../common/buffer/buffer-to-gpu";
 import { BufferManager } from "../../common/buffer/buffer-manager";
 import { Vector } from "../../common/lib/math";
-import { Float16Array } from "../../common/buffer/float-16-array";
 
 
 export type TypedArrayR16 = Float16Array | Uint16Array | Int16Array;
