@@ -2,7 +2,7 @@
 
 import { BufferManager } from "../buffer/buffer-manager";
 import { TypedArrayView } from "../buffer/typed-array-view";
-import { Vector, Matrix, IdentityMatrix, matrix_scale, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul, normalize, BIAS_32 } from "../lib/math";
+import { Vector, Matrix, IdentityMatrix, moore_penrose, ZeroVector, SphericalRotationMatrix, vector_scale, matrix_mul, normalize, BIAS_32 } from "../lib/math";
 
 
 
