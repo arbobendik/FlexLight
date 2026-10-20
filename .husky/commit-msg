@@ -1,0 +1,10 @@
+# Enforce "<type>(<feature>): <summary>", e.g. "feat(reflections): add mirror BRDF"
+subject=$(head -n1 "$1")
+case "$subject" in Merge\ *) exit 0 ;; esac
+if ! printf '%s\n' "$subject" | grep -qE '^(feat|chore|fix|wip)\([a-z0-9][a-z0-9-]*\): .+'; then
+    echo "Invalid commit message: \"$subject\"" >&2
+    echo "Expected: <feat|chore|fix|wip>(<feature>): <summary>" >&2
+    echo "Example:  feat(reflections): trace mirror bounces" >&2
+    exit 1
+fi
+if sed '/^#/d' "$1" | sed '1d' | grep -q '[^[:space:]]'; then echo "Commit messages are a single line: drop the body" >&2; exit 1; fi
