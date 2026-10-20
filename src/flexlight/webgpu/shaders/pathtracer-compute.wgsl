@@ -1467,8 +1467,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     let k: u32 = extractBits(r.path, PATH_K, 5u);
     let rc: u32 = extractBits(r.path, PATH_RC, 2u);
     let end_type: u32 = extractBits(r.path, PATH_TYPE, 3u);
-    // Point lights and the environment are only reached after a further bounce
-    if (replay && end + select(0u, 1u, end_type >= END_POINT) > uniforms_uint.max_bounces) {
+    // The environment is only reached after a further bounce
+    if (replay && end + select(0u, 1u, end_type >= END_ENV) > uniforms_uint.max_bounces) {
         return fail;
     }
     // Replaying stops sampling at x_k-1 for reconnections and at the path end otherwise
@@ -1480,7 +1480,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     // Replaying the densities of the reconnection, generating the product of Russian roulette survival probabilities
     var density: f32 = 1.0f;
     var is_inside: bool = false;
-    var direct_light_emission: bool = true;
+    // Light sampling at the vertex the ray left, none at the camera
+    var nee_vertex: NEEVertex = NEEVertex(true, 0.0f, vec3<f32>(0.0f), vec3<f32>(0.0f), vec3<f32>(0.0f));
     var threshold: f32 = 0.0f;
     var reconnection: vec3<f32>;
     var prev: Vertex;
@@ -1489,7 +1490,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     chain.seed = r.seed;
     var chain_throughput: vec3<f32> = vec3<f32>(0.0f);
     for (var b: u32 = 0u; ; b++) {
-        let point_light_lighting: bool = hit.is_point_light == 1u && direct_light_emission;
+        let point_light_lighting: bool = hit.is_point_light == 1u;
         // Loop scoped variables are initialized explicitly, some compilers keep the previous iteration's value otherwise
         var surface: Surface = Surface();
         var scatter: bool = false;
@@ -1512,7 +1513,21 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let n_dot_v: f32 = dot(surface.smooth_n, - ray.unit_direction);
         let eta: vec2<f32> = vertexEta(material, n_dot_v);
         let nee: bool = scatter && samplesLights(material);
-        let emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, surface.smooth_n)), 0.0f);
+        // Emission met, of the surface or a point light, weighted against light sampling at the vertex the ray left
+        var emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, surface.smooth_n)), 0.0f);
+        if (point_light_lighting) {
+            emission = calculatePointLightContrib(hit.instance_index);
+        }
+        if (rgb_to_greyscale(emission) > 0.0f) {
+            emission *= emissionWeight(nee_vertex, hit, ray.origin);
+        }
+        // Replaying the suffix after the reconnection vertex up to the emission it ends at
+        if (replay && rc == RC_SURFACE && b > k && b == end && (end_type == END_EMIT || end_type == END_POINT)) {
+            if (point_light_lighting != (end_type == END_POINT)) {
+                return fail;
+            }
+            return Shift(throughput * emission / r.jac, density / r.jac);
+        }
         let chain_found: bool = extractBits(chain.path, PATH_RC, 2u) == RC_SURFACE;
         // Reconnection at this vertex for paths ending here
         var here: Reservoir = chain;
@@ -1528,9 +1543,6 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             throughput *= geometry_density;
             density *= geometry_density;
             if (k == end && end_type == END_EMIT) {
-                if (!direct_light_emission) {
-                    return fail;
-                }
                 return Shift(throughput * emission / r.jac, density / r.jac);
             }
             // Light sampling at the reconnection vertex replays its random numbers, as the light may have moved
@@ -1539,7 +1551,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (!nee || !(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance / r.jac, density / r.jac);
+                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state) / r.jac, density / r.jac);
             }
             if (k == end && end_type == END_SKY) {
                 if (!nee) {
@@ -1563,19 +1575,19 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (!(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance, 1.0f);
+                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state), 1.0f);
             }
             if (rc == RC_NONE && end_type == END_POINT && point_light_lighting) {
-                return Shift(throughput * calculatePointLightContrib(hit.instance_index), 1.0f);
+                return Shift(throughput * emission, 1.0f);
             }
-            // Emission seen right after a vertex that skipped next event estimation
-            if (rc == RC_NONE && end_type == END_EMIT && scatter && direct_light_emission && !footprint) {
+            // Emission seen right after a vertex, against its next event estimation
+            if (rc == RC_NONE && end_type == END_EMIT && scatter && !footprint) {
                 return Shift(throughput * emission, 1.0f);
             }
             return fail;
         } else if (!replay && scatter) {
             // Emission seen directly carries no randomness to resample, shading adds it
-            if (direct_light_emission && b > 0u) {
+            if (b > 0u) {
                 var candidate: Reservoir = chain;
                 if (chain_found) {
                     candidate.radiance = safeDivide(throughput * emission, chain_throughput);
@@ -1586,7 +1598,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             if (nee) {
                 let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
-                let f: vec3<f32> = throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance;
+                let f: vec3<f32> = throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state);
                 var candidate: Reservoir = chain;
                 if (chain_found) {
                     candidate.radiance = safeDivide(f, chain_throughput);
@@ -1620,7 +1632,6 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
         }
         if (scatter) {
-            direct_light_emission = !nee;
             // Replaying, x_k-1 connects to the reconnection vertex and x_k leaves along the stored direction with the stored lobes
             let connect: bool = replay && b == stop;
             var lobe_index: u32 = select(extractBits(r.path, PATH_LOBE_PREV, 2u), extractBits(r.path, PATH_LOBE, 2u), arrived);
@@ -1661,6 +1672,13 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             if (connect || arrived) {
                 lobe = connectBSDF(ray.unit_direction, dir, surface.smooth_n, material, eta.x, eta.y, lobe_index, surface.random_state);
             }
+            // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
+            let delta: bool = lobe_index != LOBE_DIFFUSE && (material.roughness == 0.0f || (lobe_index == LOBE_REFRACT && eta.x == eta.y));
+            if (nee && !delta) {
+                nee_vertex = NEEVertex(false, lobe.pdf, ray.origin, surface.smooth_n, ray.origin + surface.geometry_offset * surface.smooth_n);
+            } else if (lobe_index != LOBE_REFRACT || eta.x != eta.y) {
+                nee_vertex.none = true;
+            }
             // Inverse ray footprint criterion for the density of the direction leaving this vertex (Eq. 5)
             let inverse_footprint: bool = lobe.pdf > 0.0f && (lobe_index == LOBE_DIFFUSE || lobe.pdf * prev.cos / (hit.distance * hit.distance) * threshold <= 1.0f);
             let rough: bool = lobe.pdf > 0.0f && (lobe_index == LOBE_DIFFUSE || material.roughness >= RESTIR_ROUGHNESS);
@@ -1668,12 +1686,17 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (!inverse_footprint) {
                     return fail;
                 }
-                // An escape right after x_k is weighted against next event estimation with its new incoming direction
-                let weight: f32 = select(1.0f, escapeWeight(select(0.0f, lobe.pdf, nee), r.dir), k == end && end_type == END_ENV);
-                return Shift(throughput * (lobe.throughput * lobe.pdf) * r.radiance * weight / r.jac, density * lobe.pdf / r.jac);
+                if (end_type != END_EMIT && end_type != END_POINT) {
+                    // An escape right after x_k is weighted against next event estimation with its new incoming direction
+                    let weight: f32 = select(1.0f, escapeWeight(select(0.0f, lobe.pdf, nee), r.dir), k == end && end_type == END_ENV);
+                    return Shift(throughput * (lobe.throughput * lobe.pdf) * r.radiance * weight / r.jac, density * lobe.pdf / r.jac);
+                }
+                // The weight of emission depends on the reconnected BSDF, the suffix replays instead of its radiance
+                throughput *= lobe.pdf;
+                density *= lobe.pdf;
             }
             // A replayed path meeting the criteria before x_k is not in the image of the shift
-            if ((replay && footprint && inverse_footprint) || (connect && !rough)) {
+            if ((replay && b <= stop && footprint && inverse_footprint) || (connect && !rough)) {
                 return fail;
             }
             if (connect) {
@@ -1701,6 +1724,14 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             prev.pdf = 0.0f;
         }
         if (!replay) {
+            if (point_light_lighting) {
+                let f: vec3<f32> = throughput * emission;
+                var candidate: Reservoir = chain;
+                if (extractBits(chain.path, PATH_RC, 2u) == RC_SURFACE) {
+                    candidate.radiance = safeDivide(f, chain_throughput);
+                }
+                offer(sel, withEnd(candidate, END_POINT, b, f), f * scale / density);
+            }
             var survival_probability: f32 = 1.0f;
             if (point_light_lighting || scatter) {
                 let importancy_factor: vec3<f32> = throughput / density;
@@ -1710,20 +1741,9 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 break;
             }
             density *= survival_probability;
-            if (point_light_lighting) {
-                let f: vec3<f32> = throughput * calculatePointLightContrib(hit.instance_index);
-                var candidate: Reservoir = chain;
-                if (extractBits(chain.path, PATH_RC, 2u) == RC_SURFACE) {
-                    candidate.radiance = safeDivide(f, chain_throughput);
-                }
-                offer(sel, withEnd(candidate, END_POINT, b, f), f * scale / density);
-            }
         }
-        if (point_light_lighting) {
-            direct_light_emission = false;
-        }
-        // Only occluders in front of the reconnection vertex matter
-        hit = traverseInstanceBVH(ray, direct_light_emission, select(POW32, distance(reconnection, ray.origin) * 1.001f, replay && b == stop && rc == RC_SURFACE));
+        // Only occluders in front of the reconnection vertex matter, passing through a point light no other
+        hit = traverseInstanceBVH(ray, !point_light_lighting, select(POW32, distance(reconnection, ray.origin) * 1.001f, replay && b == stop && rc == RC_SURFACE));
         // Reaching the reconnection vertex, it is shaded exactly where the stored path has it
         if (replay && b == stop && rc == RC_SURFACE && hit.instance_index == rc_hit.instance_index && hit.triangle_index == rc_hit.triangle_index) {
             hit.uv = rc_hit.uv;
@@ -1735,7 +1755,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         }
         if (hit.instance_index == UINT_MAX) {
             // BSDF sampled escapes share the environment with its next event estimation
-            let weight: f32 = escapeWeight(select(0.0f, prev.pdf, !direct_light_emission), ray.unit_direction);
+            let weight: f32 = escapeWeight(select(0.0f, prev.pdf, !nee_vertex.none), ray.unit_direction);
             let f: vec3<f32> = throughput * environment(ray.unit_direction);
             if (replay) {
                 if (b == stop && rc == RC_ENV) {
