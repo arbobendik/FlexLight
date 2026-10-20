@@ -6,7 +6,7 @@ import { Transform } from "./scene/transform.js";
 import { Ray, Vector, ray_bounding, POW32M1, normalize, Matrix, moore_penrose, vector_scale, matrix_vector_mul, vector_add, vector_length, ray_triangle, matrix_mul, transpose, moellerTrumbore } from "./lib/math.js";
 import { BVHNode } from "./scene/bvh.js";
 import { BVHLeaf } from "./scene/bvh.js";
-import { IndexedInstance } from "./scene/scene-bvh.js";
+import { IndexedInstance, IndexedPointLight } from "./scene/scene-bvh.js";
 import { TypedArrayView } from "./buffer/typed-array-view.js";
 import { Instance } from "./scene/instance.js";
 import { Prototype } from "./scene/prototype.js";
@@ -158,14 +158,14 @@ export class UI {
         // Maximal distance a triangle can be away from the ray origin is POW32 at initialisation
         let hit: Hit = { distance: Infinity, instance_index: -1, triangle_index: -1 };
         // Stack for BVH traversal
-        let stack: Array<BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance>> = [];
-        const root: BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> = this.scene.instanceBVH.root;
+        let stack: Array<BVHNode<IndexedInstance | IndexedPointLight> | BVHLeaf<IndexedInstance | IndexedPointLight>> = [];
+        const root: BVHNode<IndexedInstance | IndexedPointLight> | BVHLeaf<IndexedInstance | IndexedPointLight> = this.scene.instanceBVH.root;
         stack[0] = root;
         let stack_index: number = 1;
 
         while (stack_index > 0 && stack_index < 16) {
             stack_index -= 1;
-            const node: BVHNode<IndexedInstance> | BVHLeaf<IndexedInstance> = stack[stack_index]!;
+            const node: BVHNode<IndexedInstance | IndexedPointLight> | BVHLeaf<IndexedInstance | IndexedPointLight> = stack[stack_index]!;
 
             const min0: Vector<3> = node.children[0]?.bounding.min ?? new Vector(0, 0, 0);
             const max0: Vector<3> = node.children[0]?.bounding.max ?? new Vector(0, 0, 0);
@@ -187,7 +187,7 @@ export class UI {
             
 
             if (node instanceof BVHLeaf) {
-                const leaf = node as BVHLeaf<IndexedInstance>;
+                const leaf = node as BVHLeaf<IndexedInstance | IndexedPointLight>;
                 const near_child = dist0 < dist1 ? leaf.children[0]! : leaf.children[1]!;
                 const far_child = dist0 < dist1 ? leaf.children[1]! : leaf.children[0]!;
                 // If node is a triangle, test for intersection, closest first
@@ -210,7 +210,7 @@ export class UI {
                     }
                 }
             } else if (node instanceof BVHNode) {
-                const non_leaf_node = node as BVHNode<IndexedInstance>;
+                const non_leaf_node = node as BVHNode<IndexedInstance | IndexedPointLight>;
                 const near_child = dist0 < dist1 ? non_leaf_node.children[0]! : non_leaf_node.children[1]!;
                 const far_child = dist0 < dist1 ? non_leaf_node.children[1]! : non_leaf_node.children[0]!;
                 // If node is an AABB, push children to stack, furthest first
