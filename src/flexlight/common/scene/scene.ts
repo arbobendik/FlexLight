@@ -37,6 +37,13 @@ export class Scene {
     readonly lightTreeManager: BufferManager<Uint32Array<ArrayBuffer>> = new BufferManager(Uint32Array);
     // Instances, point lights, emission and transforms of emitting instances the light BVH was last built from
     private lightSignature: Array<number> = [];
+    // Mean emission r + g + b per triangle of the instances with emissive textures, as the renderer computed it for the
+    // triangles, emissive texture and first triangle of each, triangleEmissionKey. Stale while the instances' current
+    // emissiveTextureKey differs, which holds the light BVH back until it is computed anew.
+    triangleEmission: Float32Array = new Float32Array(0);
+    triangleEmissionKey: Array<number> = [];
+    emissiveTextureKey: Array<number> = [];
+    triangleEmissionStale: boolean = false;
     // Light Count
     private _lightCount: number = 0;
     get lightCount () { return this._lightCount; }
@@ -86,6 +93,7 @@ export class Scene {
         const emissiveInstanceIDList: Array<number> = [];
 
         const instanceUintArray: Array<number> = [];
+        const emissiveTextureKey: Array<number> = [];
         let globalTriangleIndexOffset: number = 0;
 
         // Construct instance uint array
@@ -103,6 +111,7 @@ export class Scene {
                 instance.metallic?.textureInstanceBufferId ?? POW32M1,
                 globalTriangleIndexOffset  // Store first triangle index
             );
+            if (instance.emissive) emissiveTextureKey.push(instance.prototype.triangles.offset / 4, instance.emissive.textureInstanceBufferId, globalTriangleIndexOffset);
             globalTriangleIndexOffset += triangleCount;
 
             // If instance is emissive, save it to emissive instance list, ignore emissive textures for now.
@@ -162,10 +171,12 @@ export class Scene {
         for (let instance of this.instances) {
             const emissive = instance.material.emissive, transform = instance.transform.transformArray;
             lightSignature.push(...emissive);
-            if (emissive.x + emissive.y + emissive.z > 0) for (let i = 0; i < transform.length; i++) lightSignature.push(transform[i]!);
+            if (emissive.x + emissive.y + emissive.z > 0 || instance.emissive) for (let i = 0; i < transform.length; i++) lightSignature.push(transform[i]!);
         }
-        if (!sameNumbers(lightSignature, this.lightSignature)) {
-            this.lightTreeManager.overwriteAll(packLightTree(this.instances, this.pointLights, globalTriangleIndexOffset));
+        this.emissiveTextureKey = emissiveTextureKey;
+        this.triangleEmissionStale = emissiveTextureKey.length > 0 && !sameNumbers(emissiveTextureKey, this.triangleEmissionKey);
+        if (!this.triangleEmissionStale && !sameNumbers(lightSignature, this.lightSignature)) {
+            this.lightTreeManager.overwriteAll(packLightTree(this.instances, this.pointLights, globalTriangleIndexOffset, this.triangleEmission));
             this.lightSignature = lightSignature;
         }
 
