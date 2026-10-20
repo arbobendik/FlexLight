@@ -806,16 +806,21 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 bool expected_out_dir_normal_aligned = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
                 bool out_dir_normal_aligned = dot(bsdf_sampled.unit_direction, geometry_n) > 0.0;
-                // Continue sampling with geometry normal if ray points to incorrect side of the surface
+                // Rays sampled to the wrong side of the face lose no energy there: surfaces transmitting light sample again
+                // against the geometry normal, opaque ones mirror the ray into their side by it
                 if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
-                    // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
-                    SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state);
-                    random_state = geometry_bsdf_sampled.random_state;
-                    // Redirect outgoing ray according to new bsdf sample.
-                    bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
-                    bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
-                    // Multiply to compute combined throughput, doing proper self shadowing.
-                    bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                    if (material.transmission > 0.0) {
+                        // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
+                        SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state);
+                        random_state = geometry_bsdf_sampled.random_state;
+                        // Redirect outgoing ray according to new bsdf sample.
+                        bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
+                        bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
+                        // Multiply to compute combined throughput, doing proper self shadowing.
+                        bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                    } else {
+                        bsdf_sampled.unit_direction -= 2.0 * dot(bsdf_sampled.unit_direction, geometry_n) * geometry_n;
+                    }
                 }
                 // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
                 if (bsdf_sampled.refracted) {
