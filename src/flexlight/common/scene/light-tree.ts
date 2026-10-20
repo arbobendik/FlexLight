@@ -89,21 +89,23 @@ const buildLights = (nodes: Array<LightNode>, lights: Array<LightNode>, start: n
     return nodes[index] = node;
 };
 
-// Light BVH over the emitting triangles of the instances in world space and the point lights as spheres, packed as
-// texels: a header (node count, first trail, triangle trails, 0), four per node and a trail per triangle and light
-export const packLightTree = (instances: Set<Instance>, pointLights: Set<PointLight>, triangleTrails: number): Uint32Array<ArrayBuffer> => {
+// Light BVH over the emitting triangles of the instances in world space, by their emissive color or the mean of their
+// emissive texture per triangle, and the point lights as spheres, packed as texels: a header (node count, first trail,
+// triangle trails, 0), four per node and a trail per triangle and light
+export const packLightTree = (instances: Set<Instance>, pointLights: Set<PointLight>, triangleTrails: number, triangleEmission: Float32Array): Uint32Array<ArrayBuffer> => {
     const lights: Array<LightNode> = [];
     let instanceID = 0, firstTriangle = 0;
     for (const instance of instances) {
-        const emitted = instance.material.emissive.x + instance.material.emissive.y + instance.material.emissive.z;
+        const color = instance.material.emissive.x + instance.material.emissive.y + instance.material.emissive.z;
         // As the shaders transform, which take the rows of the matrix for the columns of theirs
         const triangles = instance.prototype.triangles, rotation = transpose(instance.transform.matrix), position = instance.transform.position;
         const vertex = (offset: number): Vector<3> => vector_add(matrix_vector_mul(rotation,
             new Vector<3>(triangles[offset]!, triangles[offset + 1]!, triangles[offset + 2]!)), position);
-        for (let t = 0; emitted > 0 && t < triangles.length / TRIANGLE_SIZE; t++) {
+        for (let t = 0; (color > 0 || instance.emissive) && t < triangles.length / TRIANGLE_SIZE; t++) {
+            const emitted = instance.emissive ? triangleEmission[firstTriangle + t]! : color;
             const a = vertex(t * TRIANGLE_SIZE), b = vertex(t * TRIANGLE_SIZE + 3), c = vertex(t * TRIANGLE_SIZE + 6);
             const n = cross(vector_difference(b, a), vector_difference(c, a));
-            if (vector_length(n) > 0) lights.push({ low: lower(lower(a, b), c), high: upper(upper(a, b), c), w: normalize(n),
+            if (emitted * vector_length(n) > 0) lights.push({ low: lower(lower(a, b), c), high: upper(upper(a, b), c), w: normalize(n),
                 phi: Math.PI * emitted * vector_length(n) / 2, cosThetaO: 1, child: 0, kind: 1, id: instanceID, triangle: t, slot: firstTriangle + t });
         }
         firstTriangle += triangles.length / TRIANGLE_SIZE;
