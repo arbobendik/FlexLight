@@ -83,6 +83,8 @@ struct UniformUint {
 @group(2) @binding(0) var triangles: texture_2d_array<f32>;
 @group(2) @binding(1) var triangle_bvh: texture_2d_array<u32>;
 @group(2) @binding(2) var triangle_bounding_vertices: texture_2d_array<f32>;
+// Light BVH: header, nodes of four texels and trails, addressed as the triangles
+@group(2) @binding(3) var light_tree: texture_2d_array<u32>;
 
 // ComputeDynamicBindGroup
 @group(3) @binding(0) var<uniform> uniforms_float: UniformFloat;
@@ -498,7 +500,7 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32) -> H
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: bool) -> bool {
+fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: bool, skip: vec2<u32>) -> bool {
     // Maximal distance a triangle can be away from the ray origin
     let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -531,14 +533,14 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: b
         let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
 
         if (indicator_and_children.x == 0u) {
-            if (moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
+            if (any(vec2<u32>(instance_index, indicator_and_children.y) != skip) && moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
                 return true;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
                 let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
+                if (any(vec2<u32>(instance_index, indicator_and_children.z) != skip) && moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
                     return true;
                 }
             }
@@ -568,7 +570,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: b
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
+fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool, skip: vec2<u32>) -> bool {
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
@@ -606,12 +608,12 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided)) {
+                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided, skip)) {
                     return true;
                 }
             }
             if (dist_far != POW32) {
-                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided)) {
+                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided, skip)) {
                     return true;
                 }
             }
@@ -751,8 +753,9 @@ fn sampleLight(light: Light, init_random_state: u32, origin: vec3<f32>, random_s
         return LightSample(dir, offset, light.color * intensity / max(len * len, BIAS), inv_pdf, random_state);
 }
 
-// Shadow test toward a light sample, including the quick exit for lights behind the shading normal
-fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> bool {
+// Shadow test toward a light sample, including the quick exit for lights behind the shading normal, skipping the light's
+// triangle it ends on, by instance and local index
+fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>, skip: vec2<u32>) -> bool {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
     if (dot(smooth_n, unit_light_dir) < 0.0f) {
@@ -761,7 +764,99 @@ fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_
     // Apply geometry offset
     let offset_target: vec3<f32> = origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    return shadowTraverseInstanceBVH(light_ray, length(light_dir), false);
+    return shadowTraverseInstanceBVH(light_ray, length(light_dir), false, skip);
+}
+
+fn access_light_tree(index: u32) -> vec4<u32> {
+    return textureLoad(light_tree, vec2<u32>(index & 0x7FFu, (index >> 11u) & 0x7FFu), index >> 22u, 0);
+}
+
+// Bounds of node n of the light BVH
+fn lightBounds(n: u32) -> LightBounds {
+    let t0: vec4<u32> = access_light_tree(1u + 4u * n);
+    let t1: vec4<u32> = access_light_tree(2u + 4u * n);
+    let t2: vec4<u32> = access_light_tree(3u + 4u * n);
+    return LightBounds(bitcast<vec3<f32>>(t0.xyz), bitcast<vec3<f32>>(t1.xyz), bitcast<vec3<f32>>(t2.xyz), bitcast<f32>(t0.w), bitcast<f32>(t1.w));
+}
+
+// World space vertices of the triangle of instance_index at triangle_index of the prototype triangles
+fn worldTriangle(instance_index: u32, triangle_index: u32) -> mat3x3<f32> {
+    let t0 = access_triangle(triangle_index * TRIANGLE_SIZE);
+    let t1 = access_triangle(triangle_index * TRIANGLE_SIZE + 1u);
+    let t2 = access_triangle(triangle_index * TRIANGLE_SIZE + 2u);
+    let transform: Transform = instance_transform[instance_index * 2u];
+    return transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
+}
+
+struct TreeSample {
+    // Unit direction toward the light point, the radiance arriving from it if visible over its density in solid angle and
+    // the latter, zero for point lights of no radius
+    dir: vec3<f32>,
+    radiance: vec3<f32>,
+    density: f32,
+    random_state: u32
+}
+
+// Light sampling, as flex-cuda-pt's sampleLight: a light the light BVH picks by its importance to origin, a uniform point
+// on it or a direction in the cone of its sphere, seen from origin lifted by geometry_offset in front of smooth_n
+fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, init_random_state: u32) -> TreeSample {
+    let random_pick: Random = pcg(init_random_state);
+    let random_side: Random = pcg(random_pick.state);
+    let random_along: Random = pcg(random_side.state);
+    var sample: TreeSample = TreeSample(vec3<f32>(0.0f), vec3<f32>(0.0f), 0.0f, random_along.state);
+    let start: vec3<f32> = origin + geometry_offset * smooth_n;
+    // From the root down to either child by its share of importance (pbrt-v4's BVHLightSampler::Sample)
+    var pick: f32 = random_pick.value;
+    var probability: f32 = 1.0f;
+    var n: u32 = 0u;
+    while (access_light_tree(4u + 4u * n).x == 0u) {
+        let second: u32 = access_light_tree(3u + 4u * n).w;
+        let child: u32 = pickChild(lightBounds(n + 1u), lightBounds(second), origin, smooth_n, &pick, &probability);
+        if (child > 1u) {
+            return sample;
+        }
+        n = select(n + 1u, second, child == 1u);
+    }
+    if (n == 0u && !(importance(lightBounds(0u), origin, smooth_n) > 0.0f)) {
+        return sample;
+    }
+    let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
+    // Vector from start to the end of the shadow ray, as occluded() casts it from there
+    var shadow: vec3<f32>;
+    if (leaf.x == 2u) {
+        let light: Light = lights[leaf.y];
+        if (light.variance == 0.0f) {
+            // Delta light at the center
+            shadow = light.position - start;
+            sample.dir = normalize(light.position - start);
+            sample.radiance = light.color * light.intensity / (dot(light.position - start, light.position - start) * probability);
+        } else {
+            sample.dir = sampleSphere(light.position, light.variance, start, random_side.value, random_along.value);
+            sample.density = probability * sphereDensity(light.position, light.variance, start);
+            sample.radiance = pointLightRadiance(light.color, light.intensity, light.variance) / sample.density;
+            shadow = sample.dir * raySphere(light.position, light.variance, Ray(start, sample.dir), POW32);
+        }
+    } else {
+        let triangle_index: u32 = instance_uint[leaf.y * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE + leaf.z;
+        let t: mat3x3<f32> = worldTriangle(leaf.y, triangle_index);
+        let side: f32 = sqrt(random_side.value);
+        let uv: vec2<f32> = vec2<f32>(side * (1.0f - random_along.value), side * random_along.value);
+        let point: vec3<f32> = t * vec3<f32>(1.0f - side, uv);
+        if (!(dot(smooth_n, point - origin) > 0.0f)) {
+            return sample;
+        }
+        // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending in front of it
+        let surface: Surface = surfaceAt(Hit(uv, leaf.y, triangle_index, 0u, 0.0f), point, random_along.state);
+        sample.random_state = surface.random_state;
+        sample.dir = normalize(point - start);
+        sample.density = solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
+        sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
+        shadow = point + surface.smooth_n * surface.geometry_offset - start;
+    }
+    if (occluded(origin, smooth_n, geometry_offset, shadow, select(vec2<u32>(UINT_MAX), leaf.yz, leaf.x == 1u))) {
+        sample.radiance = vec3<f32>(0.0f);
+    }
+    return sample;
 }
 
 struct NEESample {
@@ -827,7 +922,7 @@ fn reservoirSample(material: Material, eta_i: f32, eta_o: f32, camera_ray: Ray, 
 
     sample.random_state = random_state;
     // Test if in shadow
-    if (w_sum == 0.0f || occluded(camera_ray.origin, smooth_n, geometry_offset, reservoir_dir)) {
+    if (w_sum == 0.0f || occluded(camera_ray.origin, smooth_n, geometry_offset, reservoir_dir, vec2<u32>(UINT_MAX))) {
         sample.radiance = vec3<f32>(0.0f);
         return sample;
     }
@@ -956,11 +1051,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
     var is_inside: bool = false;
     // var skip_hit: bool = false;
     var i: u32 = 0u;
-    // Precalculate random sphere
-    let light_offset_sphere: RandomSphere = random_sphere(random_state);
-    let light_offset_dir: vec3<f32> = light_offset_sphere.value;
-
-    random_state = light_offset_sphere.state;
     var direct_light_emission: bool = true;
     // Density of the lobe the last escape was sampled with, zero if it takes the full weight
     var escape_pdf: f32 = 0.0f;
@@ -1005,9 +1095,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // if (screen_space.x > 0.0f) {
                 if (neeDecision(material, n_dot_v, eta_i, eta_o)) {
                     // Do NEE
-                    let local_sampled: NEESample = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, hash(random_state));
-                    random_state = local_sampled.random_state;
-                    final_color += local_sampled.color * importancy_factor;
+                    let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_offset, random_state);
+                    final_color += BSDF(ray.unit_direction, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, hash(random_state)) * light.radiance * importancy_factor;
+                    random_state = light.random_state;
                 } else {
                     // Sample directly next round
                     direct_light_emission = true;
@@ -1158,7 +1248,7 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
     let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
-    return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true));
+    return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true, vec2<u32>(UINT_MAX)));
 }
 
 struct SkySample {
@@ -1584,7 +1674,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             if (rc == RC_LIGHT && nee && !footprint) {
                 // Forced reconnection to the light vertex of next event estimation (Sec. 6.2.3)
                 let light: LightSample = sampleLight(lights[r.rc.x + 1u], r.rc.y, ray.origin, light_offset_dir);
-                if (occluded(ray.origin, surface.smooth_n, surface.geometry_offset, light.dir + light.offset)) {
+                if (occluded(ray.origin, surface.smooth_n, surface.geometry_offset, light.dir + light.offset, vec2<u32>(UINT_MAX))) {
                     return fail;
                 }
                 return Shift(throughput * BSDF(ray.unit_direction, light.dir / length(light.dir), surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.brightness / light.inv_pdf, 1.0f);
