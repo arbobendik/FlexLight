@@ -18,10 +18,14 @@
   "main": "index.js",
   "scripts": {
     "start": "docker compose up --build",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "prepare": "husky"
   },
   "dependencies": {
     "express": "^4.21.2"
   },
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
 }
