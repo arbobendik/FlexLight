@@ -95,6 +95,7 @@ interface PathTracerGPUBufferManagers {
   boundingVertexGPUManager: BufferToRGBA16<Float16Array>;
   // Light GPU Managers
   lightGPUManager: BufferToGPUBuffer<Float32Array<ArrayBuffer>>;
+  lightTreeGPUManager: BufferToRGBA32<Uint32Array<ArrayBuffer>>;
   // Texture GPU Managers
   textureInstanceGPUManager: BufferToGPUBuffer<Uint32Array<ArrayBuffer>>;
   textureDataGPUManager: BufferToRGBA8<Uint8Array<ArrayBuffer>>;
@@ -151,6 +152,7 @@ export class PathTracerWGPU extends RendererWGPU {
     this.scene.instanceBVHManager.releaseGPUBuffer();
     this.scene.instanceBoundingVertexManager.releaseGPUBuffer();
     this.scene.lightManager.releaseGPUBuffer();
+    this.scene.lightTreeManager.releaseGPUBuffer();
     // Also release environment map
     this.scene.environmentMapManager.releaseGPUBuffer();
 
@@ -267,6 +269,7 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } }, // prototype triangles
         { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },               // prototype bvh
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } }, // prototype bounding vertices
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } },               // light bvh, restir_temporal then samples 13 of 16 textures
       ]
     });
 
@@ -435,6 +438,7 @@ export class PathTracerWGPU extends RendererWGPU {
       instanceBVHGPUManager: new BufferToGPUBuffer<Uint32Array<ArrayBuffer>>(this.scene.instanceBVHManager, device, "instance bvh buffer"),
       instanceBoundingVertexGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.instanceBoundingVertexManager, device, "instance bounding vertex buffer"),
       lightGPUManager: new BufferToGPUBuffer<Float32Array<ArrayBuffer>>(this.scene.lightManager, device, "light buffer"),
+      lightTreeGPUManager: new BufferToRGBA32<Uint32Array<ArrayBuffer>>(this.scene.lightTreeManager, device, "uint", "light tree buffer"),
     }
     // Init canvas parameters and textures with resize
     this.resize(device);
@@ -470,6 +474,7 @@ export class PathTracerWGPU extends RendererWGPU {
       this.scene.instanceBVHManager.releaseGPUBuffer();
       this.scene.instanceBoundingVertexManager.releaseGPUBuffer();
       this.scene.lightManager.releaseGPUBuffer();
+      this.scene.lightTreeManager.releaseGPUBuffer();
 
       console.log("RECOMPILE");
       console.log(this.engineState.temporal, this.config.temporal);
@@ -644,7 +649,8 @@ export class PathTracerWGPU extends RendererWGPU {
       entries: [
         { binding: 0, resource: gpuBufferManagers.triangleGPUManager.gpuResource },
         { binding: 1, resource: gpuBufferManagers.BVHGPUManager.gpuResource },
-        { binding: 2, resource: gpuBufferManagers.boundingVertexGPUManager.gpuResource }
+        { binding: 2, resource: gpuBufferManagers.boundingVertexGPUManager.gpuResource },
+        { binding: 3, resource: gpuBufferManagers.lightTreeGPUManager.gpuResource }
       ]
     });
 
