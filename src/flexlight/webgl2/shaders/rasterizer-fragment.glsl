@@ -192,7 +192,7 @@ SampledColor sampleLights(Material material, Ray camera_ray, uint init_random_st
             // Apply geometry offset
             vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
             Ray light_ray = Ray(offset_target, unit_light_dir);
-            if (!shadowTraverseInstanceBVH(light_ray, length(light_dir), false)) {
+            if (!shadowTraverseInstanceBVH(light_ray, length(light_dir), false, uvec2(UINT_MAX))) {
                 local_color += color_for_light;
             }
         }
