@@ -1438,7 +1438,6 @@ const PATH_INSIDE: u32 = 20u;
 // Random streams besides the per vertex ones
 const STREAM_NEE: u32 = 64u;
 const STREAM_RR: u32 = 128u;
-const STREAM_SPHERE: u32 = 192u;
 const STREAM_SELECT: u32 = 193u;
 const STREAM_SKY: u32 = 256u;
 
@@ -1597,7 +1596,6 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     var density: f32 = 1.0f;
     var is_inside: bool = false;
     var direct_light_emission: bool = true;
-    let light_offset_dir: vec3<f32> = random_sphere(stream(r.seed, STREAM_SPHERE)).value;
     var threshold: f32 = 0.0f;
     var reconnection: vec3<f32>;
     var prev: Vertex;
@@ -1650,11 +1648,13 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 }
                 return Shift(throughput * emission / r.jac, density / r.jac);
             }
+            // Light sampling at the reconnection vertex replays its random numbers, as the light may have moved
             if (k == end && end_type == END_NEE) {
-                if (!nee) {
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                if (!nee || !(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, r.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * r.radiance / r.jac, density / r.jac);
+                return Shift(throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance / r.jac, density / r.jac);
             }
             if (k == end && end_type == END_SKY) {
                 if (!nee) {
@@ -1672,12 +1672,13 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 return Shift(throughput * sky.color, 1.0f);
             }
             if (rc == RC_LIGHT && nee && !footprint) {
-                // Forced reconnection to the light vertex of next event estimation (Sec. 6.2.3)
-                let light: LightSample = sampleLight(lights[r.rc.x + 1u], r.rc.y, ray.origin, light_offset_dir);
-                if (occluded(ray.origin, surface.smooth_n, surface.geometry_offset, light.dir + light.offset, vec2<u32>(UINT_MAX))) {
+                // Forced reconnection to the light vertex of next event estimation (Sec. 6.2.3), the point its replayed
+                // random numbers pick again (unit Jacobian)
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                if (!(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * BSDF(ray.unit_direction, light.dir / length(light.dir), surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.brightness / light.inv_pdf, 1.0f);
+                return Shift(throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance, 1.0f);
             }
             if (rc == RC_NONE && end_type == END_POINT && point_light_lighting) {
                 return Shift(throughput * calculatePointLightContrib(hit.instance_index), 1.0f);
@@ -1699,9 +1700,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 offer(sel, withEnd(candidate, END_EMIT, b, throughput * emission), throughput * emission * scale / density);
             }
             if (nee) {
-                let light: NEESample = reservoirSample(material, eta.x, eta.y, ray, stream(r.seed, b + STREAM_NEE), surface.smooth_n, surface.geometry_n, surface.geometry_offset, light_offset_dir, surface.random_state);
-                // The light vertex is parameterized by area, light selection only enters its contribution weight
-                let f: vec3<f32> = throughput * light.color / light.inv_pdf;
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                let f: vec3<f32> = throughput * BSDF(ray.unit_direction, light.dir, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, surface.random_state) * light.radiance;
                 var candidate: Reservoir = chain;
                 if (chain_found) {
                     candidate.radiance = safeDivide(f, chain_throughput);
@@ -1713,9 +1713,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 } else {
                     // Forced reconnection to the light vertex (Sec. 6.2.3)
                     candidate.path = insertBits(insertBits(0u, b + 1u, PATH_K, 5u), RC_LIGHT, PATH_RC, 2u);
-                    candidate.rc = vec4<u32>(light.light, light.light_state, 0u, 0u);
                 }
-                offer(sel, withEnd(candidate, END_NEE, b, f), throughput * light.color * scale / density);
+                offer(sel, withEnd(candidate, END_NEE, b, f), f * scale / density);
             }
             if (nee && environmentMapped() && b < uniforms_uint.max_bounces) {
                 let sky: SkySample = sampleSky(ray, surface, eta, is_inside, stream(r.seed, b + STREAM_SKY), surface.random_state);
