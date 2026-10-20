@@ -42,7 +42,7 @@ export class BufferToRGBA16<T extends TypedArrayR16> extends BufferToGPU {
         // console.log(label, "r32" + type);
         this._gpuTexture = this.device.createTexture({
             // dimension: "3d",
-            size: this.gpuTextureSize,
+            size: [...this.gpuTextureSize],
             format: ("rgba16" + type) as GPUTextureFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
             label: label
@@ -73,7 +73,7 @@ export class BufferToRGBA16<T extends TypedArrayR16> extends BufferToGPU {
             // Rereate GPUTexture
             this._gpuTexture = this.device.createTexture({
                 // dimension: "3d",
-                size: this.gpuTextureSize,
+                size: [...this.gpuTextureSize],
                 format: ("rgba16" + this.type) as GPUTextureFormat,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
                 label: this.label
