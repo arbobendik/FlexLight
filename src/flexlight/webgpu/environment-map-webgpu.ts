@@ -69,7 +69,7 @@ export class EnvironmentMapWebGPU {
         // Initialize GPUTexture
         this._gpuTexture = device.createTexture({
           format: 'rgba16float',
-          size: this.gpuTextureSize,
+          size: [...this.gpuTextureSize],
           usage: GPUTextureUsage.TEXTURE_BINDING |
                  GPUTextureUsage.COPY_DST |
                  GPUTextureUsage.RENDER_ATTACHMENT,
