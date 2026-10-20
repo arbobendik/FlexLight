@@ -1005,16 +1005,21 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 let expected_out_dir_normal_aligned: bool = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
                 let out_dir_normal_aligned: bool = dot(bsdf_sampled.unit_direction, geometry_n) > 0.0f;
-                // Continue sampling with geometry normal if ray points to incorrect side of the surface
+                // Rays sampled to the wrong side of the face lose no energy there and take no density: surfaces transmitting light
+                // sample again against the geometry normal, opaque ones mirror the ray into their side by it
                 if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
-                    // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
-                    let geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, screen_space);
-                    random_state = geometry_bsdf_sampled.random_state;
-                    // Redirect outgoing ray according to new bsdf sample.
-                    bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
-                    bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
-                    // Multiply to compute combined throughput, doing proper self shadowing.
-                    bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                    if (material.transmission > 0.0f) {
+                        // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
+                        let geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, screen_space);
+                        random_state = geometry_bsdf_sampled.random_state;
+                        // Redirect outgoing ray according to new bsdf sample.
+                        bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
+                        bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
+                        // Multiply to compute combined throughput, doing proper self shadowing.
+                        bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                    } else {
+                        bsdf_sampled.unit_direction -= 2.0f * dot(bsdf_sampled.unit_direction, geometry_n) * geometry_n;
+                    }
                 }
                 // Next event estimation toward the environment map, weighted against the BSDF sampled escape
                 if (nee && environmentMapped() && i < uniforms_uint.max_bounces) {
@@ -1028,7 +1033,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
                 let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
                 if (nee && !delta) {
-                    // The density of a direction resampled against the geometry normal is unknown, it takes no weight
+                    // A ray sampled to the wrong side of the face, sampled again or mirrored, has no density and takes no weight
                     nee_vertex = NEEVertex(false, select(bsdf_sampled.pdf, 0.0f, expected_out_dir_normal_aligned != out_dir_normal_aligned), ray.origin, smooth_n, ray.origin + geometry_offset * smooth_n);
                 } else if (bsdf_sampled.lobe != LOBE_REFRACT || eta_i != eta_o) {
                     nee_vertex.none = true;
@@ -1173,14 +1178,14 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
 }
 
 // BSDF times cosine toward an environment sample over its density, each lobe weighted against the BSDF sampled escape by the
-// balance heuristic. Lobes the first sampling attempt can't produce toward dir are left to the geometry normal fallback.
+// balance heuristic. Lobes sampling can't produce toward dir are left to rays sampled to the wrong side, sampled again or mirrored.
 fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
     let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
     return neeBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, refracted, pdf, false, random_state);
 }
 
 // MIS weight of a BSDF sampled escape from a vertex doing next event estimation, pdf is the density of the sampled lobe.
-// Delta lobes and the geometry normal fallback (pdf zero) are never drawn by sampleSky.
+// Delta lobes and rays sampled to the wrong side of the face (pdf zero) are never drawn by sampleSky.
 fn escapeWeight(pdf: f32, dir: vec3<f32>) -> f32 {
     if (pdf <= 0.0f || !environmentMapped()) {
         return 1.0f;
@@ -1648,8 +1653,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             var lobe_index: u32 = select(extractBits(r.path, PATH_LOBE_PREV, 2u), extractBits(r.path, PATH_LOBE, 2u), arrived);
             var dir: vec3<f32> = r.dir;
             var refracted: bool = lobe_index == LOBE_REFRACT;
-            var fallback: bool = false;
-            // Sample leaving this vertex, its density is unknown after the fallback
+            var wrong_side: bool = false;
+            // Sample leaving this vertex, without density when sampled to the wrong side of the face
             var lobe: SampleBSDF = SampleBSDF();
             if (connect) {
                 if (is_inside != (extractBits(r.path, PATH_INSIDE, 1u) == 1u)) {
@@ -1659,25 +1664,27 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                     reconnection = hitPosition(rc_hit);
                     dir = normalize(reconnection - (ray.origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside != refracted)));
                 }
-                // The path tracer would resample such a direction against the geometry normal
+                // The path tracer samples again or mirrors directions sampled to the wrong side of the face, which no density reaches
                 if (wrongSide(is_inside, refracted, dir, surface.geometry_n)) {
                     return fail;
                 }
             } else if (!arrived) {
                 var bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, surface.smooth_n, material, eta.x, eta.y, surface.random_state, vec2<f32>(0.0f));
-                // Continue sampling with geometry normal if ray points to incorrect side of the surface
-                fallback = wrongSide(is_inside, bsdf_sampled.refracted, bsdf_sampled.unit_direction, surface.geometry_n);
-                if (fallback) {
+                // Rays sampled to the wrong side of the face are sampled again or mirrored, as the path tracer's
+                wrong_side = wrongSide(is_inside, bsdf_sampled.refracted, bsdf_sampled.unit_direction, surface.geometry_n);
+                if (wrong_side && material.transmission > 0.0f) {
                     let geometry_bsdf_sampled: SampleBSDF = sampleBSDF(bsdf_sampled.unit_direction, surface.geometry_n, material, eta.x, eta.y, bsdf_sampled.random_state, vec2<f32>(0.0f));
                     bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
                     bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
                     bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
+                } else if (wrong_side) {
+                    bsdf_sampled.unit_direction -= 2.0f * dot(bsdf_sampled.unit_direction, surface.geometry_n) * surface.geometry_n;
                 }
                 lobe_index = bsdf_sampled.lobe;
                 dir = bsdf_sampled.unit_direction;
                 refracted = bsdf_sampled.refracted;
                 lobe = bsdf_sampled;
-                lobe.pdf = select(bsdf_sampled.pdf, 0.0f, fallback);
+                lobe.pdf = select(bsdf_sampled.pdf, 0.0f, wrong_side);
             }
             // Connections evaluate the given direction
             if (connect || arrived) {
