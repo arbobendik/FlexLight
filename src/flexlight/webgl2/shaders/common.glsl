@@ -282,7 +282,7 @@ float rayBoundingVolume(vec3 min_corner, vec3 max_corner, Ray ray, float max_len
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l, bool two_sided) {
+bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l, bool two_sided, uvec2 skip) {
     // Maximal distance a triangle can be away from the ray origin
     uint instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -316,14 +316,14 @@ bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l, bool two_s
         vec4 bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
 
         if (indicator_and_children.x == 0u) {
-            if (moellerTrumboreCull(bv0.xyz, vec3(bv0.w, bv1.xy), vec3(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
+            if (any(notEqual(uvec2(instance_index, indicator_and_children.y), skip)) && moellerTrumboreCull(bv0.xyz, vec3(bv0.w, bv1.xy), vec3(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
                 return true;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 vec4 bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
                 vec4 bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
+                if (any(notEqual(uvec2(instance_index, indicator_and_children.z), skip)) && moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
                     return true;
                 }
             }
@@ -353,7 +353,7 @@ bool shadowTraverseTriangleBVH(uint instance_index, Ray ray, float l, bool two_s
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-bool shadowTraverseInstanceBVH(Ray ray, float l, bool two_sided) {
+bool shadowTraverseInstanceBVH(Ray ray, float l, bool two_sided, uvec2 skip) {
     uint stack[16];
     stack[0] = 0u;
     uint stack_index = 1u;
@@ -391,12 +391,12 @@ bool shadowTraverseInstanceBVH(Ray ray, float l, bool two_sided) {
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided)) {
+                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided, skip)) {
                     return true;
                 }
             }
             if (dist_far != POW32) {
-                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided)) {
+                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided, skip)) {
                     return true;
                 }
             }

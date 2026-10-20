@@ -495,6 +495,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
     float w_sum = 0.0;
     vec3 reservoir_color = vec3(0.0);
     vec3 reservoir_dir = vec3(0.0);
+    uvec2 reservoir_target = uvec2(UINT_MAX);
     uint random_state = init_random_state;
     // Iterate over lights
     for (uint i = 0u; i < light_count; i++) {
@@ -505,6 +506,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         vec3 dir = vec3(0.0);
         vec3 light_offset = vec3(0.0);
         float intensity = 0.0;
+        uvec2 target = uvec2(UINT_MAX);
         // Handle if light is an area light
         if (light.is_area_light == 1.0) {
             // CASE 0: Area ligh
@@ -517,7 +519,8 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             uint triangle_instance_offset = access_instance_uint(instance_id * INSTANCE_UINT_SIZE);
 
             // Choose random triangle from instance
-            uint triangle_offset = triangle_instance_offset + uint(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
+            target = uvec2(instance_id, uint(random_triangle.value * triangle_count));
+            uint triangle_offset = triangle_instance_offset + target.y * TRIANGLE_SIZE;
             // Fetch triangle coordinates from scene graph texture
             vec4 t0 = access_triangle(triangle_offset);
             vec4 t1 = access_triangle(triangle_offset + 1u);
@@ -611,10 +614,11 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         if (random_value.value * w_sum <= w_i) {
             reservoir_color = color_for_light / w_i;
             reservoir_dir = dir + light_offset;
+            reservoir_target = target;
         }
     }
 
-    vec3 unit_light_dir = normalize(reservoir_dir);
+    vec3 unit_light_dir = normalize(reservoir_dir - geometry_offset * smooth_n);
     // Compute quick exit criterion to potentially skip expensive shadow test
     bool show_shadow = w_sum == 0.0 || dot(smooth_n, unit_light_dir) < 0.0;
     // Test if in shadow
@@ -623,9 +627,10 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
     }
     // Apply geometry offset
     vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
-    Ray light_ray = Ray(offset_target, unit_light_dir);
+    vec3 shadow = camera_ray.origin + reservoir_dir - offset_target;
+    Ray light_ray = Ray(offset_target, normalize(shadow));
 
-    if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir), true)) {
+    if (shadowTraverseInstanceBVH(light_ray, length(shadow), true, reservoir_target)) {
         return SampledColor(vec3(0.0), random_state);
     } else {
         return SampledColor(reservoir_color * w_sum, random_state);
