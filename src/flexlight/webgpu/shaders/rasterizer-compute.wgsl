@@ -263,7 +263,7 @@ fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
+fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, skip: vec2<u32>) -> bool {
     // Maximal distance a triangle can be away from the ray origin
     let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -296,14 +296,14 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
         let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
 
         if (indicator_and_children.x == 0u) {
-            if (moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len)) {
+            if (any(vec2<u32>(instance_index, indicator_and_children.y) != skip) && moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len)) {
                 return true;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
                 let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len)) {
+                if (any(vec2<u32>(instance_index, indicator_and_children.z) != skip) && moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len)) {
                     return true;
                 }   
             }
@@ -333,7 +333,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32) -> bool {
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
+fn shadowTraverseInstanceBVH(ray: Ray, l: f32, skip: vec2<u32>) -> bool {
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
@@ -368,12 +368,12 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32) -> bool {
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                if (shadowTraverseTriangleBVH(near_child, ray, l)) {
+                if (shadowTraverseTriangleBVH(near_child, ray, l, skip)) {
                     return true;
                 }
             }
             if (dist_far != POW32) {
-                if (shadowTraverseTriangleBVH(far_child, ray, l)) {
+                if (shadowTraverseTriangleBVH(far_child, ray, l, skip)) {
                     return true;
                 }
             }
@@ -533,6 +533,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 
         var light_dir: vec3<f32> = vec3<f32>(0.0f);
         var color_for_light: vec3<f32> = vec3<f32>(0.0f);
+        var light_target: vec2<u32> = vec2<u32>(UINT_MAX);
 
         // Handle if light is an area light
         if (light.is_area_light == 1.0f) {
@@ -546,7 +547,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             let triangle_instance_offset: u32 = instance_uint[instance_id * INSTANCE_UINT_SIZE];
 
             // Choose random triangle from instance
-            let triangle_offset: u32 = triangle_instance_offset + u32(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
+            light_target = vec2<u32>(instance_id, u32(random_triangle.value * triangle_count));
+            let triangle_offset: u32 = triangle_instance_offset + light_target.y * TRIANGLE_SIZE;
             // Fetch triangle coordinates from scene graph texture
             let t0 = access_triangle(triangle_offset);
             let t1 = access_triangle(triangle_offset + 1u); 
@@ -648,7 +650,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         */
         let color_intensity: f32 = rgb_to_greyscale(color_for_light);
 
-        let unit_light_dir: vec3<f32> = normalize(light_dir);
+        let unit_light_dir: vec3<f32> = normalize(light_dir - geometry_offset * smooth_n);
         // Compute quick exit criterion to potentially skip expensive shadow test
         let show_color: bool = color_intensity == 0.0f;
         let show_shadow: bool = dot(smooth_n, unit_light_dir) < 0.0f;
@@ -658,8 +660,9 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
         } else if (!show_shadow) {
             // Apply geometry offset
             let offset_target: vec3<f32> = camera_ray.origin + geometry_offset * smooth_n;
-            let light_ray: Ray = Ray(offset_target, unit_light_dir);
-            if (!shadowTraverseInstanceBVH(light_ray, length(light_dir))) {
+            let shadow: vec3<f32> = camera_ray.origin + light_dir - offset_target;
+            let light_ray: Ray = Ray(offset_target, normalize(shadow));
+            if (!shadowTraverseInstanceBVH(light_ray, length(shadow), light_target)) {
                 local_color += color_for_light;
             }
         }
