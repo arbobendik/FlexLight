@@ -920,6 +920,12 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     return Surface(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
 }
 
+// Surfaces transmitting nothing face the ray along dir with both normals, as in flex-cuda-pt's walk and Cycles
+fn facingRay(surface: Surface, dir: vec3<f32>) -> Surface {
+    let facing: f32 = select(-1.0f, 1.0f, surface.material.transmission > 0.0f || dot(surface.geometry_n, dir) < 0.0f);
+    return Surface(surface.smooth_n * facing, surface.geometry_n * facing, surface.geometry_offset, surface.material, surface.skip, surface.random_state);
+}
+
 fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_state: u32, screen_space: vec2<f32>) -> SampledColor {
     // Use additive color mixing technique, so start with black
     var final_color: vec3<f32> = vec3<f32>(0.0f);
@@ -943,7 +949,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         let point_light_lighting: bool = hit.is_point_light == 1u;
 
         if (!point_light_lighting) {
-            let surface: Surface = surfaceAt(hit, ray.origin, random_state);
+            let front: Surface = surfaceAt(hit, ray.origin, random_state);
+            let surface: Surface = facingRay(front, ray.unit_direction);
             random_state = surface.random_state;
             smooth_n = surface.smooth_n;
             geometry_offset = surface.geometry_offset;
@@ -959,7 +966,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             if (!skip_hit) {
                 // Emission met, weighted against light sampling at the vertex the ray left
                 if (rgb_to_greyscale(material.emissive) > 0.0f) {
-                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0f) * emissionWeight(nee_vertex, hit, ray.origin);
+                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, front.smooth_n)), 0.0f) * emissionWeight(nee_vertex, hit, ray.origin);
                 }
 
                 let alpha: f32 = material.roughness * material.roughness;
@@ -1493,10 +1500,14 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let point_light_lighting: bool = hit.is_point_light == 1u;
         // Loop scoped variables are initialized explicitly, some compilers keep the previous iteration's value otherwise
         var surface: Surface = Surface();
+        // Smooth normal the surface emits along, before it faces the ray
+        var front_n: vec3<f32> = vec3<f32>(0.0f);
         var scatter: bool = false;
         var geometry_density: f32 = 0.0f;
         if (!point_light_lighting) {
             surface = surfaceAt(hit, ray.origin, stream(r.seed, b));
+            front_n = surface.smooth_n;
+            surface = facingRay(surface, ray.unit_direction);
             if (is_inside) {
                 throughput *= beerLambert(hit.distance, surface.material.absorption);
             }
@@ -1514,7 +1525,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let eta: vec2<f32> = vertexEta(material, n_dot_v);
         let nee: bool = scatter && samplesLights(material);
         // Emission met, of the surface or a point light, weighted against light sampling at the vertex the ray left
-        var emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, surface.smooth_n)), 0.0f);
+        var emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, front_n)), 0.0f);
         if (point_light_lighting) {
             emission = calculatePointLightContrib(hit.instance_index);
         }
