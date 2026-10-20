@@ -30,6 +30,7 @@ interface Gltf {
         buffer: number;
         byteOffset?: number;
         byteLength: number;
+        byteStride?: number;
     }[];
     buffers: { uri: string; byteLength: number }[];
 }
@@ -79,16 +80,22 @@ const getAccessorData = (gltf: Gltf, accessorIndex: number, buffers: ArrayBuffer
         throw new Error(`BufferView with index ${accessor.bufferView} not found.`);
     }
 
-    const buffer = buffers[bufferView.buffer];
+    let buffer = buffers[bufferView.buffer];
     if (!buffer) {
         throw new Error(`Buffer with index ${bufferView.buffer} not found.`);
     }
 
-    const byteOffset = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
+    let byteOffset = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
     const componentSize = componentTypeToSize(accessor.componentType);
     const componentCount = typeToComponentCount(accessor.type);
     const count = accessor.count;
     const length = count * componentCount;
+    // Interleaved attributes: copy each element out of its stride, so the views below read them packed
+    if (bufferView.byteStride && bufferView.byteStride !== componentSize * componentCount) {
+        const packed = new Uint8Array(length * componentSize);
+        for (let i = 0; i < count; i++) packed.set(new Uint8Array(buffer, byteOffset + i * bufferView.byteStride, componentSize * componentCount), i * componentSize * componentCount);
+        buffer = packed.buffer, byteOffset = 0;
+    }
 
     switch (accessor.componentType) {
         case 5126: // FLOAT
