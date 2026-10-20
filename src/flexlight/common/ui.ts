@@ -26,7 +26,6 @@ interface TransformStruct {
 const UINT_MAX = POW32M1;
 const TRIANGLE_SIZE = 6;
 
-const INSTANCE_UINT_SIZE = 9;
 const TRANSFORM_SIZE = 12;
 
 const BVH_INSTANCE_SIZE = 3;
@@ -52,7 +51,6 @@ export class UI {
     // Test for closest ray triangle intersection
     private traverseTriangleBVH(instance: IndexedInstance, ray: Ray, max_len: number): Hit {
         // Maximal distance a triangle can be away from the ray origin
-        let instance_uint_offset = instance.id * INSTANCE_UINT_SIZE;
 
         const transform: Transform = instance.instance.transform;
         const inverse_rotation: Matrix<3, 3> = moore_penrose(transpose(transform.matrix));
@@ -68,11 +66,11 @@ export class UI {
 
         const triangle_bvh: Uint32Array<ArrayBuffer> = Prototype.BVHManager.bufferView;
         const triangle_bounding_vertices: Float16Array = Prototype.boundingVertexManager.bufferView;
-        const instance_uint: Uint32Array<ArrayBuffer> = this.scene.instanceUintManager.bufferView;
 
-        const triangle_instance_offset: number = instance_uint[instance_uint_offset]!;
-        const instance_bvh_offset: number = instance_uint[instance_uint_offset + 1]!;
-        const instance_vertex_offset: number = instance_uint[instance_uint_offset + 2]!;
+        // Offsets of the instance's prototype, as updateBuffers writes them, so picking needs no written instance buffer
+        const triangle_instance_offset: number = instance.instance.prototype.triangles.offset / 4;
+        const instance_bvh_offset: number = instance.instance.prototype.bvh.offset / 4;
+        const instance_vertex_offset: number = instance.instance.prototype.boundingVertices.offset / 4;
         // Hit object
         // First element of vector is current closest intersection point
         var hit: Hit = { distance: max_len, instance_index: UINT_MAX, triangle_index: UINT_MAX };
@@ -193,7 +191,7 @@ export class UI {
                 const near_child = dist0 < dist1 ? leaf.children[0]! : leaf.children[1]!;
                 const far_child = dist0 < dist1 ? leaf.children[1]! : leaf.children[0]!;
                 // If node is a triangle, test for intersection, closest first
-                if (dist_near != Infinity) {
+                if (dist_near != Infinity && near_child instanceof IndexedInstance) {
                     let new_hit: Hit = this.traverseTriangleBVH(near_child, ray, hit.distance);
                     // new_hit.distance = dist_near;
                     if (new_hit.distance < hit.distance) {
@@ -202,7 +200,7 @@ export class UI {
                     // let new_hit: Hit = { distance: dist_near, instance_index: near_child.id, triangle_index: 0 };
                     // return new_hit;
                 }
-                if (dist_far != Infinity && dist_far < hit.distance) {
+                if (dist_far != Infinity && dist_far < hit.distance && far_child instanceof IndexedInstance) {
                     // let new_hit: Hit = { distance: dist_far, instance_index: far_child.id, triangle_index: 0 };
                     // return new_hit;
                     let new_hit: Hit = this.traverseTriangleBVH(far_child, ray, hit.distance);
