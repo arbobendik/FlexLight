@@ -82,6 +82,7 @@ SampledColor sampleLights(Material material, Ray camera_ray, uint init_random_st
 
         vec3 light_dir = vec3(0.0);
         vec3 color_for_light = vec3(0.0);
+        uvec2 target = uvec2(UINT_MAX);
 
         // Handle if light is an area light
         if (light.is_area_light == 1.0) {
@@ -95,7 +96,8 @@ SampledColor sampleLights(Material material, Ray camera_ray, uint init_random_st
             uint triangle_instance_offset = access_instance_uint(instance_id * INSTANCE_UINT_SIZE);
 
             // Choose random triangle from instance
-            uint triangle_offset = triangle_instance_offset + uint(random_triangle.value * triangle_count) * TRIANGLE_SIZE;
+            target = uvec2(instance_id, uint(random_triangle.value * triangle_count));
+            uint triangle_offset = triangle_instance_offset + target.y * TRIANGLE_SIZE;
             // Fetch triangle coordinates from scene graph texture
             vec4 t0 = access_triangle(triangle_offset);
             vec4 t1 = access_triangle(triangle_offset + 1u);
@@ -181,7 +183,7 @@ SampledColor sampleLights(Material material, Ray camera_ray, uint init_random_st
 
         float color_intensity = rgb_to_greyscale(color_for_light);
 
-        vec3 unit_light_dir = normalize(light_dir);
+        vec3 unit_light_dir = normalize(light_dir - geometry_offset * smooth_n);
         // Compute quick exit criterion to potentially skip expensive shadow test
         bool show_color = color_intensity == 0.0;
         bool show_shadow = dot(smooth_n, unit_light_dir) < 0.0;
@@ -191,8 +193,9 @@ SampledColor sampleLights(Material material, Ray camera_ray, uint init_random_st
         } else if (!show_shadow) {
             // Apply geometry offset
             vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
-            Ray light_ray = Ray(offset_target, unit_light_dir);
-            if (!shadowTraverseInstanceBVH(light_ray, length(light_dir), false, uvec2(UINT_MAX))) {
+            vec3 shadow = camera_ray.origin + light_dir - offset_target;
+            Ray light_ray = Ray(offset_target, normalize(shadow));
+            if (!shadowTraverseInstanceBVH(light_ray, length(shadow), false, target)) {
                 local_color += color_for_light;
             }
         }
