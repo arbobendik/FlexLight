@@ -656,7 +656,7 @@ fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_
     // Apply geometry offset
     let offset_target: vec3<f32> = origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    return shadowTraverseInstanceBVH(light_ray, length(light_dir), false, skip);
+    return shadowTraverseInstanceBVH(light_ray, length(light_dir), true, skip);
 }
 
 fn access_light_tree(index: u32) -> vec4<u32> {
