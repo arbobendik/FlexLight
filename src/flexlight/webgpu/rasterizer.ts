@@ -14,7 +14,7 @@ import { BufferToRGBA8 } from "./buffer-to-gpu/buffer-to-rgba8.js";
 import { EnvironmentMapWebGPU } from "./environment-map-webgpu.js";
 import { Texture } from "../common/scene/texture.js";
 // import { AlbedoTexture, EmissiveTexture, MetallicTexture, NormalTexture, RoughnessTexture, Texture } from "../common/scene/texture.js";
-import { Matrix, moore_penrose, POW32M1, Vector, vector_scale } from "../common/lib/math.js";
+import { Matrix, moore_penrose, Vector, vector_scale } from "../common/lib/math.js";
 import { AntialiasingModule } from "./antialiasing/antialiasing-module.js";
 import { WebGPUAntialiasingType } from "./antialiasing/antialiasing-module.js";
 

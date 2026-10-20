@@ -3,11 +3,10 @@
 import { Scene } from "./scene/scene.js";
 import { Camera } from "./scene/camera.js";
 import { Transform } from "./scene/transform.js";
-import { Ray, Vector, ray_bounding, POW32M1, normalize, Matrix, moore_penrose, vector_scale, matrix_vector_mul, vector_add, vector_length, ray_triangle, matrix_mul, transpose, moellerTrumbore } from "./lib/math.js";
+import { Ray, Vector, ray_bounding, POW32M1, normalize, Matrix, moore_penrose, vector_scale, matrix_vector_mul, vector_add, vector_length, transpose, moellerTrumbore } from "./lib/math.js";
 import { BVHNode } from "./scene/bvh.js";
 import { BVHLeaf } from "./scene/bvh.js";
 import { IndexedInstance, IndexedPointLight } from "./scene/scene-bvh.js";
-import { TypedArrayView } from "./buffer/typed-array-view.js";
 import { Instance } from "./scene/instance.js";
 import { Prototype } from "./scene/prototype.js";
 
@@ -17,19 +16,11 @@ interface Hit {
     triangle_index: number;
 }
 
-interface TransformStruct {
-    rotation: Matrix<3, 3>;
-    shift: Vector<3>;
-}
-
 
 const UINT_MAX = POW32M1;
 const TRIANGLE_SIZE = 6;
 
-const TRANSFORM_SIZE = 12;
 
-const BVH_INSTANCE_SIZE = 3;
-const INSTANCE_BOUNDING_VERTICES_SIZE = 12;
 
 const BVH_TRIANGLE_SIZE = 1;
 const BVH_TRIANGLE_SIZE_FACTOR = 4;

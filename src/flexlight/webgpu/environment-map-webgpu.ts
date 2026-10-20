@@ -2,7 +2,6 @@
 
 import { Vector } from "../common/lib/math";
 import { Scene } from "../common/scene/scene";
-import { Texture } from "../common/scene/texture";
 import { EnvironmentMap } from "../flexlight";
 
 // Maximal width of the luminance distribution used to importance sample the environment map
