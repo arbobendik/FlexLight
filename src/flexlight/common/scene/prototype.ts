@@ -6,7 +6,7 @@ import { Bounding, BVHArrays } from "./bvh";
 import { TriangleBVH } from "./triangle-bvh";
 import { Material } from "./material";
 import { Vector } from "../lib/math";
-import { ObjectPrototype, Parser } from "./parser";
+import { ObjectPrototype } from "./parser";
 import { ObjParser } from "./obj-parser";
 import { GltfParser } from "./gltf-parser";
 // import { Float16Array } from "../buffer/float-16-array";
