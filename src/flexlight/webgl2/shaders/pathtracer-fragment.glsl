@@ -775,6 +775,10 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0);
                     direct_light_emission = false;
                 }
+                // Surfaces transmitting nothing face the ray with both normals once they emitted, as in flex-cuda-pt's walk and Cycles
+                float facing = material.transmission > 0.0 || dot(geometry_n, ray.unit_direction) < 0.0 ? 1.0 : -1.0;
+                smooth_n *= facing;
+                geometry_n *= facing;
 
                 float n_dot_v = dot(smooth_n, - ray.unit_direction);
                 bool is_entering = n_dot_v < 0.0;
