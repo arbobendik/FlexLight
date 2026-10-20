@@ -8,6 +8,9 @@ import { PointLight } from "./point-light.js";
 import { POW32M1, Vector } from "../lib/math.js";
 import { Prototype, TRIANGLE_SIZE } from "./prototype.js";
 import { EnvironmentMap, EnvironmentMapManager } from "./environment-map.js";
+import { packLightTree } from "./light-tree.js";
+
+const sameNumbers = (a: Array<number>, b: Array<number>): boolean => a.length === b.length && a.every((value, i) => value === b[i]);
 
 export class Scene {
     // Triangle Offset, Vertex Offset, BVH Offset, Bounding Vertex Offset, Normal Offset, UV Offset, Transform Offset, Material Offset,
@@ -30,6 +33,10 @@ export class Scene {
     // Px Py Pz, intensity, variance
     private _lightManager: BufferManager<Float32Array<ArrayBuffer>>;
     get lightManager () { return this._lightManager; }
+    // Light BVH: header, nodes and trails as texels
+    readonly lightTreeManager: BufferManager<Uint32Array<ArrayBuffer>> = new BufferManager(Uint32Array);
+    // Instances, point lights, emission and transforms of emitting instances the light BVH was last built from
+    private lightSignature: Array<number> = [];
     // Light Count
     private _lightCount: number = 0;
     get lightCount () { return this._lightCount; }
@@ -150,6 +157,17 @@ export class Scene {
         }
         // Allocate point light buffer
         this._lightManager.overwriteAll(lightArray);
+        // Rebuild the light BVH when anything it is built from changed
+        const lightSignature: Array<number> = [...instanceUintArray, ...lightArray];
+        for (let instance of this.instances) {
+            const emissive = instance.material.emissive, transform = instance.transform.transformArray;
+            lightSignature.push(...emissive);
+            if (emissive.x + emissive.y + emissive.z > 0) for (let i = 0; i < transform.length; i++) lightSignature.push(transform[i]!);
+        }
+        if (!sameNumbers(lightSignature, this.lightSignature)) {
+            this.lightTreeManager.overwriteAll(packLightTree(this.instances, this.pointLights, globalTriangleIndexOffset));
+            this.lightSignature = lightSignature;
+        }
 
         // Return total triangle count to dispatch renderer with right amount of triangles.
         // console.log(this._instanceBVHManager.bufferView);
