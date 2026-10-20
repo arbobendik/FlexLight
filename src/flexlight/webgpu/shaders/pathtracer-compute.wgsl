@@ -751,6 +751,66 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32,
     return sample;
 }
 
+// Trail slot of a triangle hit or of a point light hit
+fn lightSlot(hit: Hit) -> u32 {
+    if (hit.is_point_light == 1u) {
+        return access_light_tree(0u).z + hit.instance_index;
+    }
+    return instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 8u] + hit.triangle_index - instance_uint[hit.instance_index * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE;
+}
+
+// Density in solid angle of light sampling from origin, lifted to start, picking point on the light of trail slot j, down
+// its trail (pbrt-v4's BVHLightSampler::PMF), as flex-cuda-pt's lightPdf
+fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, point: vec3<f32>) -> f32 {
+    let trail_texel: vec4<u32> = access_light_tree(access_light_tree(0u).y + j);
+    var trail: vec2<u32> = trail_texel.xy;
+    var probability: f32 = 1.0f;
+    var n: u32 = 0u;
+    while (access_light_tree(4u + 4u * n).x == 0u) {
+        let second: u32 = access_light_tree(3u + 4u * n).w;
+        probability *= childShare(lightBounds(n + 1u), lightBounds(second), origin, smooth_n, trail.x & 1u);
+        n = select(n + 1u, second, (trail.x & 1u) == 1u);
+        trail = vec2<u32>((trail.x >> 1u) | (trail.y << 31u), trail.y >> 1u);
+    }
+    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || !(dot(smooth_n, point - origin) > 0.0f)) {
+        return 0.0f;
+    }
+    let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
+    if (leaf.x == 2u) {
+        return probability * sphereDensity(lights[leaf.y].position, lights[leaf.y].variance, start);
+    }
+    let t: mat3x3<f32> = worldTriangle(leaf.y, instance_uint[leaf.y * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE + leaf.z);
+    return solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
+}
+
+// BSDF times the radiance of a light sample, weighted per lobe against sampling the BSDF where a direction it samples
+// competes, by the power heuristic, delta lights never competing
+fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, competing: bool, random_state: u32) -> vec3<f32> {
+    if (!competing || light.density == 0.0f) {
+        return BSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
+    }
+    let refracted: bool = dot(geometry_n, - in_dir) * dot(geometry_n, light.dir) <= 0.0f;
+    return neeBSDF(in_dir, light.dir, smooth_n, material, eta_i, eta_o, refracted, light.density, true, random_state) * light.radiance * light.density;
+}
+
+// Light sampling at the vertex a ray left, which the emission the ray meets weighs against: whether there was none, the
+// density of the lobe the ray was sampled with, the vertex, its smooth normal and the start of its shadow rays
+struct NEEVertex {
+    none: bool,
+    pdf: f32,
+    origin: vec3<f32>,
+    smooth_n: vec3<f32>,
+    start: vec3<f32>,
+}
+
+// Weight of emission met at point on the light of hit against light sampling at the vertex the ray left
+fn emissionWeight(vertex: NEEVertex, hit: Hit, point: vec3<f32>) -> f32 {
+    if (vertex.none) {
+        return 1.0f;
+    }
+    return powerHeuristic(vertex.pdf, lightPdf(vertex.origin, vertex.smooth_n, vertex.start, lightSlot(hit), point));
+}
+
 fn calculatePointLightContrib(point_light_index: u32) -> vec3<f32> {
     let point_light: Light = lights[point_light_index];
     return pointLightRadiance(point_light.color, point_light.intensity, point_light.variance);
@@ -871,7 +931,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
     var is_inside: bool = false;
     // var skip_hit: bool = false;
     var i: u32 = 0u;
-    var direct_light_emission: bool = true;
+    // Light sampling at the vertex the ray left, none at the camera
+    var nee_vertex: NEEVertex = NEEVertex(true, 0.0f, vec3<f32>(0.0f), vec3<f32>(0.0f), vec3<f32>(0.0f));
     // Density of the lobe the last escape was sampled with, zero if it takes the full weight
     var escape_pdf: f32 = 0.0f;
     // Iterate over each bounce and modify color accordingly
@@ -879,8 +940,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         var geometry_offset: f32 = 0.0f;
         var smooth_n: vec3<f32> = vec3<f32>(0.0f);
         var skip_hit: bool = false;
-        let point_light_lighting: bool = hit.is_point_light == 1u && direct_light_emission;
-        let current_direct_light_emission: bool = direct_light_emission;
+        let point_light_lighting: bool = hit.is_point_light == 1u;
 
         if (!point_light_lighting) {
             let surface: Surface = surfaceAt(hit, ray.origin, random_state);
@@ -897,11 +957,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             escape_pdf = 0.0f;
 
             if (!skip_hit) {
-                // Determine local color considering PBR attributes and lighting
-                // Hybrid method
-                if (current_direct_light_emission) {
-                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0f);
-                    direct_light_emission = false;
+                // Emission met, weighted against light sampling at the vertex the ray left
+                if (rgb_to_greyscale(material.emissive) > 0.0f) {
+                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0f) * emissionWeight(nee_vertex, hit, ray.origin);
                 }
 
                 let alpha: f32 = material.roughness * material.roughness;
@@ -913,14 +971,12 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Incident side is material, outgoing side is air (exiting)
                 let eta_o: f32 = select(material.ior, 1.0f, is_entering);
                 // if (screen_space.x > 0.0f) {
-                if (neeDecision(material, n_dot_v, eta_i, eta_o)) {
-                    // Do NEE
+                // Light sampling at every vertex not of delta lobes alone, weighted against sampling the BSDF
+                let nee: bool = samplesLights(material);
+                if (nee) {
                     let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_offset, random_state);
-                    final_color += BSDF(ray.unit_direction, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, hash(random_state)) * light.radiance * importancy_factor;
+                    final_color += lightBSDF(ray.unit_direction, light, smooth_n, geometry_n, material, eta_i, eta_o, i < uniforms_uint.max_bounces, hash(random_state)) * importancy_factor;
                     random_state = light.random_state;
-                } else {
-                    // Sample directly next round
-                    direct_light_emission = true;
                 }
                 /*
                 } else {
@@ -954,13 +1010,21 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                     bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
                 }
                 // Next event estimation toward the environment map, weighted against the BSDF sampled escape
-                if (!direct_light_emission && environmentMapped() && i < uniforms_uint.max_bounces) {
+                if (nee && environmentMapped() && i < uniforms_uint.max_bounces) {
                     let sky: SkySample = sampleSky(ray, surface, vec2<f32>(eta_i, eta_o), is_inside, random_state, bsdf_state);
                     random_state = sky.random_state;
                     final_color += importancy_factor * sky.color;
                     if (expected_out_dir_normal_aligned == out_dir_normal_aligned) {
                         escape_pdf = bsdf_sampled.pdf;
                     }
+                }
+                // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
+                let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
+                if (nee && !delta) {
+                    // The density of a direction resampled against the geometry normal is unknown, it takes no weight
+                    nee_vertex = NEEVertex(false, select(bsdf_sampled.pdf, 0.0f, expected_out_dir_normal_aligned != out_dir_normal_aligned), ray.origin, smooth_n, ray.origin + geometry_offset * smooth_n);
+                } else if (bsdf_sampled.lobe != LOBE_REFRACT || eta_i != eta_o) {
+                    nee_vertex.none = true;
                 }
                 // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
                 if (bsdf_sampled.refracted) {
@@ -975,6 +1039,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
             }
         }
 
+        // Point lights met emit before the path may end there, as surfaces
+        if (point_light_lighting && !skip_hit) {
+            final_color += importancy_factor * calculatePointLightContrib(hit.instance_index) * emissionWeight(nee_vertex, hit, ray.origin);
+        }
         var survival_probability: f32 = 1.0f;
         if (!skip_hit) {
             survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
@@ -990,14 +1058,11 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         // Continue with next bounce
         importancy_factor /= survival_probability;
 
-        if (point_light_lighting && !skip_hit) {
-            final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
-            direct_light_emission = false;
-        }
         // Increment hit iterator
         i = i + 1u;
         // Calculate next intersection
-        hit = traverseInstanceBVH(ray, direct_light_emission, POW32);
+        // Passing through a point light, the rest of the segment meets no other
+        hit = traverseInstanceBVH(ray, !point_light_lighting, POW32);
         // Stop loop if there is no intersection and ray goes in the void
         if (hit.instance_index == UINT_MAX) {
             add_ambient = true;
@@ -1446,7 +1511,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let material: Material = surface.material;
         let n_dot_v: f32 = dot(surface.smooth_n, - ray.unit_direction);
         let eta: vec2<f32> = vertexEta(material, n_dot_v);
-        let nee: bool = scatter && neeDecision(material, n_dot_v, eta.x, eta.y);
+        let nee: bool = scatter && samplesLights(material);
         let emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, surface.smooth_n)), 0.0f);
         let chain_found: bool = extractBits(chain.path, PATH_RC, 2u) == RC_SURFACE;
         // Reconnection at this vertex for paths ending here
