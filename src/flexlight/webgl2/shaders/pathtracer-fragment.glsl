@@ -625,7 +625,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
     vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
     Ray light_ray = Ray(offset_target, unit_light_dir);
 
-    if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir))) {
+    if (shadowTraverseInstanceBVH(light_ray, length(reservoir_dir), true)) {
         return SampledColor(vec3(0.0), random_state);
     } else {
         return SampledColor(reservoir_color * w_sum, random_state);
