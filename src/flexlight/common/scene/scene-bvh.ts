@@ -1,7 +1,7 @@
 "use strict";
 
 import { BVH, BVHArrays, BVHLeaf, BVHNode, Bounding } from "./bvh";
-import { BIAS_32, POW32M1, POW32M2, Vector, matrix_vector_mul, vector_add, vector_difference } from "../lib/math";
+import { BIAS_32, POW32M1, POW32M2, Vector, matrix_vector_mul, transpose, vector_add, vector_difference } from "../lib/math";
 import { Instance } from "./instance";
 import { Transform } from "./transform";
 import { PointLight } from "./point-light";
@@ -154,7 +154,7 @@ export class SceneBVH extends BVH<IndexedInstance | IndexedPointLight> {
             const transformedBounding: Bounding = { min: new Vector(Infinity, Infinity, Infinity), max: new Vector(-Infinity, -Infinity, -Infinity) };
             // Transform all corners
             for (let corner of corners) {
-                const transformedCorner = vector_add(matrix_vector_mul(transform.matrix, corner), transform.position);
+                const transformedCorner = vector_add(matrix_vector_mul(transpose(transform.matrix), corner), transform.position);
                 transformedBounding.min.x = Math.min(transformedBounding.min.x, transformedCorner.x) - BIAS_32;
                 transformedBounding.min.y = Math.min(transformedBounding.min.y, transformedCorner.y) - BIAS_32;
                 transformedBounding.min.z = Math.min(transformedBounding.min.z, transformedCorner.z) - BIAS_32;
