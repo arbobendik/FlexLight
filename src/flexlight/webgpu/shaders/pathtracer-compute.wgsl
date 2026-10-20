@@ -2192,3 +2192,38 @@ fn restir_duplicates(
     let score: f32 = select(0.0f, f32(count - 1u) / 288.0f, own != 0u);
     textureStore(duplication_out, vec2<i32>(global_invocation_id.xy), 0, vec4<u32>(bitcast<u32>(score), 0u, 0u, 0u));
 }
+
+// Mean emission r + g + b over each triangle of an instance with an emissive texture at stratified points, as
+// flex-cuda-pt's __raygen__lights, one instance per row of workgroups
+@group(0) @binding(21) var<storage, read_write> triangle_emission: array<f32>;
+const LIGHT_SAMPLES: u32 = 256u;
+
+@compute
+@workgroup_size(64)
+fn triangle_emissions(
+    @builtin(global_invocation_id) global_invocation_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+    let location: u32 = global_invocation_id.y * INSTANCE_UINT_SIZE;
+    let first: u32 = instance_uint[location + 8u];
+    let end: u32 = select(arrayLength(&triangle_emission), instance_uint[location + INSTANCE_UINT_SIZE + 8u], global_invocation_id.y + 1u < num_workgroups.y);
+    let emissive_texture_id: u32 = instance_uint[location + 5u];
+    if (emissive_texture_id == UINT_MAX || first + global_invocation_id.x >= end) {
+        return;
+    }
+    let triangle_offset: u32 = instance_uint[location] + global_invocation_id.x * TRIANGLE_SIZE;
+    let t4 = access_triangle(triangle_offset + 4u);
+    let t5 = access_triangle(triangle_offset + 5u);
+    var random_state: u32 = hash(first + global_invocation_id.x);
+    var mean: f32 = 0.0f;
+    for (var i: u32 = 0u; i < LIGHT_SAMPLES; i++) {
+        let random_side: Random = pcg(random_state);
+        let random_along: Random = pcg(random_side.state);
+        random_state = random_along.state;
+        let side: f32 = sqrt((f32(i) + random_side.value) / f32(LIGHT_SAMPLES));
+        let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - side, side * (1.0f - random_along.value), side * random_along.value);
+        let emission: vec3<f32> = textureSample(emissive_texture_id, fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw)).xyz * INV_255;
+        mean += (emission.x + emission.y + emission.z) / f32(LIGHT_SAMPLES);
+    }
+    triangle_emission[first + global_invocation_id.x] = mean;
+}

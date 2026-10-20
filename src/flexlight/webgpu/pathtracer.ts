@@ -19,6 +19,7 @@ import { WebGPUAntialiasingType } from "./antialiasing/antialiasing-module.js";
 import { FXAA } from "./antialiasing/fxaa.js";
 import { TAA } from "./antialiasing/taa.js";
 import { ReSTIR, ReSTIRResources } from "./restir.js";
+import { TriangleEmission } from "./triangle-emission.js";
 
 // Ignore all shader imports, the bundler will handle them as intended.
 // @ts-ignore
@@ -50,6 +51,7 @@ interface PathTracerPipelines {
   selectiveAveragePipeline: GPUComputePipeline | undefined;
   // reprojectPipeline: GPUComputePipeline | undefined;
   canvasPipeline: GPUComputePipeline;
+  triangleEmission: TriangleEmission;
 }
 
 
@@ -127,6 +129,8 @@ export class PathTracerWGPU extends RendererWGPU {
   private canvasSizeDependentResources: CanvasSizeDependentResources | undefined;
   private antialiasingModule: AntialiasingModule | undefined;
   private restir: ReSTIR | undefined;
+  // Mean emission of emissive textures being computed, the frames held back until it is read back
+  private triangleEmissionPass: Promise<void> | undefined;
   // View matrix and camera position of the previous frame for reprojection
   private previousView: Array<number> = new Array(16).fill(0);
   private engineState: EngineState = {
@@ -400,7 +404,8 @@ export class PathTracerWGPU extends RendererWGPU {
     // Pipeline for rendering to canvas
     const canvasPipeline = this.createComputePipeline(device, PathtracerCanvasShader, "canvas pipeline", bindGroupLayouts.canvasGroupLayout, bindGroupLayouts.postDynamicGroupLayout);
     
-    return { depthPipeline, rasterPipeline, computePipeline, shiftPipeline, selectiveAveragePipeline, /*reprojectPipeline,*/ canvasPipeline };
+    const triangleEmission = new TriangleEmission(device, PATHTRACER_COMPUTE_SHADER);
+    return { depthPipeline, rasterPipeline, computePipeline, shiftPipeline, selectiveAveragePipeline, /*reprojectPipeline,*/ canvasPipeline, triangleEmission };
   }
   
   private prepareEngine(device: GPUDevice, context: GPUCanvasContext) {
@@ -505,12 +510,20 @@ export class PathTracerWGPU extends RendererWGPU {
           this.antialiasingModule = undefined;
       }
     }
+    // Update scene buffers on CPU and sync to GPU
+    const totalTriangleCount: number = this.scene.updateBuffers();
+    // The light BVH waits for the mean emission of emissive textures, frames hold back until it is computed anew
+    if (this.scene.triangleEmissionStale) {
+      this.triangleEmissionPass ??= pipelines.triangleEmission.compute(this.scene, gpuManagers.textureDataGPUManager.gpuResource, gpuManagers.textureInstanceGPUManager.gpuResource,
+        gpuManagers.triangleGPUManager.gpuResource, gpuManagers.instanceUintGPUManager.gpuResource, totalTriangleCount).then(() => { this.triangleEmissionPass = undefined; });
+      return;
+    }
     // Render new Image, work through queue
     this.renderFrame(
       device, context,
       bindGroupLayouts, pipelines,
       renderPassDescriptor, uniformFloatBuffer, uniformUintBuffer,
-      gpuManagers
+      gpuManagers, totalTriangleCount
     );
     // Update frame counter
     this.updatePerformanceMetrics();
@@ -520,7 +533,7 @@ export class PathTracerWGPU extends RendererWGPU {
     device: GPUDevice, context: GPUCanvasContext,
     bindGroupLayouts: PathTracerBindGroupLayouts, pipelines: PathTracerPipelines,
     renderPassDescriptor: GPURenderPassDescriptor, uniformFloatBuffer: GPUBuffer, uniformUintBuffer: GPUBuffer,
-    gpuBufferManagers: PathTracerGPUBufferManagers
+    gpuBufferManagers: PathTracerGPUBufferManagers, totalTriangleCount: number
   ) {
     // Immediately return if no canvas size dependent resources aren't available
     if (!this.canvasSizeDependentResources) return;
@@ -629,9 +642,6 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: canvasTarget.createView() }
       ]
     });
-
-    // Update scene buffers on CPU and sync to GPU
-    const totalTriangleCount: number = this.scene.updateBuffers();
 
     // Create buffer groups with static buffers
     const rasterGeometryGroup = device.createBindGroup({
