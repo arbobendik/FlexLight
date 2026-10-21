@@ -922,7 +922,7 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
 
 // Surfaces transmitting nothing face the ray along dir with both normals, as in flex-cuda-pt's walk and Cycles
 fn facingRay(surface: Surface, dir: vec3<f32>) -> Surface {
-    let facing: f32 = select(-1.0f, 1.0f, surface.material.transmission > 0.0f || dot(surface.geometry_n, dir) < 0.0f);
+    let facing: f32 = facingSign(surface.material.transmission, surface.geometry_n, dir);
     return Surface(surface.smooth_n * facing, surface.geometry_n * facing, surface.geometry_offset, surface.material, surface.skip, surface.random_state);
 }
 
@@ -1045,7 +1045,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         }
         var survival_probability: f32 = 1.0f;
         if (!skip_hit) {
-            survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
+            survival_probability = survivalProbability(importancy_factor, 1.0f);
         }
 
         let random_value: Random = pcg(random_state);
@@ -1285,15 +1285,6 @@ fn compute(
 // ReSTIR PT Enhanced (Lin, Kettunen and Wyman 2026) on top of the path tracer above.
 // Paths live in primary sample space, vertex b draws its random numbers from stream(seed, b).
 
-// Single-vertex roughness threshold (Sec. 4.2)
-const RESTIR_ROUGHNESS: f32 = 0.2;
-// Dual ray footprint constant c / 100 * 4 PI of Eq. 5 with c = 0.02
-const RESTIR_FOOTPRINT: f32 = 0.0025132741228718345;
-// Temporal confidence cap and its duplication-driven reduction (Sec. 5)
-const RESTIR_CAP: f32 = 20.0;
-const RESTIR_CAP_MIN: f32 = 1.0;
-const RESTIR_DUPLICATION_ALPHA: f32 = 0.1;
-
 const LOBE_DIFFUSE: u32 = 0u;
 const LOBE_REFRACT: u32 = 1u;
 
@@ -1505,14 +1496,14 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 throughput *= beerLambert(hit.distance, surface.material.absorption);
             }
             scatter = !surface.skip;
-            geometry_density = abs(dot(surface.geometry_n, ray.unit_direction)) / (hit.distance * hit.distance);
+            geometry_density = geometryDensity(surface.geometry_n, ray.unit_direction, hit.distance);
             if (b == 0u) {
                 // Primary ray footprint (Eq. 5)
-                threshold = RESTIR_FOOTPRINT / geometry_density;
+                threshold = footprintThreshold(geometry_density);
             }
         }
         // Ray footprint criterion for reconnecting from the previous vertex to this one (Eq. 5)
-        let footprint: bool = scatter && prev.rough && prev.pdf * geometry_density * threshold <= 1.0f;
+        let footprint: bool = withinFootprint(scatter, prev.rough, prev.pdf, geometry_density, threshold);
         let material: Material = surface.material;
         let n_dot_v: f32 = dot(surface.smooth_n, - ray.unit_direction);
         let eta: vec2<f32> = vertexEta(material, n_dot_v);
@@ -1681,8 +1672,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 nee_vertex.none = true;
             }
             // Inverse ray footprint criterion for the density of the direction leaving this vertex (Eq. 5)
-            let inverse_footprint: bool = lobe.pdf > 0.0f && (lobe_index == LOBE_DIFFUSE || lobe.pdf * prev.cos / (hit.distance * hit.distance) * threshold <= 1.0f);
-            let rough: bool = lobe.pdf > 0.0f && (lobe_index == LOBE_DIFFUSE || material.roughness >= RESTIR_ROUGHNESS);
+            let inverse_footprint: bool = withinInverseFootprint(lobe.pdf, lobe_index == LOBE_DIFFUSE, prev.cos, hit.distance, threshold);
+            let rough: bool = roughLobe(lobe.pdf, lobe_index == LOBE_DIFFUSE, material.roughness);
             if (arrived) {
                 if (!inverse_footprint) {
                     return fail;
@@ -1735,8 +1726,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             var survival_probability: f32 = 1.0f;
             if (point_light_lighting || scatter) {
-                let importancy_factor: vec3<f32> = throughput / density;
-                survival_probability = clamp(max(importancy_factor.x, max(importancy_factor.y, importancy_factor.z)), 0.0f, 1.0f);
+                survival_probability = survivalProbability(throughput, density);
             }
             if (survival_probability < pcg(stream(r.seed, b + STREAM_RR)).value || b >= uniforms_uint.max_bounces) {
                 break;
@@ -1869,8 +1859,7 @@ fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32
         let temporal: Reservoir = loadReservoir(reservoir_prev, q);
         // Optionally lower the confidence cap where the previous frame duplicated samples (Sec. 5), this biases the estimate
         let duplicated: f32 = select(0.0f, bitcast<f32>(textureLoad(duplication, q, 0, 0).x), uniforms_uint.restir_decorrelation == 1u);
-        let cap: f32 = mix(RESTIR_CAP, RESTIR_CAP_MIN, pow(duplicated, RESTIR_DUPLICATION_ALPHA));
-        let c_t: f32 = min(temporal.c, cap);
+        let c_t: f32 = min(temporal.c, confidenceCap(duplicated));
         let to_current: vec4<f32> = bitcast<vec4<f32>>(textureLoad(temporal_shifts, p, 0, 0));
         var to_previous: vec4<f32> = vec4<f32>(r.f, 1.0f);
         if (!sameDomain(previousDomain(q), dom)) {
@@ -1880,8 +1869,9 @@ fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32
         let p_t: f32 = rgb_to_greyscale(temporal.f);
         var sel: Selection;
         sel.random_state = stream(stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y), STREAM_SELECT + 1u);
-        offerShifted(&sel, r, Shift(r.f, 1.0f), r.c * p_c / (r.c * p_c + c_t * rgb_to_greyscale(to_previous.xyz)));
-        offerShifted(&sel, temporal, Shift(to_current.xyz, to_current.w), c_t * p_t / (c_t * p_t + r.c * rgb_to_greyscale(to_current.xyz)));
+        let weights: vec2<f32> = temporalWeights(r.c, p_c, c_t, p_t, rgb_to_greyscale(to_previous.xyz), rgb_to_greyscale(to_current.xyz));
+        offerShifted(&sel, r, Shift(r.f, 1.0f), weights.x);
+        offerShifted(&sel, temporal, Shift(to_current.xyz, to_current.w), weights.y);
         r = finalize(sel, r.c + c_t);
     }
     storeReservoir(reservoir_temp_out, p, r, dom.hit);
@@ -2135,12 +2125,11 @@ fn restir_spatial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
             let neighbor: Reservoir = loadReservoir(reservoir_temp, q);
             let to_here: vec4<f32> = bitcast<vec4<f32>>(textureLoad(shift_data, q, t, 0));
             let to_there: vec4<f32> = bitcast<vec4<f32>>(textureLoad(shift_data, p, t, 0));
-            let share: f32 = (neighbor.c + c_pair) / c_sum;
-            let p_n: f32 = rgb_to_greyscale(neighbor.f);
+            let share: f32 = pairShare(neighbor.c, c_pair, c_sum);
             if (p_c > 0.0f) {
-                canonical_mis += share * c_pair * p_c / (c_pair * p_c + neighbor.c * rgb_to_greyscale(to_there.xyz));
+                canonical_mis += canonicalWeight(share, c_pair, p_c, neighbor.c, rgb_to_greyscale(to_there.xyz));
             }
-            offerShifted(&sel, neighbor, Shift(to_here.xyz, to_here.w), share * neighbor.c * p_n / (neighbor.c * p_n + c_pair * rgb_to_greyscale(to_here.xyz)));
+            offerShifted(&sel, neighbor, Shift(to_here.xyz, to_here.w), neighborWeight(share, neighbor.c, rgb_to_greyscale(neighbor.f), c_pair, rgb_to_greyscale(to_here.xyz)));
         }
     }
     offerShifted(&sel, r, Shift(r.f, 1.0f), canonical_mis);
