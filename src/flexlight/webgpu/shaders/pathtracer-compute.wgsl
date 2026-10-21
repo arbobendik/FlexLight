@@ -847,30 +847,13 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     // Compute edge vectors
     let edge1: vec3<f32> = t[1] - t[0];
     let edge2: vec3<f32> = t[2] - t[0];
-    let edge3: vec3<f32> = t[2] - t[1];
-
-    let min_edge_length: f32 = min(length(edge1), min(length(edge2), length(edge3)));
 
     let geometry_n: vec3<f32> = normalize(cross(edge1, edge2));
-    let diffs: vec3<f32> = vec3<f32>(
-        distance(offset_ray_target, t[0]),
-        distance(offset_ray_target, t[1]),
-        distance(offset_ray_target, t[2])
-    );
     // Calculate barycentric coordinates
     let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - hit.uv.x - hit.uv.y, hit.uv.x, hit.uv.y);
     // Interpolate smooth normal
     var smooth_n: vec3<f32> = normalize(normals * geometry_uvw);
-    // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-    let angles: vec3<f32> = acos(abs(vec3<f32>(
-        dot(geometry_n, normalize(normals[0])),
-        dot(geometry_n, normalize(normals[1])),
-        dot(geometry_n, normalize(normals[2]))
-    )));
-    // Limit angles to 45 degrees
-    let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(PI * 0.25f));
-    // Keep geometry offset within reasonable range
-    let geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.125f);
+    let geometry_offset: f32 = geometryOffset(t[0], t[1], t[2], normals[0], normals[1], normals[2], geometry_n, geometry_uvw, offset_ray_target);
     // Interpolate final barycentric texture coordinates between UV's of the respective vertices
     let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
     // Sample material
