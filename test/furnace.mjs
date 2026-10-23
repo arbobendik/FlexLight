@@ -5,11 +5,14 @@
 // pixel turns black. A square of white metal of roughness 0.5 (argument metal), facing the camera at a cosine of
 // 0.5 across its narrow view, scatters each ray once: each pixel holds GGX's single-scatter albedo under exact Smith
 // masking at that cosine, 0.8551, integrated numerically, which the image's mean meets within four standard errors of
-// its pixels', and pixel 0 draws other random numbers each frame. The rasterizer shading a white square in a sphere
-// light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
+// its pixels', and pixel 0 draws other random numbers each frame. A square of a white opaque dielectric of IOR 1.5 and
+// roughness 0.2 (argument dielectric) in its place holds the diffuse of what its Fresnel does not reflect beside that
+// reflection's single-scatter albedo, 0.9990, no more light than it receives, which the mean meets likewise. Its
+// diffuse samples each carry all of the light, so its pixel 0 need not vary. The rasterizer shading a white
+// square in a sphere light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
 import { create, globals } from "webgpu";
 
-const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, [MATERIAL, MODE] = process.argv.slice(2);
+const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -65,13 +68,15 @@ for (let i = 0; i < SIDES; i++) {
   push([[0, 1, 0], corner(i + 1, 1), corner(i, 1)], [[0, 1, 0], [0, 1, 0], [0, 1, 0]]);
   push([[0, -1, 0], corner(i, -1), corner(i + 1, -1)], [[0, -1, 0], [0, -1, 0], [0, -1, 0]]);
 }
-// The square of the metal and raster cases, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the origin
+// The square of the metal, dielectric and raster cases, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the
+// origin
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
-const square = MATERIAL === "metal" || MATERIAL === "raster";
+const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster";
 if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
   t.map(() => [0, tilt, 0.5])));
 const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 1, 0)
   : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
+  : MATERIAL === "dielectric" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
@@ -109,7 +114,8 @@ engine.renderer.renderFrame = async (...args) => {
   console.log(`mean ${mean.toFixed(4)}, standard error ${error.toFixed(4)}, brightest ${brightest.toFixed(4)}, ` +
     `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
   if (MATERIAL === "raster") process.exit(first.size > 1 ? 0 : 1);
-  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1 : mean > 0.98)
+  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
+    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error : mean > 0.98)
     && brightest < 1.05 && black === 0 ? 0 : 1);
 };
 engine.renderer.render();
