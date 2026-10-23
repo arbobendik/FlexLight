@@ -817,6 +817,8 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 // Rays sampled to the wrong side of the face lose no energy there: surfaces transmitting light sample again
                 // against the geometry normal, opaque ones mirror the ray into their side by it
                 if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
+                    // Light sampling covers no direction it reaches, so the emission it meets counts in full
+                    direct_light_emission = true;
                     if (material.transmission > 0.0) {
                         // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
                         SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state);
