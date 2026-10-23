@@ -569,7 +569,9 @@ export class RasterizerWGPU extends RendererWGPU {
       // Point light count
       this.scene.lightCount,
       // Environment map mip level count
-      gpuBufferManagers.environmentMapGPUManager.mipLevelCount
+      gpuBufferManagers.environmentMapGPUManager.mipLevelCount,
+      // Frame
+      this.frameCounter
     ]));
 
     // Create buffer groups with dynamic buffers

@@ -57,6 +57,7 @@ struct UniformUint {
     environment_map_size: vec2<u32>,
     point_light_count: u32,
     env_map_mip_level_count: u32,
+    frame: u32,
 };
 
 @group(0) @binding(0) var compute_out: texture_storage_2d_array<rgba32float, write>;
@@ -893,7 +894,7 @@ fn compute(
     var final_color = vec3<f32>(0.0f);
 
 
-    var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
+    var random_state: u32 = stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y);
     // Generate sample
 
     let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, screen_space, random_state);
