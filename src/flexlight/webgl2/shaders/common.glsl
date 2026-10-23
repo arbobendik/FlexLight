@@ -89,6 +89,7 @@ uniform vec3 ambient;
 
 uniform uvec2 render_size;
 uniform uint temporal_target;
+uniform uint frame;
 uniform uint samples;
 uniform uint max_bounces;
 uniform uvec2 environment_map_size;
@@ -217,14 +218,21 @@ float rgb_to_greyscale(vec3 rgb) {
     return dot(rgb, vec3(0.299, 0.587, 0.114));
 }
 
+// PCG's output of a state, as FlexKernels' hash
+uint hash(uint state) {
+    uint new_state = state * 747796405u + 2891336453u;
+    uint word = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// The stream of a seed by an index, as FlexKernels' stream
+uint stream(uint seed, uint index) { return hash(seed ^ hash(index)); }
+
 Random pcg(uint state) {
     // PCG random number generator
     // Reference: http://www.pcg-random.org/
-    uint new_state = state * 747796405u + 2891336453u;
-    uint word = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
-    uint result = (word >> 22u) ^ word;
     // Return random float between 0 and 1
-    return Random(new_state, float(result) / float(UINT_MAX));
+    return Random(state * 747796405u + 2891336453u, float(hash(state)) / float(UINT_MAX));
 }
 
 Random normal_distribution(uint state) {
