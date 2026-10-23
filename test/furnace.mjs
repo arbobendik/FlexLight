@@ -5,7 +5,8 @@
 // pixel turns black. A square of white metal of roughness 0.5 (argument metal), facing the camera at a cosine of
 // 0.5 across its narrow view, scatters each ray once: each pixel holds GGX's single-scatter albedo under exact Smith
 // masking at that cosine, 0.8551, integrated numerically, which the image's mean meets within four standard errors of
-// its pixels', and pixel 0 draws other random numbers each frame.
+// its pixels', and pixel 0 draws other random numbers each frame. The rasterizer shading a white square in a sphere
+// light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, [MATERIAL, MODE] = process.argv.slice(2);
@@ -20,7 +21,9 @@ const hookDevice = (d) => {
   const createTexture = d.createTexture.bind(d);
   d.createTexture = (desc) => {
     const size = ArrayBuffer.isView(desc.size) ? Array.from(desc.size) : desc.size;
-    if (desc.format !== "rgba32float" || !Array.isArray(size) || size[2] !== 3) return createTexture({ ...desc, size });
+    // The rasterizer's own estimate, the last of its 2D float textures
+    if (desc.format !== "rgba32float" || !Array.isArray(size)
+      || (MATERIAL === "raster" ? size.length !== 2 : size[2] !== 3)) return createTexture({ ...desc, size });
     return estimate = createTexture({ ...desc, size, usage: desc.usage | GPUTextureUsage.COPY_SRC });
   };
   const queue = d.queue, writeBuffer = queue.writeBuffer.bind(queue), writeTexture = queue.writeTexture.bind(queue);
@@ -62,12 +65,14 @@ for (let i = 0; i < SIDES; i++) {
   push([[0, 1, 0], corner(i + 1, 1), corner(i, 1)], [[0, 1, 0], [0, 1, 0], [0, 1, 0]]);
   push([[0, -1, 0], corner(i, -1), corner(i + 1, -1)], [[0, -1, 0], [0, -1, 0], [0, -1, 0]]);
 }
-// The metal's square, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the origin
+// The square of the metal and raster cases, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the origin
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
-if (MATERIAL === "metal") triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
+const square = MATERIAL === "metal" || MATERIAL === "raster";
+if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
   t.map(() => [0, tilt, 0.5])));
 const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 1, 0)
   : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
+  : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: 32 });
@@ -75,7 +80,9 @@ engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material,
 engine.scene.ambientLight = new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
-if (MATERIAL === "metal") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+if (MATERIAL === "raster") engine.renderer = "rasterizer",
+  engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
+if (square) engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
   engine.camera.fov = 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
@@ -101,6 +108,7 @@ engine.renderer.renderFrame = async (...args) => {
   const error = Math.sqrt(pixels.reduce((a, v) => a + (v - mean) ** 2, 0) / pixels.length / pixels.length);
   console.log(`mean ${mean.toFixed(4)}, standard error ${error.toFixed(4)}, brightest ${brightest.toFixed(4)}, ` +
     `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
+  if (MATERIAL === "raster") process.exit(first.size > 1 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1 : mean > 0.98)
     && brightest < 1.05 && black === 0 ? 0 : 1);
 };
