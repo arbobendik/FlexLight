@@ -19,7 +19,7 @@
   "scripts": {
     "start": "docker compose up --build",
     "dev": "node index.js",
-    "test": "node test/furnace.mjs glass pt && node test/furnace.mjs mirror pt && node test/furnace.mjs mirror restir",
+    "test": "node test/furnace.mjs glass pt && node test/furnace.mjs mirror pt && node test/furnace.mjs mirror restir && node test/furnace.mjs metal pt",
     "prepare": "husky"
   },
   "dependencies": {
