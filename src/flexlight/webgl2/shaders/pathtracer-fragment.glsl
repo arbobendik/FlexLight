@@ -245,18 +245,15 @@ float trowbridgeReitz(float alpha, float n_dot_h) {
     return numerator / max(PI * denom * denom, BIAS);
 }
 
+// Exact Smith masking of GGX, the visible normal density sampleGGXVNDF draws from, as FlexKernels' smithG1: one for a
+// smooth surface, which masks nothing at any angle
 float G1(float alpha, float n_dot_x) {
-    float k = alpha * 0.5;
-    return n_dot_x / max(n_dot_x * (1.0 - k) + k, BIAS);
-}
-
-float schlickBeckmann(float k, float n_dot_x) {
-    return n_dot_x / max(n_dot_x * (1.0 - k) + k, BIAS);
+    float alpha_sq = alpha * alpha;
+    return alpha > 0.0 ? 2.0 * n_dot_x / (n_dot_x + sqrt(alpha_sq + (1.0 - alpha_sq) * n_dot_x * n_dot_x)) : 1.0;
 }
 
 float smith(float alpha, float n_dot_v, float n_dot_l) {
-    float k = alpha * 0.5;
-    return schlickBeckmann(k, n_dot_v) * schlickBeckmann(k, n_dot_l);
+    return G1(alpha, n_dot_v) * G1(alpha, n_dot_l);
 }
 
 float fresnel(float cos_theta, float eta_i, float eta_o) {
