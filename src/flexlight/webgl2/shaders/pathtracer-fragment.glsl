@@ -909,7 +909,7 @@ void main() {
         // Generate hit struct for pathtracer
         Hit init_hit = Hit(uvw.yz, instance_index, triangle_index, 0u, distance(absolute_position, camera_position));
         // Init random state
-        uint random_state = (temporal_target + 1u) * (row * render_size.x + uint(screen_pos.x));
+        uint random_state = stream(hash(frame), uint(screen_pos.x) + render_size.x * row);
         // Generate multiple samples
         for (uint i = 0u; i < samples; i++) {
             SampledColor sampled_color = lightTrace(init_hit, absolute_position, camera_position, random_state);
