@@ -326,7 +326,7 @@ vec3 worldToTangent(vec3 v, vec3 n) {
 
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 // Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
-vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float eta_i, float eta_o) {
+vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float eta_i, float eta_o, uint random_state) {
     vec3 v = - in_dir;
     // Precalculate dot products
     float n_dot_v = dot(n, v);
@@ -351,10 +351,14 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         // Torrance-Sparrow
         vec3 F = mix(vec3(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
 
-        float F_greyscale = rgb_to_greyscale(F);
         float D = trowbridgeReitz(alpha, n_dot_h);
         float G = smith(alpha, pd_n_dot_v, pd_n_dot_l);
-        float diffuse_factor = (1.0 - F_greyscale) * (1.0 - material.metallic) * (1.0 - material.transmission);
+        // Diffuse of what the dielectric does not reflect, at a visible normal as sampleBSDF draws for its lobe choice
+        Random random_h_1 = pcg(random_state);
+        Random random_h_2 = pcg(random_h_1.state);
+        vec3 n_i = n * sign(n_dot_v);
+        vec3 h_d = tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, random_h_1.value, random_h_2.value).xzy, n_i);
+        float diffuse_factor = (1.0 - fresnel(abs(dot(v, h_d)), eta_i, eta_o)) * (1.0 - material.metallic) * (1.0 - material.transmission);
         vec3 torrance_sparrow = D * F * G / max(4.0 * pd_n_dot_v * pd_n_dot_l, BIAS);
         vec3 radiance = diffuse_factor * lambert + torrance_sparrow;
         return radiance * n_dot_l;
@@ -370,7 +374,6 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         float DT = trowbridgeReitz(alpha, abs(n_dot_ht));
         float GT = smith(alpha, abs(n_dot_v), abs(n_dot_l));
 
-        vec3 FT = mix(vec3(fresnel(abs(v_dot_ht), eta_i, eta_o)), material.albedo, material.metallic);
         // Geometry term numerator and denominator
         float numerator_geom = abs(v_dot_ht) * abs(l_dot_ht);
         float denominator_geom = abs(n_dot_v) * abs(n_dot_l);
@@ -379,8 +382,9 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         float denom_f_sq = denom_f * denom_f;
         // Check if refraction is possible
         if (abs(denom_f) > BIAS && denominator_geom > BIAS) {
-            float walter = (numerator_geom / denominator_geom) * (1.0 - rgb_to_greyscale(FT)) * DT * GT * (eta_o * eta_o / denom_f_sq);
-            return walter * material.albedo * material.transmission * n_dot_l;
+            // Refraction of what the dielectric does not reflect, of the share not metallic
+            float walter = (numerator_geom / denominator_geom) * (1.0 - fresnel(abs(v_dot_ht), eta_i, eta_o)) * DT * GT * (eta_o * eta_o / denom_f_sq);
+            return walter * material.albedo * material.transmission * (1.0 - material.metallic) * n_dot_l;
         }
         // If refraction is not possible, return black this case should never happen
         return vec3(0.0, 0.0, 0.0);
@@ -418,17 +422,19 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     // Try refraction through the properly oriented half vector
     float eta = eta_i / eta_o;
     vec3 refracted = normalize(refract(in_dir, ggx_n, eta));
-    // Calculate fresnel term
-    vec3 F = mix(vec3(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
+    // Calculate fresnel terms: the dielectric's, and mixed with metallic reflection
+    float F_dielectric = fresnel(abs(v_dot_h), eta_i, eta_o);
+    vec3 F = mix(vec3(F_dielectric), material.albedo, material.metallic);
     float F_greyscale = rgb_to_greyscale(F);
     // BSDF weights (these are artistic choices to balance the lobes)
     float reflect_weight = 1.0;
-    float diffuse_weight = (1.0 - material.transmission) * (1.0 - material.metallic);
-    float refract_weight = material.transmission;
+    // The diffuse and refraction of what the dielectric does not reflect, refraction of the share not metallic
+    float diffuse_weight = (1.0 - material.transmission) * (1.0 - material.metallic) * (1.0 - F_dielectric);
+    float refract_weight = material.transmission * (1.0 - material.metallic) * (1.0 - F_dielectric);
     // Add fresnel term for improved sampling performance
     float reflect_component = max(reflect_weight * F_greyscale, 0.0);
-    float diffuse_component = max(diffuse_weight * (1.0 - F_greyscale), 0.0);
-    float refract_component = max(refract_weight * (1.0 - F_greyscale) * sign(length(refracted)), 0.0);
+    float diffuse_component = max(diffuse_weight, 0.0);
+    float refract_component = max(refract_weight * sign(length(refracted)), 0.0);
     // Calculate sampling probabilities
     float total_component = reflect_component + diffuse_component + refract_component;
     float total_component_inv = 1.0 / max(total_component, BIAS);
@@ -459,8 +465,8 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
         float m_n_i_dot_l = - dot(n_i, l);
         // Microfacet term
         float G1_l = G1(alpha, max(m_n_i_dot_l, 0.0));
-        // throughput = refract_weight * G1_l * (1 - F) * albedo, see WebGPU implementation for derivation
-        bsdf_sample.throughput = refract_weight * G1_l * (1.0 - F_greyscale) * material.albedo / p_refract;
+        // throughput = refract_weight * G1_l * (1 - F) * albedo, the weight holding 1 - F, see WebGPU implementation for derivation
+        bsdf_sample.throughput = refract_weight * G1_l * material.albedo / p_refract;
         bsdf_sample.random_state = random_state;
         bsdf_sample.refracted = true;
         return bsdf_sample;
@@ -595,8 +601,8 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         vec3 l = dir / len;
         // Apply inverse square law
         vec3 brightness = light.color * intensity / max(len * len, BIAS);
-        // Calculate BSDF for light
-        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o);
+        // Calculate BSDF for light, its visible normal from a stream of its own, apart from the selection's numbers
+        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u));
         vec3 color_for_light = color_with_smooth * brightness;
         float w_i = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small
