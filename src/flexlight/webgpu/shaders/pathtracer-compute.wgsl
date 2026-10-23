@@ -1017,9 +1017,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 }
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
                 let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
-                if (nee && !delta) {
-                    // A ray sampled to the wrong side of the face, sampled again or mirrored, has no density and takes no weight
-                    nee_vertex = NEEVertex(false, select(bsdf_sampled.pdf, 0.0f, expected_out_dir_normal_aligned != out_dir_normal_aligned), ray.origin, smooth_n, ray.origin + geometry_offset * smooth_n);
+                // Rays sampled to the wrong side of the face, sampled again or mirrored, have no density: no light sample competes
+                if (nee && !delta && expected_out_dir_normal_aligned == out_dir_normal_aligned) {
+                    nee_vertex = NEEVertex(false, bsdf_sampled.pdf, ray.origin, smooth_n, ray.origin + geometry_offset * smooth_n);
                 } else if (bsdf_sampled.lobe != LOBE_REFRACT || eta_i != eta_o) {
                     nee_vertex.none = true;
                 }
@@ -1668,7 +1668,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
             let delta: bool = lobe_index != LOBE_DIFFUSE && (material.roughness == 0.0f || (lobe_index == LOBE_REFRACT && eta.x == eta.y));
-            if (nee && !delta) {
+            if (nee && !delta && !wrong_side) {
                 nee_vertex = NEEVertex(false, lobe.pdf, ray.origin, surface.smooth_n, ray.origin + surface.geometry_offset * surface.smooth_n);
             } else if (lobe_index != LOBE_REFRACT || eta.x != eta.y) {
                 nee_vertex.none = true;
