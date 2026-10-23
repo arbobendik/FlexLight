@@ -18,6 +18,9 @@ interface Gltf {
             roughnessFactor?: number;
         };
         emissiveFactor?: [number, number, number];
+        extensions?: {
+            KHR_materials_specular?: { specularFactor?: number; specularColorFactor?: [number, number, number] };
+        };
     }[];
     accessors: {
         bufferView?: number;
@@ -150,6 +153,11 @@ export class GltfParser extends Parser {
             if(mat.pbrMetallicRoughness?.roughnessFactor !== undefined) {
                 material.roughness = mat.pbrMetallicRoughness.roughnessFactor;
             }
+            // The dielectric's reflectance at normal incidence scaled and tinted, as Blender maps the extension onto
+            // its Specular IOR Level, twice which the factor is, and Specular Tint
+            const specular = mat.extensions?.KHR_materials_specular;
+            if (specular?.specularFactor !== undefined) material.specularLevel = specular.specularFactor;
+            if (specular?.specularColorFactor) material.specularTint = new Vector(...specular.specularColorFactor);
             console.log(`Created material ${i}:`, material);
             return material;
         });
