@@ -1253,7 +1253,7 @@ fn compute(
 
     // Init color accumulator and random state
     var final_color = vec3<f32>(0.0f);
-    var random_state: u32 = (uniforms_uint.temporal_target + 1u) * (global_invocation_id.y * uniforms_uint.render_size.x + global_invocation_id.x);
+    var random_state: u32 = stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y);
     // Generate multiple samples
     for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
         // Use cosine as noise in random coordinate picker

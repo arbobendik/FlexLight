@@ -4,7 +4,8 @@
 // sampled to the wrong side of a facet lose no energy, so no pixel gains light, the image's mean stays at one and no
 // pixel turns black. A square of white metal of roughness 0.5 (argument metal), facing the camera at a cosine of
 // 0.5 across its narrow view, scatters each ray once: each pixel holds GGX's single-scatter albedo under exact Smith
-// masking at that cosine, 0.8551, integrated numerically.
+// masking at that cosine, 0.8551, integrated numerically, which the image's mean meets within four standard errors of
+// its pixels', and pixel 0 draws other random numbers each frame.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, [MATERIAL, MODE] = process.argv.slice(2);
@@ -78,7 +79,7 @@ if (MATERIAL === "metal") engine.camera.position = new F.Vector(0, 0, 3), engine
   engine.camera.fov = 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
-const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256;
+const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set();
 let frame = 0, read = 0;
 const renderFrame = engine.renderer.renderFrame.bind(engine.renderer);
 engine.renderer.renderFrame = async (...args) => {
@@ -92,12 +93,15 @@ engine.renderer.renderFrame = async (...args) => {
   await buffer.mapAsync(GPUMapMode.READ);
   const data = new Float32Array(buffer.getMappedRange());
   for (let p = 0, i; p < SIZE * SIZE; p++) i = (p / SIZE | 0) * row / 4 + p % SIZE * 4, sum[p] += (data[i] + data[i + 1] + data[i + 2]) / 3;
+  first.add(data[0]);
   buffer.destroy();
   if (++read < FRAMES) return result;
   const pixels = Array.from(sum, (s) => s / FRAMES), mean = pixels.reduce((a, b) => a + b) / pixels.length;
   const brightest = Math.max(...pixels), black = pixels.filter((v) => v < 0.5).length / pixels.length;
-  console.log(`mean ${mean.toFixed(4)}, brightest ${brightest.toFixed(4)}, black share ${(100 * black).toFixed(2)}%`);
-  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 0.005 : mean > 0.98) && brightest < 1.05 && black === 0
-    ? 0 : 1);
+  const error = Math.sqrt(pixels.reduce((a, v) => a + (v - mean) ** 2, 0) / pixels.length / pixels.length);
+  console.log(`mean ${mean.toFixed(4)}, standard error ${error.toFixed(4)}, brightest ${brightest.toFixed(4)}, ` +
+    `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
+  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1 : mean > 0.98)
+    && brightest < 1.05 && black === 0 ? 0 : 1);
 };
 engine.renderer.render();

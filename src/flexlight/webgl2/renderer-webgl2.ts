@@ -368,6 +368,7 @@ export abstract class RendererWGL2 extends Renderer {
     gl.uniform3f(location("ambient"), this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z);
     gl.uniform2ui(location("render_size"), this.canvas.width, this.canvas.height);
     gl.uniform1ui(location("temporal_target"), temporalCount);
+    gl.uniform1ui(location("frame"), this.frameCounter);
     gl.uniform1ui(location("samples"), this.config.samplesPerPixel);
     gl.uniform1ui(location("max_bounces"), this.config.maxBounces);
     gl.uniform2ui(location("environment_map_size"), envMapSize.x, envMapSize.y);
