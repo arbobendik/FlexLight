@@ -10,6 +10,9 @@
 // reflection's single-scatter albedo, 0.9990, no more light than it receives, which the mean meets likewise. Its
 // diffuse samples each carry all of the light, so its pixel 0 need not vary. The rasterizer shading a white
 // square in a sphere light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
+// The prism of white diffuse in a closed box emitting white in place of the ambient light (argument lit) must come out
+// white too: rays sampled to the wrong side of a facet, without a density, take the full weight of the emission they
+// meet. Light sampling's noise lets its single pixels exceed one, and ReSTIR's fall below a half; its mean stays at one.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
@@ -78,11 +81,23 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
   : MATERIAL === "dielectric" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
+  : MATERIAL === "lit" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: 32 });
 engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" }));
-engine.scene.ambientLight = new F.Vector(1, 1, 1);
+// Lit, the prism stands in a closed box whose faces, wound and smooth along the inward normal, emit white
+if (MATERIAL === "lit") {
+  const box = [];
+  for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
+    const at = (a, b) => [0, 1, 2].map((j) => j === k ? 4 * s : j === (k + 1) % 3 ? -4 * a * s : 4 * b);
+    const n = [0, 1, 2].map((j) => j === k ? -s : 0), q = [at(-1, -1), at(1, -1), at(1, 1), at(-1, 1)];
+    for (const t of [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]) box.push(...t.flat(), ...n, ...n, ...n, 0, 0, 0, 0, 0, 0);
+  }
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: box,
+    material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "box" }));
+}
+engine.scene.ambientLight = MATERIAL === "lit" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
@@ -115,7 +130,7 @@ engine.renderer.renderFrame = async (...args) => {
     `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
   if (MATERIAL === "raster") process.exit(first.size > 1 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
-    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error : mean > 0.98)
-    && brightest < 1.05 && black === 0 ? 0 : 1);
+    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error : Math.abs(mean - 1) < 0.02)
+    && (MATERIAL === "lit" || brightest < 1.05) && (MATERIAL === "lit" && MODE === "restir" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();
