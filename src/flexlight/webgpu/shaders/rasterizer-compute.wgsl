@@ -97,7 +97,9 @@ struct Material {
     metallic: f32,
     transmission: f32,
     ior: f32,
-    absorption: vec3<f32>
+    absorption: vec3<f32>,
+    specular_tint: vec3<f32>,
+    specular_level: f32
 };
 
 struct Light {
