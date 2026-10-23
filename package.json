@@ -19,6 +19,7 @@
   "scripts": {
     "start": "docker compose up --build",
     "dev": "node index.js",
+    "test": "node test/furnace.mjs glass pt && node test/furnace.mjs mirror pt && node test/furnace.mjs mirror restir",
     "prepare": "husky"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
   },
   "license": "ISC",
   "devDependencies": {
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "webgpu": "^0.6.2"
   }
 }
