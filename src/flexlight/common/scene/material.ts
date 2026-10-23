@@ -13,8 +13,11 @@ export class Material {
     transmission: number;
     ior: number;
     absorption: Vector<3>;
+    // Tint of the dielectric's reflectance at normal incidence and the factor scaling it, which change nothing at 1
+    specularTint: Vector<3>;
+    specularLevel: number;
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1)) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -22,11 +25,13 @@ export class Material {
         this.transmission = transmission;
         this.ior = ior;
         this.absorption = absorption;
+        this.specularTint = specularTint;
+        this.specularLevel = specularLevel;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -49,7 +54,12 @@ export class InstanceMaterial implements Material {
             material.ior, 0,
 
             // Absorption
-            material.absorption.x, material.absorption.y, material.absorption.z, 0
+            material.absorption.x, material.absorption.y, material.absorption.z, 0,
+
+            // Specular tint
+            material.specularTint.x, material.specularTint.y, material.specularTint.z,
+            // Specular level
+            material.specularLevel
         ]);
     }
 
@@ -131,5 +141,27 @@ export class InstanceMaterial implements Material {
 
     get absorption(): Vector<3> {
         return new Vector<3>(this.materialArray[12] ?? 1, this.materialArray[13] ?? 1, this.materialArray[14] ?? 1);
+    }
+
+    set specularTint(specularTint: Vector<3>) {
+        this.materialArray[16] = specularTint.x;
+        this.materialArray[17] = specularTint.y;
+        this.materialArray[18] = specularTint.z;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 16 * this.materialArray.BYTES_PER_ELEMENT, 3);
+    }
+
+    get specularTint(): Vector<3> {
+        return new Vector<3>(this.materialArray[16] ?? 1, this.materialArray[17] ?? 1, this.materialArray[18] ?? 1);
+    }
+
+    set specularLevel(specularLevel: number) {
+        this.materialArray[19] = specularLevel;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 19 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get specularLevel(): number {
+        return this.materialArray[19] ?? 1;
     }
 }
