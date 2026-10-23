@@ -2,10 +2,12 @@
 // glass or of a perfect mirror (argument glass or mirror), faceted with smooth normals, under white ambient light only,
 // must come out white, path traced or through ReSTIR (argument pt or restir), which keeps only the mirror exact. Rays
 // sampled to the wrong side of a facet lose no energy, so no pixel gains light, the image's mean stays at one and no
-// pixel turns black.
+// pixel turns black. A square of white metal of roughness 0.5 (argument metal), facing the camera at a cosine of
+// 0.5 across its narrow view, scatters each ray once: each pixel holds GGX's single-scatter albedo under exact Smith
+// masking at that cosine, 0.8551, integrated numerically.
 import { create, globals } from "webgpu";
 
-const SIZE = 64, FRAMES = 64, SIDES = 6, [MATERIAL, MODE] = process.argv.slice(2);
+const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, [MATERIAL, MODE] = process.argv.slice(2);
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -59,7 +61,12 @@ for (let i = 0; i < SIDES; i++) {
   push([[0, 1, 0], corner(i + 1, 1), corner(i, 1)], [[0, 1, 0], [0, 1, 0], [0, 1, 0]]);
   push([[0, -1, 0], corner(i, -1), corner(i + 1, -1)], [[0, -1, 0], [0, -1, 0], [0, -1, 0]]);
 }
+// The metal's square, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the origin
+const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
+if (MATERIAL === "metal") triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
+  t.map(() => [0, tilt, 0.5])));
 const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 1, 0)
+  : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: 32 });
@@ -67,6 +74,8 @@ engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material,
 engine.scene.ambientLight = new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
+if (MATERIAL === "metal") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+  engine.camera.fov = 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
 const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256;
@@ -88,6 +97,7 @@ engine.renderer.renderFrame = async (...args) => {
   const pixels = Array.from(sum, (s) => s / FRAMES), mean = pixels.reduce((a, b) => a + b) / pixels.length;
   const brightest = Math.max(...pixels), black = pixels.filter((v) => v < 0.5).length / pixels.length;
   console.log(`mean ${mean.toFixed(4)}, brightest ${brightest.toFixed(4)}, black share ${(100 * black).toFixed(2)}%`);
-  process.exit(mean > 0.98 && brightest < 1.05 && black === 0 ? 0 : 1);
+  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 0.005 : mean > 0.98) && brightest < 1.05 && black === 0
+    ? 0 : 1);
 };
 engine.renderer.render();
