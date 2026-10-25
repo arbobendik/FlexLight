@@ -1666,6 +1666,10 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 }
                 if (rc == RC_SURFACE) {
                     reconnection = hitPosition(rc_hit);
+                }
+                // A translucent material's diffuse lobe connects through to the other side of its smooth normal too
+                refracted = refracted || (isTranslucent(material) && lobe_index == LOBE_DIFFUSE && dot(surface.smooth_n, select(r.dir, reconnection - ray.origin, rc == RC_SURFACE)) * n_dot_v < 0.0f);
+                if (rc == RC_SURFACE) {
                     dir = normalize(reconnection - (ray.origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside != refracted)));
                 }
                 // The path tracer samples again or mirrors directions sampled to the wrong side of the face, which no density reaches
@@ -1696,8 +1700,10 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
             let delta: bool = lobe_index != LOBE_DIFFUSE && (material.roughness == 0.0f || (lobe_index == LOBE_REFRACT && eta.x == eta.y));
+            // Translucent surfaces are thin, as in the path tracer
+            let through: bool = isTranslucent(material) && lobe_index == LOBE_DIFFUSE && dot(dir, surface.geometry_n) < 0.0f;
             if (nee && !delta && !wrong_side) {
-                nee_vertex = NEEVertex(false, lobe.pdf, ray.origin, surface.smooth_n, ray.origin + surface.geometry_offset * surface.smooth_n);
+                nee_vertex = NEEVertex(false, lobe.pdf, ray.origin, select(surface.smooth_n, vec3<f32>(0.0f), isTranslucent(material)), ray.origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, through));
             } else if (lobe_index != LOBE_REFRACT || eta.x != eta.y) {
                 nee_vertex.none = true;
             }
@@ -1735,11 +1741,11 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 chain_throughput = throughput;
             }
             prev = Vertex(rough, lobe_index, lobe.pdf, abs(dot(surface.geometry_n, dir)), is_inside);
-            if (refracted) {
+            if (refracted && !through) {
                 is_inside = !is_inside;
             }
             ray.unit_direction = dir;
-            ray.origin += surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside);
+            ray.origin += surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside != through);
         } else {
             prev.rough = false;
             // Environment next event estimation never passes texels, escapes through them take the full weight
