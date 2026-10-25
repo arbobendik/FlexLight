@@ -16,9 +16,10 @@
 // A white sheet of Blender's Translucent BSDF in that box (argument translucent), its left half translucent alone, its
 // right half wound the other way and half diffuse, shading normals tilted to (0.95, 0, 0.3122499) off the face, comes
 // out white within four standard errors path traced, light all around sampled and the diffuse lobe's transmission
-// entering no medium. Lit only from behind by a black square of side 4 emitting white a quarter below it (argument
-// backlit), its untilted left half carries the square's view of its center, 4 / PI * s * atan(s) for
-// s = 2 / hypot(2, 0.25), and its right half half of it, within 2%, of direct light alone (mode direct) or path traced.
+// entering no medium, and within 2% through ReSTIR, which reconnects through it. Lit only from behind by a black square
+// of side 4 emitting white a quarter below it (argument backlit), its untilted left half carries the square's view of its
+// center, 4 / PI * s * atan(s) for s = 2 / hypot(2, 0.25), and its right half half of it, within 2%, of direct light
+// alone (mode direct), path traced or through ReSTIR.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
