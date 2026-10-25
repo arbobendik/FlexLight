@@ -66,7 +66,7 @@ export class ReSTIR {
   private passes: Array<{ pipeline: GPUComputePipeline, layout: GPUBindGroupLayout, bindings: Array<number> }>;
   private pairing: GPUTexture;
 
-  constructor(device: GPUDevice, shader: string, sharedLayouts: Array<GPUBindGroupLayout>) {
+  constructor(device: GPUDevice, shader: string, sharedLayouts: Array<GPUBindGroupLayout>, constants: Record<string, number>) {
     this.device = device;
     const texture = (sampleType: GPUTextureSampleType, viewDimension: GPUTextureViewDimension = "2d-array") => ({ texture: { sampleType, viewDimension } });
     const storage = (format: GPUTextureFormat) => ({ storageTexture: { access: "write-only" as const, format, viewDimension: "2d-array" as const } });
@@ -82,7 +82,7 @@ export class ReSTIR {
       const pipeline = device.createComputePipeline({
         label: entryPoint,
         layout: device.createPipelineLayout({ bindGroupLayouts: [layout, ...sharedLayouts] }),
-        compute: { module, entryPoint }
+        compute: { module, entryPoint, constants }
       });
       return { pipeline, layout, bindings };
     });
