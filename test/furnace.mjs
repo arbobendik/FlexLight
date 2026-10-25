@@ -13,9 +13,16 @@
 // The prism of white diffuse in a closed box emitting white in place of the ambient light (argument lit) must come out
 // white too: rays sampled to the wrong side of a facet, without a density, take the full weight of the emission they
 // meet. Light sampling's noise lets its single pixels exceed one, and ReSTIR's fall below a half; its mean stays at one.
+// A white sheet of Blender's Translucent BSDF in that box (argument translucent), its left half translucent alone, its
+// right half wound the other way and half diffuse, shading normals tilted to (0.95, 0, 0.3122499) off the face, comes
+// out white within four standard errors path traced, light all around sampled and the diffuse lobe's transmission
+// entering no medium. Lit only from behind by a black square of side 4 emitting white a quarter below it (argument
+// backlit), its untilted left half carries the square's view of its center, 4 / PI * s * atan(s) for
+// s = 2 / hypot(2, 0.25), and its right half half of it, within 2%, of direct light alone (mode direct) or path traced.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
+const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S);
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -77,17 +84,33 @@ const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [
 const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster";
 if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
   t.map(() => [0, tilt, 0.5])));
+// The sheet of the translucent and backlit cases in the plane z = 0, of its left half x < 0 and right half x > 0, wound
+// along z or against it and smooth along normal
+const sheet = (x, z, normal) => [[[0, -3, 0], [x, -3, 0], [x, 3, 0]], [[0, -3, 0], [x, 3, 0], [0, 3, 0]]].forEach((t) =>
+  push(z > 0 === x > 0 ? t : [t[0], t[2], t[1]], t.map(() => normal)));
+const thin = MATERIAL === "translucent" || MATERIAL === "backlit", tilted = MATERIAL === "translucent" ? 0.95 : 0;
+const normal = [tilted, 0, Math.sqrt(1 - tilted * tilted)];
+if (thin) triangles.length = 0, sheet(-3, 1, normal);
 const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 1, 0)
   : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
   : MATERIAL === "dielectric" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
   : MATERIAL === "lit" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
+  : thin ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(1, 1, 1))
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
-Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: 32 });
+Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
 engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" }));
+// The sheet's right half, half diffuse, wound against z where tilted
+if (thin) triangles.length = 0, sheet(3, -tilted || 1, normal.map((c) => tilted ? -c : c)),
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material: new F.Material(new F.Vector(0.5, 0.5, 0.5),
+    new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(0.5, 0.5, 0.5)), label: "mix" }));
+// Backlit, the square of side 4 a quarter below the sheet emits white up at it
+if (MATERIAL === "backlit") engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-2, -2], [2, -2], [2, 2]],
+  [[-2, -2], [2, 2], [-2, 2]]].flatMap((t) => [...t.flatMap(([x, y]) => [x, y, -0.25]), ...t.flatMap(() => [0, 0, 1]), 0, 0, 0, 0, 0, 0]),
+  material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "lamp" }));
 // Lit, the prism stands in a closed box whose faces, wound and smooth along the inward normal, emit white
-if (MATERIAL === "lit") {
+if (MATERIAL === "lit" || MATERIAL === "translucent") {
   const box = [];
   for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
     const at = (a, b) => [0, 1, 2].map((j) => j === k ? 4 * s : j === (k + 1) % 3 ? -4 * a * s : 4 * b);
@@ -97,12 +120,12 @@ if (MATERIAL === "lit") {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: box,
     material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "box" }));
 }
-engine.scene.ambientLight = MATERIAL === "lit" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
+engine.scene.ambientLight = MATERIAL === "lit" || thin ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
-if (square) engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+if (square || thin) engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
   engine.camera.fov = 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
@@ -129,8 +152,13 @@ engine.renderer.renderFrame = async (...args) => {
   console.log(`mean ${mean.toFixed(4)}, standard error ${error.toFixed(4)}, brightest ${brightest.toFixed(4)}, ` +
     `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
   if (MATERIAL === "raster") process.exit(first.size > 1 ? 0 : 1);
+  // The halves' means, of the columns left and right of the middle but the two next to it on either side
+  const half = (x) => { const side = pixels.filter((_, p) => x * (p % SIZE + 0.5 - SIZE / 2) > 2); return side.reduce((a, b) => a + b) / side.length; };
+  if (MATERIAL === "backlit") console.log(`halves ${half(-1).toFixed(4)} and ${half(1).toFixed(4)} of ${BACKLIT.toFixed(4)} and half of it`),
+    process.exit(Math.abs(half(-1) / BACKLIT - 1) < 0.02 && Math.abs(half(1) / BACKLIT - 0.5) < 0.01 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
-    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error : Math.abs(mean - 1) < 0.02)
-    && (MATERIAL === "lit" || brightest < 1.05) && (MATERIAL === "lit" && MODE === "restir" || black === 0) ? 0 : 1);
+    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
+    : thin && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
+    && (MATERIAL === "lit" || thin || brightest < 1.05) && ((MATERIAL === "lit" || thin) && MODE === "restir" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();

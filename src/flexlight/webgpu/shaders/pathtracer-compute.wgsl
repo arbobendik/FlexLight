@@ -696,27 +696,35 @@ struct TreeSample {
     random_state: u32
 }
 
+// Whether material has Blender's Translucent BSDF, a thin surface transmitting diffusely
+fn isTranslucent(material: Material) -> bool {
+    return rgb_to_greyscale(material.translucent) > 0.0f;
+}
+
 // Light sampling, as flex-cuda-pt's sampleLight: a light the light BVH picks by its importance to origin, a uniform point
-// on it or a direction in the cone of its sphere, seen from origin lifted by geometry_offset in front of smooth_n
-fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, init_random_state: u32) -> TreeSample {
+// on it or a direction in the cone of its sphere, seen from origin lifted by geometry_offset in front of smooth_n. Sided,
+// for translucent surfaces, light all around, origin lifted to the side of the face geometry_n the light lies on
+fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, sided: bool, init_random_state: u32) -> TreeSample {
     let random_pick: Random = pcg(init_random_state);
     let random_side: Random = pcg(random_pick.state);
     let random_along: Random = pcg(random_side.state);
     var sample: TreeSample = TreeSample(vec3<f32>(0.0f), vec3<f32>(0.0f), 0.0f, random_along.state);
-    let start: vec3<f32> = origin + geometry_offset * smooth_n;
+    let normal: vec3<f32> = select(smooth_n, vec3<f32>(0.0f), sided);
+    var lift_n: vec3<f32> = smooth_n;
+    var start: vec3<f32> = origin + geometry_offset * lift_n;
     // From the root down to either child by its share of importance (pbrt-v4's BVHLightSampler::Sample)
     var pick: f32 = random_pick.value;
     var probability: f32 = 1.0f;
     var n: u32 = 0u;
     while (access_light_tree(4u + 4u * n).x == 0u) {
         let second: u32 = access_light_tree(3u + 4u * n).w;
-        let child: u32 = pickChild(lightBounds(n + 1u), lightBounds(second), origin, smooth_n, &pick, &probability);
+        let child: u32 = pickChild(lightBounds(n + 1u), lightBounds(second), origin, normal, &pick, &probability);
         if (child > 1u) {
             return sample;
         }
         n = select(n + 1u, second, child == 1u);
     }
-    if (n == 0u && !(importance(lightBounds(0u), origin, smooth_n) > 0.0f)) {
+    if (n == 0u && !(importance(lightBounds(0u), origin, normal) > 0.0f)) {
         return sample;
     }
     let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
@@ -724,6 +732,10 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32,
     var shadow: vec3<f32>;
     if (leaf.x == 2u) {
         let light: Light = lights[leaf.y];
+        if (sided) {
+            lift_n = smooth_n * sign(dot(geometry_n, light.position - origin));
+            start = origin + geometry_offset * lift_n;
+        }
         if (light.variance == 0.0f) {
             // Delta light at the center
             shadow = light.position - start;
@@ -741,7 +753,10 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32,
         let side: f32 = sqrt(random_side.value);
         let uv: vec2<f32> = vec2<f32>(side * (1.0f - random_along.value), side * random_along.value);
         let point: vec3<f32> = t * vec3<f32>(1.0f - side, uv);
-        if (!(dot(smooth_n, point - origin) > 0.0f)) {
+        if (sided) {
+            lift_n = smooth_n * sign(dot(geometry_n, point - origin));
+            start = origin + geometry_offset * lift_n;
+        } else if (!(dot(smooth_n, point - origin) > 0.0f)) {
             return sample;
         }
         // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending in front of it
@@ -752,7 +767,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32,
         sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
         shadow = point + surface.smooth_n * surface.geometry_offset - start;
     }
-    if (occluded(origin, smooth_n, geometry_offset, shadow, select(vec2<u32>(UINT_MAX), leaf.yz, leaf.x == 1u))) {
+    if (occluded(origin, lift_n, geometry_offset, shadow, select(vec2<u32>(UINT_MAX), leaf.yz, leaf.x == 1u))) {
         sample.radiance = vec3<f32>(0.0f);
     }
     return sample;
@@ -767,7 +782,7 @@ fn lightSlot(hit: Hit) -> u32 {
 }
 
 // Density in solid angle of light sampling from origin, lifted to start, picking point on the light of trail slot j, down
-// its trail (pbrt-v4's BVHLightSampler::PMF), as flex-cuda-pt's lightPdf
+// its trail (pbrt-v4's BVHLightSampler::PMF), as flex-cuda-pt's lightPdf; with no smooth_n, sided, all around
 fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, point: vec3<f32>) -> f32 {
     let trail_texel: vec4<u32> = access_light_tree(access_light_tree(0u).y + j);
     var trail: vec2<u32> = trail_texel.xy;
@@ -779,7 +794,7 @@ fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, po
         n = select(n + 1u, second, (trail.x & 1u) == 1u);
         trail = vec2<u32>((trail.x >> 1u) | (trail.y << 31u), trail.y >> 1u);
     }
-    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || !(dot(smooth_n, point - origin) > 0.0f)) {
+    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || (dot(smooth_n, smooth_n) > 0.0f && !(dot(smooth_n, point - origin) > 0.0f))) {
         return 0.0f;
     }
     let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
@@ -794,6 +809,10 @@ fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, po
 // competes, by the power heuristic, delta lights never competing
 fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, competing: bool, random_state: u32) -> vec3<f32> {
     if (!competing || light.density == 0.0f) {
+        // Translucent materials transmit past the face too, counting none of the share sampling mirrors back across it
+        if (isTranslucent(material)) {
+            return translucentBSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
+        }
         return BSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
     }
     let refracted: bool = dot(geometry_n, - in_dir) * dot(geometry_n, light.dir) <= 0.0f;
@@ -801,7 +820,8 @@ fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry
 }
 
 // Light sampling at the vertex a ray left, which the emission the ray meets weighs against: whether there was none, the
-// density of the lobe the ray was sampled with, the vertex, its smooth normal and the start of its shadow rays
+// density of the lobe the ray was sampled with, the vertex, the normal its light sampling orients by, none sided, and the
+// start of its shadow rays
 struct NEEVertex {
     none: bool,
     pdf: f32,
@@ -972,7 +992,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // Light sampling at every vertex not of delta lobes alone, weighted against sampling the BSDF
                 let nee: bool = samplesLights(material);
                 if (nee) {
-                    let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_offset, random_state);
+                    let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_n, geometry_offset, isTranslucent(material), random_state);
                     final_color += lightBSDF(ray.unit_direction, light, smooth_n, geometry_n, material, eta_i, eta_o, i < uniforms_uint.max_bounces, hash(random_state)) * importancy_factor;
                     random_state = light.random_state;
                 }
@@ -1023,21 +1043,23 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 }
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
                 let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
+                // Translucent surfaces are thin: the diffuse lobe leaves through to the other side of the face, into no medium
+                let through: bool = isTranslucent(material) && bsdf_sampled.lobe == LOBE_DIFFUSE && dot(bsdf_sampled.unit_direction, geometry_n) < 0.0f;
                 // Rays sampled to the wrong side of the face, sampled again or mirrored, have no density: no light sample competes
                 if (nee && !delta && expected_out_dir_normal_aligned == out_dir_normal_aligned) {
-                    nee_vertex = NEEVertex(false, bsdf_sampled.pdf, ray.origin, smooth_n, ray.origin + geometry_offset * smooth_n);
+                    nee_vertex = NEEVertex(false, bsdf_sampled.pdf, ray.origin, select(smooth_n, vec3<f32>(0.0f), isTranslucent(material)), ray.origin + geometry_offset * select(smooth_n, - smooth_n, through));
                 } else if (bsdf_sampled.lobe != LOBE_REFRACT || eta_i != eta_o) {
                     nee_vertex.none = true;
                 }
                 // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
-                if (bsdf_sampled.refracted) {
+                if (bsdf_sampled.refracted && !through) {
                     is_inside = !is_inside;
                 }
 
                 ray.unit_direction = bsdf_sampled.unit_direction;
                 importancy_factor *= max(bsdf_sampled.throughput, vec3<f32>(0.0f));
 
-                let out_dir_aligned_normal: vec3<f32> = select(smooth_n, - smooth_n, is_inside);
+                let out_dir_aligned_normal: vec3<f32> = select(smooth_n, - smooth_n, is_inside != through);
                 ray.origin += geometry_offset * out_dir_aligned_normal;
             }
         }
@@ -1545,7 +1567,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             // Light sampling at the reconnection vertex replays its random numbers, as the light may have moved
             if (k == end && end_type == END_NEE) {
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
                 if (!nee || !(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
@@ -1569,7 +1591,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             if (rc == RC_LIGHT && nee && !footprint) {
                 // Forced reconnection to the light vertex of next event estimation (Sec. 6.2.3), the point its replayed
                 // random numbers pick again (unit Jacobian)
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
                 if (!(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
@@ -1595,7 +1617,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 offer(sel, withEnd(candidate, END_EMIT, b, throughput * emission), throughput * emission * scale / density);
             }
             if (nee) {
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_offset, stream(r.seed, b + STREAM_NEE));
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
                 let f: vec3<f32> = throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state);
                 var candidate: Reservoir = chain;
                 if (chain_found) {
