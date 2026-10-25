@@ -143,10 +143,10 @@ Transform access_instance_transform(uint index) {
     );
 }
 
-// Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level, which
-// WebGL2's own BSDF leaves
+// Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
+// translucent, pad, which WebGL2's own BSDF leaves
 Material access_instance_material(uint index) {
-    uint offset = index * 5u;
+    uint offset = index * 6u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
     vec4 m1 = texelFetch(instance_material, buffer_position(offset + 1u), 0);
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);

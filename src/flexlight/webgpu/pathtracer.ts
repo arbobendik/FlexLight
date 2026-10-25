@@ -111,6 +111,7 @@ interface PathTracerGPUBufferManagers {
 interface EngineState {
   temporal: boolean;
   restir: boolean;
+  translucent: boolean;
   renderResolution: number;
   antialiasing: WebGPUAntialiasingType;
 }
@@ -132,7 +133,7 @@ export class PathTracerWGPU extends RendererWGPU {
   // View matrix and camera position of the previous frame for reprojection
   private previousView: Array<number> = new Array(16).fill(0);
   private engineState: EngineState = {
-    temporal: false, restir: false,
+    temporal: false, restir: false, translucent: false,
     renderResolution: 0, antialiasing: undefined
   };
 
@@ -383,8 +384,9 @@ export class PathTracerWGPU extends RendererWGPU {
     // Init pipelines
     const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const computePipeline = this.createComputePipeline(device, PATHTRACER_COMPUTE_SHADER, "compute pipeline",
-      bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout);
+    const computePipeline = device.createComputePipeline({ label: "compute pipeline",
+      layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout] }),
+      compute: { module: device.createShaderModule({ code: PATHTRACER_COMPUTE_SHADER }), entryPoint: "compute", constants: { TRANSLUCENT: Number(this.engineState.translucent) } } });
 
     let shiftPipeline: GPUComputePipeline | undefined = undefined;
     let selectiveAveragePipeline: GPUComputePipeline | undefined = undefined;
@@ -415,7 +417,7 @@ export class PathTracerWGPU extends RendererWGPU {
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
-    this.restir = this.engineState.restir ? new ReSTIR(device, PATHTRACER_COMPUTE_SHADER, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout]) : undefined;
+    this.restir = this.engineState.restir ? new ReSTIR(device, PATHTRACER_COMPUTE_SHADER, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout], { TRANSLUCENT: Number(this.engineState.translucent) }) : undefined;
     // Render passes are given attachments to write into.
     const renderPassColorAttachment: GPURenderPassColorAttachment = { view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 0], loadOp: "clear", storeOp: "store" };
     const renderPassDescriptor = { colorAttachments: [renderPassColorAttachment] };
@@ -461,9 +463,10 @@ export class PathTracerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.restir !== this.config.restir || this.engineState.renderResolution !== this.config.renderResolution) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.restir !== this.config.restir || this.engineState.renderResolution !== this.config.renderResolution || this.engineState.translucent !== this.scene.translucent) {
       this.engineState.temporal = this.config.temporal;
       this.engineState.restir = this.config.restir;
+      this.engineState.translucent = this.scene.translucent;
       this.engineState.renderResolution = this.config.renderResolution;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
