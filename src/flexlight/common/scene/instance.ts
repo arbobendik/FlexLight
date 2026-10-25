@@ -42,6 +42,7 @@ export class Instance {
         this._material.absorption = material.absorption;
         this._material.specularTint = material.specularTint;
         this._material.specularLevel = material.specularLevel;
+        this._material.translucent = material.translucent;
     }
 
     get material(): Material {
