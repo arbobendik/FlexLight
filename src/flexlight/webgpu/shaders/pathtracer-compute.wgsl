@@ -111,8 +111,13 @@ struct Material {
     ior: f32,
     absorption: vec3<f32>,
     specular_tint: vec3<f32>,
-    specular_level: f32
+    specular_level: f32,
+    // Blender's Translucent BSDF's color, which the diffuse lobe transmits to the other side of the face
+    translucent: vec3<f32>
 };
+
+// Whether the scene has a translucent material: without, materials read as none, and translucency compiles out
+override TRANSLUCENT: bool = false;
 
 struct Light {
     position: vec3<f32>,
@@ -860,6 +865,7 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     let barycentric: vec2<f32> = fract(mat3x2<f32>(t4.zw, t5.xy, t5.zw) * geometry_uvw);
     // Sample material
     var material: Material = instance_material[hit.instance_index];
+    material.translucent = select(vec3<f32>(0.0f), material.translucent, TRANSLUCENT);
     let hit_instance_location: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
     // Read material textures
     let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
