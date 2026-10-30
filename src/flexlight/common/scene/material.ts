@@ -18,8 +18,11 @@ export class Material {
     specularLevel: number;
     // Blender's Translucent BSDF's color, which the diffuse lobe transmits to the other side, none by default
     translucent: Vector<3>;
+    // Blender's sheen over the base, its weight times its tint, none by default, and its roughness
+    sheen: Vector<3>;
+    sheenRoughness: number;
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0)) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -30,11 +33,13 @@ export class Material {
         this.specularTint = specularTint;
         this.specularLevel = specularLevel;
         this.translucent = translucent;
+        this.sheen = sheen;
+        this.sheenRoughness = sheenRoughness;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -65,7 +70,12 @@ export class InstanceMaterial implements Material {
             material.specularLevel,
 
             // Translucent
-            material.translucent.x, material.translucent.y, material.translucent.z, 0
+            material.translucent.x, material.translucent.y, material.translucent.z, 0,
+
+            // Sheen
+            material.sheen.x, material.sheen.y, material.sheen.z,
+            // Sheen roughness
+            material.sheenRoughness
         ]);
     }
 
@@ -181,5 +191,27 @@ export class InstanceMaterial implements Material {
 
     get translucent(): Vector<3> {
         return new Vector<3>(this.materialArray[20] ?? 0, this.materialArray[21] ?? 0, this.materialArray[22] ?? 0);
+    }
+
+    set sheen(sheen: Vector<3>) {
+        this.materialArray[24] = sheen.x;
+        this.materialArray[25] = sheen.y;
+        this.materialArray[26] = sheen.z;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 24 * this.materialArray.BYTES_PER_ELEMENT, 3);
+    }
+
+    get sheen(): Vector<3> {
+        return new Vector<3>(this.materialArray[24] ?? 0, this.materialArray[25] ?? 0, this.materialArray[26] ?? 0);
+    }
+
+    set sheenRoughness(sheenRoughness: number) {
+        this.materialArray[27] = sheenRoughness;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 27 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get sheenRoughness(): number {
+        return this.materialArray[27] ?? 0.5;
     }
 }
