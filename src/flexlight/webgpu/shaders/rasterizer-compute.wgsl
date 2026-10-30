@@ -101,7 +101,9 @@ struct Material {
     absorption: vec3<f32>,
     specular_tint: vec3<f32>,
     specular_level: f32,
-    translucent: vec3<f32>
+    translucent: vec3<f32>,
+    sheen: vec3<f32>,
+    sheen_roughness: f32
 };
 
 struct Light {
