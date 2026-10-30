@@ -5,7 +5,10 @@
 // center, 4 / PI * s * atan(s) for s = 2 / hypot(2, 0.25), times a half and a quarter, within 2%. In the box of
 // furnace.mjs emitting a half (argument furnace), its shading normals tilted to (0.95, 0, 0.3122499), the lossless sheet
 // returns all of it, a half, within four standard errors of each half's pixels; white diffuse on both halves (argument
-// diffuse) too. After 4096 frames; it fails unless the renderer is SwiftShader.
+// diffuse) too. furnace.mjs's metal square, built in object space and turned by its instance's scale (1, 2, 1), its normals
+// the object's (argument scaled), holds GGX's albedo there, 0.8551, under white light of 0.9 within 0.5%; the rasterizer's
+// beside one built in world space (argument rasterscaled), lit by a sphere light above, the same mean: the halves'
+// difference within four standard errors of it, which the mirror image's pairs of pixels give. After 4096 frames; it fails unless the renderer is SwiftShader.
 // The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -14,7 +17,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SIZE = 64, FRAMES = 4096, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
-const FURNACE = CASE !== "backlit", [LEFT, RIGHT] = FURNACE ? [0.5, 0.5] : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
+const SQUARE = CASE === "scaled" || CASE === "rasterscaled", RASTER = CASE === "rasterscaled";
+const FURNACE = CASE !== "backlit" && !SQUARE, [LEFT, RIGHT] = SQUARE ? [0.9 * 0.8551, 0.9 * 0.8551] : FURNACE ? [0.5, 0.5] : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
 // the frames cut off after a fixed count
@@ -53,13 +57,24 @@ const material = (albedo, translucent, emissive = 0) => new F.Material(new F.Vec
 const engine = new F.FlexLight(document.querySelector("canvas"));
 engine.api = "webgl2";
 Object.assign(engine.config, { temporal: true, antialiasing: undefined, tonemapping: false, samplesPerPixel: 1 });
-engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(-3), material: material(${CASE === "diffuse" ? "1, 0" : "0, 1"}), label: "translucent" }));
-engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(3), material: material(${CASE === "diffuse" ? "1, 0" : "0.5, 0.5"}), label: "mix" }));
-engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
-engine.scene.ambientLight = new F.Vector(0, 0, 0);
+// The square of furnace.mjs, shifted along x and built in object space under the scale k, its normal S^T n
+const tilt = Math.sqrt(3) / 2, corners = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
+const square = (shift, k) => { const o = [0, tilt, 0.5].map((c, i) => c * k[i]), l = Math.hypot(...o);
+  return [[0, 1, 2], [0, 2, 3]].flatMap((t) => [...t.flatMap((j) => corners[j].map((c, i) => (c + shift * (i === 0)) / k[i])), ...t.flatMap(() => o.map((c) => c / l)), 0, 0, 0, 0, 0, 0]); };
+if (${SQUARE}) {
+  const white = new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), ${RASTER ? "1, 0" : "0.5, 1"}, 0);
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(${RASTER ? 0.6 : 0}, [1, 2, 1]), material: white, label: "scaled" })).transform.scale(new F.Vector(1, 2, 1));
+  if (${RASTER}) engine.renderer = "rasterizer", engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 12, 0.5)),
+    engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(-0.6, [1, 1, 1]), material: white, label: "twin" }));
+} else {
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(-3), material: material(${CASE === "diffuse" ? "1, 0" : "0, 1"}), label: "translucent" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(3), material: material(${CASE === "diffuse" ? "1, 0" : "0.5, 0.5"}), label: "mix" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
+}
+engine.scene.ambientLight = new F.Vector(${CASE === "scaled" ? "0.9, 0.9, 0.9" : "0, 0, 0"});
 engine.camera.position = new F.Vector(0, 0, 3);
 engine.camera.direction = new F.Vector(0, 0);
-engine.camera.fov = 1;
+engine.camera.fov = ${RASTER ? 40 : 1};
 engine.renderer.render();
 </script>`;
 
@@ -81,8 +96,16 @@ const server = createServer((req, res) => {
         return [sum / n, Math.sqrt((squares / n - (sum / n) ** 2) / n)]; };
       const [[left, leftError], [right, rightError]] = [half(-1), half(1)];
       console.log(`${renderer}: halves ${left.toFixed(4)} ± ${leftError.toFixed(4)} and ${right.toFixed(4)} ± ${rightError.toFixed(4)} of ${LEFT.toFixed(4)} and ${RIGHT.toFixed(4)}`);
-      const within = (v, error, truth) => FURNACE ? Math.abs(v - truth) < 4 * error : Math.abs(v / truth - 1) < 0.02;
-      finish(/SwiftShader/.test(renderer) && within(left, leftError, LEFT) && within(right, rightError, RIGHT) ? 0 : 1);
+      // The rasterizer's twins mirror each other across the middle: each left pixel less its mirror image on the right,
+      // whose mean is the halves' difference, and its standard error
+      const pairs = [], value = (p) => (pixels[4 * p] + pixels[4 * p + 1] + pixels[4 * p + 2]) / 765;
+      for (let p = 0; p < SIZE * SIZE; p++) if (p % SIZE + 0.5 - SIZE / 2 < -2) pairs.push(value(p) - value(p + SIZE - 1 - 2 * (p % SIZE)));
+      const difference = pairs.reduce((a, b) => a + b) / pairs.length;
+      const differenceError = Math.sqrt(pairs.reduce((a, d) => a + (d - difference) ** 2, 0) / (pairs.length - 1) / pairs.length);
+      if (RASTER) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
+      const within = (v, error, truth) => FURNACE ? Math.abs(v - truth) < 4 * error : Math.abs(v / truth - 1) < (SQUARE ? 0.005 : 0.02);
+      finish(/SwiftShader/.test(renderer) && (RASTER ? Math.abs(difference) < 4 * differenceError
+        : within(left, leftError, LEFT) && within(right, rightError, RIGHT)) ? 0 : 1);
     });
     return;
   }
