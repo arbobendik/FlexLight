@@ -67,6 +67,12 @@ export class Scene {
         return false;
     }
 
+    // Whether an instance's material is anisotropic, which the path tracer compiles anisotropy in for alone
+    get anisotropic () {
+        for (const instance of this.instances) if (instance._material.anisotropy !== 0) return true;
+        return false;
+    }
+
     get triangleCount () {
         let count = 0;
         for (let instance of this.instances) count += instance.prototype.triangles.length / TRIANGLE_SIZE;
