@@ -551,7 +551,8 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             mat3 t = transform.rotation * mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x)) + mat3(transform.shift, transform.shift, transform.shift);
 
             // Assemble and transform normals
-            mat3 normals = transform.rotation * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
+            // Normals by the inverse transpose of the instance's matrix, which keeps them normal under a scale that is not uniform
+            mat3 normals = transpose(access_instance_transform(instance_id * 2u + 1u).rotation) * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
             // Compute edge vectors
             vec3 edge1 = t[1] - t[0];
             vec3 edge2 = t[2] - t[0];
@@ -711,7 +712,8 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
             // Assemble and transform triangle
             mat3 t = transform.rotation * mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x));
             // Assemble and transform normals
-            mat3 normals = transform.rotation * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
+            // Normals by the inverse transpose of the instance's matrix, which keeps them normal under a scale that is not uniform
+            mat3 normals = transpose(access_instance_transform(hit.instance_index * 2u + 1u).rotation) * mat3(t2.yzw, t3.xyz, vec3(t3.w, t4.xy));
             vec3 offset_ray_target = ray.origin - transform.shift;
             // Compute edge vectors
             vec3 edge1 = t[1] - t[0];
