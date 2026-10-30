@@ -10,6 +10,9 @@
 // reflection's single-scatter albedo, 0.9990, no more light than it receives, which the mean meets likewise. Its
 // diffuse samples each carry all of the light, so its pixel 0 need not vary. The rasterizer shading a white
 // square in a sphere light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
+// Built in object space and turned by its instance's scale (1, 2, 1), its normals those of the object (mode scaled), the
+// metal's square holds its albedo still, and the rasterizer's, beside one built in world space, the same mean: the
+// halves' difference within four standard errors of it, which the frames' differences give.
 // The prism of white diffuse in a closed box emitting white in place of the ambient light (argument lit) must come out
 // white too: rays sampled to the wrong side of a facet, without a density, take the full weight of the emission they
 // meet. Light sampling's noise lets its single pixels exceed one, and ReSTIR's fall below a half; its mean stays at one.
@@ -83,8 +86,10 @@ for (let i = 0; i < SIDES; i++) {
 // origin
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster";
-if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k]),
-  t.map(() => [0, tilt, 0.5])));
+const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
+const scaled = [0, tilt, 0.5].map((c, i) => c * SCALE[i]), length = Math.hypot(...scaled);
+if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => (c + twin * (i === 0)) / SCALE[i])),
+  t.map(() => scaled.map((c) => c / length))));
 // The sheet of the translucent and backlit cases in the plane z = 0, of its left half x < 0 and right half x > 0, wound
 // along z or against it and smooth along normal
 const sheet = (x, z, normal) => [[[0, -3, 0], [x, -3, 0], [x, 3, 0]], [[0, -3, 0], [x, 3, 0], [0, 3, 0]]].forEach((t) =>
@@ -101,7 +106,10 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
-engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" }));
+engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" })).transform.scale(new F.Vector(...SCALE));
+// The raster's twin in world space, on the left
+if (twin) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => c - twin * (i === 0))),
+  t.map(() => [0, tilt, 0.5]))), engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "twin" }));
 // The sheet's right half, half diffuse, wound against z where tilted
 if (thin) triangles.length = 0, sheet(3, -tilted || 1, normal.map((c) => tilted ? -c : c)),
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material: new F.Material(new F.Vector(0.5, 0.5, 0.5),
@@ -127,10 +135,10 @@ engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
 if (square || thin) engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
-  engine.camera.fov = 1;
+  engine.camera.fov = twin ? 40 : 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
-const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set();
+const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
 let frame = 0, read = 0;
 const renderFrame = engine.renderer.renderFrame.bind(engine.renderer);
 engine.renderer.renderFrame = async (...args) => {
@@ -143,7 +151,11 @@ engine.renderer.renderFrame = async (...args) => {
   frame++;
   await buffer.mapAsync(GPUMapMode.READ);
   const data = new Float32Array(buffer.getMappedRange());
-  for (let p = 0, i; p < SIZE * SIZE; p++) i = (p / SIZE | 0) * row / 4 + p % SIZE * 4, sum[p] += (data[i] + data[i + 1] + data[i + 2]) / 3;
+  // And the frame's left half's mean less its right half's, of the columns more than two away from the middle
+  let split = 0;
+  for (let p = 0, i, v, x; p < SIZE * SIZE; p++) i = (p / SIZE | 0) * row / 4 + p % SIZE * 4, v = (data[i] + data[i + 1] + data[i + 2]) / 3,
+    sum[p] += v, x = p % SIZE + 0.5 - SIZE / 2, split += Math.abs(x) > 2 ? -Math.sign(x) * v / (SIZE * (SIZE / 2 - 2)) : 0;
+  differences.push(split);
   first.add(data[0]);
   buffer.destroy();
   if (++read < FRAMES) return result;
@@ -152,7 +164,12 @@ engine.renderer.renderFrame = async (...args) => {
   const error = Math.sqrt(pixels.reduce((a, v) => a + (v - mean) ** 2, 0) / pixels.length / pixels.length);
   console.log(`mean ${mean.toFixed(4)}, standard error ${error.toFixed(4)}, brightest ${brightest.toFixed(4)}, ` +
     `black share ${(100 * black).toFixed(2)}%, pixel 0 took ${first.size} values`);
-  if (MATERIAL === "raster") process.exit(first.size > 1 ? 0 : 1);
+  // The halves' difference over the frames, and its standard error, of the frames' differences
+  const difference = differences.reduce((a, b) => a + b) / FRAMES;
+  const differenceError = Math.sqrt(differences.reduce((a, d) => a + (d - difference) ** 2, 0) / (FRAMES - 1) / FRAMES);
+  if (twin) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
+  // The twins' image leaves pixel 0 in the background, which no random number reaches
+  if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
   // The halves' means, of the columns left and right of the middle but the two next to it on either side
   const half = (x) => { const side = pixels.filter((_, p) => x * (p % SIZE + 0.5 - SIZE / 2) > 2); return side.reduce((a, b) => a + b) / side.length; };
   if (MATERIAL === "backlit") console.log(`halves ${half(-1).toFixed(4)} and ${half(1).toFixed(4)} of ${BACKLIT.toFixed(4)} and half of it`),
