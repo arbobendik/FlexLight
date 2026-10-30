@@ -21,8 +21,11 @@ export class Material {
     // Blender's sheen over the base, its weight times its tint, none by default, and its roughness
     sheen: Vector<3>;
     sheenRoughness: number;
+    // Blender's Principled Anisotropic, none by default, and its rotation in turns about the normal
+    anisotropy: number;
+    anisotropicRotation: number;
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -35,11 +38,13 @@ export class Material {
         this.translucent = translucent;
         this.sheen = sheen;
         this.sheenRoughness = sheenRoughness;
+        this.anisotropy = anisotropy;
+        this.anisotropicRotation = anisotropicRotation;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, and the tangent each hit writes
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -75,7 +80,12 @@ export class InstanceMaterial implements Material {
             // Sheen
             material.sheen.x, material.sheen.y, material.sheen.z,
             // Sheen roughness
-            material.sheenRoughness
+            material.sheenRoughness,
+
+            // Anisotropy and its rotation
+            material.anisotropy, material.anisotropicRotation, 0, 0,
+            // Tangent
+            0, 0, 0, 0
         ]);
     }
 
@@ -213,5 +223,25 @@ export class InstanceMaterial implements Material {
 
     get sheenRoughness(): number {
         return this.materialArray[27] ?? 0.5;
+    }
+
+    set anisotropy(anisotropy: number) {
+        this.materialArray[28] = anisotropy;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 28 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get anisotropy(): number {
+        return this.materialArray[28] ?? 0;
+    }
+
+    set anisotropicRotation(anisotropicRotation: number) {
+        this.materialArray[29] = anisotropicRotation;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 29 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get anisotropicRotation(): number {
+        return this.materialArray[29] ?? 0;
     }
 }
