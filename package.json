@@ -19,7 +19,7 @@
   "scripts": {
     "start": "docker compose up --build",
     "dev": "node index.js",
-    "test": "node test/furnace.mjs glass pt && node test/furnace.mjs mirror pt && node test/furnace.mjs mirror restir && node test/furnace.mjs metal pt && node test/furnace.mjs dielectric pt && node test/furnace.mjs raster pt && node test/furnace.mjs lit pt && node test/furnace.mjs lit restir && node test/furnace.mjs translucent pt && node test/furnace.mjs translucent restir && node test/furnace.mjs backlit direct && node test/furnace.mjs backlit pt && node test/furnace.mjs backlit restir && node test/webgl2.mjs backlit && node test/webgl2.mjs furnace && node test/webgl2.mjs diffuse",
+    "test": "node test/furnace.mjs glass pt && node test/furnace.mjs mirror pt && node test/furnace.mjs mirror restir && node test/furnace.mjs metal pt && node test/furnace.mjs dielectric pt && node test/furnace.mjs raster pt && node test/furnace.mjs metal scaled && node test/furnace.mjs raster scaled && node test/furnace.mjs lit pt && node test/furnace.mjs lit restir && node test/furnace.mjs translucent pt && node test/furnace.mjs translucent restir && node test/furnace.mjs backlit direct && node test/furnace.mjs backlit pt && node test/furnace.mjs backlit restir && node test/webgl2.mjs backlit && node test/webgl2.mjs furnace && node test/webgl2.mjs diffuse",
     "prepare": "husky"
   },
   "dependencies": {
