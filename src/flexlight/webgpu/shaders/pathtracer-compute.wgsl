@@ -860,6 +860,36 @@ struct Surface {
     random_state: u32
 }
 
+// Blender's default tangent at the point p of the instance's prototype: radial about z through the middle of the
+// prototype's bounds, of its generated point, its corners those of its BVH's root, two triangles or two boxes
+fn radialTangent(instance_index: u32, p: vec3<f32>) -> vec3<f32> {
+    let instance_uint_offset: u32 = instance_index * INSTANCE_UINT_SIZE;
+    let root: vec3<u32> = access_triangle_bvh(instance_uint[instance_uint_offset + 1u]).xyz;
+    let vertex_offset: u32 = instance_uint[instance_uint_offset + 2u];
+    let bv0 = access_triangle_bounding_vertices(vertex_offset);
+    let bv1 = access_triangle_bounding_vertices(vertex_offset + 1u);
+    let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
+    let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
+    let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
+    // A box's two corners or a triangle's first two vertices, its third, then the second box or triangle
+    var low: vec3<f32> = min(bv0.xyz, vec3<f32>(bv0.w, bv1.xy));
+    var high: vec3<f32> = max(bv0.xyz, vec3<f32>(bv0.w, bv1.xy));
+    if (root.x == 0u) {
+        low = min(low, vec3<f32>(bv1.zw, bv2.x));
+        high = max(high, vec3<f32>(bv1.zw, bv2.x));
+    }
+    if (root.z != UINT_MAX && root.x == 0u) {
+        low = min(low, min(bv2.yzw, min(bv3.xyz, vec3<f32>(bv3.w, bv4.xy))));
+        high = max(high, max(bv2.yzw, max(bv3.xyz, vec3<f32>(bv3.w, bv4.xy))));
+    } else if (root.z != UINT_MAX) {
+        low = min(low, vec3<f32>(bv1.zw, bv2.x));
+        high = max(high, bv2.yzw);
+    }
+    // A flat side's generated coordinate is its middle, as Blender's
+    let g: vec3<f32> = select(vec3<f32>(0.5f), (p - low) / (high - low), high > low);
+    return vec3<f32>(0.5f - g.y, g.x - 0.5f, 0.0f);
+}
+
 // Fetch geometry and textured material of a triangle hit, transparent texels are skipped stochastically
 fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     var random_state: u32 = init_random_state;
@@ -896,6 +926,11 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     material.translucent = select(vec3<f32>(0.0f), material.translucent, TRANSLUCENT);
     material.sheen = select(vec3<f32>(0.0f), material.sheen, SHEEN);
     material.anisotropy = select(0.0f, material.anisotropy, ANISOTROPY);
+    // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal
+    if (material.anisotropy != 0.0f) {
+        material.tangent = transpose(instance_transform[hit.instance_index * 2u + 1u].rotation) * radialTangent(
+            hit.instance_index, mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) * geometry_uvw);
+    }
     let hit_instance_location: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
     // Read material textures
     let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
