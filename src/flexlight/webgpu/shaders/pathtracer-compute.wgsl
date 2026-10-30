@@ -112,13 +112,20 @@ struct Material {
     translucent: vec3<f32>,
     // Blender's sheen over the base, its weight times its tint, and its roughness
     sheen: vec3<f32>,
-    sheen_roughness: f32
+    sheen_roughness: f32,
+    // Blender's Principled Anisotropic, its rotation in turns about the normal and the hit's tangent, which surfaceAt
+    // writes once anisotropy shades
+    anisotropy: f32,
+    anisotropic_rotation: f32,
+    tangent: vec3<f32>
 };
 
 // Whether the scene has a translucent material: without, materials read as none, and translucency compiles out
 override TRANSLUCENT: bool = false;
 // Whether the scene has a material with a sheen: without, materials read as none, and sheen compiles out
 override SHEEN: bool = false;
+// Whether the scene has an anisotropic material: without, materials read as isotropic, and anisotropy compiles out
+override ANISOTROPY: bool = false;
 
 struct Light {
     position: vec3<f32>,
@@ -888,6 +895,7 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     var material: Material = instance_material[hit.instance_index];
     material.translucent = select(vec3<f32>(0.0f), material.translucent, TRANSLUCENT);
     material.sheen = select(vec3<f32>(0.0f), material.sheen, SHEEN);
+    material.anisotropy = select(0.0f, material.anisotropy, ANISOTROPY);
     let hit_instance_location: u32 = hit.instance_index * INSTANCE_UINT_SIZE;
     // Read material textures
     let albedo_texture_id: u32 = instance_uint[hit_instance_location + 3u];
