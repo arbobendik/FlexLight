@@ -43,6 +43,8 @@ export class Instance {
         this._material.specularTint = material.specularTint;
         this._material.specularLevel = material.specularLevel;
         this._material.translucent = material.translucent;
+        this._material.sheen = material.sheen;
+        this._material.sheenRoughness = material.sheenRoughness;
     }
 
     get material(): Material {
