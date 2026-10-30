@@ -637,9 +637,9 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
 
     // Translucent surfaces see light all around, the shadow ray lifted to the side of the face the light lies on
     vec3 lift_n = rgb_to_greyscale(material.translucent) > 0.0 ? smooth_n * sign(dot(geometry_n, reservoir_dir)) : smooth_n;
-    vec3 unit_light_dir = normalize(reservoir_dir - geometry_offset * lift_n);
-    // Compute quick exit criterion to potentially skip expensive shadow test
-    bool show_shadow = w_sum == 0.0 || dot(lift_n, unit_light_dir) < 0.0;
+    // Compute quick exit criterion to potentially skip expensive shadow test, behind the normal seen from the surface, as the
+    // BSDF weighs the light: seen from the lifted start, it would drop those lying less than the lift above its tangent plane
+    bool show_shadow = w_sum == 0.0 || dot(lift_n, reservoir_dir) < 0.0;
     // Test if in shadow
     if (show_shadow) {
         return SampledColor(vec3(0.0), random_state);
