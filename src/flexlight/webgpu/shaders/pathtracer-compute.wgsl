@@ -1044,7 +1044,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                     }
                 }
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
-                let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
+                let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && bsdf_sampled.lobe != LOBE_SHEEN_VELVET && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
                 // Translucent surfaces are thin: the diffuse lobe leaves through to the other side of the face, into no medium
                 let through: bool = isTranslucent(material) && bsdf_sampled.lobe == LOBE_DIFFUSE && dot(bsdf_sampled.unit_direction, geometry_n) < 0.0f;
                 // Rays sampled to the wrong side of the face, sampled again or mirrored, have no density: no light sample competes
@@ -1314,6 +1314,7 @@ fn compute(
 
 const LOBE_DIFFUSE: u32 = 0u;
 const LOBE_REFRACT: u32 = 1u;
+const LOBE_SHEEN_VELVET: u32 = 4u;
 
 // How a path ends: next event estimation, emissive surface, point light sphere, environment or environment by next event estimation
 const END_NEE: u32 = 0u;
@@ -1334,9 +1335,9 @@ const PATH_K: u32 = 5u;
 const PATH_RC: u32 = 10u;
 const PATH_TYPE: u32 = 12u;
 const PATH_LOBE_PREV: u32 = 15u;
-const PATH_LOBE: u32 = 17u;
-const PATH_NEE: u32 = 19u;
-const PATH_INSIDE: u32 = 20u;
+const PATH_LOBE: u32 = 18u;
+const PATH_NEE: u32 = 21u;
+const PATH_INSIDE: u32 = 22u;
 
 // Random streams besides the per vertex ones
 const STREAM_NEE: u32 = 64u;
@@ -1553,7 +1554,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let chain_found: bool = extractBits(chain.path, PATH_RC, 2u) == RC_SURFACE;
         // Reconnection at this vertex for paths ending here
         var here: Reservoir = chain;
-        here.path = insertBits(insertBits(insertBits(insertBits(0u, b, PATH_K, 5u), RC_SURFACE, PATH_RC, 2u), prev.lobe, PATH_LOBE_PREV, 2u), select(0u, 1u, prev.inside), PATH_INSIDE, 1u);
+        here.path = insertBits(insertBits(insertBits(insertBits(0u, b, PATH_K, 5u), RC_SURFACE, PATH_RC, 2u), prev.lobe, PATH_LOBE_PREV, 3u), select(0u, 1u, prev.inside), PATH_INSIDE, 1u);
         here.jac = prev.pdf * geometry_density;
         here.rc = vec4<u32>(hit.instance_index, hit.triangle_index, bitcast<vec2<u32>>(hit.uv));
         let arrived: bool = replay && rc == RC_SURFACE && b == k;
@@ -1656,7 +1657,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         if (scatter) {
             // Replaying, x_k-1 connects to the reconnection vertex and x_k leaves along the stored direction with the stored lobes
             let connect: bool = replay && b == stop;
-            var lobe_index: u32 = select(extractBits(r.path, PATH_LOBE_PREV, 2u), extractBits(r.path, PATH_LOBE, 2u), arrived);
+            var lobe_index: u32 = select(extractBits(r.path, PATH_LOBE_PREV, 3u), extractBits(r.path, PATH_LOBE, 3u), arrived);
             var dir: vec3<f32> = r.dir;
             var refracted: bool = lobe_index == LOBE_REFRACT;
             var wrong_side: bool = false;
@@ -1701,7 +1702,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 lobe = lobeBSDF(ray.unit_direction, dir, surface.smooth_n, material, eta.x, eta.y, lobe_index, surface.random_state);
             }
             // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
-            let delta: bool = lobe_index != LOBE_DIFFUSE && (material.roughness == 0.0f || (lobe_index == LOBE_REFRACT && eta.x == eta.y));
+            let delta: bool = lobe_index != LOBE_DIFFUSE && lobe_index != LOBE_SHEEN_VELVET && (material.roughness == 0.0f || (lobe_index == LOBE_REFRACT && eta.x == eta.y));
             // Translucent surfaces are thin, as in the path tracer
             let through: bool = isTranslucent(material) && lobe_index == LOBE_DIFFUSE && dot(dir, surface.geometry_n) < 0.0f;
             if (nee && !delta && !wrong_side) {
@@ -1710,8 +1711,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 nee_vertex.none = true;
             }
             // Inverse ray footprint criterion for the density of the direction leaving this vertex (Eq. 5)
-            let inverse_footprint: bool = withinInverseFootprint(lobe.pdf, lobe_index == LOBE_DIFFUSE, prev.cos, hit.distance, threshold);
-            let rough: bool = roughLobe(lobe.pdf, lobe_index == LOBE_DIFFUSE, material.roughness);
+            let inverse_footprint: bool = withinInverseFootprint(lobe.pdf, lobe_index == LOBE_DIFFUSE || lobe_index == LOBE_SHEEN_VELVET, prev.cos, hit.distance, threshold);
+            let rough: bool = roughLobe(lobe.pdf, lobe_index == LOBE_DIFFUSE || lobe_index == LOBE_SHEEN_VELVET, material.roughness);
             if (arrived) {
                 if (!inverse_footprint) {
                     return fail;
@@ -1737,7 +1738,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             if (!replay && !chain_found && footprint && inverse_footprint) {
                 chain = here;
-                chain.path = insertBits(insertBits(chain.path, lobe_index, PATH_LOBE, 2u), select(0u, 1u, nee), PATH_NEE, 1u);
+                chain.path = insertBits(insertBits(chain.path, lobe_index, PATH_LOBE, 3u), select(0u, 1u, nee), PATH_NEE, 1u);
                 chain.jac *= lobe.pdf;
                 chain.dir = dir;
                 chain_throughput = throughput;
@@ -1801,7 +1802,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 candidate.radiance = safeDivide(f * select(weight, 1.0f, extractBits(chain.path, PATH_K, 5u) == b), chain_throughput);
             } else if (prev.rough) {
                 // Reconnection to the environment direction, guarded by the roughness threshold only (Sec. 4.2)
-                candidate.path = insertBits(insertBits(insertBits(insertBits(0u, b + 1u, PATH_K, 5u), RC_ENV, PATH_RC, 2u), prev.lobe, PATH_LOBE_PREV, 2u), select(0u, 1u, prev.inside), PATH_INSIDE, 1u);
+                candidate.path = insertBits(insertBits(insertBits(insertBits(0u, b + 1u, PATH_K, 5u), RC_ENV, PATH_RC, 2u), prev.lobe, PATH_LOBE_PREV, 3u), select(0u, 1u, prev.inside), PATH_INSIDE, 1u);
                 candidate.jac = prev.pdf;
                 candidate.dir = ray.unit_direction;
             }
