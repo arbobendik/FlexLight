@@ -400,6 +400,8 @@ struct SampleBSDF {
     vec3 throughput;
     uint random_state;
     bool refracted;
+    // Whether the diffuse lobe drew it
+    bool diffuse;
 };
 
 // SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
@@ -446,7 +448,7 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     float p_reflect = reflect_component * total_component_inv;
     float p_refract = refract_component * total_component_inv;
 
-    SampleBSDF bsdf_sample = SampleBSDF(vec3(1.0), vec3(1.0), 0u, false);
+    SampleBSDF bsdf_sample = SampleBSDF(vec3(1.0), vec3(1.0), 0u, false, false);
     Random random_p = pcg(random_state);
     random_state = random_p.state;
     // Diffuse case
@@ -466,6 +468,7 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
         // translucent color over its share through, the albedo over the rest
         bsdf_sample.throughput = diffuse_weight * (through ? material.translucent / share : material.albedo / (1.0 - share)) / p_diffuse;
         bsdf_sample.refracted = through;
+        bsdf_sample.diffuse = true;
         return bsdf_sample;
     }
     // Refractive case
@@ -632,15 +635,17 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         }
     }
 
-    vec3 unit_light_dir = normalize(reservoir_dir - geometry_offset * smooth_n);
+    // Translucent surfaces see light all around, the shadow ray lifted to the side of the face the light lies on
+    vec3 lift_n = rgb_to_greyscale(material.translucent) > 0.0 ? smooth_n * sign(dot(geometry_n, reservoir_dir)) : smooth_n;
+    vec3 unit_light_dir = normalize(reservoir_dir - geometry_offset * lift_n);
     // Compute quick exit criterion to potentially skip expensive shadow test
-    bool show_shadow = w_sum == 0.0 || dot(smooth_n, unit_light_dir) < 0.0;
+    bool show_shadow = w_sum == 0.0 || dot(lift_n, unit_light_dir) < 0.0;
     // Test if in shadow
     if (show_shadow) {
         return SampledColor(vec3(0.0), random_state);
     }
     // Apply geometry offset
-    vec3 offset_target = camera_ray.origin + geometry_offset * smooth_n;
+    vec3 offset_target = camera_ray.origin + geometry_offset * lift_n;
     vec3 shadow = camera_ray.origin + reservoir_dir - offset_target;
     Ray light_ray = Ray(offset_target, normalize(shadow));
 
@@ -837,6 +842,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                         // Redirect outgoing ray according to new bsdf sample.
                         bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
                         bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
+                        bsdf_sampled.diffuse = geometry_bsdf_sampled.diffuse;
                         // Multiply to compute combined throughput, doing proper self shadowing.
                         bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
                     } else {
@@ -844,14 +850,16 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     }
                 }
                 // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
-                if (bsdf_sampled.refracted) {
+                // Translucent surfaces are thin: the diffuse lobe leaves through to the other side of the face, into no medium
+                bool through = bsdf_sampled.diffuse && rgb_to_greyscale(material.translucent) > 0.0 && dot(bsdf_sampled.unit_direction, geometry_n) < 0.0;
+                if (bsdf_sampled.refracted && !through) {
                     is_inside = !is_inside;
                 }
 
                 ray.unit_direction = bsdf_sampled.unit_direction;
                 importancy_factor *= max(bsdf_sampled.throughput, vec3(0.0));
 
-                vec3 out_dir_aligned_normal = is_inside ? - smooth_n : smooth_n;
+                vec3 out_dir_aligned_normal = is_inside != through ? - smooth_n : smooth_n;
                 ray.origin += geometry_offset * out_dir_aligned_normal;
             }
         }
