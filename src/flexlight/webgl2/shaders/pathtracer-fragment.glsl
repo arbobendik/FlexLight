@@ -336,6 +336,15 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
     // Precalculate dot products for geometry normal
     float g_n_dot_v = dot(g_n, v);
     float g_n_dot_l = dot(g_n, out_dir);
+    // Diffuse of what the dielectric does not reflect, at a visible normal as sampleBSDF draws for its lobe choice
+    Random random_h_1 = pcg(random_state);
+    Random random_h_2 = pcg(random_h_1.state);
+    vec3 n_i = n * sign(n_dot_v);
+    vec3 h_d = tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, random_h_1.value, random_h_2.value).xzy, n_i);
+    float diffuse_factor = (1.0 - fresnel(abs(dot(v, h_d)), eta_i, eta_o)) * (1.0 - material.metallic) * (1.0 - material.transmission);
+    // Blender's Translucent BSDF passes the diffuse lobe through the smooth normal, counted on the face's other side alone:
+    // on the incident one, light sampling's quick exit culls what the smooth normal sends through, as sampling mirrors it
+    bool through = n_dot_l * n_dot_v < 0.0 && rgb_to_greyscale(material.translucent) > 0.0;
     // Test if v and l are on the same side of the surface
     if (g_n_dot_v * g_n_dot_l > 0.0) {
         // If v and l are on the same side of the surface do Torrance-Sparrow BRDF
@@ -353,16 +362,11 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
 
         float D = trowbridgeReitz(alpha, n_dot_h);
         float G = smith(alpha, pd_n_dot_v, pd_n_dot_l);
-        // Diffuse of what the dielectric does not reflect, at a visible normal as sampleBSDF draws for its lobe choice
-        Random random_h_1 = pcg(random_state);
-        Random random_h_2 = pcg(random_h_1.state);
-        vec3 n_i = n * sign(n_dot_v);
-        vec3 h_d = tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, random_h_1.value, random_h_2.value).xzy, n_i);
-        float diffuse_factor = (1.0 - fresnel(abs(dot(v, h_d)), eta_i, eta_o)) * (1.0 - material.metallic) * (1.0 - material.transmission);
         vec3 torrance_sparrow = D * F * G / max(4.0 * pd_n_dot_v * pd_n_dot_l, BIAS);
         vec3 radiance = diffuse_factor * lambert + torrance_sparrow;
         return radiance * n_dot_l;
     } else {
+        vec3 translucent = through ? diffuse_factor * material.translucent * INV_PI * abs(n_dot_l) : vec3(0.0);
         // Refractive half-vector (eq. 16)
         vec3 ht_unorm = - (eta_i * v + eta_o * out_dir);
         vec3 ht = normalize(ht_unorm);
@@ -384,10 +388,10 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         if (abs(denom_f) > BIAS && denominator_geom > BIAS) {
             // Refraction of what the dielectric does not reflect, of the share not metallic
             float walter = (numerator_geom / denominator_geom) * (1.0 - fresnel(abs(v_dot_ht), eta_i, eta_o)) * DT * GT * (eta_o * eta_o / denom_f_sq);
-            return walter * material.albedo * material.transmission * (1.0 - material.metallic) * n_dot_l;
+            return walter * material.albedo * material.transmission * (1.0 - material.metallic) * n_dot_l + translucent;
         }
-        // If refraction is not possible, return black this case should never happen
-        return vec3(0.0, 0.0, 0.0);
+        // Refraction is not possible, the translucent diffuse alone passes
+        return translucent;
     }
 }
 
@@ -452,9 +456,16 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
         bsdf_sample.random_state = random_d_2.state;
         // Sample cosine weighted hemisphere
         vec3 cosine_hemisphere = sampleCosWeightedHemisphere(random_d_1.value, random_d_2.value);
-        bsdf_sample.unit_direction = tangentToWorld(cosine_hemisphere, n_i);
-        // throughput = BSDF * n_dot_l / PDF = albedo * diffuse_weight, see WebGPU implementation for derivation
-        bsdf_sample.throughput = diffuse_weight * material.albedo / p_diffuse;
+        // Blender's Translucent BSDF's share of the lobe's samples, the choice's random number reused, goes through to the
+        // other side, mirrored across the tangent plane by its cosine, as FlexKernels' sampleBSDF
+        float translucent = rgb_to_greyscale(material.translucent);
+        float share = translucent > 0.0 ? translucent / (rgb_to_greyscale(material.albedo) + translucent) : 0.0;
+        bool through = random_p.value < p_diffuse * share;
+        bsdf_sample.unit_direction = tangentToWorld(vec3(cosine_hemisphere.x, through ? - cosine_hemisphere.y : cosine_hemisphere.y, cosine_hemisphere.z), n_i);
+        // throughput = BSDF * n_dot_l / PDF = albedo * diffuse_weight, see WebGPU implementation for derivation, the
+        // translucent color over its share through, the albedo over the rest
+        bsdf_sample.throughput = diffuse_weight * (through ? material.translucent / share : material.albedo / (1.0 - share)) / p_diffuse;
+        bsdf_sample.refracted = through;
         return bsdf_sample;
     }
     // Refractive case

@@ -46,6 +46,8 @@ struct Material {
     float transmission;
     float ior;
     vec3 absorption;
+    // Blender's Translucent BSDF's color, which the diffuse lobe transmits to the other side of the face
+    vec3 translucent;
 };
 
 struct Light {
@@ -144,14 +146,15 @@ Transform access_instance_transform(uint index) {
 }
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
-// translucent, pad, which WebGL2's own BSDF leaves
+// translucent, pad, of which WebGL2's own BSDF leaves the specular tint and level
 Material access_instance_material(uint index) {
     uint offset = index * 6u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
     vec4 m1 = texelFetch(instance_material, buffer_position(offset + 1u), 0);
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);
     vec4 m3 = texelFetch(instance_material, buffer_position(offset + 3u), 0);
-    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz);
+    vec4 m5 = texelFetch(instance_material, buffer_position(offset + 5u), 0);
+    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m5.xyz);
 }
 
 // Position, is area light | color, intensity | variance, pad
