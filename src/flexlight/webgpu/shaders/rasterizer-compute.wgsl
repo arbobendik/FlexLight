@@ -99,7 +99,10 @@ struct Material {
     specular_level: f32,
     translucent: vec3<f32>,
     sheen: vec3<f32>,
-    sheen_roughness: f32
+    sheen_roughness: f32,
+    anisotropy: f32,
+    anisotropic_rotation: f32,
+    tangent: vec3<f32>
 };
 
 struct Light {
