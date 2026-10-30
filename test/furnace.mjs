@@ -25,11 +25,15 @@
 // alone (mode direct), path traced or through ReSTIR. Under a white sheen of roughness 0.5 over black (argument sheen), the
 // metal's square holds the sheen's directional albedo at that cosine, 0.2671 by FlexKernels' quadrature of it, which the
 // mean meets within four standard errors; over white diffuse (argument sheenwhite), no more light than it receives, within
-// four standard errors, and within 1% of it. The sheen's noise lets single pixels of either exceed it.
+// four standard errors, and within 1% of it. The sheen's noise lets single pixels of either exceed it. Of anisotropy 1
+// (argument aniso), its tangent Blender's default, radial about z through the middle of its prototype's bounds, which a
+// triangle of no area at x = 10 moves so that it runs along the view where seen, the metal holds the albedo of the
+// roughnesses Principled's mapping gives along the view and across, 0.6953 by midpoint quadrature, within four
+// standard errors; turned a quarter about the normal (argument anisoturned), that across and along, 0.6351.
 import { create, globals } from "webgpu";
 
 const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
-const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), SHEEN = 0.2671;
+const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), SHEEN = 0.2671, ANISO = [0.6953, 0.6351];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -89,11 +93,13 @@ for (let i = 0; i < SIDES; i++) {
 // origin
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite";
-const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster" || sheen;
+const aniso = MATERIAL === "aniso" || MATERIAL === "anisoturned";
+const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster" || sheen || aniso;
 const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
 const scaled = [0, tilt, 0.5].map((c, i) => c * SCALE[i]), length = Math.hypot(...scaled);
 if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => (c + twin * (i === 0)) / SCALE[i])),
   t.map(() => scaled.map((c) => c / length))));
+if (aniso) push([[10, 0, 0], [10, 0, 0], [10, 0, 0]], [[0, tilt, 0.5], [0, tilt, 0.5], [0, tilt, 0.5]]);
 // The sheet of the translucent and backlit cases in the plane z = 0, of its left half x < 0 and right half x > 0, wound
 // along z or against it and smooth along normal
 const sheet = (x, z, normal) => [[[0, -3, 0], [x, -3, 0], [x, 3, 0]], [[0, -3, 0], [x, 3, 0], [0, 3, 0]]].forEach((t) =>
@@ -106,6 +112,8 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : MATERIAL === "dielectric" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5)
   : sheen ? new F.Material(new F.Vector(...Array(3).fill(Number(MATERIAL === "sheenwhite"))), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined,
     undefined, undefined, undefined, new F.Vector(1, 1, 1), 0.5)
+  : aniso ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
+    undefined, undefined, undefined, 1, MATERIAL === "anisoturned" ? 0.25 : 0)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
   : MATERIAL === "lit" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
   : thin ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(1, 1, 1))
@@ -182,8 +190,9 @@ engine.renderer.renderFrame = async (...args) => {
     process.exit(Math.abs(half(-1) / BACKLIT - 1) < 0.02 && Math.abs(half(1) / BACKLIT - 0.5) < 0.01 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
     : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
+    : aniso ? Math.abs(mean - ANISO[Number(MATERIAL === "anisoturned")]) < 4 * error
     : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
     : thin && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
-    && (MATERIAL === "lit" || thin || sheen || brightest < 1.05) && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || black === 0) ? 0 : 1);
+    && (MATERIAL === "lit" || thin || sheen || brightest < 1.05) && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || aniso || black === 0) ? 0 : 1);
 };
 engine.renderer.render();
