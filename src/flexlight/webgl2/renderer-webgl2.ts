@@ -64,6 +64,7 @@ interface RendererWGL2GPUBufferManagers {
 interface EngineState {
   renderResolution: number;
   antialiasing: WebGPUAntialiasingType;
+  translucent: boolean;
 }
 
 const INSTANCE_UINT_SIZE: number = 9;
@@ -82,7 +83,7 @@ export abstract class RendererWGL2 extends Renderer {
   private resizeHook: (() => void) | undefined;
 
   private antialiasingModule: AntialiasingModule | undefined;
-  private engineState: EngineState = { renderResolution: 0, antialiasing: undefined };
+  private engineState: EngineState = { renderResolution: 0, antialiasing: undefined, translucent: false };
   // Count of previous frames the last frame has accumulated and camera state they were rendered with
   private accumulationCount: number = 0;
   private accumulationCameraState: Array<number> = [];
@@ -186,7 +187,7 @@ export abstract class RendererWGL2 extends Renderer {
 
     const programs: RendererWGL2Programs = {
       rasterProgram: createProgram(gl, RasterVertexShader, RasterFragmentShader),
-      shadingProgram: createFullscreenProgram(gl, this.shadingShader),
+      shadingProgram: this.createShadingProgram(gl),
       canvasProgram: createFullscreenProgram(gl, CanvasShader)
     };
     // Link GPUBufferManagers to BufferManagers
@@ -217,9 +218,19 @@ export abstract class RendererWGL2 extends Renderer {
     requestAnimationFrame(() => this.frameCycle(gl, programs, resources, gpuManagers));
   }
 
+  // The shading shader with translucency compiled in for scenes with a translucent material alone, as the WebGPU path tracer
+  private createShadingProgram(gl: WebGL2RenderingContext): WebGLProgram {
+    return createFullscreenProgram(gl, this.shadingShader.replace("#version 300 es", `#version 300 es\nconst bool TRANSLUCENT = ${this.engineState.translucent};`));
+  }
+
   // Internal render engine Functions
   private frameCycle (gl: WebGL2RenderingContext, programs: RendererWGL2Programs, resources: CanvasSizeDependentResources, gpuManagers: RendererWGL2GPUBufferManagers) {
     if (!this.isRunning) return;
+    if (this.engineState.translucent !== this.scene.translucent) {
+      this.engineState.translucent = this.scene.translucent;
+      gl.deleteProgram(programs.shadingProgram);
+      programs.shadingProgram = this.createShadingProgram(gl);
+    }
     // Check if resize is required
     if (this.engineState.renderResolution !== this.config.renderResolution) {
       this.engineState.renderResolution = this.config.renderResolution;

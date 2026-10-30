@@ -154,7 +154,8 @@ Material access_instance_material(uint index) {
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);
     vec4 m3 = texelFetch(instance_material, buffer_position(offset + 3u), 0);
     vec4 m5 = texelFetch(instance_material, buffer_position(offset + 5u), 0);
-    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m5.xyz);
+    // Without a translucent material in the scene, none, which compiles translucency out
+    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, TRANSLUCENT ? m5.xyz : vec3(0.0));
 }
 
 // Position, is area light | color, intensity | variance, pad
