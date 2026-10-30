@@ -565,8 +565,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Assemble and transform triangle with shift.
             let t: mat3x3<f32> = transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
 
-            // Assemble and transform normals
-            let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
+            // Assemble and transform normals, by the inverse transpose, which keeps them normal under a scale that is not uniform
+            let normals: mat3x3<f32> = transpose(instance_transform[instance_id * 2u + 1u].rotation) * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
             // Compute edge vectors
             let edge1: vec3<f32> = t[1] - t[0];
             let edge2: vec3<f32> = t[2] - t[0];
@@ -712,8 +712,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     let transform: Transform = instance_transform[hit.instance_index * 2u];
     // Assemble and transform triangle
     let t: mat3x3<f32> = transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x));
-    // Assemble and transform normals
-    let normals: mat3x3<f32> = transform.rotation * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
+    // Assemble and transform normals, by the inverse transpose, which keeps them normal under a scale that is not uniform
+    let normals: mat3x3<f32> = transpose(instance_transform[hit.instance_index * 2u + 1u].rotation) * mat3x3<f32>(t2.yzw, t3.xyz, vec3<f32>(t3.w, t4.xy));
     let offset_ray_target: vec3<f32> = ray.origin - transform.shift;
     // Compute edge vectors
     let edge1: vec3<f32> = t[1] - t[0];
