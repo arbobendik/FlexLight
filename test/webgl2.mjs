@@ -8,7 +8,11 @@
 // diffuse) too. furnace.mjs's metal square, built in object space and turned by its instance's scale (1, 2, 1), its normals
 // the object's (argument scaled), holds GGX's albedo there, 0.8551, under white light of 0.9 within 0.5%; the rasterizer's
 // beside one built in world space (argument rasterscaled), lit by a sphere light above, the same mean: the halves'
-// difference within four standard errors of it, which the mirror image's pairs of pixels give. After 4096 frames; it fails unless the renderer is SwiftShader.
+// difference within four standard errors of it, which the mirror image's pairs of pixels give. Of anisotropy 1 about
+// Blender's default tangent (argument aniso), its bounds moved by furnace.mjs's triangle of no area at x = 10, the square
+// holds the albedo of the roughnesses along the view and across, 0.6953, under the white light within 0.5%; turned a
+// quarter (argument anisoturned), 0.6351; of anisotropy 1e-6 (argument anisolimit), the isotropic 0.8551. After 4096
+// frames; it fails unless the renderer is SwiftShader.
 // The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -17,8 +21,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SIZE = 64, FRAMES = 4096, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
-const SQUARE = CASE === "scaled" || CASE === "rasterscaled", RASTER = CASE === "rasterscaled";
-const FURNACE = CASE !== "backlit" && !SQUARE, [LEFT, RIGHT] = SQUARE ? [0.9 * 0.8551, 0.9 * 0.8551] : FURNACE ? [0.5, 0.5] : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
+const ANISO = { aniso: 0.6953, anisoturned: 0.6351, anisolimit: 0.8551 }[CASE];
+const SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
+const FURNACE = CASE !== "backlit" && !SQUARE, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.8551), 0.9 * (ANISO ?? 0.8551)] : FURNACE ? [0.5, 0.5] : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
 // the frames cut off after a fixed count
@@ -61,7 +66,12 @@ Object.assign(engine.config, { temporal: true, antialiasing: undefined, tonemapp
 const tilt = Math.sqrt(3) / 2, corners = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const square = (shift, k) => { const o = [0, tilt, 0.5].map((c, i) => c * k[i]), l = Math.hypot(...o);
   return [[0, 1, 2], [0, 2, 3]].flatMap((t) => [...t.flatMap((j) => corners[j].map((c, i) => (c + shift * (i === 0)) / k[i])), ...t.flatMap(() => o.map((c) => c / l)), 0, 0, 0, 0, 0, 0]); };
-if (${SQUARE}) {
+if (${ANISO !== undefined}) {
+  const metal = new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
+    undefined, undefined, undefined, ${CASE === "anisolimit" ? 1e-6 : 1}, ${CASE === "anisoturned" ? 0.25 : 0});
+  const o = [0, tilt, 0.5], far = [...[10, 0, 0, 10, 0, 0, 10, 0, 0], ...o, ...o, ...o, 0, 0, 0, 0, 0, 0];
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [...square(0, [1, 1, 1]), ...far], material: metal, label: "aniso" }));
+} else if (${SQUARE}) {
   const white = new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), ${RASTER ? "1, 0" : "0.5, 1"}, 0);
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(${RASTER ? 0.6 : 0}, [1, 2, 1]), material: white, label: "scaled" })).transform.scale(new F.Vector(1, 2, 1));
   if (${RASTER}) engine.renderer = "rasterizer", engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 12, 0.5)),
@@ -71,7 +81,7 @@ if (${SQUARE}) {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(3), material: material(${CASE === "diffuse" ? "1, 0" : "0.5, 0.5"}), label: "mix" }));
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
 }
-engine.scene.ambientLight = new F.Vector(${CASE === "scaled" ? "0.9, 0.9, 0.9" : "0, 0, 0"});
+engine.scene.ambientLight = new F.Vector(${CASE === "scaled" || ANISO !== undefined ? "0.9, 0.9, 0.9" : "0, 0, 0"});
 engine.camera.position = new F.Vector(0, 0, 3);
 engine.camera.direction = new F.Vector(0, 0);
 engine.camera.fov = ${RASTER ? 40 : 1};
