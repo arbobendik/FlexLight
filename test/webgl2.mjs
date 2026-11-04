@@ -12,13 +12,14 @@
 // Blender's default tangent (argument aniso), its bounds moved by furnace.mjs's triangle of no area at x = 10, the square
 // holds the albedo of the roughnesses along the view and across, 0.6953, under the white light within 0.5%; turned a
 // quarter (argument anisoturned), 0.6351; of anisotropy 1e-6 (argument anisolimit), the isotropic 0.8551. After 4096
-// frames; it fails unless the renderer is SwiftShader.
+// frames; it fails unless the renderer is SwiftShader. cylinder.mjs' cylinders (argument cylinder), under the white light.
 // The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deviation } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = 4096, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
 const ANISO = { aniso: 0.6953, anisoturned: 0.6351, anisolimit: 0.8551 }[CASE];
@@ -66,7 +67,9 @@ Object.assign(engine.config, { temporal: true, antialiasing: undefined, tonemapp
 const tilt = Math.sqrt(3) / 2, corners = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const square = (shift, k) => { const o = [0, tilt, 0.5].map((c, i) => c * k[i]), l = Math.hypot(...o);
   return [[0, 1, 2], [0, 2, 3]].flatMap((t) => [...t.flatMap((j) => corners[j].map((c, i) => (c + shift * (i === 0)) / k[i])), ...t.flatMap(() => o.map((c) => c / l)), 0, 0, 0, 0, 0, 0]); };
-if (${ANISO !== undefined}) {
+if (${CASE === "cylinder"}) {
+  await (await import("/test/cylinder.mjs")).instanceCylinders(F, engine.scene);
+} else if (${ANISO !== undefined}) {
   const metal = new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
     undefined, undefined, undefined, ${CASE === "anisolimit" ? 1e-6 : 1}, ${CASE === "anisoturned" ? 0.25 : 0});
   const o = [0, tilt, 0.5], far = [...[10, 0, 0, 10, 0, 0, 10, 0, 0], ...o, ...o, ...o, 0, 0, 0, 0, 0, 0];
@@ -81,10 +84,10 @@ if (${ANISO !== undefined}) {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(3), material: material(${CASE === "diffuse" ? "1, 0" : "0.5, 0.5"}), label: "mix" }));
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
 }
-engine.scene.ambientLight = new F.Vector(${CASE === "scaled" || ANISO !== undefined ? "0.9, 0.9, 0.9" : "0, 0, 0"});
+engine.scene.ambientLight = new F.Vector(${CASE === "scaled" || CASE === "cylinder" || ANISO !== undefined ? "0.9, 0.9, 0.9" : "0, 0, 0"});
 engine.camera.position = new F.Vector(0, 0, 3);
 engine.camera.direction = new F.Vector(0, 0);
-engine.camera.fov = ${RASTER ? 40 : 1};
+engine.camera.fov = ${RASTER || CASE === "cylinder" ? 40 : 1};
 engine.renderer.render();
 </script>`;
 
@@ -113,14 +116,15 @@ const server = createServer((req, res) => {
       const difference = pairs.reduce((a, b) => a + b) / pairs.length;
       const differenceError = Math.sqrt(pairs.reduce((a, d) => a + (d - difference) ** 2, 0) / (pairs.length - 1) / pairs.length);
       if (RASTER) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
+      if (CASE === "cylinder") console.log(`columns within ${(100 * deviation(value, SIZE)).toFixed(2)}% of their mirror images`);
       const within = (v, error, truth) => FURNACE ? Math.abs(v - truth) < 4 * error : Math.abs(v / truth - 1) < (SQUARE ? 0.005 : 0.02);
-      finish(/SwiftShader/.test(renderer) && (RASTER ? Math.abs(difference) < 4 * differenceError
+      finish(/SwiftShader/.test(renderer) && (CASE === "cylinder" ? deviation(value, SIZE) < 0.02 : RASTER ? Math.abs(difference) < 4 * differenceError
         : within(left, leftError, LEFT) && within(right, rightError, RIGHT)) ? 0 : 1);
     });
     return;
   }
   if (req.url === "/") return res.setHeader("Content-Type", "text/html"), res.end(PAGE);
-  if (!req.url.startsWith("/public/build/")) return res.writeHead(404), res.end();
+  if (!req.url.startsWith("/public/build/") && req.url !== "/test/cylinder.mjs") return res.writeHead(404), res.end();
   res.setHeader("Content-Type", "text/javascript");
   res.end(readFileSync(new URL(".." + req.url, import.meta.url)));
 }).listen(0, () => {
