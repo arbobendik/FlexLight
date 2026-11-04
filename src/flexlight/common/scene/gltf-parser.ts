@@ -20,6 +20,7 @@ interface Gltf {
         emissiveFactor?: [number, number, number];
         extensions?: {
             KHR_materials_specular?: { specularFactor?: number; specularColorFactor?: [number, number, number] };
+            KHR_materials_anisotropy?: { anisotropyStrength?: number; anisotropyRotation?: number };
         };
     }[];
     accessors: {
@@ -158,6 +159,16 @@ export class GltfParser extends Parser {
             const specular = mat.extensions?.KHR_materials_specular;
             if (specular?.specularFactor !== undefined) material.specularLevel = specular.specularFactor;
             if (specular?.specularColorFactor) material.specularTint = new Vector(...specular.specularColorFactor);
+            // The extension's roughness along the UV map's tangent, mix(alpha, 1, strength^2), and alpha across it, as
+            // Blender's aspect about the roughness of their geometric mean, turned counterclockwise by its rotation
+            const anisotropy = mat.extensions?.KHR_materials_anisotropy, strength = anisotropy?.anisotropyStrength ?? 0;
+            if (strength > 0) {
+                const alpha = material.roughness ** 2, along = alpha + (1 - alpha) * strength ** 2;
+                material.roughness = (alpha * along) ** 0.25;
+                material.anisotropy = (1 - alpha / along) / 0.9;
+                material.anisotropicRotation = (anisotropy?.anisotropyRotation ?? 0) / (2 * Math.PI);
+                material.tangentSource = "uv";
+            }
             console.log(`Created material ${i}:`, material);
             return material;
         });
