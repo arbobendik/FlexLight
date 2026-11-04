@@ -29,10 +29,12 @@
 // (argument aniso), its tangent Blender's default, radial about z through the middle of its prototype's bounds, which a
 // triangle of no area at x = 10 moves so that it runs along the view where seen, the metal holds the albedo of the
 // roughnesses Principled's mapping gives along the view and across, 0.6953 by midpoint quadrature, within four
-// standard errors; turned a quarter about the normal (argument anisoturned), that across and along, 0.6351.
+// standard errors; turned a quarter about the normal (argument anisoturned), that across and along, 0.6351. Of 1024
+// frames, cylinder.mjs' cylinders (argument cylinder).
 import { create, globals } from "webgpu";
+import { deviation, instanceCylinders } from "./cylinder.mjs";
 
-const SIZE = 64, FRAMES = 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
+const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
 const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), SHEEN = 0.2671, ANISO = [0.6953, 0.6351];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
@@ -120,7 +122,8 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
-engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" })).transform.scale(new F.Vector(...SCALE));
+if (MATERIAL === "cylinder") await instanceCylinders(F, engine.scene);
+else engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" })).transform.scale(new F.Vector(...SCALE));
 // The raster's twin in world space, on the left
 if (twin) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => c - twin * (i === 0))),
   t.map(() => [0, tilt, 0.5]))), engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "twin" }));
@@ -148,8 +151,8 @@ engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
-if (square || thin) engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
-  engine.camera.fov = twin ? 40 : 1;
+if (square || thin || MATERIAL === "cylinder") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+  engine.camera.fov = twin || MATERIAL === "cylinder" ? 40 : 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
 const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
@@ -182,6 +185,8 @@ engine.renderer.renderFrame = async (...args) => {
   const difference = differences.reduce((a, b) => a + b) / FRAMES;
   const differenceError = Math.sqrt(differences.reduce((a, d) => a + (d - difference) ** 2, 0) / (FRAMES - 1) / FRAMES);
   if (twin) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
+  if (MATERIAL === "cylinder") console.log(`columns within ${(100 * deviation((p) => pixels[p], SIZE)).toFixed(2)}% of their mirror images`),
+    process.exit(deviation((p) => pixels[p], SIZE) < 0.02 ? 0 : 1);
   // The twins' image leaves pixel 0 in the background, which no random number reaches
   if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
   // The halves' means, of the columns left and right of the middle but the two next to it on either side
