@@ -828,9 +828,14 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
             vec2 barycentric = fract(mat3x2(t4.zw, t5.xy, t5.zw) * geometry_uvw);
             // Sample material
             Material material = access_instance_material(hit.instance_index);
-            // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal
-            if (material.anisotropy != 0.0) material.tangent = transpose(access_instance_transform(hit.instance_index * 2u + 1u).rotation)
-                * radialTangent(hit.instance_index, mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x)) * geometry_uvw);
+            // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal, or
+            // the UV map's, the triangle's made normal to the smooth normal
+            if (material.anisotropy != 0.0 && material.tangent_source != 0.0) {
+                material.tangent = normalMapTBN(t[0], t[1], t[2], t4.zw, t5.xy, t5.zw, smooth_n)[0];
+            } else if (material.anisotropy != 0.0) {
+                material.tangent = transpose(access_instance_transform(hit.instance_index * 2u + 1u).rotation)
+                    * radialTangent(hit.instance_index, mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x)) * geometry_uvw);
+            }
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).

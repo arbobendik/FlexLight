@@ -117,10 +117,11 @@ struct Material {
     // Blender's sheen over the base, its weight times its tint, and its roughness
     sheen: vec3<f32>,
     sheen_roughness: f32,
-    // Blender's Principled Anisotropic, its rotation in turns about the normal and the hit's tangent, which surfaceAt
-    // writes once anisotropy shades
+    // Blender's Principled Anisotropic, its rotation in turns about the normal, whether its tangent is the UV map's
+    // over Blender's default and the hit's tangent, which surfaceAt writes once anisotropy shades
     anisotropy: f32,
     anisotropic_rotation: f32,
+    tangent_source: f32,
     tangent: vec3<f32>
 };
 
@@ -930,8 +931,11 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     material.translucent = select(vec3<f32>(0.0f), material.translucent, TRANSLUCENT);
     material.sheen = select(vec3<f32>(0.0f), material.sheen, SHEEN);
     material.anisotropy = select(0.0f, material.anisotropy, ANISOTROPY);
-    // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal
-    if (material.anisotropy != 0.0f) {
+    // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal, or the UV
+    // map's, the triangle's made normal to the smooth normal
+    if (material.anisotropy != 0.0f && material.tangent_source != 0.0f) {
+        material.tangent = normalMapTBN(t[0], t[1], t[2], t4.zw, t5.xy, t5.zw, smooth_n)[0];
+    } else if (material.anisotropy != 0.0f) {
         material.tangent = transpose(instance_transform[hit.instance_index * 2u + 1u].rotation) * radialTangent(
             hit.instance_index, mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) * geometry_uvw);
     }

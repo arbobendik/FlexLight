@@ -51,6 +51,8 @@ struct Material {
     // Blender's anisotropy and its rotation in turns about the normal, and the tangent the hit writes once they shade
     float anisotropy;
     float anisotropic_rotation;
+    // Whether the tangent is the UV map's over Blender's default
+    float tangent_source;
     vec3 tangent;
 };
 
@@ -150,7 +152,7 @@ Transform access_instance_transform(uint index) {
 }
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
-// translucent, pad | sheen and its roughness | anisotropy, its rotation, pad | tangent, pad, of which WebGL2's own BSDF
+// translucent, pad | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, pad, of which WebGL2's own BSDF
 // leaves the specular tint and level and the sheen
 Material access_instance_material(uint index) {
     uint offset = index * 9u;
@@ -162,7 +164,7 @@ Material access_instance_material(uint index) {
     vec4 m7 = texelFetch(instance_material, buffer_position(offset + 7u), 0);
     // Without a translucent or anisotropic material in the scene, none, which compiles either out
     return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, TRANSLUCENT ? m5.xyz : vec3(0.0),
-        ANISOTROPY ? m7.x : 0.0, m7.y, vec3(0.0));
+        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0));
 }
 
 // Position, is area light | color, intensity | variance, pad

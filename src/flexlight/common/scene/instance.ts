@@ -47,6 +47,7 @@ export class Instance {
         this._material.sheenRoughness = material.sheenRoughness;
         this._material.anisotropy = material.anisotropy;
         this._material.anisotropicRotation = material.anisotropicRotation;
+        this._material.tangentSource = material.tangentSource;
     }
 
     get material(): Material {

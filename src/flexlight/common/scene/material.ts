@@ -24,8 +24,10 @@ export class Material {
     // Blender's Principled Anisotropic, none by default, and its rotation in turns about the normal
     anisotropy: number;
     anisotropicRotation: number;
+    // The tangent anisotropy turns about: Blender's default, radial about the object's z, or the UV map's
+    tangentSource: "radial" | "uv";
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial") {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -40,11 +42,12 @@ export class Material {
         this.sheenRoughness = sheenRoughness;
         this.anisotropy = anisotropy;
         this.anisotropicRotation = anisotropicRotation;
+        this.tangentSource = tangentSource;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, and the tangent surfaceAt writes once anisotropy shades
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), and the tangent surfaceAt writes once anisotropy shades
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -83,7 +86,7 @@ export class InstanceMaterial implements Material {
             material.sheenRoughness,
 
             // Anisotropy and its rotation
-            material.anisotropy, material.anisotropicRotation, 0, 0,
+            material.anisotropy, material.anisotropicRotation, Number(material.tangentSource === "uv"), 0,
             // Tangent
             0, 0, 0, 0
         ]);
@@ -243,5 +246,15 @@ export class InstanceMaterial implements Material {
 
     get anisotropicRotation(): number {
         return this.materialArray[29] ?? 0;
+    }
+
+    set tangentSource(tangentSource: "radial" | "uv") {
+        this.materialArray[30] = Number(tangentSource === "uv");
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 30 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get tangentSource(): "radial" | "uv" {
+        return this.materialArray[30] === 1 ? "uv" : "radial";
     }
 }
