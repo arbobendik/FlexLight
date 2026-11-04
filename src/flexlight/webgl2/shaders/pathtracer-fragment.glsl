@@ -497,6 +497,33 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     return bsdf_sample;
 }
 
+// Blender's default tangent at the point p of the instance's prototype, as the WebGPU path tracer's radialTangent: radial
+// about z through the middle of the prototype's bounds, those of its BVH's root, two triangles or two boxes
+vec3 radialTangent(uint instance_index, vec3 p) {
+    uint instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
+    uvec3 root = access_triangle_bvh(access_instance_uint(instance_uint_offset + 1u)).xyz;
+    uint vertex_offset = access_instance_uint(instance_uint_offset + 2u);
+    vec4 bv0 = access_triangle_bounding_vertices(vertex_offset);
+    vec4 bv1 = access_triangle_bounding_vertices(vertex_offset + 1u);
+    vec4 bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
+    vec4 bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
+    vec4 bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
+    // A box's two corners or a triangle's first two vertices, its third, then the second box or triangle
+    vec3 low = min(bv0.xyz, vec3(bv0.w, bv1.xy));
+    vec3 high = max(bv0.xyz, vec3(bv0.w, bv1.xy));
+    if (root.x == 0u) low = min(low, vec3(bv1.zw, bv2.x)), high = max(high, vec3(bv1.zw, bv2.x));
+    if (root.z != UINT_MAX && root.x == 0u) {
+        low = min(low, min(bv2.yzw, min(bv3.xyz, vec3(bv3.w, bv4.xy))));
+        high = max(high, max(bv2.yzw, max(bv3.xyz, vec3(bv3.w, bv4.xy))));
+    } else if (root.z != UINT_MAX) {
+        low = min(low, vec3(bv1.zw, bv2.x));
+        high = max(high, bv2.yzw);
+    }
+    // A flat side's generated coordinate is its middle, as Blender's
+    vec3 g = mix(vec3(0.5), (p - low) / (high - low), greaterThan(high, low));
+    return vec3(0.5 - g.y, g.x - 0.5, 0.0);
+}
+
 struct SampledColor {
     vec3 color;
     uint random_state;
@@ -746,6 +773,9 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
             vec2 barycentric = fract(mat3x2(t4.zw, t5.xy, t5.zw) * geometry_uvw);
             // Sample material
             Material material = access_instance_material(hit.instance_index);
+            // Anisotropic materials' tangent, Blender's default in its object, transformed into the world as a normal
+            if (material.anisotropy != 0.0) material.tangent = transpose(access_instance_transform(hit.instance_index * 2u + 1u).rotation)
+                * radialTangent(hit.instance_index, mat3(t0.xyz, vec3(t0.w, t1.xy), vec3(t1.zw, t2.x)) * geometry_uvw);
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).
