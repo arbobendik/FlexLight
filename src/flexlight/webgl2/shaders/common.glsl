@@ -151,7 +151,7 @@ Transform access_instance_transform(uint index) {
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
 // translucent, pad | sheen and its roughness | anisotropy, its rotation, pad | tangent, pad, of which WebGL2's own BSDF
-// leaves the specular tint and level, the sheen and the anisotropy
+// leaves the specular tint and level and the sheen
 Material access_instance_material(uint index) {
     uint offset = index * 9u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
