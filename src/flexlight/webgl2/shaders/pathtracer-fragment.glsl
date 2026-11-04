@@ -324,6 +324,53 @@ vec3 worldToTangent(vec3 v, vec3 n) {
     return vec3(dot(v, tangent), dot(v, n), dot(v, bitangent));
 }
 
+// FlexKernels' anisotropic GGX: the frame of the hit's tangent made normal to the normal facing the view and turned about
+// it by the rotation, of the roughnesses along the tangent and the bitangent by Blender's Principled mapping, both 0 for
+// any other material, the one condition every anisotropic branch tests; at the radial tangent's pole any perpendicular
+struct AnisotropicFrame {
+    vec3 tangent;
+    vec2 alphas;
+};
+
+AnisotropicFrame anisotropicFrame(Material material, vec3 n_i) {
+    float alpha = material.roughness * material.roughness;
+    if (material.anisotropy == 0.0 || !(alpha > 0.0)) return AnisotropicFrame(vec3(0.0), vec2(0.0));
+    vec3 projected = material.tangent - n_i * dot(n_i, material.tangent);
+    vec3 t = normalize(dot(projected, projected) > 0.0 ? projected : tangentToWorld(vec3(1.0, 0.0, 0.0), n_i));
+    float angle = 2.0 * PI * material.anisotropic_rotation;
+    float aspect = sqrt(1.0 - 0.9 * abs(material.anisotropy));
+    float ratio = material.anisotropy < 0.0 ? 1.0 / aspect : aspect;
+    return AnisotropicFrame(t * cos(angle) + cross(n_i, t) * sin(angle), vec2(alpha / ratio, alpha * ratio));
+}
+
+// w in the frame of the tangent t about the normal n, the normal in z
+vec3 anisotropicLocal(vec3 w, vec3 t, vec3 n) {
+    return vec3(dot(w, t), dot(w, cross(n, t)), dot(w, n));
+}
+
+float anisotropicD(vec3 h, vec2 alphas) {
+    vec2 x = h.xy / alphas;
+    float denom = dot(x, x) + h.z * h.z;
+    return 1.0 / max(PI * alphas.x * alphas.y * denom * denom, BIAS);
+}
+
+// Exact Smith masking toward w in the frame, at the roughness projected onto w's azimuth
+float anisotropicG1(vec3 w, vec2 alphas) {
+    float n_dot_w = max(w.z, 0.0);
+    return 2.0 * n_dot_w / (n_dot_w + length(vec3(alphas * w.xy, n_dot_w)));
+}
+
+// The material's half vector toward v about n_i of the two draws, an anisotropic one's by its stretched visible normals
+vec3 sampleHalfVector(vec3 v, vec3 n_i, float alpha, AnisotropicFrame frame, float U1, float U2) {
+    if (frame.alphas.x > 0.0) {
+        vec3 Ve = anisotropicLocal(v, frame.tangent, n_i);
+        vec3 Nh = sampleGGXVNDF(normalize(vec3(frame.alphas * Ve.xy, Ve.z)), 1.0, U1, U2);
+        vec3 h = normalize(vec3(frame.alphas * Nh.xy, Nh.z));
+        return h.x * frame.tangent + h.y * cross(n_i, frame.tangent) + h.z * n_i;
+    }
+    return tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, U1, U2).xzy, n_i);
+}
+
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 // Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
 vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float eta_i, float eta_o, uint random_state) {
@@ -340,7 +387,8 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
     Random random_h_1 = pcg(random_state);
     Random random_h_2 = pcg(random_h_1.state);
     vec3 n_i = n * sign(n_dot_v);
-    vec3 h_d = tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, random_h_1.value, random_h_2.value).xzy, n_i);
+    AnisotropicFrame frame = anisotropicFrame(material, n_i);
+    vec3 h_d = sampleHalfVector(v, n_i, alpha, frame, random_h_1.value, random_h_2.value);
     float diffuse_factor = (1.0 - fresnel(abs(dot(v, h_d)), eta_i, eta_o)) * (1.0 - material.metallic) * (1.0 - material.transmission);
     // Blender's Translucent BSDF passes the diffuse lobe through the smooth normal, counted on the face's other side alone:
     // on the incident one, light sampling's quick exit culls what the smooth normal sends through, as sampling mirrors it
@@ -362,6 +410,10 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
 
         float D = trowbridgeReitz(alpha, n_dot_h);
         float G = smith(alpha, pd_n_dot_v, pd_n_dot_l);
+        if (frame.alphas.x > 0.0) {
+            D = anisotropicD(anisotropicLocal(h_r, frame.tangent, n_i), frame.alphas);
+            G = anisotropicG1(anisotropicLocal(v, frame.tangent, n_i), frame.alphas) * anisotropicG1(anisotropicLocal(out_dir, frame.tangent, n_i), frame.alphas);
+        }
         vec3 torrance_sparrow = D * F * G / max(4.0 * pd_n_dot_v * pd_n_dot_l, BIAS);
         vec3 radiance = diffuse_factor * lambert + torrance_sparrow;
         return radiance * n_dot_l;
@@ -377,6 +429,11 @@ vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float 
         // Microfacet terms
         float DT = trowbridgeReitz(alpha, abs(n_dot_ht));
         float GT = smith(alpha, abs(n_dot_v), abs(n_dot_l));
+        // An anisotropic material's, toward l about the normal on its side
+        if (frame.alphas.x > 0.0) {
+            DT = anisotropicD(anisotropicLocal(ht, frame.tangent, n_i), frame.alphas);
+            GT = anisotropicG1(anisotropicLocal(v, frame.tangent, n_i), frame.alphas) * anisotropicG1(anisotropicLocal(out_dir, frame.tangent, - n_i), frame.alphas);
+        }
 
         // Geometry term numerator and denominator
         float numerator_geom = abs(v_dot_ht) * abs(l_dot_ht);
@@ -419,10 +476,8 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     Random random_h_1 = pcg(random_state);
     Random random_h_2 = pcg(random_h_1.state);
     random_state = random_h_2.state;
-    vec3 v_tangent = worldToTangent(v, n_i);
-    ggx_n = sampleGGXVNDF(v_tangent.xzy, alpha, random_h_1.value, random_h_2.value).xzy;
-    // Transform half vector back to world space
-    ggx_n = tangentToWorld(ggx_n, n_i);
+    AnisotropicFrame frame = anisotropicFrame(material, n_i);
+    ggx_n = sampleHalfVector(v, n_i, alpha, frame, random_h_1.value, random_h_2.value);
     // Calculate shared half vector dot products
     float v_dot_h = dot(ggx_n, v);
     // Try refraction through the properly oriented half vector
@@ -478,7 +533,7 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
         vec3 l = bsdf_sample.unit_direction;
         float m_n_i_dot_l = - dot(n_i, l);
         // Microfacet term
-        float G1_l = G1(alpha, max(m_n_i_dot_l, 0.0));
+        float G1_l = frame.alphas.x > 0.0 ? anisotropicG1(anisotropicLocal(l, frame.tangent, - n_i), frame.alphas) : G1(alpha, max(m_n_i_dot_l, 0.0));
         // throughput = refract_weight * G1_l * (1 - F) * albedo, the weight holding 1 - F, see WebGPU implementation for derivation
         bsdf_sample.throughput = refract_weight * G1_l * material.albedo / p_refract;
         bsdf_sample.random_state = random_state;
@@ -490,7 +545,7 @@ SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float
     vec3 l = bsdf_sample.unit_direction;
     float n_i_dot_l = dot(n_i, l);
     // Torrance-Sparrow
-    float G1_l = G1(alpha, max(n_i_dot_l, 0.0));
+    float G1_l = frame.alphas.x > 0.0 ? anisotropicG1(anisotropicLocal(l, frame.tangent, n_i), frame.alphas) : G1(alpha, max(n_i_dot_l, 0.0));
     // throughput = reflect_weight * G1_l * F, see WebGPU implementation for derivation
     bsdf_sample.throughput = reflect_weight * G1_l * F / p_reflect;
     bsdf_sample.random_state = random_state;
