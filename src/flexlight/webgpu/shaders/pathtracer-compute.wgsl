@@ -520,7 +520,7 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32) -> H
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: bool, skip: vec2<u32>) -> bool {
+fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: bool) -> bool {
     // Maximal distance a triangle can be away from the ray origin
     let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -553,14 +553,14 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: b
         let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
 
         if (indicator_and_children.x == 0u) {
-            if (any(vec2<u32>(instance_index, indicator_and_children.y) != skip) && moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
+            if (moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
                 return true;
             }
 
             if (indicator_and_children.z != UINT_MAX) {
                 let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
                 let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
-                if (any(vec2<u32>(instance_index, indicator_and_children.z) != skip) && moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
+                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
                     return true;
                 }
             }
@@ -590,7 +590,7 @@ fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: b
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool, skip: vec2<u32>) -> bool {
+fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
     var stack_index: u32 = 1u;
@@ -628,12 +628,12 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool, skip: vec2<u32>)
         if (indicator == 0u) {
             // If node is a triangle, test for intersection, closest first
             if (dist_near != POW32) {
-                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided, skip)) {
+                if (shadowTraverseTriangleBVH(near_child, ray, l, two_sided)) {
                     return true;
                 }
             }
             if (dist_far != POW32) {
-                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided, skip)) {
+                if (shadowTraverseTriangleBVH(far_child, ray, l, two_sided)) {
                     return true;
                 }
             }
@@ -665,9 +665,9 @@ struct SampledColor {
     random_state: u32
 }
 
-// Shadow test toward a light sample, including the quick exit for lights behind the shading normal, skipping the light's
-// triangle it ends on, by instance and local index
-fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>, skip: vec2<u32>) -> bool {
+// Shadow test toward a light sample, including the quick exit for lights behind the shading normal, along the shared
+// segment: short of its end, which an emitting triangle's sample lifts off it toward the start
+fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> bool {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
     if (dot(smooth_n, unit_light_dir) < 0.0f) {
@@ -676,7 +676,7 @@ fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_
     // Apply geometry offset
     let offset_target: vec3<f32> = origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    return shadowTraverseInstanceBVH(light_ray, length(light_dir), true, skip);
+    return shadowTraverseInstanceBVH(light_ray, shadowLength(light_dir), true);
 }
 
 fn access_light_tree(index: u32) -> vec4<u32> {
@@ -778,9 +778,9 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         sample.dir = normalize(point - start);
         sample.density = solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
         sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
-        shadow = point + surface.smooth_n * surface.geometry_offset - start;
+        shadow = point + shadowLift(surface.smooth_n, surface.geometry_offset, start, point) - start;
     }
-    if (occluded(origin, lift_n, geometry_offset, shadow, select(vec2<u32>(UINT_MAX), leaf.yz, leaf.x == 1u))) {
+    if (occluded(origin, lift_n, geometry_offset, shadow)) {
         sample.radiance = vec3<f32>(0.0f);
     }
     return sample;
@@ -1211,7 +1211,7 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
     let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
-    return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true, vec2<u32>(UINT_MAX)));
+    return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true));
 }
 
 struct SkySample {
