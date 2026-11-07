@@ -31,13 +31,15 @@ import PathtracerShiftShader from './shaders/pathtracer-shift.wgsl';
 // @ts-ignore
 import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
 // @ts-ignore
+import MaterialSource from './shaders/material.wgsl';
+// @ts-ignore
 import PathtracerComputeSource from './shaders/pathtracer-compute.wgsl';
 // @ts-ignore
 import PathtracerSelectiveAverageShader from './shaders/pathtracer-selective-average.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-// WGSL has no includes, the shared kernels precede the shader of the path tracer and of ReSTIR
-const PATHTRACER_COMPUTE_SHADER = FlexKernelsShader + PathtracerComputeSource;
+// WGSL has no includes, the shared kernels and the material precede the shader of the path tracer and of ReSTIR
+const PATHTRACER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + PathtracerComputeSource;
 
 
 interface PathTracerPipelines {

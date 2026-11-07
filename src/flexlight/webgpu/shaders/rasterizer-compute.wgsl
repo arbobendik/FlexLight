@@ -87,24 +87,6 @@ struct Ray {
     unit_direction: vec3<f32>,
 };
 
-struct Material {
-    albedo: vec3<f32>,
-    emissive: vec3<f32>,
-    roughness: f32,
-    metallic: f32,
-    transmission: f32,
-    ior: f32,
-    absorption: vec3<f32>,
-    specular_tint: vec3<f32>,
-    specular_level: f32,
-    translucent: vec3<f32>,
-    sheen: vec3<f32>,
-    sheen_roughness: f32,
-    anisotropy: f32,
-    anisotropic_rotation: f32,
-    tangent: vec3<f32>
-};
-
 struct Light {
     position: vec3<f32>,
     is_area_light: f32,
