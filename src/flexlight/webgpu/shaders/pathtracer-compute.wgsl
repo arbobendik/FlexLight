@@ -1513,11 +1513,6 @@ fn environment(dir: vec3<f32>) -> vec3<f32> {
     return uniforms_float.ambient;
 }
 
-fn vertexEta(material: Material, n_dot_v: f32) -> vec2<f32> {
-    let is_entering: bool = n_dot_v < 0.0f;
-    return vec2<f32>(select(1.0f, material.ior, is_entering), select(material.ior, 1.0f, is_entering));
-}
-
 // Whether the path tracer considers dir to point towards the incorrect side of the surface
 fn wrongSide(is_inside: bool, refracted: bool, dir: vec3<f32>, geometry_n: vec3<f32>) -> bool {
     return (is_inside == refracted) != (dot(dir, geometry_n) > 0.0f);
