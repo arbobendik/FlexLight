@@ -143,6 +143,76 @@ fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f3
 }
 
 // Simplified rayTracer to only test if ray intersects anything
+fn shadowTraverseTriangleBVH(instance_index: u32, ray: Ray, l: f32, two_sided: bool) -> bool {
+    // Maximal distance a triangle can be away from the ray origin
+    let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
+
+    let inverse_transform: Transform = instance_transform[instance_index * 2u + 1u];
+    let inverse_dir = inverse_transform.rotation * ray.unit_direction;
+
+    let t_ray = Ray(
+        inverse_transform.rotation * (ray.origin + inverse_transform.shift),
+        normalize(inverse_dir)
+    );
+    let max_len: f32 = length(inverse_dir) * l;
+
+    let instance_bvh_offset: u32 = instance_uint[instance_uint_offset + 1u];
+    let instance_vertex_offset: u32 = instance_uint[instance_uint_offset + 2u];
+
+    var stack: array<u32, 24> = array<u32, 24>();
+    var stack_index: u32 = 1u;
+
+    while (stack_index > 0u && stack_index < 24u) {
+        stack_index -= 1u;
+        let node_index: u32 = stack[stack_index];
+
+        let bvh_offset: u32 = instance_bvh_offset + node_index * BVH_TRIANGLE_SIZE;
+        let vertex_offset: u32 = instance_vertex_offset + node_index * TRIANGLE_BOUNDING_VERTICES_SIZE;
+
+        let indicator_and_children: vec3<u32> = access_triangle_bvh(bvh_offset).xyz;
+
+        let bv0 = access_triangle_bounding_vertices(vertex_offset);
+        let bv1 = access_triangle_bounding_vertices(vertex_offset + 1u);
+        let bv2 = access_triangle_bounding_vertices(vertex_offset + 2u);
+
+        if (indicator_and_children.x == 0u) {
+            if (moellerTrumboreCull(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, max_len, two_sided)) {
+                return true;
+            }
+
+            if (indicator_and_children.z != UINT_MAX) {
+                let bv3 = access_triangle_bounding_vertices(vertex_offset + 3u);
+                let bv4 = access_triangle_bounding_vertices(vertex_offset + 4u);
+                if (moellerTrumboreCull(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, max_len, two_sided)) {
+                    return true;
+                }
+            }
+        } else {
+            let dist0: f32 = rayBoundingVolume(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), t_ray, max_len);
+            var dist1: f32 = POW32;
+            if (indicator_and_children.z != UINT_MAX) {
+                dist1 = rayBoundingVolume(vec3<f32>(bv1.zw, bv2.x), bv2.yzw, t_ray, max_len);
+            }
+
+            let near_child = select(indicator_and_children.z, indicator_and_children.y, dist0 < dist1);
+            let far_child = select(indicator_and_children.y, indicator_and_children.z, dist0 < dist1);
+
+            if (max(dist0, dist1) != POW32) {
+                stack[stack_index] = far_child;
+                stack_index += 1u;
+            }
+            if (min(dist0, dist1) != POW32) {
+                stack[stack_index] = near_child;
+                stack_index += 1u;
+            }
+        }
+    }
+
+    // If nothing was hit, return false (not in shadow)
+    return false;
+}
+
+// Simplified rayTracer to only test if ray intersects anything
 fn shadowTraverseInstanceBVH(ray: Ray, l: f32, two_sided: bool) -> bool {
     // Get texture size as max iteration value
     var stack = array<u32, 16>();
