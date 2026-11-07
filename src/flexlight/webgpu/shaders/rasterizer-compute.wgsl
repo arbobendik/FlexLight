@@ -396,41 +396,6 @@ fn fresnelSchlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-struct ForwardPreCalc {
-    reflected_view: vec3<f32>,
-    one_over_4_schlick_beckmann_n_dot_v: f32,
-    f0: vec3<f32>,
-    alpha: f32,
-    diffuse_component: vec3<f32>
-}
-
-fn forwardTrace(transmission: f32, light_dir: vec3<f32>, light_color: vec3<f32>, light_intensity: f32, n: vec3<f32>, mv: vec3<f32>, pre: ForwardPreCalc) -> vec3<f32> {
-    let len: f32 = length(light_dir);
-    let len_p1: f32 = 1.0f + len;
-    // Apply inverse square law
-    let brightness: vec3<f32> = light_color * light_intensity / (len_p1 * len_p1);
-
-    let l: vec3<f32> = light_dir / len;
-    let n_dot_l: f32 = abs(dot(n, l));
-
-    let h: vec3<f32> = normalize(l - mv);
-    let v_dot_h: f32 = abs(dot(mv, h));
-    let n_dot_h: f32 = abs(dot(n, h));
-
-    let rh: vec3<f32> = normalize(l + pre.reflected_view);
-    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
-
-    let reflect: vec3<f32> = fresnelSchlick(pre.f0, v_dot_h);
-
-    let cook_torrance_numerator: vec2<f32> = vec2<f32>(trowbridgeReitz(pre.alpha, n_dot_h), trowbridgeReitz(pre.alpha, n_dot_rh));
-    let cook_torrance_denominator: f32 = max(pre.one_over_4_schlick_beckmann_n_dot_v * oneOverSchlickBeckmann(pre.alpha, n_dot_l), BIAS);
-    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
-
-    let radiance: vec3<f32> = pre.diffuse_component + reflect * cook_torrance.x + transmission * cook_torrance.y;
-    // Outgoing light to camera
-    return radiance * n_dot_l * brightness;
-}
-
 // BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
 fn directBSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
     // Minimum alpha for better looking smooth metals and caustics
@@ -496,21 +461,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
     }
 
     var local_color: vec3<f32> = vec3<f32>(0.0f);
-    let inv_v: vec3<f32> = normalize(- camera_ray.unit_direction);
     var random_state: u32 = init_random_state;
-
-    // Minimum alpha for better looking smooth metals and caustics
-    let alpha: f32 = max(pre.alpha, 0.05f);
-    // Precaluclate reflected vector
-    let rv: vec3<f32> = reflect(- camera_ray.unit_direction, smooth_n);
-
-    let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, pre.n_dot_v) * 4.0f;
-    // Precaluclate diffuse component
-    let lambert: vec3<f32> = material.albedo * INV_PI;
-    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
-    let diffuse_component: vec3<f32> = diffuse * lambert;
-    // Precalculated values for forwardTrace
-    let pre_calc: ForwardPreCalc = ForwardPreCalc(rv, one_over_4_schlick_beckmann_n_dot_v, pre.f0, alpha, diffuse_component);
 
     //let size: u32 = u32(arrayLength(&lights));
     for (var i: u32 = 1u; i < size; i++) {
@@ -623,18 +574,6 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 
 
 
-        /*
-        // Yeild random sphere and update state
-        let random_sphere: RandomSphere = random_sphere(random_state);
-        random_state = random_sphere.state;
-
-        let light_position = light.position + random_sphere.value * light.variance;
-        // Alter light source position according to variation.
-        let dir: vec3<f32> = light_position - camera_ray.origin;
-
-        // let color_for_light: vec3<f32> = forwardTrace(material, dir, light.color, light.intensity, smooth_n, - camera_ray.unit_direction, inv_v);
-        let color_for_light: vec3<f32> = forwardTrace(material.transmission, dir, light.color, light.intensity, smooth_n, camera_ray.unit_direction, pre_calc);
-        */
         let color_intensity: f32 = rgb_to_greyscale(color_for_light);
 
         let unit_light_dir: vec3<f32> = normalize(light_dir - geometry_offset * smooth_n);
