@@ -381,10 +381,6 @@ fn shadowTraverseInstanceBVH(ray: Ray, l: f32, skip: vec2<u32>) -> bool {
 }
 
 
-fn oneOverSchlickBeckmann(alpha: f32, n_dot_x: f32) -> f32 {
-    let k: f32 = alpha * 0.5f;
-    return max(n_dot_x * (1.0f - k) + k, BIAS);
-}
 /*
 fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
     return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
@@ -396,64 +392,12 @@ fn fresnelSchlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
-// BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
-fn directBSDF(in_dir: vec3<f32>, out_dir: vec3<f32>, n: vec3<f32>, material: Material) -> vec3<f32> {
-    // Minimum alpha for better looking smooth metals and caustics
-    let alpha: f32 = max(material.roughness * material.roughness, 0.04f);
-    let n_dot_v: f32 = abs(dot(n, - in_dir));
-    let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
-    let f0: vec3<f32> = mix(vec3<f32>(f0_sqrt * f0_sqrt), material.albedo, material.metallic);
-    // Precaluclate reflected vector
-    let rv: vec3<f32> = reflect(- in_dir, n);
-    // let one_over_4_schlick_beckmann_n_dot_v: f32 = oneOverSchlickBeckmann(alpha, n_dot_v) * 4.0f;
-    // Precaluclate diffuse component
-    let lambert: vec3<f32> = material.albedo * INV_PI;
-    let diffuse: f32 = (1.0f - material.metallic) * (1.0f - material.transmission);
-
-    let n_dot_l: f32 = abs(dot(n, out_dir));
-    let h: vec3<f32> = normalize(out_dir - in_dir);
-    let v_dot_h: f32 = abs(dot(in_dir, h));
-    let n_dot_h: f32 = abs(dot(n, h));
-
-    let rh: vec3<f32> = normalize(out_dir + rv);
-    let n_dot_rh: f32 = max(dot(n, rh), 0.0f);
-
-    let reflect_factor: vec3<f32> = fresnelSchlick(f0, v_dot_h);
-    let diffuse_component: vec3<f32> = diffuse * lambert;
-
-    let cook_torrance_numerator: vec2<f32> = vec2<f32>(trowbridgeReitz(alpha, n_dot_h), trowbridgeReitz(alpha, n_dot_rh));
-    let cook_torrance_denominator: f32 = max(4.0f * oneOverSchlickBeckmann(alpha, n_dot_v) * oneOverSchlickBeckmann(alpha, n_dot_l), BIAS);
-    let cook_torrance: vec2<f32> = cook_torrance_numerator / cook_torrance_denominator;
-
-    // Check for total internal reflection
-    let sign_dir: f32 = sign(dot(- in_dir, n));
-    let eta: f32 = mix(1.0f / material.ior, material.ior, max(sign_dir, 0.0f));
-    let cos_theta_i: f32 = abs(dot(- in_dir, n));
-    let sin_theta_i_sq: f32 = 1.0f - cos_theta_i * cos_theta_i;
-    let sin_theta_t_sq: f32 = (eta * eta) * sin_theta_i_sq;
-
-    // Total internal reflection occurs when sin²θt > 1
-    let is_total_internal_reflection: bool = sin_theta_t_sq > 1.0f;
-    let transmission_factor: f32 = select(material.transmission, 0.0f, is_total_internal_reflection);
-
-    let radiance: vec3<f32> = diffuse_component + reflect_factor * cook_torrance.x + transmission_factor * cook_torrance.y;
-    // Outgoing light to camera
-    return radiance * n_dot_l;
-}
-
-struct SamplePreCalc {
-    f0: vec3<f32>,
-    alpha: f32,
-    random_sphere: vec3<f32>,
-    n_dot_v: f32,
-}
-
 struct SampledColor {
     color: vec3<f32>,
     random_state: u32
 }
 
-fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_offset: f32, pre: SamplePreCalc) -> SampledColor {
+fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32) -> SampledColor {
     let size: u32 = uniforms_uint.point_light_count + 1u;
 
     if (size <= 1u) {
@@ -462,6 +406,13 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
 
     var local_color: vec3<f32> = vec3<f32>(0.0f);
     var random_state: u32 = init_random_state;
+    // FlexKernels' BSDF toward the lights, its roughness at least 0.2 for better looking smooth metals, as point lights
+    // leave a smooth one's delta lobes dark, entering the surface from the side the camera ray arrives on
+    var shaded: Material = material;
+    shaded.roughness = max(material.roughness, 0.2f);
+    let front: bool = dot(camera_ray.unit_direction, smooth_n) < 0.0f;
+    let eta_i: f32 = select(material.ior, 1.0f, front);
+    let eta_o: f32 = select(1.0f, material.ior, front);
 
     //let size: u32 = u32(arrayLength(&lights));
     for (var i: u32 = 1u; i < size; i++) {
@@ -553,7 +504,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate brightness
             let brightness: vec3<f32> = light.color * light_area * triangle_count * light_n_dot_ml / (len * len);
             // Calculate BSDF for light
-            color_for_light = directBSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, shaded, eta_i, eta_o, random_state) * brightness;
             light_dir = dir + light_smooth_n * light_geometry_offset;
         } else if (light.is_area_light == 0.0f) {
             // CASE 1: Point light
@@ -568,7 +519,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             let brightness: vec3<f32> = light.color * light.intensity / (len * len);
             let l: vec3<f32> = dir / len;
             // Calculate BSDF for light
-            color_for_light = directBSDF(camera_ray.unit_direction, l, smooth_n, material) * brightness;
+            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, shaded, eta_i, eta_o, random_state) * brightness;
             light_dir = dir;
         }
 
@@ -697,7 +648,6 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
         material.metallic = textureSample(metallic_texture_id, barycentric).x * INV_255;
     }
 
-    let alpha: f32 = material.roughness * material.roughness;
     let n_dot_v: f32 = abs(dot(smooth_n, - ray.unit_direction));
 
     let f0_sqrt: f32 = (1.0f - material.ior) / (1.0f + material.ior);
@@ -706,10 +656,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, clip_space: v
     var final_color: vec3<f32>;
     // Determine local color considering PBR attributes and lighting
     for (var i: u32 = 0u; i < uniforms_uint.samples; i++) {
-        let light_offset_sphere: RandomSphere = random_sphere(random_state);
-        let light_offset_dir: vec3<f32> = light_offset_sphere.value;
-        random_state = light_offset_sphere.state;
-        let local_sampled: SampledColor = sample(material, ray, random_state, smooth_n, geometry_offset, SamplePreCalc(f0, alpha, light_offset_dir, n_dot_v));
+        let local_sampled: SampledColor = sample(material, ray, random_state, smooth_n, geometry_n, geometry_offset);
         random_state = local_sampled.random_state;
         final_color += local_sampled.color;
     }
