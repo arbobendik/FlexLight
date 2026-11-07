@@ -18,13 +18,9 @@ const INSTANCE_BOUNDING_VERTICES_SIZE: u32 = 3u;
 const POINT_LIGHT_SIZE: u32 = 3u;
 
 const PI: f32 = 3.141592653589793;
-const PHI: f32 = 1.61803398874989484820459;
-const SQRT3: f32 = 1.7320508075688772;
 const POW32: f32 = 4294967296.0;
-const MAX_SAFE_INTEGER_FOR_F32_U: u32 = 8388607u;
 const UINT_MAX: u32 = 4294967295u;
 const BIAS: f32 = 0.0000152587890625;
-// const BIAS: f32 = 0.0009765625;
 const INV_PI: f32 = 0.3183098861837907;
 const INV_255: f32 = 0.00392156862745098;
 
@@ -89,24 +85,6 @@ struct UniformUint {
 struct Ray {
     origin: vec3<f32>,
     unit_direction: vec3<f32>,
-};
-
-struct Material {
-    albedo: vec3<f32>,
-    emissive: vec3<f32>,
-    roughness: f32,
-    metallic: f32,
-    transmission: f32,
-    ior: f32,
-    absorption: vec3<f32>,
-    specular_tint: vec3<f32>,
-    specular_level: f32,
-    translucent: vec3<f32>,
-    sheen: vec3<f32>,
-    sheen_roughness: f32,
-    anisotropy: f32,
-    anisotropic_rotation: f32,
-    tangent: vec3<f32>
 };
 
 struct Light {
