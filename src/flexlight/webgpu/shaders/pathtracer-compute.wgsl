@@ -114,52 +114,6 @@ struct Hit {
 };
 
 
-fn textureSample(index: u32, uv: vec2<f32>) -> vec4<f32> {
-    let texture_instance_offset: u32 = index * TEXTURE_INSTANCE_SIZE;
-    // Fetch data from texture instance buffer
-    let texture_data_offset: u32 = texture_instance[texture_instance_offset];
-    let width: u32 = texture_instance[texture_instance_offset + 2u];
-    let height: u32 = texture_instance[texture_instance_offset + 3u];
-
-    let texel_position: vec2<f32> = uv * vec2<f32>(f32(width), f32(height));
-    let texel_position_u32: vec2<u32> = vec2<u32>(u32(texel_position.x), u32(texel_position.y));
-    let texel_position_mat: mat4x2<f32> = mat4x2<f32>(texel_position, texel_position, texel_position, texel_position);
-
-    let texel_pos: mat4x2<f32> = mat4x2<f32>(
-        floor(texel_position + vec2<f32>(0.0f, 0.0f)),
-        floor(texel_position + vec2<f32>(1.0f, 0.0f)),
-        floor(texel_position + vec2<f32>(0.0f, 1.0f)),
-        floor(texel_position + vec2<f32>(1.0f, 1.0f))
-    );
-
-    let difference: mat4x2<f32> = texel_pos - texel_position_mat;
-
-    var texel_weights: vec4<f32> = vec4<f32>(
-        abs(difference[0].x * difference[0].y),
-        abs(difference[1].x * difference[1].y),
-        abs(difference[2].x * difference[2].y),
-        abs(difference[3].x * difference[3].y),
-    );
-    // Convert to index
-    let t_texel_pos_u32_x: vec4<u32> = vec4<u32>(texel_position_u32.x, texel_position_u32.x + 1u, texel_position_u32.x, texel_position_u32.x + 1u);
-    let t_texel_pos_u32_y: vec4<u32> = vec4<u32>(texel_position_u32.y, texel_position_u32.y, texel_position_u32.y + 1u, texel_position_u32.y + 1u);
-    let texel_index: vec4<u32> = texture_data_offset + t_texel_pos_u32_x + t_texel_pos_u32_y * width;
-    // Fetch texel and return result
-    let uint_data_00: vec4<u32> = access_texture_data(texel_index.x);
-    let uint_data_10: vec4<u32> = access_texture_data(texel_index.y);
-    let uint_data_01: vec4<u32> = access_texture_data(texel_index.z);
-    let uint_data_11: vec4<u32> = access_texture_data(texel_index.w);
-
-    let float_data: mat4x4<f32> = mat4x4<f32>(
-        vec4<f32>(uint_data_00),
-        vec4<f32>(uint_data_10),
-        vec4<f32>(uint_data_01),
-        vec4<f32>(uint_data_11)
-    );
-    // Add weighted texels
-    return float_data * texel_weights.wzyx;
-}
-
 fn moellerTrumbore(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32) -> Intersect {
     let edge1: vec3<f32> = b - a;
     let edge2: vec3<f32> = c - a;
@@ -210,21 +164,6 @@ fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f3
     }
     let s: f32 = dot(edge2, qvec) * inv_det;
     return (s <= l && s > BIAS);
-}
-
-// Bounding volume intersection test
-fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max_len: f32) -> f32 {
-    let inv_dir: vec3<f32> = 1.0f / ray.unit_direction;
-    let v0: vec3<f32> = (min_corner - ray.origin) * inv_dir;
-    let v1: vec3<f32> = (max_corner - ray.origin) * inv_dir;
-    let tmin: f32 = max(max(min(v0.x, v1.x), min(v0.y, v1.y)), min(v0.z, v1.z));
-    let tmax: f32 = min(min(max(v0.x, v1.x), max(v0.y, v1.y)), max(v0.z, v1.z));
-
-    if (tmax >= max(tmin, BIAS) && tmin < max_len) {
-        return tmin;
-    } else {
-        return POW32;
-    }
 }
 
 // Ray sphere intersection test.
