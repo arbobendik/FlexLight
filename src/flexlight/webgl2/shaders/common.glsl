@@ -46,6 +46,11 @@ struct Material {
     float transmission;
     float ior;
     vec3 absorption;
+    // Blender's Specular Tint and twice its Specular IOR Level, and its sheen, its weight times its tint, and roughness
+    vec3 specular_tint;
+    float specular_level;
+    vec3 sheen;
+    float sheen_roughness;
     // Blender's Translucent BSDF's color, which the diffuse lobe transmits to the other side of the face
     vec3 translucent;
     // Blender's anisotropy and its rotation in turns about the normal, and the tangent the hit writes once they shade
@@ -152,18 +157,19 @@ Transform access_instance_transform(uint index) {
 }
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
-// translucent, pad | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, pad, of which WebGL2's own BSDF
-// leaves the specular tint and level and the sheen
+// translucent, pad | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, pad
 Material access_instance_material(uint index) {
     uint offset = index * 9u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
     vec4 m1 = texelFetch(instance_material, buffer_position(offset + 1u), 0);
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);
     vec4 m3 = texelFetch(instance_material, buffer_position(offset + 3u), 0);
+    vec4 m4 = texelFetch(instance_material, buffer_position(offset + 4u), 0);
     vec4 m5 = texelFetch(instance_material, buffer_position(offset + 5u), 0);
+    vec4 m6 = texelFetch(instance_material, buffer_position(offset + 6u), 0);
     vec4 m7 = texelFetch(instance_material, buffer_position(offset + 7u), 0);
-    // Without a translucent or anisotropic material in the scene, none, which compiles either out
-    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, TRANSLUCENT ? m5.xyz : vec3(0.0),
+    // Without a translucent, sheen or anisotropic material in the scene, none, which compiles it out
+    return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m4.xyz, m4.w, SHEEN ? m6.xyz : vec3(0.0), m6.w, TRANSLUCENT ? m5.xyz : vec3(0.0),
         ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0));
 }
 
@@ -215,53 +221,6 @@ vec4 textureSample(uint index, vec2 uv) {
     );
     // Add weighted texels
     return float_data * texel_weights.wzyx;
-}
-
-struct Random {
-    uint state;
-    float value;
-};
-
-struct RandomSphere {
-    uint state;
-    vec3 value;
-};
-
-float rgb_to_greyscale(vec3 rgb) {
-    return dot(rgb, vec3(0.299, 0.587, 0.114));
-}
-
-// PCG's output of a state, as FlexKernels' hash
-uint hash(uint state) {
-    uint new_state = state * 747796405u + 2891336453u;
-    uint word = ((new_state >> ((new_state >> 28u) + 4u)) ^ new_state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-// The stream of a seed by an index, as FlexKernels' stream
-uint stream(uint seed, uint index) { return hash(seed ^ hash(index)); }
-
-Random pcg(uint state) {
-    // PCG random number generator
-    // Reference: http://www.pcg-random.org/
-    // Return random float between 0 and 1
-    return Random(state * 747796405u + 2891336453u, float(hash(state)) / float(UINT_MAX));
-}
-
-Random normal_distribution(uint state) {
-    Random r1 = pcg(state);
-    Random r2 = pcg(r1.state);
-    // Sample normal distribution
-    float theta = 2.0 * PI * r1.value;
-    float rho = sqrt(-2.0 * clamp(log(r2.value), - MAX_SAFE_INTEGER_FOR_F32, 0.0));
-    return Random(r2.state, rho * cos(theta));
-}
-
-RandomSphere random_sphere(uint state) {
-    Random x = normal_distribution(state);
-    Random y = normal_distribution(x.state);
-    Random z = normal_distribution(y.state);
-    return RandomSphere(z.state, normalize(vec3(x.value, y.value, z.value)));
 }
 
 // Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles, or both sides if two_sided
@@ -438,30 +397,3 @@ bool shadowTraverseInstanceBVH(Ray ray, float l, bool two_sided, uvec2 skip) {
     return false;
 }
 
-// Build TBN matrix for tangent-space normal mapping. Uses triangle edges and UV deltas to compute
-// tangent (U direction) and bitangent (V direction), with handedness fix.
-mat3 normalMapTBN(vec3 p0, vec3 p1, vec3 p2, vec2 uv0, vec2 uv1, vec2 uv2, vec3 n) {
-    vec3 e1 = p1 - p0;
-    vec3 e2 = p2 - p0;
-    vec2 duv1 = uv1 - uv0;
-    vec2 duv2 = uv2 - uv0;
-    // Compute inverse determinant for UV to world space transformation.
-    float det = duv1.x * duv2.y - duv1.y * duv2.x;
-    float inv_det = 1.0 / det;
-    vec3 t = (e1 * duv2.y - e2 * duv1.y) * inv_det;
-    vec3 b_geom = (e2 * duv1.x - e1 * duv2.x) * inv_det;
-
-    // Gram-Schmidt: make tangent perpendicular to interpolated normal.
-    t = normalize(t - n * dot(n, t));
-    // Handedness: ensure TBN is right-handed; flip T if geometric b disagrees with cross(n,t).
-    if (dot(cross(n, t), b_geom) > 0.0) {
-        t = -t;
-    }
-    vec3 b = cross(n, t);
-
-    return mat3(t, b, n);
-}
-
-vec3 tangentToWorldNormalMap(vec3 v, mat3 tbn) {
-    return tbn * v;
-}
