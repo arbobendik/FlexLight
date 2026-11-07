@@ -25,6 +25,8 @@ import { TAA } from "./antialiasing/taa.js";
 // @ts-ignore
 import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
 // @ts-ignore
+import UniformsSource from './shaders/uniforms.wgsl';
+// @ts-ignore
 import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
@@ -276,8 +278,8 @@ export class RasterizerWGPU extends RendererWGPU {
 
   private createPipelines(device: GPUDevice, bindGroupLayouts: RasterizerBindGroupLayouts): RasterizerPipelines {
     // Init pipelines
-    const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const depthPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const rasterPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const computePipeline = this.createComputePipeline(device, RASTERIZER_COMPUTE_SHADER, "compute pipeline",
       bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout);
     // Pipeline for rendering to canvas
