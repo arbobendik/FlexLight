@@ -239,319 +239,6 @@ Hit traverseInstanceBVH(Ray ray, bool consider_point_lights) {
     return hit;
 }
 
-float trowbridgeReitz(float alpha, float n_dot_h) {
-    float numerator = alpha * alpha;
-    float denom = n_dot_h * n_dot_h * (numerator - 1.0) + 1.0;
-    return numerator / max(PI * denom * denom, BIAS);
-}
-
-// Exact Smith masking of GGX, the visible normal density sampleGGXVNDF draws from, as FlexKernels' smithG1: one for a
-// smooth surface, which masks nothing at any angle
-float G1(float alpha, float n_dot_x) {
-    float alpha_sq = alpha * alpha;
-    return alpha > 0.0 ? 2.0 * n_dot_x / (n_dot_x + sqrt(alpha_sq + (1.0 - alpha_sq) * n_dot_x * n_dot_x)) : 1.0;
-}
-
-float smith(float alpha, float n_dot_v, float n_dot_l) {
-    return G1(alpha, n_dot_v) * G1(alpha, n_dot_l);
-}
-
-float fresnel(float cos_theta, float eta_i, float eta_o) {
-    // Compute sini using Snell's law
-    float sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
-    float sin_psi = (eta_i / eta_o) * sin_theta;
-    // Total internal reflection
-    float kr = 1.0;
-    if (sin_psi < 1.0) {
-        float cos_psi = sqrt(max(0.0, 1.0 - sin_psi * sin_psi));
-        float Rs = ((eta_o * cos_theta) - (eta_i * cos_psi)) / ((eta_o * cos_theta) + (eta_i * cos_psi));
-        float Rp = ((eta_i * cos_theta) - (eta_o * cos_psi)) / ((eta_i * cos_theta) + (eta_o * cos_psi));
-        kr = (Rs * Rs + Rp * Rp) / 2.0;
-    }
-
-    return kr;
-}
-
-// Sampling of the GGX VNDF
-vec3 sampleGGXVNDF(vec3 Ve, float alpha, float U1, float U2) {
-    // The Ve argument is the view direction in tangent space, where the normal is (0, 0, 1).
-    // Section 3.2: transforming the view direction to the hemisphere configuration.
-    vec3 Vh = normalize(vec3(alpha * Ve.x, alpha * Ve.y, Ve.z));
-    // Section 4.1: orthonormal basis (with special case if cross product is zero).
-    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
-    vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) * inversesqrt(lensq) : vec3(1.0, 0.0, 0.0);
-    vec3 T2 = cross(Vh, T1);
-    // Section 4.2: parameterization of the projected area.
-    float r = sqrt(U1);
-    float phi = 2.0 * PI * U2;
-    float t1 = r * cos(phi);
-    float t2 = r * sin(phi);
-    float s = 0.5 * (1.0 + Vh.z);
-    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
-    // Section 4.3: reprojection onto hemisphere.
-    vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
-    // Section 3.4: transforming the normal back to the ellipsoid configuration.
-    return normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
-}
-
-// Corresponding PDF is: pdf = cos(theta) / PI
-vec3 sampleCosWeightedHemisphere(float random_1, float random_2) {
-    float r = sqrt(random_1);
-    float theta = 2.0 * PI * random_2;
-    float x = r * cos(theta);
-    float z = r * sin(theta);
-    float y = sqrt(max(0.0, 1.0 - x * x - z * z));
-    return vec3(x, y, z);
-}
-
-vec3 tangentToWorld(vec3 v, vec3 n) {
-    vec3 a = vec3(0.0, 1.0, 0.0);
-    if (abs(dot(n, a)) > 1.0 - BIAS) {
-        a = vec3(1.0, 0.0, 0.0);
-    }
-    vec3 tangent = normalize(cross(n, a));
-    vec3 bitangent = cross(n, tangent);
-    return v.x * tangent + v.y * n + v.z * bitangent;
-}
-
-vec3 worldToTangent(vec3 v, vec3 n) {
-    vec3 a = vec3(0.0, 1.0, 0.0);
-    if (abs(dot(n, a)) > 1.0 - BIAS) {
-        a = vec3(1.0, 0.0, 0.0);
-    }
-    vec3 tangent = normalize(cross(n, a));
-    vec3 bitangent = cross(n, tangent);
-    return vec3(dot(v, tangent), dot(v, n), dot(v, bitangent));
-}
-
-// FlexKernels' anisotropic GGX: the frame of the hit's tangent made normal to the normal facing the view and turned about
-// it by the rotation, of the roughnesses along the tangent and the bitangent by Blender's Principled mapping, both 0 for
-// any other material, the one condition every anisotropic branch tests; at the radial tangent's pole any perpendicular
-struct AnisotropicFrame {
-    vec3 tangent;
-    vec2 alphas;
-};
-
-AnisotropicFrame anisotropicFrame(Material material, vec3 n_i) {
-    float alpha = material.roughness * material.roughness;
-    if (material.anisotropy == 0.0 || !(alpha > 0.0)) return AnisotropicFrame(vec3(0.0), vec2(0.0));
-    vec3 projected = material.tangent - n_i * dot(n_i, material.tangent);
-    vec3 t = normalize(dot(projected, projected) > 0.0 ? projected : tangentToWorld(vec3(1.0, 0.0, 0.0), n_i));
-    float angle = 2.0 * PI * material.anisotropic_rotation;
-    float aspect = sqrt(1.0 - 0.9 * abs(material.anisotropy));
-    float ratio = material.anisotropy < 0.0 ? 1.0 / aspect : aspect;
-    return AnisotropicFrame(t * cos(angle) + cross(n_i, t) * sin(angle), vec2(alpha / ratio, alpha * ratio));
-}
-
-// w in the frame of the tangent t about the normal n, the normal in z
-vec3 anisotropicLocal(vec3 w, vec3 t, vec3 n) {
-    return vec3(dot(w, t), dot(w, cross(n, t)), dot(w, n));
-}
-
-float anisotropicD(vec3 h, vec2 alphas) {
-    vec2 x = h.xy / alphas;
-    float denom = dot(x, x) + h.z * h.z;
-    return 1.0 / max(PI * alphas.x * alphas.y * denom * denom, BIAS);
-}
-
-// Exact Smith masking toward w in the frame, at the roughness projected onto w's azimuth
-float anisotropicG1(vec3 w, vec2 alphas) {
-    float n_dot_w = max(w.z, 0.0);
-    return 2.0 * n_dot_w / (n_dot_w + length(vec3(alphas * w.xy, n_dot_w)));
-}
-
-// The material's half vector toward v about n_i of the two draws, an anisotropic one's by its stretched visible normals
-vec3 sampleHalfVector(vec3 v, vec3 n_i, float alpha, AnisotropicFrame frame, float U1, float U2) {
-    if (frame.alphas.x > 0.0) {
-        vec3 Ve = anisotropicLocal(v, frame.tangent, n_i);
-        vec3 Nh = sampleGGXVNDF(normalize(vec3(frame.alphas * Ve.xy, Ve.z)), 1.0, U1, U2);
-        vec3 h = normalize(vec3(frame.alphas * Nh.xy, Nh.z));
-        return h.x * frame.tangent + h.y * cross(n_i, frame.tangent) + h.z * n_i;
-    }
-    return tangentToWorld(sampleGGXVNDF(worldToTangent(v, n_i).xzy, alpha, U1, U2).xzy, n_i);
-}
-
-// BSDF takes in incoming and outgoing directions and surface properties returning throughput for direct lighting
-// Only consider lighting on the surface of the object, not the inside. Assume direct light is always outside the object as shadowing also makes that assumption.
-vec3 BSDF(vec3 in_dir, vec3 out_dir, vec3 n, vec3 g_n, Material material, float eta_i, float eta_o, uint random_state) {
-    vec3 v = - in_dir;
-    // Precalculate dot products
-    float n_dot_v = dot(n, v);
-    float n_dot_l = dot(n, out_dir);
-    // Calculate material constants needed for BRDF and BTDF
-    float alpha = material.roughness * material.roughness;
-    // Precalculate dot products for geometry normal
-    float g_n_dot_v = dot(g_n, v);
-    float g_n_dot_l = dot(g_n, out_dir);
-    // Diffuse of what the dielectric does not reflect, at a visible normal as sampleBSDF draws for its lobe choice
-    Random random_h_1 = pcg(random_state);
-    Random random_h_2 = pcg(random_h_1.state);
-    vec3 n_i = n * sign(n_dot_v);
-    AnisotropicFrame frame = anisotropicFrame(material, n_i);
-    vec3 h_d = sampleHalfVector(v, n_i, alpha, frame, random_h_1.value, random_h_2.value);
-    float diffuse_factor = (1.0 - fresnel(abs(dot(v, h_d)), eta_i, eta_o)) * (1.0 - material.metallic) * (1.0 - material.transmission);
-    // Blender's Translucent BSDF passes the diffuse lobe through the smooth normal, counted on the face's other side alone:
-    // on the incident one, light sampling's quick exit culls what the smooth normal sends through, as sampling mirrors it
-    bool through = n_dot_l * n_dot_v < 0.0 && rgb_to_greyscale(material.translucent) > 0.0;
-    // Test if v and l are on the same side of the surface
-    if (g_n_dot_v * g_n_dot_l > 0.0) {
-        // If v and l are on the same side of the surface do Torrance-Sparrow BRDF
-        // Positive definite dot products
-        float pd_n_dot_v = max(n_dot_v, 0.0);
-        float pd_n_dot_l = max(n_dot_l, 0.0);
-        // Precaluclate dot products and half vectors
-        vec3 h_r = normalize(out_dir + v);
-        float v_dot_h = max(dot(v, h_r), 0.0);
-        float n_dot_h = max(dot(n, h_r), 0.0);
-        // Lambertian diffuse
-        vec3 lambert = material.albedo * INV_PI;
-        // Torrance-Sparrow
-        vec3 F = mix(vec3(fresnel(abs(v_dot_h), eta_i, eta_o)), material.albedo, material.metallic);
-
-        float D = trowbridgeReitz(alpha, n_dot_h);
-        float G = smith(alpha, pd_n_dot_v, pd_n_dot_l);
-        if (frame.alphas.x > 0.0) {
-            D = anisotropicD(anisotropicLocal(h_r, frame.tangent, n_i), frame.alphas);
-            G = anisotropicG1(anisotropicLocal(v, frame.tangent, n_i), frame.alphas) * anisotropicG1(anisotropicLocal(out_dir, frame.tangent, n_i), frame.alphas);
-        }
-        vec3 torrance_sparrow = D * F * G / max(4.0 * pd_n_dot_v * pd_n_dot_l, BIAS);
-        vec3 radiance = diffuse_factor * lambert + torrance_sparrow;
-        return radiance * n_dot_l;
-    } else {
-        vec3 translucent = through ? diffuse_factor * material.translucent * INV_PI * abs(n_dot_l) : vec3(0.0);
-        // Refractive half-vector (eq. 16)
-        vec3 ht_unorm = - (eta_i * v + eta_o * out_dir);
-        vec3 ht = normalize(ht_unorm);
-        // Precalculate dot products
-        float v_dot_ht = dot(v, ht);
-        float l_dot_ht = dot(out_dir, ht);
-        float n_dot_ht = abs(dot(n, ht));
-        // Microfacet terms
-        float DT = trowbridgeReitz(alpha, abs(n_dot_ht));
-        float GT = smith(alpha, abs(n_dot_v), abs(n_dot_l));
-        // An anisotropic material's, toward l about the normal on its side
-        if (frame.alphas.x > 0.0) {
-            DT = anisotropicD(anisotropicLocal(ht, frame.tangent, n_i), frame.alphas);
-            GT = anisotropicG1(anisotropicLocal(v, frame.tangent, n_i), frame.alphas) * anisotropicG1(anisotropicLocal(out_dir, frame.tangent, - n_i), frame.alphas);
-        }
-
-        // Geometry term numerator and denominator
-        float numerator_geom = abs(v_dot_ht) * abs(l_dot_ht);
-        float denominator_geom = abs(n_dot_v) * abs(n_dot_l);
-        // Refractive term denominator
-        float denom_f = eta_i * v_dot_ht + eta_o * l_dot_ht;
-        float denom_f_sq = denom_f * denom_f;
-        // Check if refraction is possible
-        if (abs(denom_f) > BIAS && denominator_geom > BIAS) {
-            // Refraction of what the dielectric does not reflect, of the share not metallic
-            float walter = (numerator_geom / denominator_geom) * (1.0 - fresnel(abs(v_dot_ht), eta_i, eta_o)) * DT * GT * (eta_o * eta_o / denom_f_sq);
-            return walter * material.albedo * material.transmission * (1.0 - material.metallic) * n_dot_l + translucent;
-        }
-        // Refraction is not possible, the translucent diffuse alone passes
-        return translucent;
-    }
-}
-
-struct SampleBSDF {
-    vec3 unit_direction;
-    vec3 throughput;
-    uint random_state;
-    bool refracted;
-    // Whether the diffuse lobe drew it
-    bool diffuse;
-};
-
-// SampleBSDF takes in incoming direction, surface normal, material and random state and returns an outgoing direction with throughput according to the BSDF for global illumination
-SampleBSDF sampleBSDF(vec3 in_dir, vec3 n, Material material, float eta_i, float eta_o, uint random_init) {
-    uint random_state = random_init;
-    // Basic dot products
-    vec3 v = - in_dir;
-    float n_dot_v = dot(n, v);
-    vec3 n_i = n * sign(n_dot_v);
-    // Material constants
-    float alpha = material.roughness * material.roughness;
-    // Sample using GGX importance sampling for potential refractive or reflective case
-    vec3 ggx_n = n_i;
-    // Generate random values for sampling
-    Random random_h_1 = pcg(random_state);
-    Random random_h_2 = pcg(random_h_1.state);
-    random_state = random_h_2.state;
-    AnisotropicFrame frame = anisotropicFrame(material, n_i);
-    ggx_n = sampleHalfVector(v, n_i, alpha, frame, random_h_1.value, random_h_2.value);
-    // Calculate shared half vector dot products
-    float v_dot_h = dot(ggx_n, v);
-    // Try refraction through the properly oriented half vector
-    float eta = eta_i / eta_o;
-    vec3 refracted = normalize(refract(in_dir, ggx_n, eta));
-    // Calculate fresnel terms: the dielectric's, and mixed with metallic reflection
-    float F_dielectric = fresnel(abs(v_dot_h), eta_i, eta_o);
-    vec3 F = mix(vec3(F_dielectric), material.albedo, material.metallic);
-    float F_greyscale = rgb_to_greyscale(F);
-    // BSDF weights (these are artistic choices to balance the lobes)
-    float reflect_weight = 1.0;
-    // The diffuse and refraction of what the dielectric does not reflect, refraction of the share not metallic
-    float diffuse_weight = (1.0 - material.transmission) * (1.0 - material.metallic) * (1.0 - F_dielectric);
-    float refract_weight = material.transmission * (1.0 - material.metallic) * (1.0 - F_dielectric);
-    // Add fresnel term for improved sampling performance
-    float reflect_component = max(reflect_weight * F_greyscale, 0.0);
-    float diffuse_component = max(diffuse_weight, 0.0);
-    float refract_component = max(refract_weight * sign(length(refracted)), 0.0);
-    // Calculate sampling probabilities
-    float total_component = reflect_component + diffuse_component + refract_component;
-    float total_component_inv = 1.0 / max(total_component, BIAS);
-    float p_diffuse = diffuse_component * total_component_inv;
-    float p_reflect = reflect_component * total_component_inv;
-    float p_refract = refract_component * total_component_inv;
-
-    SampleBSDF bsdf_sample = SampleBSDF(vec3(1.0), vec3(1.0), 0u, false, false);
-    Random random_p = pcg(random_state);
-    random_state = random_p.state;
-    // Diffuse case
-    if (random_p.value < p_diffuse) {
-        Random random_d_1 = pcg(random_state);
-        Random random_d_2 = pcg(random_d_1.state);
-        bsdf_sample.random_state = random_d_2.state;
-        // Sample cosine weighted hemisphere
-        vec3 cosine_hemisphere = sampleCosWeightedHemisphere(random_d_1.value, random_d_2.value);
-        // Blender's Translucent BSDF's share of the lobe's samples, the choice's random number reused, goes through to the
-        // other side, mirrored across the tangent plane by its cosine, as FlexKernels' sampleBSDF
-        float translucent = rgb_to_greyscale(material.translucent);
-        float share = translucent > 0.0 ? translucent / (rgb_to_greyscale(material.albedo) + translucent) : 0.0;
-        bool through = random_p.value < p_diffuse * share;
-        bsdf_sample.unit_direction = tangentToWorld(vec3(cosine_hemisphere.x, through ? - cosine_hemisphere.y : cosine_hemisphere.y, cosine_hemisphere.z), n_i);
-        // throughput = BSDF * n_dot_l / PDF = albedo * diffuse_weight, see WebGPU implementation for derivation, the
-        // translucent color over its share through, the albedo over the rest
-        bsdf_sample.throughput = diffuse_weight * (through ? material.translucent / share : material.albedo / (1.0 - share)) / p_diffuse;
-        bsdf_sample.refracted = through;
-        bsdf_sample.diffuse = true;
-        return bsdf_sample;
-    }
-    // Refractive case
-    if (random_p.value < p_diffuse + p_refract) {
-        // Refraction is valid
-        bsdf_sample.unit_direction = refracted;
-        vec3 l = bsdf_sample.unit_direction;
-        float m_n_i_dot_l = - dot(n_i, l);
-        // Microfacet term
-        float G1_l = frame.alphas.x > 0.0 ? anisotropicG1(anisotropicLocal(l, frame.tangent, - n_i), frame.alphas) : G1(alpha, max(m_n_i_dot_l, 0.0));
-        // throughput = refract_weight * G1_l * (1 - F) * albedo, the weight holding 1 - F, see WebGPU implementation for derivation
-        bsdf_sample.throughput = refract_weight * G1_l * material.albedo / p_refract;
-        bsdf_sample.random_state = random_state;
-        bsdf_sample.refracted = true;
-        return bsdf_sample;
-    }
-    // Otherwise assume reflective case.
-    bsdf_sample.unit_direction = normalize(reflect(in_dir, ggx_n));
-    vec3 l = bsdf_sample.unit_direction;
-    float n_i_dot_l = dot(n_i, l);
-    // Torrance-Sparrow
-    float G1_l = frame.alphas.x > 0.0 ? anisotropicG1(anisotropicLocal(l, frame.tangent, n_i), frame.alphas) : G1(alpha, max(n_i_dot_l, 0.0));
-    // throughput = reflect_weight * G1_l * F, see WebGPU implementation for derivation
-    bsdf_sample.throughput = reflect_weight * G1_l * F / p_reflect;
-    bsdf_sample.random_state = random_state;
-    return bsdf_sample;
-}
-
 // Blender's default tangent at the point p of the instance's prototype, as the WebGPU path tracer's radialTangent: radial
 // about z through the middle of the prototype's bounds, those of its BVH's root, two triangles or two boxes
 vec3 radialTangent(uint instance_index, vec3 p) {
@@ -699,7 +386,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         // Apply inverse square law
         vec3 brightness = light.color * intensity / max(len * len, BIAS);
         // Calculate BSDF for light, its visible normal from a stream of its own, apart from the selection's numbers
-        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u));
+        vec3 color_with_smooth = TRANSLUCENT ? translucentBSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u)) : BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u));
         vec3 color_for_light = color_with_smooth * brightness;
         float w_i = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small
@@ -741,7 +428,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
 
 vec3 calculatePointLightContrib(uint point_light_index) {
     Light point_light = access_light(point_light_index);
-    return point_light.color * point_light.intensity / (PI * point_light.variance * point_light.variance);
+    return pointLightRadiance(point_light.color, point_light.intensity, point_light.variance);
 }
 
 vec3 env_map_sample(vec3 dir) {
@@ -917,7 +604,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     direct_light_emission = true;
                 }
                 // Attempt ray bounce with material normal first
-                SampleBSDF bsdf_sampled = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state);
+                SampleBSDF bsdf_sampled = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state, vec2(0.0));
                 random_state = bsdf_sampled.random_state;
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 bool expected_out_dir_normal_aligned = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
@@ -929,12 +616,12 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     direct_light_emission = true;
                     if (material.transmission > 0.0) {
                         // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
-                        SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state);
+                        SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, vec2(0.0));
                         random_state = geometry_bsdf_sampled.random_state;
                         // Redirect outgoing ray according to new bsdf sample.
                         bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
                         bsdf_sampled.refracted = geometry_bsdf_sampled.refracted;
-                        bsdf_sampled.diffuse = geometry_bsdf_sampled.diffuse;
+                        bsdf_sampled.lobe = geometry_bsdf_sampled.lobe;
                         // Multiply to compute combined throughput, doing proper self shadowing.
                         bsdf_sampled.throughput = geometry_bsdf_sampled.throughput;
                     } else {
@@ -943,7 +630,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 }
                 // If the scattered ray is on the opposite side of the surface, we have entered or exited the medium.
                 // Translucent surfaces are thin: the diffuse lobe leaves through to the other side of the face, into no medium
-                bool through = bsdf_sampled.diffuse && rgb_to_greyscale(material.translucent) > 0.0 && dot(bsdf_sampled.unit_direction, geometry_n) < 0.0;
+                bool through = bsdf_sampled.lobe == 0u && rgb_to_greyscale(material.translucent) > 0.0 && dot(bsdf_sampled.unit_direction, geometry_n) < 0.0;
                 if (bsdf_sampled.refracted && !through) {
                     is_inside = !is_inside;
                 }
