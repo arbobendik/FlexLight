@@ -29,11 +29,13 @@ import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
 // @ts-ignore
+import MaterialSource from './shaders/material.wgsl';
+// @ts-ignore
 import RasterizerComputeSource from './shaders/rasterizer-compute.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-// WGSL has no includes, the shared kernels precede the rasterizer's shader
-const RASTERIZER_COMPUTE_SHADER = FlexKernelsShader + RasterizerComputeSource;
+// WGSL has no includes, the shared kernels and the material precede the rasterizer's shader
+const RASTERIZER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + RasterizerComputeSource;
 
 
 interface RasterizerPipelines {
