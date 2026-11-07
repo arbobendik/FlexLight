@@ -117,3 +117,27 @@ fn rayBoundingVolume(min_corner: vec3<f32>, max_corner: vec3<f32>, ray: Ray, max
         return POW32;
     }
 }
+
+// Simplified Moeller-Trumbore algorithm for detecting only forward facing triangles, or both sides if two_sided
+fn moellerTrumboreCull(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, ray: Ray, l: f32, two_sided: bool) -> bool {
+    let edge1: vec3<f32> = b - a;
+    let edge2: vec3<f32> = c - a;
+    let pvec: vec3<f32> = cross(ray.unit_direction, edge2);
+    let det: f32 = dot(edge1, pvec);
+    let inv_det: f32 = 1.0f / det;
+    if(select(det, abs(det), two_sided) < BIAS) {
+        return false;
+    }
+    let tvec: vec3<f32> = ray.origin - a;
+    let u: f32 = dot(tvec, pvec) * inv_det;
+    if(u < BIAS || u > 1.0f) {
+        return false;
+    }
+    let qvec: vec3<f32> = cross(tvec, edge1);
+    let v: f32 = dot(ray.unit_direction, qvec) * inv_det;
+    if(v < BIAS || u + v > 1.0f) {
+        return false;
+    }
+    let s: f32 = dot(edge2, qvec) * inv_det;
+    return (s <= l && s > BIAS);
+}
