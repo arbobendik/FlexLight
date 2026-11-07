@@ -7,13 +7,15 @@ import { Camera } from "../common/scene/camera.js";
 import { Config } from "../common/config.js";
 // Ignore all shader imports, the bundler will handle them as intended.
 // @ts-ignore
+import FlexKernelsShader from './shaders/flexkernels/pathtracer.glsl';
+// @ts-ignore
 import CommonShader from "./shaders/common.glsl";
 // @ts-ignore
 import PathtracerShader from "./shaders/pathtracer-fragment.glsl";
 
 export class PathTracerWGL2 extends RendererWGL2 {
   readonly type: RendererType = "pathtracer";
-  protected readonly shadingShader: string = CommonShader + PathtracerShader;
+  protected readonly shadingShader: string = CommonShader + FlexKernelsShader + PathtracerShader;
   protected readonly accumulate: boolean = true;
 
   // Create new PathTracer from canvas
