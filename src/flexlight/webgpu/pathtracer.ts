@@ -25,6 +25,8 @@ import { TriangleEmission } from "./triangle-emission.js";
 // @ts-ignore
 import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
 // @ts-ignore
+import UniformsSource from './shaders/uniforms.wgsl';
+// @ts-ignore
 import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import PathtracerShiftShader from './shaders/pathtracer-shift.wgsl';
@@ -33,13 +35,15 @@ import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
 // @ts-ignore
 import MaterialSource from './shaders/material.wgsl';
 // @ts-ignore
+import SceneSource from './shaders/scene.wgsl';
+// @ts-ignore
 import PathtracerComputeSource from './shaders/pathtracer-compute.wgsl';
 // @ts-ignore
 import PathtracerSelectiveAverageShader from './shaders/pathtracer-selective-average.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-// WGSL has no includes, the shared kernels and the material precede the shader of the path tracer and of ReSTIR
-const PATHTRACER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + PathtracerComputeSource;
+// WGSL has no includes, the shared kernels, the material and the scene precede the shader of the path tracer and of ReSTIR
+const PATHTRACER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + SceneSource + PathtracerComputeSource;
 
 
 interface PathTracerPipelines {
@@ -386,8 +390,8 @@ export class PathTracerWGPU extends RendererWGPU {
 
   private createPipelines(device: GPUDevice, bindGroupLayouts: PathTracerBindGroupLayouts): PathTracerPipelines {
     // Init pipelines
-    const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const depthPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const rasterPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const computePipeline = device.createComputePipeline({ label: "compute pipeline",
       layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout] }),
       compute: { module: device.createShaderModule({ code: PATHTRACER_COMPUTE_SHADER }), entryPoint: "compute", constants: { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic) } } });
@@ -398,9 +402,9 @@ export class PathTracerWGPU extends RendererWGPU {
 
     if (this.engineState.temporal) {
       // Pipeline for screen space correction of motion before accumulation
-      shiftPipeline = this.createComputePipeline(device, PathtracerShiftShader, "shift pipeline", bindGroupLayouts.shiftGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
+      shiftPipeline = this.createComputePipeline(device, UniformsSource + PathtracerShiftShader, "shift pipeline", bindGroupLayouts.shiftGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
       // Pipeline for temporal accumulation
-      selectiveAveragePipeline = this.createComputePipeline(device, PathtracerSelectiveAverageShader, "selective average pipeline", bindGroupLayouts.selectiveAverageGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
+      selectiveAveragePipeline = this.createComputePipeline(device, UniformsSource + PathtracerSelectiveAverageShader, "selective average pipeline", bindGroupLayouts.selectiveAverageGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
       // Pipeline for temporal reprojection
       // reprojectPipeline = this.createComputePipeline(device, PathtracerReprojectShader, "reproject pipeline", bindGroupLayouts.reprojectGroupLayout!, bindGroupLayouts.temporalDynamicGroupLayout!);
     }

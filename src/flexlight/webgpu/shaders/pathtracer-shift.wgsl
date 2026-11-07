@@ -4,34 +4,6 @@ const POW23M1U: u32 = 8388607u;
 const INV_255: f32 = 0.00392156862745098f;
 const UINT_MAX: u32 = 4294967295u;
 
-struct Transform {
-    rotation: mat3x3<f32>,
-    shift: vec3<f32>,
-};
-
-struct UniformFloat {
-    view_matrix: mat3x3<f32>,
-    inv_view_matrix: mat3x3<f32>,
-
-    camera_position: vec3<f32>,
-    ambient: vec3<f32>,
-
-    max_temporal_reproject: f32,
-};
-
-struct UniformUint {
-    render_size: vec2<u32>,
-    temporal_target: u32,
-    temporal_max: u32,
-    is_temporal: u32,
-
-    samples: u32,
-    max_reflections: u32,
-
-    tonemapping_operator: u32,
-    point_light_count: u32,
-};
-
 @group(0) @binding(0) var accumulated_float: texture_2d_array<f32>;
 @group(0) @binding(1) var accumulated_uint: texture_2d_array<u32>;
 @group(0) @binding(2) var shift_out_float: texture_storage_2d_array<rgba32float, write>;

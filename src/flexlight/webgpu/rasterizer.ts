@@ -25,17 +25,21 @@ import { TAA } from "./antialiasing/taa.js";
 // @ts-ignore
 import PathtracerDepthShader from './shaders/pathtracer-depth.wgsl';
 // @ts-ignore
+import UniformsSource from './shaders/uniforms.wgsl';
+// @ts-ignore
 import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
 // @ts-ignore
 import MaterialSource from './shaders/material.wgsl';
 // @ts-ignore
+import SceneSource from './shaders/scene.wgsl';
+// @ts-ignore
 import RasterizerComputeSource from './shaders/rasterizer-compute.wgsl';
 // @ts-ignore
 import PathtracerCanvasShader from './shaders/canvas.wgsl';
-// WGSL has no includes, the shared kernels and the material precede the rasterizer's shader
-const RASTERIZER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + RasterizerComputeSource;
+// WGSL has no includes, the shared kernels, the material and the scene precede the rasterizer's shader
+const RASTERIZER_COMPUTE_SHADER = FlexKernelsShader + MaterialSource + SceneSource + RasterizerComputeSource;
 
 
 interface RasterizerPipelines {
@@ -276,8 +280,8 @@ export class RasterizerWGPU extends RendererWGPU {
 
   private createPipelines(device: GPUDevice, bindGroupLayouts: RasterizerBindGroupLayouts): RasterizerPipelines {
     // Init pipelines
-    const depthPipeline = this.createRenderPipeline(device, PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const rasterPipeline = this.createRenderPipeline(device, PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const depthPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
+    const rasterPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const computePipeline = this.createComputePipeline(device, RASTERIZER_COMPUTE_SHADER, "compute pipeline",
       bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout);
     // Pipeline for rendering to canvas
