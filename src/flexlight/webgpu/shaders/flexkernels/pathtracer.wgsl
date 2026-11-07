@@ -899,6 +899,9 @@ fn neeBSDF( in_dir_6 : vec3<f32>,  dir_0 : vec3<f32>,  n_10 : vec3<f32>,  materi
             break;
         }
         var _S329 : bool = lobe_4 == u32(0);
+        if(_S329)
+        {
+        }
         var _S330 : bool;
         if(_S329)
         {
