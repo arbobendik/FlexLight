@@ -22,7 +22,8 @@
 // entering no medium, and within 2% through ReSTIR, which reconnects through it. Lit only from behind by a black square
 // of side 4 emitting white a quarter below it (argument backlit), its untilted left half carries the square's view of its
 // center, 4 / PI * s * atan(s) for s = 2 / hypot(2, 0.25), and its right half half of it, within 2%, of direct light
-// alone (mode direct), path traced or through ReSTIR. Under a white sheen of roughness 0.5 over black (argument sheen), the
+// alone (mode direct), path traced or through ReSTIR; as well behind a clear sheet of IOR 1 between (argument veiled),
+// which shadow rays pass straight through. Under a white sheen of roughness 0.5 over black (argument sheen), the
 // metal's square holds the sheen's directional albedo at that cosine, 0.2671 by FlexKernels' quadrature of it, which the
 // mean meets within four standard errors; over white diffuse (argument sheenwhite), no more light than it receives, within
 // four standard errors, and within 1% of it. The sheen's noise lets single pixels of either exceed it. Of anisotropy 1
@@ -106,7 +107,7 @@ if (aniso) push([[10, 0, 0], [10, 0, 0], [10, 0, 0]], [[0, tilt, 0.5], [0, tilt,
 // along z or against it and smooth along normal
 const sheet = (x, z, normal) => [[[0, -3, 0], [x, -3, 0], [x, 3, 0]], [[0, -3, 0], [x, 3, 0], [0, 3, 0]]].forEach((t) =>
   push(z > 0 === x > 0 ? t : [t[0], t[2], t[1]], t.map(() => normal)));
-const thin = MATERIAL === "translucent" || MATERIAL === "backlit", tilted = MATERIAL === "translucent" ? 0.95 : 0;
+const backlit = MATERIAL === "backlit" || MATERIAL === "veiled", thin = MATERIAL === "translucent" || backlit, tilted = MATERIAL === "translucent" ? 0.95 : 0;
 const normal = [tilted, 0, Math.sqrt(1 - tilted * tilted)];
 if (thin) triangles.length = 0, sheet(-3, 1, normal);
 const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 1, 0)
@@ -132,9 +133,13 @@ if (thin) triangles.length = 0, sheet(3, -tilted || 1, normal.map((c) => tilted 
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material: new F.Material(new F.Vector(0.5, 0.5, 0.5),
     new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(0.5, 0.5, 0.5)), label: "mix" }));
 // Backlit, the square of side 4 a quarter below the sheet emits white up at it
-if (MATERIAL === "backlit") engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-2, -2], [2, -2], [2, 2]],
+if (backlit) engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-2, -2], [2, -2], [2, 2]],
   [[-2, -2], [2, 2], [-2, 2]]].flatMap((t) => [...t.flatMap(([x, y]) => [x, y, -0.25]), ...t.flatMap(() => [0, 0, 1]), 0, 0, 0, 0, 0, 0]),
   material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "lamp" }));
+// Veiled, a clear sheet of side 8 between, smooth, white, transmissive and of IOR 1, which lets all light through
+if (MATERIAL === "veiled") engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-4, -4], [4, -4], [4, 4]],
+  [[-4, -4], [4, 4], [-4, 4]]].flatMap((t) => [...t.flatMap(([x, y]) => [x, y, -0.125]), ...t.flatMap(() => [0, 0, 1]), 0, 0, 0, 0, 0, 0]),
+  material: new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1), label: "veil" }));
 // Lit, the prism stands in a closed box whose faces, wound and smooth along the inward normal, emit white
 if (MATERIAL === "lit" || MATERIAL === "translucent") {
   const box = [];
@@ -191,7 +196,7 @@ engine.renderer.renderFrame = async (...args) => {
   if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
   // The halves' means, of the columns left and right of the middle but the two next to it on either side
   const half = (x) => { const side = pixels.filter((_, p) => x * (p % SIZE + 0.5 - SIZE / 2) > 2); return side.reduce((a, b) => a + b) / side.length; };
-  if (MATERIAL === "backlit") console.log(`halves ${half(-1).toFixed(4)} and ${half(1).toFixed(4)} of ${BACKLIT.toFixed(4)} and half of it`),
+  if (backlit) console.log(`halves ${half(-1).toFixed(4)} and ${half(1).toFixed(4)} of ${BACKLIT.toFixed(4)} and half of it`),
     process.exit(Math.abs(half(-1) / BACKLIT - 1) < 0.02 && Math.abs(half(1) / BACKLIT - 0.5) < 0.01 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
     : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error

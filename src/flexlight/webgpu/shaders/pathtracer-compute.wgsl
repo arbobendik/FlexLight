@@ -99,6 +99,8 @@ override TRANSLUCENT: bool = false;
 override SHEEN: bool = false;
 // Whether the scene has an anisotropic material: without, materials read as isotropic, and anisotropy compiles out
 override ANISOTROPY: bool = false;
+// Whether the scene has a transmissive material of IOR 1: without, every occluder blocks shadow rays
+override STRAIGHT_THROUGH: bool = false;
 
 struct Intersect{
     uv: vec2<f32>,
@@ -360,18 +362,41 @@ struct SampledColor {
     random_state: u32
 }
 
+// Light let through along a shadow ray of length l: occluders of IOR 1 pass it straight through, layer by layer from the
+// nearest, by FlexKernels' occluderTransmittance, as flex-cuda-pt's light sampling; any other occluder blocks it. Each
+// layer lies beyond BIAS from the last, so the layers end with the length left
+fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
+    if (!shadowTraverseInstanceBVH(ray, l, true)) {
+        return vec3<f32>(1.0f);
+    }
+    var transmitted: vec3<f32> = vec3<f32>(f32(STRAIGHT_THROUGH));
+    var start: vec3<f32> = ray.origin;
+    var left: f32 = l;
+    while (any(transmitted > vec3<f32>(0.0f))) {
+        let hit: Hit = traverseInstanceBVH(Ray(start, ray.unit_direction), false, left);
+        if (hit.instance_index == UINT_MAX) {
+            return transmitted;
+        }
+        let surface: Surface = surfaceAt(hit, start, 0u);
+        transmitted *= occluderTransmittance(ray.unit_direction, surface.smooth_n, surface.material, 1.0f);
+        start += ray.unit_direction * hit.distance;
+        left -= hit.distance;
+    }
+    return transmitted;
+}
+
 // Shadow test toward a light sample, including the quick exit for lights behind the shading normal, along the shared
 // segment: short of its end, which an emitting triangle's sample lifts off it toward the start
-fn occluded(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> bool {
+fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> vec3<f32> {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
     if (dot(smooth_n, unit_light_dir) < 0.0f) {
-        return true;
+        return vec3<f32>(0.0f);
     }
     // Apply geometry offset
     let offset_target: vec3<f32> = origin + geometry_offset * smooth_n;
     let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    return shadowTraverseInstanceBVH(light_ray, shadowLength(light_dir), true);
+    return shadowTransmittance(light_ray, shadowLength(light_dir));
 }
 
 fn access_light_tree(index: u32) -> vec4<u32> {
@@ -436,7 +461,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         return sample;
     }
     let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
-    // Vector from start to the end of the shadow ray, as occluded() casts it from there
+    // Vector from start to the end of the shadow ray, as lightTransmittance() casts it from there
     var shadow: vec3<f32>;
     if (leaf.x == 2u) {
         let light: Light = lights[leaf.y];
@@ -475,9 +500,8 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
         shadow = point + shadowLift(surface.smooth_n, surface.geometry_offset, start, point) - start;
     }
-    if (occluded(origin, lift_n, geometry_offset, shadow)) {
-        sample.radiance = vec3<f32>(0.0f);
-    }
+    let transmitted: vec3<f32> = lightTransmittance(origin, lift_n, geometry_offset, shadow);
+    sample.radiance = select(sample.radiance * transmitted, vec3<f32>(0.0f), all(transmitted == vec3<f32>(0.0f)));
     return sample;
 }
 
@@ -906,7 +930,7 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
     let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
-    return select(env_map_sample(dir), vec3<f32>(0.0f), shadowTraverseInstanceBVH(ray, POW32, true));
+    return env_map_sample(dir) * shadowTransmittance(ray, POW32);
 }
 
 struct SkySample {
