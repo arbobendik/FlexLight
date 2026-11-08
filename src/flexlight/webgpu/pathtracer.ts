@@ -120,6 +120,7 @@ interface EngineState {
   translucent: boolean;
   sheen: boolean;
   anisotropic: boolean;
+  straightThrough: boolean;
   renderResolution: number;
   antialiasing: WebGPUAntialiasingType;
 }
@@ -141,7 +142,7 @@ export class PathTracerWGPU extends RendererWGPU {
   // View matrix and camera position of the previous frame for reprojection
   private previousView: Array<number> = new Array(16).fill(0);
   private engineState: EngineState = {
-    temporal: false, restir: false, translucent: false, sheen: false, anisotropic: false,
+    temporal: false, restir: false, translucent: false, sheen: false, anisotropic: false, straightThrough: false,
     renderResolution: 0, antialiasing: undefined
   };
 
@@ -394,7 +395,7 @@ export class PathTracerWGPU extends RendererWGPU {
     const rasterPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const computePipeline = device.createComputePipeline({ label: "compute pipeline",
       layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout] }),
-      compute: { module: device.createShaderModule({ code: PATHTRACER_COMPUTE_SHADER }), entryPoint: "compute", constants: { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic) } } });
+      compute: { module: device.createShaderModule({ code: PATHTRACER_COMPUTE_SHADER }), entryPoint: "compute", constants: { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic), STRAIGHT_THROUGH: Number(this.engineState.straightThrough) } } });
 
     let shiftPipeline: GPUComputePipeline | undefined = undefined;
     let selectiveAveragePipeline: GPUComputePipeline | undefined = undefined;
@@ -425,7 +426,7 @@ export class PathTracerWGPU extends RendererWGPU {
 
     const bindGroupLayouts = this.createBindGroupLayouts(device);
     const pipelines = this.createPipelines(device, bindGroupLayouts);
-    this.restir = this.engineState.restir ? new ReSTIR(device, PATHTRACER_COMPUTE_SHADER, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout], { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic) }) : undefined;
+    this.restir = this.engineState.restir ? new ReSTIR(device, PATHTRACER_COMPUTE_SHADER, [bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout], { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic), STRAIGHT_THROUGH: Number(this.engineState.straightThrough) }) : undefined;
     // Render passes are given attachments to write into.
     const renderPassColorAttachment: GPURenderPassColorAttachment = { view: context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 0], loadOp: "clear", storeOp: "store" };
     const renderPassDescriptor = { colorAttachments: [renderPassColorAttachment] };
@@ -471,12 +472,13 @@ export class PathTracerWGPU extends RendererWGPU {
   ) {
     if (!this.isRunning) return;
     // Check if recompile is required
-    if (this.engineState.temporal !== this.config.temporal || this.engineState.restir !== this.config.restir || this.engineState.renderResolution !== this.config.renderResolution || this.engineState.translucent !== this.scene.translucent || this.engineState.sheen !== this.scene.sheen || this.engineState.anisotropic !== this.scene.anisotropic) {
+    if (this.engineState.temporal !== this.config.temporal || this.engineState.restir !== this.config.restir || this.engineState.renderResolution !== this.config.renderResolution || this.engineState.translucent !== this.scene.translucent || this.engineState.sheen !== this.scene.sheen || this.engineState.anisotropic !== this.scene.anisotropic || this.engineState.straightThrough !== this.scene.straightThrough) {
       this.engineState.temporal = this.config.temporal;
       this.engineState.restir = this.config.restir;
       this.engineState.translucent = this.scene.translucent;
       this.engineState.sheen = this.scene.sheen;
       this.engineState.anisotropic = this.scene.anisotropic;
+      this.engineState.straightThrough = this.scene.straightThrough;
       this.engineState.renderResolution = this.config.renderResolution;
       // Unbind GPUBuffers
       Prototype.triangleManager.releaseGPUBuffer();
