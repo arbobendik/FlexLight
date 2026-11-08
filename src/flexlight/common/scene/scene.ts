@@ -73,6 +73,12 @@ export class Scene {
         return false;
     }
 
+    // Whether an instance's material transmits at IOR 1, which shadow rays pass straight through, compiled in for it alone
+    get straightThrough () {
+        for (const instance of this.instances) if (instance._material.ior === 1 && instance._material.transmission > 0) return true;
+        return false;
+    }
+
     get triangleCount () {
         let count = 0;
         for (let instance of this.instances) count += instance.prototype.triangles.length / TRIANGLE_SIZE;
