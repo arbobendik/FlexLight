@@ -219,8 +219,11 @@ export abstract class RendererWGL2 extends Renderer {
     requestAnimationFrame(() => this.frameCycle(gl, programs, resources, gpuManagers));
   }
 
-  // The shading shader with translucency and anisotropy compiled in for scenes with such a material alone, as the WebGPU path tracer
+  // The shading shader with translucency and anisotropy compiled in for scenes with such a material alone, as the WebGPU path tracer,
+  // read off the scene as it's built, so that a scene set up before rendering compiles it once
   private createShadingProgram(gl: WebGL2RenderingContext): WebGLProgram {
+    this.engineState.translucent = this.scene.translucent;
+    this.engineState.anisotropic = this.scene.anisotropic;
     return createFullscreenProgram(gl, this.shadingShader.replace("#version 300 es", `#version 300 es\nconst bool TRANSLUCENT = ${this.engineState.translucent};\nconst bool ANISOTROPY = ${this.engineState.anisotropic};`));
   }
 
@@ -228,8 +231,6 @@ export abstract class RendererWGL2 extends Renderer {
   private frameCycle (gl: WebGL2RenderingContext, programs: RendererWGL2Programs, resources: CanvasSizeDependentResources, gpuManagers: RendererWGL2GPUBufferManagers) {
     if (!this.isRunning) return;
     if (this.engineState.translucent !== this.scene.translucent || this.engineState.anisotropic !== this.scene.anisotropic) {
-      this.engineState.translucent = this.scene.translucent;
-      this.engineState.anisotropic = this.scene.anisotropic;
       gl.deleteProgram(programs.shadingProgram);
       programs.shadingProgram = this.createShadingProgram(gl);
     }
