@@ -744,6 +744,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 importancy_factor *= beerLambert(hit.distance, material.absorption);
             }
             // Environment next event estimation never passes texels, escapes through them take the full weight
+            let preceding_escape_pdf: f32 = escape_pdf;
             escape_pdf = 0.0f;
 
             if (!skip_hit) {
@@ -813,6 +814,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                         escape_pdf = bsdf_sampled.pdf;
                     }
                 }
+                // Straight transmission keeps the preceding vertex's density against the sky, as it keeps its light
+                // sample: an escape past it is the direction that vertex's light sampling weighed
+                escape_pdf = select(escape_pdf, preceding_escape_pdf, bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o);
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
                 let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
                 // Translucent surfaces are thin: the diffuse lobe leaves through to the other side of the face, into no medium
@@ -1273,6 +1277,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
     var threshold: f32 = 0.0f;
     var reconnection: vec3<f32>;
     var prev: Vertex;
+    // Density of the direction an escape leaves along, which the escape weighs against sky light sampling
+    var sky_pdf: f32 = 0.0f;
     // Template for generated paths reconnecting at the first vertex meeting both footprint criteria
     var chain: Reservoir;
     chain.seed = r.seed;
@@ -1513,6 +1519,9 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 chain_throughput = throughput;
             }
             prev = Vertex(rough, lobe_index, lobe.pdf, abs(dot(surface.geometry_n, dir)), is_inside);
+            // Straight transmission keeps the preceding vertex's density against the sky, as it keeps its light
+            // sample: an escape past it is the direction that vertex's light sampling weighed
+            sky_pdf = select(lobe.pdf, sky_pdf, lobe_index == LOBE_REFRACT && eta.x == eta.y);
             if (refracted && !through) {
                 is_inside = !is_inside;
             }
@@ -1522,6 +1531,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             prev.rough = false;
             // Environment next event estimation never passes texels, escapes through them take the full weight
             prev.pdf = 0.0f;
+            sky_pdf = 0.0f;
         }
         if (!replay) {
             if (point_light_lighting) {
@@ -1554,7 +1564,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         }
         if (hit.instance_index == UINT_MAX) {
             // BSDF sampled escapes share the environment with its next event estimation
-            let weight: f32 = escapeWeight(select(0.0f, prev.pdf, !nee_vertex.none), ray.unit_direction);
+            let weight: f32 = escapeWeight(select(0.0f, sky_pdf, !nee_vertex.none), ray.unit_direction);
             let f: vec3<f32> = throughput * environment(ray.unit_direction);
             if (replay) {
                 if (b == stop && rc == RC_ENV) {
