@@ -34,7 +34,9 @@
 // frames, cylinder.mjs' cylinders (argument cylinder). A white diffuse sphere of radius 1 beside a clear shell of IOR 1
 // and radius 2 above it, under a uniform environment map of white (argument shell), returns all it receives: its sky
 // light passing the shell reaches the sphere's light sampling and its escapes alike and counts once, the image's mean
-// within four standard errors of one path traced and within 2% through ReSTIR.
+// within four standard errors of one path traced and within 2% through ReSTIR. A white diffuse wall of side 2e-4, its
+// smooth normal tilted 75 degrees off its face toward x, lit only by a point light behind it in the directions between the
+// two (argument wedge), stays black: its face meets those directions within the path tracer's hit margin of their start.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
@@ -100,6 +102,9 @@ for (let i = 0; i < SIDES; i++) {
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite";
 const aniso = MATERIAL === "aniso" || MATERIAL === "anisoturned";
+const wedge = MATERIAL === "wedge";
+if (wedge) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => [[-1e-4, -1e-4, 0], [1e-4, -1e-4, 0], [1e-4, 1e-4, 0],
+  [-1e-4, 1e-4, 0]][k]), t.map(() => [Math.sin(5 * Math.PI / 12), 0, Math.cos(5 * Math.PI / 12)])));
 const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster" || sheen || aniso;
 const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
 const scaled = [0, tilt, 0.5].map((c, i) => c * SCALE[i]), length = Math.hypot(...scaled);
@@ -121,7 +126,7 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : aniso ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
     undefined, undefined, undefined, 1, MATERIAL === "anisoturned" ? 0.25 : 0)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
-  : MATERIAL === "lit" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
+  : MATERIAL === "lit" || wedge ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
   : thin ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(1, 1, 1))
   : new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5);
 const engine = new F.FlexLight(canvas);
@@ -164,13 +169,15 @@ if (MATERIAL === "lit" || MATERIAL === "translucent") {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: box,
     material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "box" }));
 }
-engine.scene.ambientLight = MATERIAL === "lit" || thin ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
+engine.scene.ambientLight = MATERIAL === "lit" || thin || wedge ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
 if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
   engine.camera.fov = twin || MATERIAL === "cylinder" || MATERIAL === "shell" ? 40 : 1;
+if (wedge) engine.camera.position = new F.Vector(0, 0, 6e-4), engine.camera.direction = new F.Vector(0, 0), engine.camera.fov = 1,
+  engine.scene.addPointLight(new F.PointLight(new F.Vector(1, 0, -1), new F.Vector(1, 1, 1), 1, 0));
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
 const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
@@ -205,6 +212,7 @@ engine.renderer.renderFrame = async (...args) => {
   if (twin) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
   if (MATERIAL === "cylinder") console.log(`columns within ${(100 * deviation((p) => pixels[p], SIZE)).toFixed(2)}% of their mirror images`),
     process.exit(deviation((p) => pixels[p], SIZE) < 0.02 ? 0 : 1);
+  if (wedge) process.exit(mean === 0 ? 0 : 1);
   // The twins' image leaves pixel 0 in the background, which no random number reaches
   if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
   // The halves' means, of the columns left and right of the middle but the two next to it on either side

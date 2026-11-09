@@ -387,10 +387,15 @@ fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
 
 // Shadow test toward a light sample, including the quick exit for lights behind the shading normal, along the shared
 // segment: short of its end, which an emitting triangle's sample lifts off it toward the start
-fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> vec3<f32> {
+fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>, face: vec3<f32>) -> vec3<f32> {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
     if (dot(smooth_n, unit_light_dir) < 0.0f) {
+        return vec3<f32>(0.0f);
+    }
+    // Off the face of a surface transmitting no light (face, else zero), a light only above the face, which meets every
+    // ray below it
+    if (dot(face, face) > 0.0f && !(dot(face, light_dir) > 0.0f)) {
         return vec3<f32>(0.0f);
     }
     // Apply geometry offset
@@ -437,7 +442,7 @@ fn isTranslucent(material: Material) -> bool {
 // Light sampling, as flex-cuda-pt's sampleLight: a light the light BVH picks by its importance to origin, a uniform point
 // on it or a direction in the cone of its sphere, seen from origin lifted by geometry_offset in front of smooth_n. Sided,
 // for translucent surfaces, light all around, origin lifted to the side of the face geometry_n the light lies on
-fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, sided: bool, init_random_state: u32) -> TreeSample {
+fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, sided: bool, init_random_state: u32, face: vec3<f32>) -> TreeSample {
     let random_pick: Random = pcg(init_random_state);
     let random_side: Random = pcg(random_pick.state);
     let random_along: Random = pcg(random_side.state);
@@ -489,7 +494,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         if (sided) {
             lift_n = smooth_n * sign(dot(geometry_n, point - origin));
             start = origin + geometry_offset * lift_n;
-        } else if (!(dot(smooth_n, point - origin) > 0.0f)) {
+        } else if (!(dot(smooth_n, point - start) > 0.0f)) {
             return sample;
         }
         // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending in front of it
@@ -500,7 +505,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
         shadow = point + shadowLift(surface.smooth_n, surface.geometry_offset, start, point) - start;
     }
-    let transmitted: vec3<f32> = lightTransmittance(origin, lift_n, geometry_offset, shadow);
+    let transmitted: vec3<f32> = lightTransmittance(origin, lift_n, geometry_offset, shadow, face);
     sample.radiance = select(sample.radiance * transmitted, vec3<f32>(0.0f), all(transmitted == vec3<f32>(0.0f)));
     return sample;
 }
@@ -526,7 +531,7 @@ fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, po
         n = select(n + 1u, second, (trail.x & 1u) == 1u);
         trail = vec2<u32>((trail.x >> 1u) | (trail.y << 31u), trail.y >> 1u);
     }
-    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || (dot(smooth_n, smooth_n) > 0.0f && !(dot(smooth_n, point - origin) > 0.0f))) {
+    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || (dot(smooth_n, smooth_n) > 0.0f && !(dot(smooth_n, point - start) > 0.0f))) {
         return 0.0f;
     }
     let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
@@ -729,6 +734,8 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
         var geometry_offset: f32 = 0.0f;
         var smooth_n: vec3<f32> = vec3<f32>(0.0f);
         var skip_hit: bool = false;
+        // Leaving a surface transmitting no light below its face: the face meets the ray again right where it leaves
+        var again: bool = false;
         let point_light_lighting: bool = hit.is_point_light == 1u;
 
         if (!point_light_lighting) {
@@ -764,9 +771,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 // if (screen_space.x > 0.0f) {
                 // Light sampling at every vertex not of delta lobes alone, weighted against sampling the BSDF
                 let nee: bool = samplesLights(material);
+                let side_n: vec3<f32> = sideNormal(surface, ray.unit_direction);
                 if (nee) {
-                    let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_n, geometry_offset, isTranslucent(material), random_state);
-                    final_color += lightBSDF(ray.unit_direction, light, smooth_n, geometry_n, material, eta_i, eta_o, i < uniforms_uint.max_bounces, hash(random_state)) * importancy_factor;
+                    let light: TreeSample = sampleLightTree(ray.origin, smooth_n, geometry_n, geometry_offset, isTranslucent(material), random_state, select(vec3<f32>(0.0f), geometry_n, !(material.transmission > 0.0f) && !isTranslucent(material)));
+                    final_color += lightBSDF(ray.unit_direction, light, smooth_n, side_n, material, eta_i, eta_o, i < uniforms_uint.max_bounces, hash(random_state)) * importancy_factor;
                     random_state = light.random_state;
                 }
                 /*
@@ -788,7 +796,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 random_state = bsdf_sampled.random_state;
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 let expected_out_dir_normal_aligned: bool = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
-                let out_dir_normal_aligned: bool = dot(bsdf_sampled.unit_direction, geometry_n) > 0.0f;
+                let out_dir_normal_aligned: bool = dot(bsdf_sampled.unit_direction, side_n) > 0.0f;
                 // Rays sampled to the wrong side of the face lose no energy there and take no density: surfaces transmitting light
                 // sample again against the geometry normal, opaque ones mirror the ray into their side by it
                 if (expected_out_dir_normal_aligned != out_dir_normal_aligned) {
@@ -807,7 +815,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 }
                 // Next event estimation toward the environment map, weighted against the BSDF sampled escape
                 if (nee && environmentMapped() && i < uniforms_uint.max_bounces) {
-                    let sky: SkySample = sampleSky(ray, surface, vec2<f32>(eta_i, eta_o), is_inside, random_state, bsdf_state);
+                    let sky: SkySample = sampleSky(ray, surface, side_n, vec2<f32>(eta_i, eta_o), is_inside, random_state, bsdf_state);
                     random_state = sky.random_state;
                     final_color += importancy_factor * sky.color;
                     if (expected_out_dir_normal_aligned == out_dir_normal_aligned) {
@@ -835,8 +843,9 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                 ray.unit_direction = bsdf_sampled.unit_direction;
                 importancy_factor *= max(bsdf_sampled.throughput, vec3<f32>(0.0f));
 
+                again = !(material.transmission > 0.0f) && !isTranslucent(material) && dot(ray.unit_direction, geometry_n) < 0.0f;
                 let out_dir_aligned_normal: vec3<f32> = select(smooth_n, - smooth_n, is_inside != through);
-                ray.origin += geometry_offset * out_dir_aligned_normal;
+                ray.origin += select(geometry_offset, 0.0f, again) * out_dir_aligned_normal;
             }
         }
 
@@ -861,6 +870,10 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
 
         // Increment hit iterator
         i = i + 1u;
+        if (again) {
+            // The next vertex is the same hit, met again where the ray leaves it, as the face is flat, by its distance
+            continue;
+        }
         // Calculate next intersection
         // Passing through a point light, the rest of the segment meets no other
         hit = traverseInstanceBVH(ray, !point_light_lighting, POW32);
@@ -931,8 +944,12 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 
 // Radiance the path tracer's ray from a vertex along dir receives from the environment map if it hits nothing on the way.
 // Escapes passing transparent texels are left to BSDF sampling.
-fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
-    let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
+fn skyRadiance(origin: vec3<f32>, surface: Surface, side_n: vec3<f32>, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
+    // Off a surface transmitting no light the sky only above its face, which meets every ray below it
+    if (!(surface.material.transmission > 0.0f) && !isTranslucent(surface.material) && !(dot(surface.geometry_n, dir) > 0.0f)) {
+        return vec3<f32>(0.0f);
+    }
+    let inside: bool = is_inside != wrongSide(is_inside, false, dir, side_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
     return env_map_sample(dir) * shadowTransmittance(ray, POW32);
 }
@@ -946,7 +963,7 @@ struct SkySample {
 }
 
 // Next event estimation toward the environment map, drawing a direction by its luminance. lobe_state is the random state of skyBSDF.
-fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
+fn sampleSky(ray: Ray, surface: Surface, side_n: vec3<f32>, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
     let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
     let random_0: Random = pcg(init_random_state);
     let random_1: Random = pcg(random_0.state);
@@ -957,19 +974,19 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
     let angles: vec2<f32> = (vec2<f32>(f32(column), f32(row)) + vec2<f32>(random_2.value, random_3.value)) / vec2<f32>(size) * vec2<f32>(2.0f * PI, PI);
     let dir: vec3<f32> = vec3<f32>(sin(angles.y) * cos(angles.x), cos(angles.y), sin(angles.y) * sin(angles.x));
     let pdf: f32 = environmentPdf(dir);
-    let f: vec3<f32> = skyBSDF(ray.unit_direction, dir, surface, eta, is_inside, pdf, lobe_state);
+    let f: vec3<f32> = skyBSDF(ray.unit_direction, dir, surface, side_n, eta, is_inside, pdf, lobe_state);
     // Only trace toward directions that contribute
     if (!(pdf > 0.0f) || all(f == vec3<f32>(0.0f))) {
         return SkySample(dir, vec3<f32>(0.0f), vec3<f32>(0.0f), random_3.state);
     }
-    let radiance: vec3<f32> = skyRadiance(ray.origin, surface, is_inside, dir);
+    let radiance: vec3<f32> = skyRadiance(ray.origin, surface, side_n, is_inside, dir);
     return SkySample(dir, radiance, f * radiance, random_3.state);
 }
 
 // BSDF times cosine toward an environment sample over its density, each lobe weighted against the BSDF sampled escape by the
 // balance heuristic. Lobes sampling can't produce toward dir are left to rays sampled to the wrong side, sampled again or mirrored.
-fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
-    let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
+fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, side_n: vec3<f32>, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
+    let refracted: bool = wrongSide(is_inside, false, dir, side_n);
     return neeBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, refracted, pdf, false, random_state);
 }
 
@@ -1244,6 +1261,14 @@ fn vertexEta(material: Material, n_dot_v: f32) -> vec2<f32> {
     return vec2<f32>(select(1.0f, material.ior, is_entering), select(material.ior, 1.0f, is_entering));
 }
 
+// The normal light and bounces leave by the side of: on surfaces transmitting nothing and seen from its side, the
+// smooth normal's, so a smooth normal is lit where it faces the light though its face doesn't (the shadow terminator);
+// else the face's, so a ray arriving behind the smooth normal leaves no way through, as flex-cuda-pt's side_n
+fn sideNormal(surface: Surface, in_dir: vec3<f32>) -> vec3<f32> {
+    let opaque: bool = !(surface.material.transmission > 0.0f) && !isTranslucent(surface.material);
+    return select(surface.geometry_n, surface.smooth_n, opaque && dot(surface.smooth_n, - in_dir) > 0.0f);
+}
+
 // Whether the path tracer considers dir to point towards the incorrect side of the surface
 fn wrongSide(is_inside: bool, refracted: bool, dir: vec3<f32>, geometry_n: vec3<f32>) -> bool {
     return (is_inside == refracted) != (dot(dir, geometry_n) > 0.0f);
@@ -1290,6 +1315,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         // Smooth normal the surface emits along, before it faces the ray
         var front_n: vec3<f32> = vec3<f32>(0.0f);
         var scatter: bool = false;
+        // Leaving a surface transmitting no light below its face: the face meets the ray again right where it leaves
+        var again: bool = false;
         var geometry_density: f32 = 0.0f;
         if (!point_light_lighting) {
             surface = surfaceAt(hit, ray.origin, stream(r.seed, b));
@@ -1311,6 +1338,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         let n_dot_v: f32 = dot(surface.smooth_n, - ray.unit_direction);
         let eta: vec2<f32> = vertexEta(material, n_dot_v);
         let nee: bool = scatter && samplesLights(material);
+        let side_n: vec3<f32> = sideNormal(surface, ray.unit_direction);
         // Emission met, of the surface or a point light, weighted against light sampling at the vertex the ray left
         var emission: vec3<f32> = material.emissive * max(sign(dot(- ray.unit_direction, front_n)), 0.0f);
         if (point_light_lighting) {
@@ -1345,17 +1373,17 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             // Light sampling at the reconnection vertex replays its random numbers, as the light may have moved
             if (k == end && end_type == END_NEE) {
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE), select(vec3<f32>(0.0f), surface.geometry_n, !(material.transmission > 0.0f) && !isTranslucent(material)));
                 if (!nee || !(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state) / r.jac, density / r.jac);
+                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, side_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state) / r.jac, density / r.jac);
             }
             if (k == end && end_type == END_SKY) {
                 if (!nee) {
                     return fail;
                 }
-                return Shift(throughput * skyBSDF(ray.unit_direction, r.dir, surface, eta, is_inside, environmentPdf(r.dir), surface.random_state) * r.radiance / r.jac, density / r.jac);
+                return Shift(throughput * skyBSDF(ray.unit_direction, r.dir, surface, side_n, eta, is_inside, environmentPdf(r.dir), surface.random_state) * r.radiance / r.jac, density / r.jac);
             }
             if (nee != (extractBits(r.path, PATH_NEE, 1u) == 1u)) {
                 return fail;
@@ -1363,17 +1391,17 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
         } else if (replay && b == stop && (!scatter || (rc != RC_SURFACE && rc != RC_ENV))) {
             if (rc == RC_LIGHT && nee && !footprint && end_type == END_SKY) {
                 // Forced reconnection to the environment direction, drawn independently of the vertex (unit Jacobian)
-                let sky: SkySample = sampleSky(ray, surface, eta, is_inside, stream(r.seed, b + STREAM_SKY), surface.random_state);
+                let sky: SkySample = sampleSky(ray, surface, side_n, eta, is_inside, stream(r.seed, b + STREAM_SKY), surface.random_state);
                 return Shift(throughput * sky.color, 1.0f);
             }
             if (rc == RC_LIGHT && nee && !footprint) {
                 // Forced reconnection to the light vertex of next event estimation (Sec. 6.2.3), the point its replayed
                 // random numbers pick again (unit Jacobian)
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE), select(vec3<f32>(0.0f), surface.geometry_n, !(material.transmission > 0.0f) && !isTranslucent(material)));
                 if (!(rgb_to_greyscale(light.radiance) > 0.0f)) {
                     return fail;
                 }
-                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state), 1.0f);
+                return Shift(throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, side_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state), 1.0f);
             }
             if (rc == RC_NONE && end_type == END_POINT && point_light_lighting) {
                 return Shift(throughput * emission, 1.0f);
@@ -1395,8 +1423,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 offer(sel, withEnd(candidate, END_EMIT, b, throughput * emission), throughput * emission * scale / density);
             }
             if (nee) {
-                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE));
-                let f: vec3<f32> = throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, surface.geometry_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state);
+                let light: TreeSample = sampleLightTree(ray.origin, surface.smooth_n, surface.geometry_n, surface.geometry_offset, isTranslucent(material), stream(r.seed, b + STREAM_NEE), select(vec3<f32>(0.0f), surface.geometry_n, !(material.transmission > 0.0f) && !isTranslucent(material)));
+                let f: vec3<f32> = throughput * lightBSDF(ray.unit_direction, light, surface.smooth_n, side_n, material, eta.x, eta.y, b < uniforms_uint.max_bounces, surface.random_state);
                 var candidate: Reservoir = chain;
                 if (chain_found) {
                     candidate.radiance = safeDivide(f, chain_throughput);
@@ -1412,7 +1440,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 offer(sel, withEnd(candidate, END_NEE, b, f), f * scale / density);
             }
             if (nee && environmentMapped() && b < uniforms_uint.max_bounces) {
-                let sky: SkySample = sampleSky(ray, surface, eta, is_inside, stream(r.seed, b + STREAM_SKY), surface.random_state);
+                let sky: SkySample = sampleSky(ray, surface, side_n, eta, is_inside, stream(r.seed, b + STREAM_SKY), surface.random_state);
                 let f: vec3<f32> = throughput * sky.color;
                 var candidate: Reservoir = chain;
                 if (chain_found) {
@@ -1451,13 +1479,13 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                     dir = normalize(reconnection - (ray.origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside != refracted)));
                 }
                 // The path tracer samples again or mirrors directions sampled to the wrong side of the face, which no density reaches
-                if (wrongSide(is_inside, refracted, dir, surface.geometry_n)) {
+                if (wrongSide(is_inside, refracted, dir, side_n)) {
                     return fail;
                 }
             } else if (!arrived) {
                 var bsdf_sampled: SampleBSDF = sampleBSDF(ray.unit_direction, surface.smooth_n, material, eta.x, eta.y, surface.random_state, vec2<f32>(0.0f));
                 // Rays sampled to the wrong side of the face are sampled again or mirrored, as the path tracer's
-                wrong_side = wrongSide(is_inside, bsdf_sampled.refracted, bsdf_sampled.unit_direction, surface.geometry_n);
+                wrong_side = wrongSide(is_inside, bsdf_sampled.refracted, bsdf_sampled.unit_direction, side_n);
                 if (wrong_side && material.transmission > 0.0f) {
                     let geometry_bsdf_sampled: SampleBSDF = sampleBSDF(bsdf_sampled.unit_direction, surface.geometry_n, material, eta.x, eta.y, bsdf_sampled.random_state, vec2<f32>(0.0f));
                     bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
@@ -1487,7 +1515,10 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
             }
             // Inverse ray footprint criterion for the density of the direction leaving this vertex (Eq. 5)
             let inverse_footprint: bool = withinInverseFootprint(lobe.pdf, lobe_index == LOBE_DIFFUSE, prev.cos, hit.distance, threshold);
-            let rough: bool = roughLobe(lobe.pdf, lobe_index == LOBE_DIFFUSE, material.roughness);
+            // Directions between the face and the smooth normal (the terminator's) are judged by a side the incoming
+            // direction decides, which shifts change, so no reconnection is made along them
+            let wedge: bool = dot(dir, surface.smooth_n) * dot(dir, surface.geometry_n) < 0.0f;
+            let rough: bool = !wedge && roughLobe(lobe.pdf, lobe_index == LOBE_DIFFUSE, material.roughness);
             if (arrived) {
                 if (!inverse_footprint) {
                     return fail;
@@ -1526,7 +1557,8 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 is_inside = !is_inside;
             }
             ray.unit_direction = dir;
-            ray.origin += surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, is_inside != through);
+            again = !(material.transmission > 0.0f) && !isTranslucent(material) && dot(dir, surface.geometry_n) < 0.0f;
+            ray.origin += select(surface.geometry_offset, 0.0f, again) * select(surface.smooth_n, - surface.smooth_n, is_inside != through);
         } else {
             prev.rough = false;
             // Environment next event estimation never passes texels, escapes through them take the full weight
@@ -1550,6 +1582,10 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 break;
             }
             density *= survival_probability;
+        }
+        if (again) {
+            // The next vertex is the same hit, met again where the ray leaves it, as the face is flat, by its distance
+            continue;
         }
         // Only occluders in front of the reconnection vertex matter, passing through a point light no other
         hit = traverseInstanceBVH(ray, !point_light_lighting, select(POW32, distance(reconnection, ray.origin) * 1.001f, replay && b == stop && rc == RC_SURFACE));
