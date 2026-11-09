@@ -11,7 +11,7 @@
 // difference within four standard errors of it, which the mirror image's pairs of pixels give. Of anisotropy 1 about
 // Blender's default tangent (argument aniso), its bounds moved by furnace.mjs's triangle of no area at x = 10, the square
 // holds the albedo of the roughnesses along the view and across, 0.6953, under the white light within 0.5%; turned a
-// quarter (argument anisoturned), 0.6351; of anisotropy 1e-6 (argument anisolimit), the isotropic 0.8551. After 4096
+// quarter (argument anisoturned), 0.6351; of anisotropy 1e-6 (argument anisolimit), the isotropic 0.8551. After 1364
 // frames; it fails unless the renderer is SwiftShader. cylinder.mjs' cylinders (argument cylinder), under the white light.
 // The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
@@ -21,22 +21,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deviation } from "./cylinder.mjs";
 
-const SIZE = 64, FRAMES = 4096, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
+const SIZE = 64, FRAMES = 1364, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
 const ANISO = { aniso: 0.6953, anisoturned: 0.6351, anisolimit: 0.8551 }[CASE];
 const SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
 const FURNACE = CASE !== "backlit" && !SQUARE, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.8551), 0.9 * (ANISO ?? 0.8551)] : FURNACE ? [0.5, 0.5] : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
-// the frames cut off after a fixed count
+// every animation frame's callbacks dropped once the renderer has rendered a fixed count, its own count, not the
+// callbacks', which the renderer's timeout and the camera's loop interleave by timing
 const getContext = HTMLCanvasElement.prototype.getContext;
-let gl, frames = 0;
+let gl, engine, read = false;
 HTMLCanvasElement.prototype.getContext = function (type, attributes) {
   const context = getContext.call(this, type, { ...attributes, preserveDrawingBuffer: true });
   if (type === "webgl2") gl = context;
   return context;
 };
 const requestFrame = requestAnimationFrame.bind(window);
-window.requestAnimationFrame = (cb) => ++frames <= ${FRAMES} ? requestFrame(cb) : (frames === ${FRAMES} + 1 && done(), 0);
+window.requestAnimationFrame = (cb) => requestFrame((t) => (engine?.renderer.frameCounter ?? 0) < ${FRAMES} ? cb(t) : read || (read = true, done()));
 const done = () => {
   const pixels = new Uint8Array(${SIZE * SIZE * 4});
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -60,7 +61,7 @@ const lamp = ${FURNACE} ? box : [[[-2, -2], [2, -2], [2, 2]], [[-2, -2], [2, 2],
   .flatMap((t) => [...t.flatMap(([x, y]) => [x, y, -0.25]), 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
 const material = (albedo, translucent, emissive = 0) => new F.Material(new F.Vector(albedo, albedo, albedo),
   new F.Vector(emissive, emissive, emissive), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(translucent, translucent, translucent));
-const engine = new F.FlexLight(document.querySelector("canvas"));
+engine = new F.FlexLight(document.querySelector("canvas"));
 engine.api = "webgl2";
 Object.assign(engine.config, { temporal: true, antialiasing: undefined, tonemapping: false, samplesPerPixel: 1 });
 // The square of furnace.mjs, shifted along x and built in object space under the scale k, its normal S^T n
