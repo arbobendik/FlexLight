@@ -31,7 +31,10 @@
 // triangle of no area at x = 10 moves so that it runs along the view where seen, the metal holds the albedo of the
 // roughnesses Principled's mapping gives along the view and across, 0.6953 by midpoint quadrature, within four
 // standard errors; turned a quarter about the normal (argument anisoturned), that across and along, 0.6351. Of 1024
-// frames, cylinder.mjs' cylinders (argument cylinder).
+// frames, cylinder.mjs' cylinders (argument cylinder). A white diffuse sphere of radius 1 beside a clear shell of IOR 1
+// and radius 2 above it, under a uniform environment map of white (argument shell), returns all it receives: its sky
+// light passing the shell reaches the sphere's light sampling and its escapes alike and counts once, the image's mean
+// within four standard errors of one path traced and within 2% through ReSTIR.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
@@ -124,6 +127,16 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
 if (MATERIAL === "cylinder") await instanceCylinders(F, engine.scene);
+else if (MATERIAL === "shell") {
+  // A sphere of 32 by 16 quads, smooth, wound outward, of radius r about c, the poles' triangles of no area left out
+  const at = (i, j) => [Math.sin(Math.PI * i / 16) * Math.cos(Math.PI * j / 16), Math.cos(Math.PI * i / 16), Math.sin(Math.PI * i / 16) * Math.sin(Math.PI * j / 16)];
+  const sphere = (r, c) => Array.from({ length: 512 }, (_, q) => [q >> 5, q & 31]).flatMap(([i, j]) => [i > 0 && [at(i, j), at(i, j + 1), at(i + 1, j + 1)],
+    i < 15 && [at(i, j), at(i + 1, j + 1), at(i + 1, j)]].filter(Boolean)).flatMap((t) => [...t.flatMap((n) => n.map((v, k) => r * v + c[k])), ...t.flat(), 0, 0, 0, 0, 0, 0]);
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: sphere(1, [0, 0, 0]), material: new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1), label: "sphere" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: sphere(2, [0, 3.2, 0]), material: new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1), label: "shell" }));
+  // A white sky: the walk reads texels times 255, so 1 / 255, which half floats hold to 1.5e-5
+  engine.scene.environmentMap = { imageArray: new Float16Array(4 * 2 * 3).fill(1 / 255), imageSize: new F.Vector(4, 2), gamma: 1, exposure: 1 };
+}
 else engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles, material, label: "prism" })).transform.scale(new F.Vector(...SCALE));
 // The raster's twin in world space, on the left
 if (twin) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => c - twin * (i === 0))),
@@ -156,8 +169,8 @@ engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
-if (square || thin || MATERIAL === "cylinder") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
-  engine.camera.fov = twin || MATERIAL === "cylinder" ? 40 : 1;
+if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+  engine.camera.fov = twin || MATERIAL === "cylinder" || MATERIAL === "shell" ? 40 : 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
 const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
@@ -202,7 +215,8 @@ engine.renderer.renderFrame = async (...args) => {
     : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
     : aniso ? Math.abs(mean - ANISO[Number(MATERIAL === "anisoturned")]) < 4 * error
     : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
-    : thin && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
-    && (MATERIAL === "lit" || thin || sheen || brightest < 1.05) && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || aniso || black === 0) ? 0 : 1);
+    : (thin || MATERIAL === "shell") && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
+    && (MATERIAL === "lit" || thin || sheen || MATERIAL === "shell" || brightest < 1.05)
+    && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || aniso || MATERIAL === "shell" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();
