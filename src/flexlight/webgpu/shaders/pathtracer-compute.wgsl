@@ -1626,8 +1626,6 @@ fn restir_spatial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
     restir_spatial_hook(global_invocation_id);
 }
 
-var<workgroup> duplication_seeds: array<u32, 576>;
-
 // Fraction of the 17 x 17 neighborhood sharing each pixel's sample (Sec. 5)
 @compute
 @workgroup_size(8, 8)
@@ -1636,26 +1634,7 @@ fn restir_duplicates(
     @builtin(local_invocation_id) local_invocation_id: vec3<u32>,
     @builtin(local_invocation_index) local_invocation_index: u32
 ) {
-    let corner: vec2<i32> = vec2<i32>(global_invocation_id.xy - local_invocation_id.xy) - 8;
-    for (var i: u32 = local_invocation_index; i < 576u; i += 64u) {
-        let q: vec2<i32> = corner + vec2<i32>(i32(i % 24u), i32(i / 24u));
-        var seed: u32 = 0u;
-        if (all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size))) {
-            let l0: vec4<u32> = textureLoad(reservoir_prev, q, 0, 0);
-            seed = select(0u, l0.x, bitcast<f32>(l0.z) > 0.0f);
-        }
-        duplication_seeds[i] = seed;
-    }
-    workgroupBarrier();
-    let own: u32 = duplication_seeds[(local_invocation_id.y + 8u) * 24u + local_invocation_id.x + 8u];
-    var count: u32 = 0u;
-    for (var y: u32 = 0u; y < 17u; y++) {
-        for (var x: u32 = 0u; x < 17u; x++) {
-            count += select(0u, 1u, duplication_seeds[(local_invocation_id.y + y) * 24u + local_invocation_id.x + x] == own);
-        }
-    }
-    let score: f32 = select(0.0f, f32(count - 1u) / 288.0f, own != 0u);
-    textureStore(duplication_out, vec2<i32>(global_invocation_id.xy), 0, vec4<u32>(bitcast<u32>(score), 0u, 0u, 0u));
+    restir_duplicates_hook(global_invocation_id, local_invocation_id, local_invocation_index);
 }
 
 // Mean emission r + g + b over each triangle of an instance with an emissive texture at stratified points, as
