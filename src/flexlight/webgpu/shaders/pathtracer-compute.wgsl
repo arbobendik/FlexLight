@@ -1554,21 +1554,6 @@ fn previousValid(q: vec2<i32>) -> bool {
     return all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size)) && bitcast<f32>(textureLoad(reservoir_prev, q, 0, 0).w) > 0.0f;
 }
 
-// Backprojection of the camera motion, or the dual motion vector of the surface previously seen there (Sec. 6.4)
-fn temporalNeighbor(p: vec2<i32>, dom: Domain) -> vec2<i32> {
-    // Primary hits are rasterized at pixel centers
-    let q: vec2<i32> = vec2<i32>(floor(project(uniforms_float.prev_view_matrix, uniforms_float.prev_camera_position, dom.x1)));
-    if (!previousValid(q)) {
-        return vec2<i32>(-1);
-    }
-    let previous: Domain = previousDomain(q);
-    if (previous.hit.instance_index == dom.hit.instance_index && distance(previous.x1, dom.x1) <= dom.hit.distance * 8.0f / f32(uniforms_uint.render_size.x)) {
-        return q;
-    }
-    let dual: vec2<i32> = vec2<i32>(floor(vec2<f32>(p + q) + 1.0f - project(uniforms_float.view_matrix, uniforms_float.camera_position, previous.x1)));
-    return select(vec2<i32>(-1), dual, previousValid(dual));
-}
-
 // Partner of p in reuse texture t, randomly flipped, transposed and offset every frame (Sec. 3.2)
 fn partner(p: vec2<i32>, t: u32) -> vec2<i32> {
     var sizes: array<i32, 3> = array<i32, 3>(254, 230, 210);
@@ -1609,25 +1594,6 @@ fn sameDomain(a: Domain, b: Domain) -> bool {
     return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
 }
 
-// Temporal round job t of p: the previous frame's sample into the current domain (t = 0) or the current sample into the
-// previous domain (t = 1). False if the shift is zero or the identity, which temporal reuse handles itself.
-fn temporalJob(p: vec2<i32>, t: u32, job: ptr<function, ShiftJob>) -> bool {
-    var dom: Domain;
-    if (t > 1u || !storedDomain(reservoir_initial, p, &dom)) {
-        return false;
-    }
-    let q: vec2<i32> = temporalNeighbor(p, dom);
-    if (q.x < 0) {
-        return false;
-    }
-    if (t == 0u) {
-        *job = ShiftJob(dom, loadReservoir(reservoir_prev, q));
-    } else {
-        *job = ShiftJob(previousDomain(q), loadReservoir(reservoir_initial, p));
-    }
-    return (*job).r.w > 0.0f && (t == 0u || !sameDomain((*job).dom, dom));
-}
-
 // Spatial round job t of p: its sample into the domain of partner t
 fn spatialJob(p: vec2<i32>, t: u32, job: ptr<function, ShiftJob>) -> bool {
     if (t > 2u || any(p >= vec2<i32>(uniforms_uint.render_size))) {
@@ -1643,18 +1609,6 @@ fn shiftBin(r: Reservoir) -> u32 {
     let kind: u32 = select(rc, 4u, rc == RC_LIGHT && extractBits(r.path, PATH_TYPE, 3u) == END_SKY);
     let depth: u32 = select(extractBits(r.path, PATH_K, 5u), extractBits(r.path, PATH_END, 5u) + 1u, rc == RC_NONE);
     return kind * SHIFT_DEPTHS + clamp(depth, 1u, SHIFT_DEPTHS) - 1u;
-}
-
-// Bins of the jobs of p, SHIFT_BINS for shifts without work
-fn temporalBins(p: vec2<i32>) -> array<u32, 3> {
-    var bins: array<u32, 3> = array<u32, 3>(SHIFT_BINS, SHIFT_BINS, SHIFT_BINS);
-    for (var t: u32 = 0u; t < 2u; t++) {
-        var job: ShiftJob;
-        if (temporalJob(p, t, &job)) {
-            bins[t] = shiftBin(job.r);
-        }
-    }
-    return bins;
 }
 
 fn spatialBins(p: vec2<i32>) -> array<u32, 3> {
