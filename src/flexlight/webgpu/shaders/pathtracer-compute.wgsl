@@ -1626,8 +1626,6 @@ fn restir_spatial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
     restir_spatial_hook(global_invocation_id);
 }
 
-var<workgroup> duplication_seeds: array<u32, 576>;
-
 // Fraction of the 17 x 17 neighborhood sharing each pixel's sample (Sec. 5)
 @compute
 @workgroup_size(8, 8)
