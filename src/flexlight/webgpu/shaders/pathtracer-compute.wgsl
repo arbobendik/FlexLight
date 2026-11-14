@@ -1554,19 +1554,6 @@ fn previousValid(q: vec2<i32>) -> bool {
     return all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size)) && bitcast<f32>(textureLoad(reservoir_prev, q, 0, 0).w) > 0.0f;
 }
 
-// Partner of p in reuse texture t, randomly flipped, transposed and offset every frame (Sec. 3.2)
-fn partner(p: vec2<i32>, t: u32) -> vec2<i32> {
-    var sizes: array<i32, 3> = array<i32, 3>(254, 230, 210);
-    let size: i32 = sizes[t];
-    let random: u32 = hash(uniforms_uint.frame * 3u + t);
-    let flip: vec2<i32> = select(vec2<i32>(1), vec2<i32>(-1), vec2<bool>((random & 1u) != 0u, (random & 2u) != 0u));
-    let transpose: bool = (random & 4u) != 0u;
-    let offset: vec2<i32> = vec2<i32>(i32((random >> 8u) & 255u), i32((random >> 16u) & 255u));
-    let texel: vec2<i32> = ((select(p, p.yx, transpose) * flip + offset) % size + size) % size;
-    let delta: vec2<i32> = textureLoad(pairing, texel, t, 0).xy * flip;
-    return p + select(delta, delta.yx, transpose);
-}
-
 fn shift(dom: Domain, r: Reservoir) -> Shift {
     var sel: Selection;
     if (r.w <= 0.0f) {
@@ -1594,107 +1581,6 @@ fn sameDomain(a: Domain, b: Domain) -> bool {
     return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
 }
 
-// Spatial round job t of p: its sample into the domain of partner t
-fn spatialJob(p: vec2<i32>, t: u32, job: ptr<function, ShiftJob>) -> bool {
-    if (t > 2u || any(p >= vec2<i32>(uniforms_uint.render_size))) {
-        return false;
-    }
-    (*job).r = loadReservoir(reservoir_temp, p);
-    return (*job).r.w > 0.0f && storedDomain(reservoir_temp, partner(p, t), &(*job).dom);
-}
-
-// Compaction bin of shifting r: reconnection type, with environment next event estimation apart from light sampling, and replay depth
-fn shiftBin(r: Reservoir) -> u32 {
-    let rc: u32 = extractBits(r.path, PATH_RC, 2u);
-    let kind: u32 = select(rc, 4u, rc == RC_LIGHT && extractBits(r.path, PATH_TYPE, 3u) == END_SKY);
-    let depth: u32 = select(extractBits(r.path, PATH_K, 5u), extractBits(r.path, PATH_END, 5u) + 1u, rc == RC_NONE);
-    return kind * SHIFT_DEPTHS + clamp(depth, 1u, SHIFT_DEPTHS) - 1u;
-}
-
-fn spatialBins(p: vec2<i32>) -> array<u32, 3> {
-    var bins: array<u32, 3> = array<u32, 3>(SHIFT_BINS, SHIFT_BINS, SHIFT_BINS);
-    for (var t: u32 = 0u; t < uniforms_uint.restir_neighbours; t++) {
-        var job: ShiftJob;
-        if (spatialJob(p, t, &job)) {
-            bins[t] = shiftBin(job.r);
-        }
-    }
-    return bins;
-}
-
-var<workgroup> bin_jobs: array<atomic<u32>, SHIFT_BINS>;
-var<workgroup> bin_offsets: array<u32, SHIFT_BINS>;
-
-// Count the jobs of the workgroup per bin
-fn countShifts(bins: array<u32, 3>, local_invocation_index: u32) {
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            atomicAdd(&bin_jobs[bins[t]], 1u);
-        }
-    }
-    workgroupBarrier();
-    if (local_invocation_index < SHIFT_BINS) {
-        let jobs: u32 = atomicLoad(&bin_jobs[local_invocation_index]);
-        if (jobs > 0u) {
-            atomicAdd(&shift_queue.counts[local_invocation_index], jobs);
-        }
-    }
-}
-
-// Write the jobs of the workgroup bin by bin into the queue and the size of the indirect dispatch running them
-fn queueShifts(p: vec2<i32>, bins: array<u32, 3>, global_invocation_id: vec3<u32>, local_invocation_index: u32) {
-    var slots: array<u32, 3>;
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            slots[t] = atomicAdd(&bin_jobs[bins[t]], 1u);
-        }
-    }
-    workgroupBarrier();
-    if (local_invocation_index < SHIFT_BINS) {
-        let jobs: u32 = atomicLoad(&bin_jobs[local_invocation_index]);
-        if (jobs > 0u) {
-            var start: u32 = 0u;
-            for (var bin: u32 = 0u; bin < local_invocation_index; bin++) {
-                start += atomicLoad(&shift_queue.counts[bin]);
-            }
-            bin_offsets[local_invocation_index] = start + atomicAdd(&shift_queue.cursors[local_invocation_index], jobs);
-        }
-    }
-    workgroupBarrier();
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            shift_queue.jobs[bin_offsets[bins[t]] + slots[t]] = u32(p.x) | (u32(p.y) << 14u) | (t << 28u);
-        }
-    }
-    if (all(global_invocation_id.xy == vec2<u32>(0u))) {
-        var groups: u32 = 0u;
-        for (var bin: u32 = 0u; bin < SHIFT_BINS; bin++) {
-            groups += (atomicLoad(&shift_queue.counts[bin]) + 63u) / 64u;
-        }
-        shift_queue.dispatch = array<u32, 3>(min(groups, 65535u), (groups + 65534u) / 65535u, 1u);
-    }
-}
-
-// Queued job of an invocation of the indirect shift passes, UINT_MAX for none. Every workgroup works on a single bin.
-fn queuedShift(workgroup_id: vec3<u32>, local_invocation_index: u32) -> u32 {
-    var group: u32 = workgroup_id.y * 65535u + workgroup_id.x;
-    var start: u32 = 0u;
-    for (var bin: u32 = 0u; bin < SHIFT_BINS; bin++) {
-        let jobs: u32 = queued_shifts[3u + bin];
-        let groups: u32 = (jobs + 63u) / 64u;
-        if (group < groups) {
-            let index: u32 = group * 64u + local_invocation_index;
-            if (index < jobs) {
-                return queued_shifts[3u + 2u * SHIFT_BINS + start + index];
-            }
-            return UINT_MAX;
-        }
-        group -= groups;
-        start += jobs;
-    }
-    return UINT_MAX;
-}
-
 // The temporal round of the shift queue
 @compute
 @workgroup_size(8, 8)
@@ -1718,93 +1604,26 @@ fn restir_temporal_shift(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builti
 @compute
 @workgroup_size(8, 8)
 fn restir_count(@builtin(global_invocation_id) global_invocation_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    countShifts(spatialBins(vec2<i32>(global_invocation_id.xy)), local_invocation_index);
+    restir_count_hook(global_invocation_id, local_invocation_index);
 }
 
 @compute
 @workgroup_size(8, 8)
 fn restir_prepass(@builtin(global_invocation_id) global_invocation_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    let p: vec2<i32> = vec2<i32>(global_invocation_id.xy);
-    let bins: array<u32, 3> = spatialBins(p);
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] == SHIFT_BINS) {
-            textureStore(shift_data_out, p, t, vec4<u32>(0u));
-        }
-    }
-    queueShifts(p, bins, global_invocation_id, local_invocation_index);
+    restir_prepass_hook(global_invocation_id, local_invocation_index);
 }
 
 @compute
 @workgroup_size(64)
 fn restir_shift(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    let job: u32 = queuedShift(workgroup_id, local_invocation_index);
-    if (job != UINT_MAX) {
-        let p: vec2<i32> = vec2<i32>(vec2<u32>(job, job >> 14u) & vec2<u32>(16383u));
-        var shift_job: ShiftJob;
-        _ = spatialJob(p, job >> 28u, &shift_job);
-        let shifted: Shift = shift(shift_job.dom, shift_job.r);
-        textureStore(shift_data_out, p, job >> 28u, vec4<u32>(bitcast<vec3<u32>>(shifted.f), bitcast<u32>(shifted.jac)));
-    }
+    restir_shift_hook(workgroup_id, local_invocation_index);
 }
 
 // Paired spatial reuse with pairwise MIS (Sec. 3) and shading with vector-valued weights (Sec. 6.3)
 @compute
 @workgroup_size(8, 8)
 fn restir_spatial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
-    let p: vec2<i32> = vec2<i32>(global_invocation_id.xy);
-    var dom: Domain;
-    if (!currentDomain(p, &dom)) {
-        storeReservoir(reservoir_prev_out, p, Reservoir(), dom.hit);
-        let screen_space: vec2<f32> = vec2<f32>(global_invocation_id.xy) / vec2<f32>(uniforms_uint.render_size.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
-        // If there is no triangle render ambient color
-        textureStore(compute_out, p, 0, vec4<f32>(environment(normalize(uniforms_float.inv_view_matrix * vec3<f32>(screen_space, 1.0f))), 1.0f));
-        if (uniforms_uint.is_temporal == 1u) {
-            textureStore(compute_out, p, 1, vec4<f32>(0.0f));
-        }
-        return;
-    }
-    let r: Reservoir = loadReservoir(reservoir_temp, p);
-    var count: f32 = 0.0f;
-    var c_sum: f32 = r.c;
-    for (var t: u32 = 0u; t < uniforms_uint.restir_neighbours; t++) {
-        let q: vec2<i32> = partner(p, t);
-        var neighbor: Domain;
-        if (currentDomain(q, &neighbor)) {
-            count += 1.0f;
-            c_sum += bitcast<f32>(textureLoad(reservoir_temp, q, 0, 0).w);
-        }
-    }
-    // Confidence of the current pixel is split evenly across the pairs
-    let c_pair: f32 = r.c / max(count, 1.0f);
-    let p_c: f32 = rgb_to_greyscale(r.f);
-    var canonical_mis: f32 = select(0.0f, 1.0f, count == 0.0f);
-    var sel: Selection;
-    sel.random_state = stream(stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y), STREAM_SELECT + 2u);
-    for (var t: u32 = 0u; t < uniforms_uint.restir_neighbours; t++) {
-        let q: vec2<i32> = partner(p, t);
-        var neighbor_dom: Domain;
-        if (currentDomain(q, &neighbor_dom)) {
-            let neighbor: Reservoir = loadReservoir(reservoir_temp, q);
-            let to_here: vec4<f32> = bitcast<vec4<f32>>(textureLoad(shift_data, q, t, 0));
-            let to_there: vec4<f32> = bitcast<vec4<f32>>(textureLoad(shift_data, p, t, 0));
-            let share: f32 = pairShare(neighbor.c, c_pair, c_sum);
-            if (p_c > 0.0f) {
-                canonical_mis += canonicalWeight(share, c_pair, p_c, neighbor.c, rgb_to_greyscale(to_there.xyz));
-            }
-            offerShifted(&sel, neighbor, Shift(to_here.xyz, to_here.w), neighborWeight(share, neighbor.c, rgb_to_greyscale(neighbor.f), c_pair, rgb_to_greyscale(to_here.xyz)));
-        }
-    }
-    offerShifted(&sel, r, Shift(r.f, 1.0f), canonical_mis);
-    storeReservoir(reservoir_prev_out, p, finalize(sel, c_sum), dom.hit);
-    textureStore(reservoir_prev_out, p, 5, vec4<u32>(bitcast<vec2<u32>>(dom.hit.uv), 0u, 0u));
-    let primary: Surface = surfaceAt(dom.hit, dom.x1, sel.random_state);
-    let emission: vec3<f32> = select(primary.material.emissive * max(sign(dot(normalize(dom.x0 - dom.x1), primary.smooth_n)), 0.0f), vec3<f32>(0.0f), primary.skip);
-    // Clamp color to 16 bit float
-    let final_color: vec3<f32> = clamp(sel.color + emission, vec3<f32>(0.0f), vec3<f32>(65519.0f));
-    textureStore(compute_out, p, 0, vec4<f32>(final_color, 1.0f));
-    if (uniforms_uint.is_temporal == 1u) {
-        textureStore(compute_out, p, 1, vec4<f32>(dom.x1, f32(dom.hit.instance_index)));
-    }
+    restir_spatial_hook(global_invocation_id);
 }
 
 var<workgroup> duplication_seeds: array<u32, 576>;
