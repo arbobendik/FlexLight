@@ -420,15 +420,6 @@ fn worldTriangle(instance_index: u32, triangle_index: u32) -> mat3x3<f32> {
     return transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
 }
 
-struct TreeSample {
-    // Unit direction toward the light point, the radiance arriving from it if visible over its density in solid angle and
-    // the latter, zero for point lights of no radius
-    dir: vec3<f32>,
-    radiance: vec3<f32>,
-    density: f32,
-    random_state: u32
-}
-
 // Whether material has Blender's Translucent BSDF, a thin surface transmitting diffusely
 fn isTranslucent(material: Material) -> bool {
     return rgb_to_greyscale(material.translucent) > 0.0f;
@@ -549,17 +540,6 @@ fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry
     }
     let refracted: bool = dot(geometry_n, - in_dir) * dot(geometry_n, light.dir) <= 0.0f;
     return neeBSDF(in_dir, light.dir, smooth_n, material, eta_i, eta_o, refracted, light.density, true, random_state) * light.radiance * light.density;
-}
-
-// Light sampling at the vertex a ray left, which the emission the ray meets weighs against: whether there was none, the
-// density of the lobe the ray was sampled with, the vertex, the normal its light sampling orients by, none sided, and the
-// start of its shadow rays
-struct NEEVertex {
-    none: bool,
-    pdf: f32,
-    origin: vec3<f32>,
-    smooth_n: vec3<f32>,
-    start: vec3<f32>,
 }
 
 // Weight of emission met at point on the light of hit against light sampling at the vertex the ray left
@@ -937,14 +917,6 @@ fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f
     return env_map_sample(dir) * shadowTransmittance(ray, POW32);
 }
 
-struct SkySample {
-    dir: vec3<f32>,
-    radiance: vec3<f32>,
-    // Radiance times the weighted BSDF of skyBSDF
-    color: vec3<f32>,
-    random_state: u32
-}
-
 // Next event estimation toward the environment map, drawing a direction by its luminance. lobe_state is the random state of skyBSDF.
 fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
     let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
@@ -957,20 +929,13 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
     let angles: vec2<f32> = (vec2<f32>(f32(column), f32(row)) + vec2<f32>(random_2.value, random_3.value)) / vec2<f32>(size) * vec2<f32>(2.0f * PI, PI);
     let dir: vec3<f32> = vec3<f32>(sin(angles.y) * cos(angles.x), cos(angles.y), sin(angles.y) * sin(angles.x));
     let pdf: f32 = environmentPdf(dir);
-    let f: vec3<f32> = skyBSDF(ray.unit_direction, dir, surface, eta, is_inside, pdf, lobe_state);
+    let f: vec3<f32> = skyBSDF(ray.unit_direction, dir, surface, surface.geometry_n, eta, is_inside, pdf, lobe_state);
     // Only trace toward directions that contribute
     if (!(pdf > 0.0f) || all(f == vec3<f32>(0.0f))) {
         return SkySample(dir, vec3<f32>(0.0f), vec3<f32>(0.0f), random_3.state);
     }
     let radiance: vec3<f32> = skyRadiance(ray.origin, surface, is_inside, dir);
     return SkySample(dir, radiance, f * radiance, random_3.state);
-}
-
-// BSDF times cosine toward an environment sample over its density, each lobe weighted against the BSDF sampled escape by the
-// balance heuristic. Lobes sampling can't produce toward dir are left to rays sampled to the wrong side, sampled again or mirrored.
-fn skyBSDF(in_dir: vec3<f32>, dir: vec3<f32>, surface: Surface, eta: vec2<f32>, is_inside: bool, pdf: f32, random_state: u32) -> vec3<f32> {
-    let refracted: bool = wrongSide(is_inside, false, dir, surface.geometry_n);
-    return neeBSDF(in_dir, dir, surface.smooth_n, surface.material, eta.x, eta.y, refracted, pdf, false, random_state);
 }
 
 // MIS weight of a BSDF sampled escape from a vertex doing next event estimation, pdf is the density of the sampled lobe.
@@ -1147,21 +1112,6 @@ struct ShiftQueue {
     counts: array<atomic<u32>, SHIFT_BINS>,
     cursors: array<atomic<u32>, SHIFT_BINS>,
     jobs: array<u32>,
-}
-
-struct Domain {
-    x0: vec3<f32>,
-    x1: vec3<f32>,
-    hit: Hit,
-}
-
-// Sampling record of the previous path vertex for the reconnection criteria (Sec. 4)
-struct Vertex {
-    rough: bool,
-    lobe: u32,
-    pdf: f32,
-    cos: f32,
-    inside: bool,
 }
 
 fn loadReservoir(source: texture_2d_array<u32>, p: vec2<i32>) -> Reservoir {
@@ -1355,7 +1305,7 @@ fn walk(dom: Domain, r: Reservoir, replay: bool, scale: f32, sel: ptr<function, 
                 if (!nee) {
                     return fail;
                 }
-                return Shift(throughput * skyBSDF(ray.unit_direction, r.dir, surface, eta, is_inside, environmentPdf(r.dir), surface.random_state) * r.radiance / r.jac, density / r.jac);
+                return Shift(throughput * skyBSDF(ray.unit_direction, r.dir, surface, surface.geometry_n, eta, is_inside, environmentPdf(r.dir), surface.random_state) * r.radiance / r.jac, density / r.jac);
             }
             if (nee != (extractBits(r.path, PATH_NEE, 1u) == 1u)) {
                 return fail;
@@ -1698,11 +1648,6 @@ fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32
 // Shifting into an identical domain is the identity
 fn sameDomain(a: Domain, b: Domain) -> bool {
     return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
-}
-
-struct ShiftJob {
-    dom: Domain,
-    r: Reservoir,
 }
 
 // Temporal round job t of p: the previous frame's sample into the current domain (t = 0) or the current sample into the
