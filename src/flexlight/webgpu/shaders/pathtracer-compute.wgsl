@@ -15,16 +15,12 @@ const INSTANCE_BOUNDING_VERTICES_SIZE: u32 = 3u;
 
 // const ZERO_FLOAT: f16 = 0.0;
 
-const LIGHT_SIZE: u32 = 3u;
-
 const PI: f32 = 3.141592653589793;
 const POW32: f32 = 4294967296.0;
 const UINT_MAX: u32 = 4294967295u;
 const UINT_MAX_M1: u32 = 4294967294u;
 const BIAS: f32 = 0.0000152587890625;
-const INV_PI: f32 = 0.3183098861837907;
 const INV_255: f32 = 0.00392156862745098;
-const INV_SQRT3: f32 = 0.5773502691896258;
 
 struct Transform {
     rotation: mat3x3<f32>,
@@ -348,13 +344,6 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32) -> H
     }
     // Return hit object
     return hit;
-}
-
-struct SamplePreCalc {
-    f0: vec3<f32>,
-    alpha: f32,
-    random_sphere: vec3<f32>,
-    n_dot_v: f32,
 }
 
 struct SampledColor {
@@ -1054,35 +1043,6 @@ fn compute(
 const LOBE_DIFFUSE: u32 = 0u;
 const LOBE_REFRACT: u32 = 1u;
 
-// How a path ends: next event estimation, emissive surface, point light sphere, environment or environment by next event estimation
-const END_NEE: u32 = 0u;
-const END_EMIT: u32 = 1u;
-const END_POINT: u32 = 2u;
-const END_ENV: u32 = 3u;
-const END_SKY: u32 = 4u;
-
-// Reconnection vertex: none (pure random replay), triangle hit, NEE light vertex or environment direction
-const RC_NONE: u32 = 0u;
-const RC_SURFACE: u32 = 1u;
-const RC_LIGHT: u32 = 2u;
-const RC_ENV: u32 = 3u;
-
-// Bit offsets of the packed path description
-const PATH_END: u32 = 0u;
-const PATH_K: u32 = 5u;
-const PATH_RC: u32 = 10u;
-const PATH_TYPE: u32 = 12u;
-const PATH_LOBE_PREV: u32 = 15u;
-const PATH_LOBE: u32 = 17u;
-const PATH_NEE: u32 = 19u;
-const PATH_INSIDE: u32 = 20u;
-
-// Random streams besides the per vertex ones
-const STREAM_NEE: u32 = 64u;
-const STREAM_RR: u32 = 128u;
-const STREAM_SELECT: u32 = 193u;
-const STREAM_SKY: u32 = 256u;
-
 // Layers 0 - 5 previous frame reservoirs, 6 - 10 temporal reservoirs, 11 - 15 initial reservoirs or paired shifts, 16 duplication map
 @group(0) @binding(6) var reservoir_prev: texture_2d_array<u32>;
 @group(0) @binding(7) var reservoir_temp: texture_2d_array<u32>;
@@ -1103,7 +1063,6 @@ const STREAM_SKY: u32 = 256u;
 @group(0) @binding(20) var temporal_shifts: texture_2d_array<u32>;
 
 // Stream compaction of the temporal and paired spatial shifts (Sec. 6.2.2), sorted into bins of equal reconnection type and replay depth
-const SHIFT_DEPTHS: u32 = 8u;
 const SHIFT_BINS: u32 = 40u;
 
 struct ShiftQueue {
@@ -1181,32 +1140,9 @@ fn previousDomain(q: vec2<i32>) -> Domain {
     return Domain(uniforms_float.prev_camera_position, x1, hit);
 }
 
-fn environment(dir: vec3<f32>) -> vec3<f32> {
-    if (uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u) {
-        return env_map_sample(dir);
-    }
-    // If no environment map is present, use ambient color
-    return uniforms_float.ambient;
-}
-
-fn vertexEta(material: Material, n_dot_v: f32) -> vec2<f32> {
-    let is_entering: bool = n_dot_v < 0.0f;
-    return vec2<f32>(select(1.0f, material.ior, is_entering), select(material.ior, 1.0f, is_entering));
-}
-
 // Whether the path tracer considers dir to point towards the incorrect side of the surface
 fn wrongSide(is_inside: bool, refracted: bool, dir: vec3<f32>, geometry_n: vec3<f32>) -> bool {
     return (is_inside == refracted) != (dot(dir, geometry_n) > 0.0f);
-}
-
-fn project(view: mat3x3<f32>, camera: vec3<f32>, position: vec3<f32>) -> vec2<f32> {
-    let clip_space: vec3<f32> = view * (position - camera);
-    let screen_space: vec2<f32> = (clip_space.xy / clip_space.z) * 0.5f + 0.5f;
-    return vec2<f32>(screen_space.x, 1.0f - screen_space.y) * vec2<f32>(uniforms_uint.render_size);
-}
-
-fn previousValid(q: vec2<i32>) -> bool {
-    return all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size)) && bitcast<f32>(textureLoad(reservoir_prev, q, 0, 0).w) > 0.0f;
 }
 
 // Initial candidates
@@ -1221,11 +1157,6 @@ fn restir_initial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
 @workgroup_size(8, 8)
 fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
     restir_temporal_hook(global_invocation_id);
-}
-
-// Shifting into an identical domain is the identity
-fn sameDomain(a: Domain, b: Domain) -> bool {
-    return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
 }
 
 // The temporal round of the shift queue
