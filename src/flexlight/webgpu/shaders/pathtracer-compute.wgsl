@@ -1554,19 +1554,6 @@ fn previousValid(q: vec2<i32>) -> bool {
     return all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size)) && bitcast<f32>(textureLoad(reservoir_prev, q, 0, 0).w) > 0.0f;
 }
 
-// Partner of p in reuse texture t, randomly flipped, transposed and offset every frame (Sec. 3.2)
-fn partner(p: vec2<i32>, t: u32) -> vec2<i32> {
-    var sizes: array<i32, 3> = array<i32, 3>(254, 230, 210);
-    let size: i32 = sizes[t];
-    let random: u32 = hash(uniforms_uint.frame * 3u + t);
-    let flip: vec2<i32> = select(vec2<i32>(1), vec2<i32>(-1), vec2<bool>((random & 1u) != 0u, (random & 2u) != 0u));
-    let transpose: bool = (random & 4u) != 0u;
-    let offset: vec2<i32> = vec2<i32>(i32((random >> 8u) & 255u), i32((random >> 16u) & 255u));
-    let texel: vec2<i32> = ((select(p, p.yx, transpose) * flip + offset) % size + size) % size;
-    let delta: vec2<i32> = textureLoad(pairing, texel, t, 0).xy * flip;
-    return p + select(delta, delta.yx, transpose);
-}
-
 fn shift(dom: Domain, r: Reservoir) -> Shift {
     var sel: Selection;
     if (r.w <= 0.0f) {
@@ -1592,107 +1579,6 @@ fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32
 // Shifting into an identical domain is the identity
 fn sameDomain(a: Domain, b: Domain) -> bool {
     return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
-}
-
-// Spatial round job t of p: its sample into the domain of partner t
-fn spatialJob(p: vec2<i32>, t: u32, job: ptr<function, ShiftJob>) -> bool {
-    if (t > 2u || any(p >= vec2<i32>(uniforms_uint.render_size))) {
-        return false;
-    }
-    (*job).r = loadReservoir(reservoir_temp, p);
-    return (*job).r.w > 0.0f && storedDomain(reservoir_temp, partner(p, t), &(*job).dom);
-}
-
-// Compaction bin of shifting r: reconnection type, with environment next event estimation apart from light sampling, and replay depth
-fn shiftBin(r: Reservoir) -> u32 {
-    let rc: u32 = extractBits(r.path, PATH_RC, 2u);
-    let kind: u32 = select(rc, 4u, rc == RC_LIGHT && extractBits(r.path, PATH_TYPE, 3u) == END_SKY);
-    let depth: u32 = select(extractBits(r.path, PATH_K, 5u), extractBits(r.path, PATH_END, 5u) + 1u, rc == RC_NONE);
-    return kind * SHIFT_DEPTHS + clamp(depth, 1u, SHIFT_DEPTHS) - 1u;
-}
-
-fn spatialBins(p: vec2<i32>) -> array<u32, 3> {
-    var bins: array<u32, 3> = array<u32, 3>(SHIFT_BINS, SHIFT_BINS, SHIFT_BINS);
-    for (var t: u32 = 0u; t < uniforms_uint.restir_neighbours; t++) {
-        var job: ShiftJob;
-        if (spatialJob(p, t, &job)) {
-            bins[t] = shiftBin(job.r);
-        }
-    }
-    return bins;
-}
-
-var<workgroup> bin_jobs: array<atomic<u32>, SHIFT_BINS>;
-var<workgroup> bin_offsets: array<u32, SHIFT_BINS>;
-
-// Count the jobs of the workgroup per bin
-fn countShifts(bins: array<u32, 3>, local_invocation_index: u32) {
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            atomicAdd(&bin_jobs[bins[t]], 1u);
-        }
-    }
-    workgroupBarrier();
-    if (local_invocation_index < SHIFT_BINS) {
-        let jobs: u32 = atomicLoad(&bin_jobs[local_invocation_index]);
-        if (jobs > 0u) {
-            atomicAdd(&shift_queue.counts[local_invocation_index], jobs);
-        }
-    }
-}
-
-// Write the jobs of the workgroup bin by bin into the queue and the size of the indirect dispatch running them
-fn queueShifts(p: vec2<i32>, bins: array<u32, 3>, global_invocation_id: vec3<u32>, local_invocation_index: u32) {
-    var slots: array<u32, 3>;
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            slots[t] = atomicAdd(&bin_jobs[bins[t]], 1u);
-        }
-    }
-    workgroupBarrier();
-    if (local_invocation_index < SHIFT_BINS) {
-        let jobs: u32 = atomicLoad(&bin_jobs[local_invocation_index]);
-        if (jobs > 0u) {
-            var start: u32 = 0u;
-            for (var bin: u32 = 0u; bin < local_invocation_index; bin++) {
-                start += atomicLoad(&shift_queue.counts[bin]);
-            }
-            bin_offsets[local_invocation_index] = start + atomicAdd(&shift_queue.cursors[local_invocation_index], jobs);
-        }
-    }
-    workgroupBarrier();
-    for (var t: u32 = 0u; t < 3u; t++) {
-        if (bins[t] < SHIFT_BINS) {
-            shift_queue.jobs[bin_offsets[bins[t]] + slots[t]] = u32(p.x) | (u32(p.y) << 14u) | (t << 28u);
-        }
-    }
-    if (all(global_invocation_id.xy == vec2<u32>(0u))) {
-        var groups: u32 = 0u;
-        for (var bin: u32 = 0u; bin < SHIFT_BINS; bin++) {
-            groups += (atomicLoad(&shift_queue.counts[bin]) + 63u) / 64u;
-        }
-        shift_queue.dispatch = array<u32, 3>(min(groups, 65535u), (groups + 65534u) / 65535u, 1u);
-    }
-}
-
-// Queued job of an invocation of the indirect shift passes, UINT_MAX for none. Every workgroup works on a single bin.
-fn queuedShift(workgroup_id: vec3<u32>, local_invocation_index: u32) -> u32 {
-    var group: u32 = workgroup_id.y * 65535u + workgroup_id.x;
-    var start: u32 = 0u;
-    for (var bin: u32 = 0u; bin < SHIFT_BINS; bin++) {
-        let jobs: u32 = queued_shifts[3u + bin];
-        let groups: u32 = (jobs + 63u) / 64u;
-        if (group < groups) {
-            let index: u32 = group * 64u + local_invocation_index;
-            if (index < jobs) {
-                return queued_shifts[3u + 2u * SHIFT_BINS + start + index];
-            }
-            return UINT_MAX;
-        }
-        group -= groups;
-        start += jobs;
-    }
-    return UINT_MAX;
 }
 
 // The temporal round of the shift queue
