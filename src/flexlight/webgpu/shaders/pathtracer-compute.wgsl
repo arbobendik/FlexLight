@@ -1554,21 +1554,6 @@ fn previousValid(q: vec2<i32>) -> bool {
     return all(q >= vec2<i32>(0)) && all(q < vec2<i32>(uniforms_uint.render_size)) && bitcast<f32>(textureLoad(reservoir_prev, q, 0, 0).w) > 0.0f;
 }
 
-// Backprojection of the camera motion, or the dual motion vector of the surface previously seen there (Sec. 6.4)
-fn temporalNeighbor(p: vec2<i32>, dom: Domain) -> vec2<i32> {
-    // Primary hits are rasterized at pixel centers
-    let q: vec2<i32> = vec2<i32>(floor(project(uniforms_float.prev_view_matrix, uniforms_float.prev_camera_position, dom.x1)));
-    if (!previousValid(q)) {
-        return vec2<i32>(-1);
-    }
-    let previous: Domain = previousDomain(q);
-    if (previous.hit.instance_index == dom.hit.instance_index && distance(previous.x1, dom.x1) <= dom.hit.distance * 8.0f / f32(uniforms_uint.render_size.x)) {
-        return q;
-    }
-    let dual: vec2<i32> = vec2<i32>(floor(vec2<f32>(p + q) + 1.0f - project(uniforms_float.view_matrix, uniforms_float.camera_position, previous.x1)));
-    return select(vec2<i32>(-1), dual, previousValid(dual));
-}
-
 // Partner of p in reuse texture t, randomly flipped, transposed and offset every frame (Sec. 3.2)
 fn partner(p: vec2<i32>, t: u32) -> vec2<i32> {
     var sizes: array<i32, 3> = array<i32, 3>(254, 230, 210);
@@ -1601,58 +1586,12 @@ fn restir_initial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>
 @compute
 @workgroup_size(8, 8)
 fn restir_temporal(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
-    let p: vec2<i32> = vec2<i32>(global_invocation_id.xy);
-    var dom: Domain;
-    if (!currentDomain(p, &dom)) {
-        storeReservoir(reservoir_temp_out, p, Reservoir(), dom.hit);
-        return;
-    }
-    var r: Reservoir = loadReservoir(reservoir_initial, p);
-    let q: vec2<i32> = temporalNeighbor(p, dom);
-    if (q.x >= 0) {
-        let temporal: Reservoir = loadReservoir(reservoir_prev, q);
-        // Optionally lower the confidence cap where the previous frame duplicated samples (Sec. 5), this biases the estimate
-        let duplicated: f32 = select(0.0f, bitcast<f32>(textureLoad(duplication, q, 0, 0).x), uniforms_uint.restir_decorrelation == 1u);
-        let c_t: f32 = min(temporal.c, confidenceCap(duplicated));
-        let to_current: vec4<f32> = bitcast<vec4<f32>>(textureLoad(temporal_shifts, p, 0, 0));
-        var to_previous: vec4<f32> = vec4<f32>(r.f, 1.0f);
-        if (!sameDomain(previousDomain(q), dom)) {
-            to_previous = bitcast<vec4<f32>>(textureLoad(temporal_shifts, p, 1, 0));
-        }
-        let p_c: f32 = rgb_to_greyscale(r.f);
-        let p_t: f32 = rgb_to_greyscale(temporal.f);
-        var sel: Selection;
-        sel.random_state = stream(stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y), STREAM_SELECT + 1u);
-        let weights: vec2<f32> = temporalWeights(r.c, p_c, c_t, p_t, rgb_to_greyscale(to_previous.xyz), rgb_to_greyscale(to_current.xyz));
-        offerShifted(&sel, r, Shift(r.f, 1.0f), weights.x);
-        offerShifted(&sel, temporal, Shift(to_current.xyz, to_current.w), weights.y);
-        r = finalize(sel, r.c + c_t);
-    }
-    storeReservoir(reservoir_temp_out, p, r, dom.hit);
+    restir_temporal_hook(global_invocation_id);
 }
 
 // Shifting into an identical domain is the identity
 fn sameDomain(a: Domain, b: Domain) -> bool {
     return all(a.x0 == b.x0) && a.hit.instance_index == b.hit.instance_index && a.hit.triangle_index == b.hit.triangle_index && all(a.hit.uv == b.hit.uv);
-}
-
-// Temporal round job t of p: the previous frame's sample into the current domain (t = 0) or the current sample into the
-// previous domain (t = 1). False if the shift is zero or the identity, which temporal reuse handles itself.
-fn temporalJob(p: vec2<i32>, t: u32, job: ptr<function, ShiftJob>) -> bool {
-    var dom: Domain;
-    if (t > 1u || !storedDomain(reservoir_initial, p, &dom)) {
-        return false;
-    }
-    let q: vec2<i32> = temporalNeighbor(p, dom);
-    if (q.x < 0) {
-        return false;
-    }
-    if (t == 0u) {
-        *job = ShiftJob(dom, loadReservoir(reservoir_prev, q));
-    } else {
-        *job = ShiftJob(previousDomain(q), loadReservoir(reservoir_initial, p));
-    }
-    return (*job).r.w > 0.0f && (t == 0u || !sameDomain((*job).dom, dom));
 }
 
 // Spatial round job t of p: its sample into the domain of partner t
@@ -1670,18 +1609,6 @@ fn shiftBin(r: Reservoir) -> u32 {
     let kind: u32 = select(rc, 4u, rc == RC_LIGHT && extractBits(r.path, PATH_TYPE, 3u) == END_SKY);
     let depth: u32 = select(extractBits(r.path, PATH_K, 5u), extractBits(r.path, PATH_END, 5u) + 1u, rc == RC_NONE);
     return kind * SHIFT_DEPTHS + clamp(depth, 1u, SHIFT_DEPTHS) - 1u;
-}
-
-// Bins of the jobs of p, SHIFT_BINS for shifts without work
-fn temporalBins(p: vec2<i32>) -> array<u32, 3> {
-    var bins: array<u32, 3> = array<u32, 3>(SHIFT_BINS, SHIFT_BINS, SHIFT_BINS);
-    for (var t: u32 = 0u; t < 2u; t++) {
-        var job: ShiftJob;
-        if (temporalJob(p, t, &job)) {
-            bins[t] = shiftBin(job.r);
-        }
-    }
-    return bins;
 }
 
 fn spatialBins(p: vec2<i32>) -> array<u32, 3> {
@@ -1772,33 +1699,19 @@ fn queuedShift(workgroup_id: vec3<u32>, local_invocation_index: u32) -> u32 {
 @compute
 @workgroup_size(8, 8)
 fn restir_temporal_count(@builtin(global_invocation_id) global_invocation_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    countShifts(temporalBins(vec2<i32>(global_invocation_id.xy)), local_invocation_index);
+    restir_temporal_count_hook(global_invocation_id, local_invocation_index);
 }
 
 @compute
 @workgroup_size(8, 8)
 fn restir_temporal_prepass(@builtin(global_invocation_id) global_invocation_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    let p: vec2<i32> = vec2<i32>(global_invocation_id.xy);
-    let bins: array<u32, 3> = temporalBins(p);
-    for (var t: u32 = 0u; t < 2u; t++) {
-        if (bins[t] == SHIFT_BINS) {
-            textureStore(temporal_shifts_out, p, t, vec4<u32>(0u));
-        }
-    }
-    queueShifts(p, bins, global_invocation_id, local_invocation_index);
+    restir_temporal_prepass_hook(global_invocation_id, local_invocation_index);
 }
 
 @compute
 @workgroup_size(64)
 fn restir_temporal_shift(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32) {
-    let job: u32 = queuedShift(workgroup_id, local_invocation_index);
-    if (job != UINT_MAX) {
-        let p: vec2<i32> = vec2<i32>(vec2<u32>(job, job >> 14u) & vec2<u32>(16383u));
-        var shift_job: ShiftJob;
-        _ = temporalJob(p, job >> 28u, &shift_job);
-        let shifted: Shift = shift(shift_job.dom, shift_job.r);
-        textureStore(temporal_shifts_out, p, job >> 28u, vec4<u32>(bitcast<vec3<u32>>(shifted.f), bitcast<u32>(shifted.jac)));
-    }
+    restir_temporal_shift_hook(workgroup_id, local_invocation_index);
 }
 
 // The spatial round of the shift queue, every pixel's sample to its partners of all reuse textures
