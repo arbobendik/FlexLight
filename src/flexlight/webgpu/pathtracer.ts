@@ -31,7 +31,7 @@ import PathtracerRasterShader from './shaders/pathtracer-raster.wgsl';
 // @ts-ignore
 import PathtracerShiftShader from './shaders/pathtracer-shift.wgsl';
 // @ts-ignore
-import FlexKernelsShader from './shaders/flexkernels/pathtracer.wgsl';
+import FlexKernelsShader from './shaders/flexkernels-restir/pathtracer.wgsl';
 // @ts-ignore
 import MaterialSource from './shaders/material.wgsl';
 // @ts-ignore
