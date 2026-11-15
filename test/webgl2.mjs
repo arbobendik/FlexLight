@@ -15,6 +15,8 @@
 // roughness 0.5 over black (argument sheen), furnace.mjs's 0.2671, within the 8-bit canvas's rounding where that passes
 // 0.5%, as the square's pixels share it. After 1364
 // frames; it fails unless the renderer is SwiftShader. cylinder.mjs' cylinders (argument cylinder), under the white light.
+// furnace.mjs's closed slab whose hidden face alone emits (argument hidden) leaves the wall it hides that face from
+// black, light sampling's shadow rays ending at the sampled point: a mean under 1e-4, at most 1% of its pixels lit.
 // furnace.mjs's glossy metal in that box emitting a half (argument glossy), its albedo 0.9986 times a half, within the
 // 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it.
 // The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
@@ -27,9 +29,9 @@ import { deviation } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = 1364, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
 const ANISO = { aniso: 0.6953, anisoturned: 0.6351, anisolimit: 0.8551, sheen: 0.2671 }[CASE];
-const SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
+const HIDDEN = CASE === "hidden", SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
 const GLOSSY = CASE === "glossy";
-const FURNACE = CASE !== "backlit" && !SQUARE, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.8551), 0.9 * (ANISO ?? 0.8551)] : FURNACE ? [0.5, 0.5].map((k) => GLOSSY ? 0.9986 * k : k) : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
+const FURNACE = CASE !== "backlit" && !SQUARE && !HIDDEN, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.8551), 0.9 * (ANISO ?? 0.8551)] : FURNACE ? [0.5, 0.5].map((k) => GLOSSY ? 0.9986 * k : k) : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
 // every animation frame's callbacks dropped once the renderer has rendered a fixed count, its own count, not the
@@ -73,7 +75,18 @@ Object.assign(engine.config, { temporal: true, antialiasing: undefined, tonemapp
 const tilt = Math.sqrt(3) / 2, corners = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const square = (shift, k) => { const o = [0, tilt, 0.5].map((c, i) => c * k[i]), l = Math.hypot(...o);
   return [[0, 1, 2], [0, 2, 3]].flatMap((t) => [...t.flatMap((j) => corners[j].map((c, i) => (c + shift * (i === 0)) / k[i])), ...t.flatMap(() => o.map((c) => c / l)), 0, 0, 0, 0, 0, 0]); };
-if (${CASE === "cylinder"}) {
+if (${HIDDEN}) {
+  const lit = [], dark = [];
+  for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
+    const h = [2, 2, 0.025], p = (u, v) => { const q = [0, 0, 1]; q[k] += s * h[k]; q[(k + 1) % 3] += u * h[(k + 1) % 3]; q[(k + 2) % 3] += v * h[(k + 2) % 3]; return q; };
+    const q = [p(-1, -1), p(1, -1), p(1, 1), p(-1, 1)], n = (c) => [Math.sign(c[0]), Math.sign(c[1]), Math.sign(c[2] - 1)].map((x) => x / Math.sqrt(3));
+    for (const t of s > 0 ? [[0, 1, 2], [0, 2, 3]] : [[0, 2, 1], [0, 3, 2]]) (k === 2 && s > 0 ? lit : dark).push(...t.flatMap((i) => q[i]), ...t.flatMap((i) => n(q[i])), 0, 0, 0, 0, 0, 0);
+  }
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lit, material: material(0, 0, 1), label: "hidden" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: dark, material: material(0, 0), label: "slab" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-10, -10], [10, -10], [10, 10]], [[-10, -10], [10, 10], [-10, 10]]].flatMap((t) =>
+    [...t.flatMap(([x, y]) => [x, y, 0]), 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]), material: material(1, 0), label: "wall" }));
+} else if (${CASE === "cylinder"}) {
   await (await import("/test/cylinder.mjs")).instanceCylinders(F, engine.scene);
 } else if (${ANISO !== undefined}) {
   const metal = ${CASE === "sheen"} ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined,
@@ -96,9 +109,9 @@ if (${CASE === "cylinder"}) {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
 }
 engine.scene.ambientLight = new F.Vector(${CASE === "scaled" || CASE === "cylinder" || ANISO !== undefined ? "0.9, 0.9, 0.9" : "0, 0, 0"});
-engine.camera.position = new F.Vector(0, 0, 3);
+engine.camera.position = new F.Vector(${HIDDEN ? "5, 0, 3" : "0, 0, 3"});
 engine.camera.direction = new F.Vector(0, 0);
-engine.camera.fov = ${RASTER || CASE === "cylinder" ? 40 : 1};
+engine.camera.fov = ${HIDDEN ? 60 : RASTER || CASE === "cylinder" ? 40 : 1};
 engine.renderer.render();
 </script>`;
 
@@ -128,8 +141,10 @@ const server = createServer((req, res) => {
       const differenceError = Math.sqrt(pairs.reduce((a, d) => a + (d - difference) ** 2, 0) / (pairs.length - 1) / pairs.length);
       if (RASTER) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
       if (CASE === "cylinder") console.log(`columns within ${(100 * deviation(value, SIZE)).toFixed(2)}% of their mirror images`);
+      const lit = Array.from({ length: SIZE * SIZE }, (_, p) => value(p)), mean = lit.reduce((a, b) => a + b) / lit.length;
+      if (HIDDEN) console.log(`wall mean ${mean.toExponential(2)}, ${lit.filter((v) => v > 0).length} of ${lit.length} pixels lit`);
       const within = (v, error, truth) => FURNACE && !GLOSSY ? Math.abs(v - truth) < 4 * error : Math.abs(v / truth - 1) < (SQUARE || GLOSSY ? Math.max(0.005, 0.5 / 255 / truth) : 0.02);
-      finish(/SwiftShader/.test(renderer) && (CASE === "cylinder" ? deviation(value, SIZE) < 0.02 : RASTER ? Math.abs(difference) < 4 * differenceError
+      finish(/SwiftShader/.test(renderer) && (HIDDEN ? mean < 1e-4 && lit.filter((v) => v > 0).length <= 0.01 * lit.length : CASE === "cylinder" ? deviation(value, SIZE) < 0.02 : RASTER ? Math.abs(difference) < 4 * differenceError
         : within(left, leftError, LEFT) && within(right, rightError, RIGHT)) ? 0 : 1);
     });
     return;
