@@ -37,12 +37,12 @@
 // within four standard errors of one path traced and within 2% through ReSTIR. A closed slab 4 x 4 x 0.05 at z = 1, smooth
 // with its corner normals averaged over the faces meeting there, its face away from the white wall at z = 0 alone
 // emitting and its others black (argument hidden), leaves the wall it hides that face from black, as light sampling's
-// shadow rays end at the sampled point, short of it: a mean under 1e-4, path traced at most 1% of its pixels lit, through
-// ReSTIR, whose reuse spreads light over every pixel, its mean alone. The metal's square of roughness 0.15 (argument
-// glossy), white, in the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by
-// midpoint quadrature, within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of
-// eight independent runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets
-// takes the full weight.
+// shadow rays end at the sampled point, short of it: a mean under 1e-4, path traced or by the rasterizer (mode raster) at
+// most 1% of its pixels lit, through ReSTIR, whose reuse spreads light over every pixel, its mean alone. The metal's
+// square of roughness 0.15 (argument glossy), white, in the closed box of the lit case, holds GGX's single-scatter
+// albedo at that cosine, 0.9986 by midpoint quadrature, within four standard errors path traced and within 0.2% through
+// ReSTIR, four times the spread of eight independent runs, whose pixels share samples: where light sampling skips it,
+// the emission its reflection meets takes the full weight.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
@@ -61,7 +61,7 @@ const hookDevice = (d) => {
     const size = ArrayBuffer.isView(desc.size) ? Array.from(desc.size) : desc.size;
     // The rasterizer's own estimate, the last of its 2D float textures
     if (desc.format !== "rgba32float" || !Array.isArray(size)
-      || (MATERIAL === "raster" ? size.length !== 2 : size[2] !== 3)) return createTexture({ ...desc, size });
+      || (MATERIAL === "raster" || MODE === "raster" ? size.length !== 2 : size[2] !== 3)) return createTexture({ ...desc, size });
     return estimate = createTexture({ ...desc, size, usage: desc.usage | GPUTextureUsage.COPY_SRC });
   };
   const queue = d.queue, writeBuffer = queue.writeBuffer.bind(queue), writeTexture = queue.writeTexture.bind(queue);
@@ -189,6 +189,7 @@ if (MATERIAL === "lit" || MATERIAL === "translucent" || MATERIAL === "glossy") {
 engine.scene.ambientLight = MATERIAL === "lit" || MATERIAL === "glossy" || thin || MATERIAL === "hidden" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
+if (MODE === "raster") engine.renderer = "rasterizer";
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
 // The wall beside the slab, which the hidden face's smooth normals tilt toward

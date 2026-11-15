@@ -161,16 +161,6 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Compute edge vectors
             let edge1: vec3<f32> = t[1] - t[0];
             let edge2: vec3<f32> = t[2] - t[0];
-            let edge3: vec3<f32> = t[2] - t[1];
-
-            let min_edge_length: f32 = min(length(edge1), min(length(edge2), length(edge3)));
-
-            let light_geometry_n: vec3<f32> = normalize(cross(edge2, edge1));
-            let diffs: vec3<f32> = vec3<f32>(
-                distance(camera_ray.origin, t[0]),
-                distance(camera_ray.origin, t[1]),
-                distance(camera_ray.origin, t[2])
-            );
             // Choose random barycentric coordinates
             let random_value_0: Random = pcg(random_state);
             let random_value_1: Random = pcg(random_value_0.state);
@@ -183,16 +173,6 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             let geometry_uvw: vec3<f32> = vec3<f32>(1.0f - u.x - u.y, u.x, u.y);
             // Interpolate smooth normal
             var light_smooth_n: vec3<f32> = normalize(normals * geometry_uvw);
-            // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-            let angles: vec3<f32> = acos(abs(vec3<f32>(
-                dot(light_geometry_n, normalize(normals[0])),
-                dot(light_geometry_n, normalize(normals[1])),
-                dot(light_geometry_n, normalize(normals[2]))
-            )));
-            // Limit angles to 45 degrees
-            let angle_tan: vec3<f32> = clamp(tan(angles), vec3<f32>(0.0f), vec3<f32>(PI * 0.25f));
-            // Keep geometry offset within reasonable range
-            let light_geometry_offset: f32 = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0f, min_edge_length * 0.5f);
             // Interpolate point on triangle
             let light_position_raw: vec3<f32> = t * geometry_uvw;
             // Calculate normal
@@ -213,7 +193,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o,
                 dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0f, random_state,
                 &throughputs, &pdfs) * brightness;
-            light_dir = dir + shadowLift(light_smooth_n, light_geometry_offset, camera_ray.origin + geometry_offset * smooth_n, light_position);
+            light_dir = dir;
         } else if (light.is_area_light == 0.0f) {
             // CASE 1: Point light
             // Yeild random sphere and update state
