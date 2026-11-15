@@ -386,7 +386,7 @@ fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
 }
 
 // Shadow test toward a light sample, including the quick exit for lights behind the shading normal, along the shared
-// segment: short of its end, which an emitting triangle's sample lifts off it toward the start
+// segment: short of its end
 fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> vec3<f32> {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
@@ -492,13 +492,13 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         } else if (!(dot(smooth_n, point - origin) > 0.0f)) {
             return sample;
         }
-        // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending in front of it
+        // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending short of it
         let surface: Surface = surfaceAt(Hit(uv, leaf.y, triangle_index, 0u, 0.0f), point, random_along.state);
         sample.random_state = surface.random_state;
         sample.dir = normalize(point - start);
         sample.density = solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
         sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
-        shadow = point + shadowLift(surface.smooth_n, surface.geometry_offset, start, point) - start;
+        shadow = point - start;
     }
     let transmitted: vec3<f32> = lightTransmittance(origin, lift_n, geometry_offset, shadow);
     sample.radiance = select(sample.radiance * transmitted, vec3<f32>(0.0f), all(transmitted == vec3<f32>(0.0f)));
