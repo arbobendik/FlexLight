@@ -34,11 +34,15 @@
 // frames, cylinder.mjs' cylinders (argument cylinder). A white diffuse sphere of radius 1 beside a clear shell of IOR 1
 // and radius 2 above it, under a uniform environment map of white (argument shell), returns all it receives: its sky
 // light passing the shell reaches the sphere's light sampling and its escapes alike and counts once, the image's mean
-// within four standard errors of one path traced and within 2% through ReSTIR. The metal's square of roughness 0.15
-// (argument glossy), white, in the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986
-// by midpoint quadrature, within four standard errors path traced and within 0.2% through ReSTIR, four times the spread
-// of eight independent runs, whose pixels share samples: where light sampling skips it, the emission its reflection
-// meets takes the full weight.
+// within four standard errors of one path traced and within 2% through ReSTIR. A closed slab 4 x 4 x 0.05 at z = 1, smooth
+// with its corner normals averaged over the faces meeting there, its face away from the white wall at z = 0 alone
+// emitting and its others black (argument hidden), leaves the wall it hides that face from black, as light sampling's
+// shadow rays end at the sampled point, short of it: a mean under 1e-4, path traced at most 1% of its pixels lit, through
+// ReSTIR, whose reuse spreads light over every pixel, its mean alone. The metal's square of roughness 0.15 (argument
+// glossy), white, in the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by
+// midpoint quadrature, within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of
+// eight independent runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets
+// takes the full weight.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
@@ -132,6 +136,19 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
 if (MATERIAL === "cylinder") await instanceCylinders(F, engine.scene);
+else if (MATERIAL === "hidden") {
+  const lit = [], dark = [];
+  for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
+    const h = [2, 2, 0.025], p = (u, v) => { const q = [0, 0, 1]; q[k] += s * h[k]; q[(k + 1) % 3] += u * h[(k + 1) % 3]; q[(k + 2) % 3] += v * h[(k + 2) % 3]; return q; };
+    const q = [p(-1, -1), p(1, -1), p(1, 1), p(-1, 1)], n = (c) => [Math.sign(c[0]), Math.sign(c[1]), Math.sign(c[2] - 1)].map((x) => x / Math.sqrt(3));
+    for (const t of s > 0 ? [[0, 1, 2], [0, 2, 3]] : [[0, 2, 1], [0, 3, 2]]) (k === 2 && s > 0 ? lit : dark).push(...t.flatMap((i) => q[i]), ...t.flatMap((i) => n(q[i])), 0, 0, 0, 0, 0, 0);
+  }
+  const black = new F.Vector(0, 0, 0);
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lit, material: new F.Material(black, new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "hidden" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: dark, material: new F.Material(black, black, 1, 0, 0, 1), label: "slab" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [[[-10, -10], [10, -10], [10, 10]], [[-10, -10], [10, 10], [-10, 10]]].flatMap((t) =>
+    [...t.flatMap(([x, y]) => [x, y, 0]), 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]), material: new F.Material(new F.Vector(1, 1, 1), black, 1, 0, 0, 1), label: "wall" }));
+}
 else if (MATERIAL === "shell") {
   // A sphere of 32 by 16 quads, smooth, wound outward, of radius r about c, the poles' triangles of no area left out
   const at = (i, j) => [Math.sin(Math.PI * i / 16) * Math.cos(Math.PI * j / 16), Math.cos(Math.PI * i / 16), Math.sin(Math.PI * i / 16) * Math.sin(Math.PI * j / 16)];
@@ -169,12 +186,14 @@ if (MATERIAL === "lit" || MATERIAL === "translucent" || MATERIAL === "glossy") {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: box,
     material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "box" }));
 }
-engine.scene.ambientLight = MATERIAL === "lit" || MATERIAL === "glossy" || thin ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
+engine.scene.ambientLight = MATERIAL === "lit" || MATERIAL === "glossy" || thin || MATERIAL === "hidden" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
-if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
+// The wall beside the slab, which the hidden face's smooth normals tilt toward
+if (MATERIAL === "hidden") engine.camera.position = new F.Vector(5, 0, 3), engine.camera.direction = new F.Vector(0, 0), engine.camera.fov = 60;
+else if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
   engine.camera.fov = twin || MATERIAL === "cylinder" || MATERIAL === "shell" ? 40 : 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
@@ -210,6 +229,9 @@ engine.renderer.renderFrame = async (...args) => {
   if (twin) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
   if (MATERIAL === "cylinder") console.log(`columns within ${(100 * deviation((p) => pixels[p], SIZE)).toFixed(2)}% of their mirror images`),
     process.exit(deviation((p) => pixels[p], SIZE) < 0.02 ? 0 : 1);
+  // Two orders above the trace shadow rays ending short of the light let past occluders that close to it, ninety times
+  // below the lifted end's; ReSTIR's reuse spreads that trace over every pixel, so its count bounds the other modes alone
+  if (MATERIAL === "hidden") process.exit(mean < 1e-4 && (MODE === "restir" || pixels.filter((v) => v > 0).length <= 0.01 * pixels.length) ? 0 : 1);
   // The twins' image leaves pixel 0 in the background, which no random number reaches
   if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
   // The halves' means, of the columns left and right of the middle but the two next to it on either side
