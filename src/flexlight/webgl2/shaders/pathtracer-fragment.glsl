@@ -290,7 +290,6 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
 
         vec3 light_position = vec3(0.0);
         vec3 dir = vec3(0.0);
-        vec3 light_offset = vec3(0.0);
         float intensity = 0.0;
         uvec2 target = uvec2(UINT_MAX);
         // Handle if light is an area light
@@ -325,16 +324,6 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             // Compute edge vectors
             vec3 edge1 = t[1] - t[0];
             vec3 edge2 = t[2] - t[0];
-            vec3 edge3 = t[2] - t[1];
-
-            float min_edge_length = min(length(edge1), min(length(edge2), length(edge3)));
-
-            vec3 light_geometry_n = normalize(cross(edge1, edge2));
-            vec3 diffs = vec3(
-                distance(camera_ray.origin, t[0]),
-                distance(camera_ray.origin, t[1]),
-                distance(camera_ray.origin, t[2])
-            );
             // Choose random barycentric coordinates
             Random random_value_0 = pcg(random_state);
             Random random_value_1 = pcg(random_value_0.state);
@@ -347,16 +336,6 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             vec3 geometry_uvw = vec3(1.0 - u.x - u.y, u.x, u.y);
             // Interpolate smooth normal
             vec3 light_smooth_n = normalize(normals * geometry_uvw);
-            // to prevent unnatural hard shadow / reflection borders due to the difference between the smooth normal and geometry
-            vec3 angles = acos(abs(vec3(
-                dot(light_geometry_n, normalize(normals[0])),
-                dot(light_geometry_n, normalize(normals[1])),
-                dot(light_geometry_n, normalize(normals[2]))
-            )));
-            // Limit angles to 45 degrees
-            vec3 angle_tan = clamp(tan(angles), vec3(0.0), vec3(PI * 0.25));
-            // Keep geometry offset within reasonable range
-            float light_geometry_offset = clamp(dot(diffs * angle_tan, geometry_uvw), 0.0, min_edge_length * 0.5);
             // Interpolate point on triangle
             light_position = t * geometry_uvw;
             // Calculate normal
@@ -367,8 +346,6 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             dir = light_position - camera_ray.origin;
             // Outgoing angle at light source
             float light_n_dot_ml = max(dot(light_smooth_n, - normalize(dir)), 0.0);
-            // Offset light position to avoid self shadowing
-            light_offset = light_smooth_n * light_geometry_offset;
             // Calculate intensity with respect to sampling probability of triangle and point on triangle
             intensity = light_area * triangle_count * light_n_dot_ml;
         } else if (light.is_area_light == 0.0) {
@@ -377,7 +354,6 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
             light_position = light.position + light_offset_dir * light.variance;
             // Calculate light direction
             dir = light_position - camera_ray.origin;
-            light_offset = vec3(0.0);
             intensity = light.intensity;
         }
 
@@ -405,7 +381,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         random_state = random_value.state;
         if (random_value.value * w_sum <= w_i) {
             reservoir_color = color_for_light / w_i;
-            reservoir_dir = dir + light_offset;
+            reservoir_dir = dir;
             reservoir_target = target;
         }
     }
