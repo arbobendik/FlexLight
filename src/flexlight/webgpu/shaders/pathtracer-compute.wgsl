@@ -1594,21 +1594,7 @@ fn shift(dom: Domain, r: Reservoir) -> Shift {
 @compute
 @workgroup_size(8, 8)
 fn restir_initial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
-    let p: vec2<i32> = vec2<i32>(global_invocation_id.xy);
-    var dom: Domain;
-    if (!currentDomain(p, &dom)) {
-        storeReservoir(reservoir_initial_out, p, Reservoir(), dom.hit);
-        return;
-    }
-    let pixel_seed: u32 = stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y);
-    var initial: Selection;
-    initial.random_state = stream(pixel_seed, STREAM_SELECT);
-    for (var i: u32 = 0u; i < uniforms_uint.samples; i++) {
-        var r: Reservoir;
-        r.seed = stream(pixel_seed, i);
-        walk(dom, r, false, 1.0f / f32(uniforms_uint.samples), &initial);
-    }
-    storeReservoir(reservoir_initial_out, p, finalize(initial, 1.0f), dom.hit);
+    restir_initial_hook(global_invocation_id);
 }
 
 // Temporal reuse with the shifts of the temporal round
