@@ -21,7 +21,6 @@ const uint INSTANCE_BOUNDING_VERTICES_SIZE = 3u;
 
 const float PI = 3.141592653589793;
 const float POW32 = 4294967296.0;
-const float MAX_SAFE_INTEGER_FOR_F32 = 8388607.0;
 const uint UINT_MAX = 4294967295u;
 const uint UINT_MAX_M1 = 4294967294u;
 const float BIAS = 0.0000152587890625;
@@ -103,7 +102,6 @@ uniform vec3 camera_position;
 uniform vec3 ambient;
 
 uniform uvec2 render_size;
-uniform uint temporal_target;
 uniform uint frame;
 uniform uint samples;
 uniform uint max_bounces;
