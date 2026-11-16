@@ -313,7 +313,6 @@ export abstract class RendererWGL2 extends Renderer {
     );
 
     const invViewMatrix: Matrix<3, 3> = moore_penrose(viewMatrix);
-    const temporalCount = this.config.temporal ? this.frameCounter : 0;
 
     // Reuse previous frames only while the camera is still, jitter is excluded as it antialiases the accumulated image
     const cameraState: Array<number> = [
@@ -383,7 +382,6 @@ export abstract class RendererWGL2 extends Renderer {
     gl.uniform3f(location("camera_position"), this.camera.position.x, this.camera.position.y, this.camera.position.z);
     gl.uniform3f(location("ambient"), this.scene.ambientLight.x, this.scene.ambientLight.y, this.scene.ambientLight.z);
     gl.uniform2ui(location("render_size"), this.canvas.width, this.canvas.height);
-    gl.uniform1ui(location("temporal_target"), temporalCount);
     gl.uniform1ui(location("frame"), this.frameCounter);
     gl.uniform1ui(location("samples"), this.config.samplesPerPixel);
     gl.uniform1ui(location("max_bounces"), this.config.maxBounces);
