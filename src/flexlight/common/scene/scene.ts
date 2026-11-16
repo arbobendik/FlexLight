@@ -67,6 +67,12 @@ export class Scene {
         return false;
     }
 
+    // Whether an instance's material has a sheen of velvet, which WebGL2's path tracer compiles velvet in for alone
+    get velvet () {
+        for (const instance of this.instances) if (instance._material.velvet && instance._material.sheen.x + instance._material.sheen.y + instance._material.sheen.z > 0) return true;
+        return false;
+    }
+
     // Whether an instance's material is anisotropic, which the path tracer compiles anisotropy in for alone
     get anisotropic () {
         for (const instance of this.instances) if (instance._material.anisotropy !== 0) return true;
