@@ -50,7 +50,7 @@ interface PathTracerPipelines {
   depthPipeline: GPURenderPipeline;
   rasterPipeline: GPURenderPipeline;
 
-  computePipeline: GPUComputePipeline;
+  computePipeline: GPUComputePipeline | undefined;
   shiftPipeline: GPUComputePipeline | undefined;
   selectiveAveragePipeline: GPUComputePipeline | undefined;
   // reprojectPipeline: GPUComputePipeline | undefined;
@@ -387,7 +387,7 @@ export class PathTracerWGPU extends RendererWGPU {
     // Init pipelines
     const depthPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerDepthShader, "depth pipeline", bindGroupLayouts.depthGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
     const rasterPipeline = this.createRenderPipeline(device, UniformsSource + PathtracerRasterShader, "raster pipeline", bindGroupLayouts.rasterRenderGroupLayout, bindGroupLayouts.rasterGeometryGroupLayout, bindGroupLayouts.rasterDynamicGroupLayout);
-    const computePipeline = device.createComputePipeline({ label: "compute pipeline",
+    const computePipeline = this.engineState.restir ? undefined : device.createComputePipeline({ label: "compute pipeline",
       layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayouts.computeRenderGroupLayout, bindGroupLayouts.computeTextureGroupLayout, bindGroupLayouts.computeGeometryGroupLayout, bindGroupLayouts.computeDynamicGroupLayout] }),
       compute: { module: device.createShaderModule({ code: PATHTRACER_COMPUTE_SHADER }), entryPoint: "compute", constants: { TRANSLUCENT: Number(this.engineState.translucent), SHEEN: Number(this.engineState.sheen), ANISOTROPY: Number(this.engineState.anisotropic), STRAIGHT_THROUGH: Number(this.engineState.straightThrough) } } });
 
@@ -876,7 +876,7 @@ export class PathTracerWGPU extends RendererWGPU {
       // Run compute shader
       let computeEncoder = commandEncoder.beginComputePass();
       // Set the storage buffers and textures for compute pass
-      computeEncoder.setPipeline(pipelines.computePipeline);
+      computeEncoder.setPipeline(pipelines.computePipeline!);
       computeEncoder.setBindGroup(0, computeRenderGroup);
       computeEncoder.setBindGroup(1, computeTextureGroup);
       computeEncoder.setBindGroup(2, computeGeometryGroup);
