@@ -390,65 +390,12 @@ fn worldTriangle(instance_index: u32, triangle_index: u32) -> mat3x3<f32> {
     return transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
 }
 
-// Whether the material is a thin surface transmitting diffusely
-fn isTranslucent(material: Material) -> bool {
-    return rgb_to_greyscale(material.translucent) > 0.0f;
-}
-
 // Trail slot of a triangle hit or of a point light hit
 fn lightSlot(hit: Hit) -> u32 {
     if (hit.is_point_light == 1u) {
         return access_light_tree(0u).z + hit.instance_index;
     }
     return instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 8u] + hit.triangle_index - instance_uint[hit.instance_index * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE;
-}
-
-// PDF = solidAngle(P(light)) or P(light) * sphereDensity, P(light) the product of child shares down the trail
-// of slot j (pbrt-v4's BVHLightSampler::PMF); with no smooth_n, all around
-fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, point: vec3<f32>) -> f32 {
-    let trail_texel: vec4<u32> = access_light_tree(access_light_tree(0u).y + j);
-    var trail: vec2<u32> = trail_texel.xy;
-    var probability: f32 = 1.0f;
-    var n: u32 = 0u;
-    while (access_light_tree(4u + 4u * n).x == 0u) {
-        let second: u32 = access_light_tree(3u + 4u * n).w;
-        probability *= childShare(lightBounds(n + 1u), lightBounds(second), origin, smooth_n, trail.x & 1u);
-        n = select(n + 1u, second, (trail.x & 1u) == 1u);
-        trail = vec2<u32>((trail.x >> 1u) | (trail.y << 31u), trail.y >> 1u);
-    }
-    if (n != trail_texel.z || !(importance(lightBounds(n), origin, smooth_n) > 0.0f) || (dot(smooth_n, smooth_n) > 0.0f && !(dot(smooth_n, point - origin) > 0.0f))) {
-        return 0.0f;
-    }
-    let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
-    if (leaf.x == 2u) {
-        return probability * sphereDensity(lights[leaf.y].position, lights[leaf.y].variance, start);
-    }
-    let t: mat3x3<f32> = worldTriangle(leaf.y, instance_uint[leaf.y * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE + leaf.z);
-    return solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
-}
-
-// radiance = L / PDF_light
-// neeBSDF = BSDF * n_dot_l / PDF_light * w_power
-// => neeBSDF * radiance * PDF_light = BSDF * n_dot_l * L / PDF_light * w_power
-// Delta lights or no competing BSDF sample: w_power = 1
-fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, competing: bool, random_state: u32) -> vec3<f32> {
-    if (!competing || light.density == 0.0f) {
-        // Translucent materials transmit past the face too
-        if (isTranslucent(material)) {
-            return translucentBSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
-        }
-        return BSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
-    }
-    let refracted: bool = dot(geometry_n, - in_dir) * dot(geometry_n, light.dir) <= 0.0f;
-    return neeBSDF(in_dir, light.dir, smooth_n, material, eta_i, eta_o, refracted, light.density, true, random_state) * light.radiance * light.density;
-}
-
-// Power heuristic of BSDF sampling at the vertex the ray left against light sampling of the point met
-fn emissionWeight(vertex: NEEVertex, hit: Hit, point: vec3<f32>) -> f32 {
-    if (vertex.none) {
-        return 1.0f;
-    }
-    return powerHeuristic(vertex.pdf, lightPdf(vertex.origin, vertex.smooth_n, vertex.start, lightSlot(hit), point));
 }
 
 fn calculatePointLightContrib(point_light_index: u32) -> vec3<f32> {
@@ -582,12 +529,6 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
         }
     }
     return Surface(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
-}
-
-// Opaque surfaces face the ray with both normals
-fn facingRay(surface: Surface, dir: vec3<f32>) -> Surface {
-    let facing: f32 = facingSign(surface.material.transmission, surface.geometry_n, dir);
-    return Surface(surface.smooth_n * facing, surface.geometry_n * facing, surface.geometry_offset, surface.material, surface.skip, surface.random_state);
 }
 
 fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
@@ -741,10 +682,6 @@ fn compute(
 }
 
 // ReSTIR PT Enhanced (Lin, Kettunen and Wyman 2026)
-
-const LOBE_DIFFUSE: u32 = 0u;
-const LOBE_REFRACT: u32 = 1u;
-const LOBE_SHEEN_VELVET: u32 = 4u;
 
 // Layers 0 - 5 previous frame reservoirs, 6 - 10 temporal reservoirs, 11 - 15 initial reservoirs or paired shifts, 16 duplication map
 @group(0) @binding(6) var reservoir_prev: texture_2d_array<u32>;
