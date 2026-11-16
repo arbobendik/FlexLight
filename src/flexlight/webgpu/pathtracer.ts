@@ -213,10 +213,6 @@ export class PathTracerWGPU extends RendererWGPU {
       // Init shift lock buffer
       shiftLock = device.createBuffer({ size: width * height * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST});
       device.queue.writeBuffer(shiftLock, 0, new Uint32Array(new Array(width * height).fill(POW32M1)));
-    } else {
-      // Create dummy shift target texture for compute shader pass
-      shiftTargetFloat = device.createTexture({ size: [1, 1, 1], format: "rgba32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
-      shiftTargetUint = device.createTexture({ size: [1, 1, 1], format: "rgba32uint", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING });
     }
 
     // Init antialiasing module texture if antialiasing module exists
@@ -315,8 +311,6 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },                                                      // offset texture
         { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },                                              // 3d positions
         { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },                                              // uvs
-        { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float", viewDimension: "2d-array" } },                   // shift target float
-        { binding: 5, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint", viewDimension: "2d-array" } }                                  // shift target uint
       ]
     });
 
@@ -594,8 +588,6 @@ export class PathTracerWGPU extends RendererWGPU {
         { binding: 1, resource: { buffer: this.canvasSizeDependentResources!.offsetBuffer } },
         { binding: 2, resource: this.canvasSizeDependentResources!.absolutePositionTexture.createView() },
         { binding: 3, resource: this.canvasSizeDependentResources!.uvTexture.createView() },
-        { binding: 4, resource: this.canvasSizeDependentResources!.shiftTargetFloat!.createView({ dimension: "2d-array", arrayLayerCount: this.engineState.temporal ? 2 : 1 }) },
-        { binding: 5, resource: this.canvasSizeDependentResources!.shiftTargetUint!.createView({ dimension: "2d-array", arrayLayerCount: this.engineState.temporal ? 4 : 1 }) },
       ]
     });
     
