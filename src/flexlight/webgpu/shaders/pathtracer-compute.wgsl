@@ -369,19 +369,6 @@ fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
     return transmitted;
 }
 
-// Shadow test toward a light sample, short of its end
-fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> vec3<f32> {
-    let unit_light_dir: vec3<f32> = normalize(light_dir);
-    // Compute quick exit criterion to potentially skip expensive shadow test
-    if (dot(smooth_n, unit_light_dir) < 0.0f) {
-        return vec3<f32>(0.0f);
-    }
-    // Apply geometry offset
-    let offset_target: vec3<f32> = origin + geometry_offset * smooth_n;
-    let light_ray: Ray = Ray(offset_target, unit_light_dir);
-    return shadowTransmittance(light_ray, shadowLength(light_dir));
-}
-
 fn access_light_tree(index: u32) -> vec4<u32> {
     return textureLoad(light_tree, vec2<u32>(index & 0x7FFu, (index >> 11u) & 0x7FFu), index >> 22u, 0);
 }
@@ -406,78 +393,6 @@ fn worldTriangle(instance_index: u32, triangle_index: u32) -> mat3x3<f32> {
 // Whether the material is a thin surface transmitting diffusely
 fn isTranslucent(material: Material) -> bool {
     return rgb_to_greyscale(material.translucent) > 0.0f;
-}
-
-// Light sampling: a light picked by the light tree, P(light) the product of child shares down to it
-// Triangle: uniform point, PDF = solidAngle(P(light))
-// Sphere: uniform in its cone, PDF = P(light) * sphereDensity
-// radiance = L * T / PDF; sided: light all around, origin lifted to the light's side of the face
-fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, sided: bool, init_random_state: u32) -> TreeSample {
-    let random_pick: Random = pcg(init_random_state);
-    let random_side: Random = pcg(random_pick.state);
-    let random_along: Random = pcg(random_side.state);
-    var sample: TreeSample = TreeSample(vec3<f32>(0.0f), vec3<f32>(0.0f), 0.0f, random_along.state);
-    let normal: vec3<f32> = select(smooth_n, vec3<f32>(0.0f), sided);
-    var lift_n: vec3<f32> = smooth_n;
-    var start: vec3<f32> = origin + geometry_offset * lift_n;
-    // From the root down to either child by its share of importance (pbrt-v4's BVHLightSampler::Sample)
-    var pick: f32 = random_pick.value;
-    var probability: f32 = 1.0f;
-    var n: u32 = 0u;
-    while (access_light_tree(4u + 4u * n).x == 0u) {
-        let second: u32 = access_light_tree(3u + 4u * n).w;
-        let child: u32 = pickChild(lightBounds(n + 1u), lightBounds(second), origin, normal, &pick, &probability);
-        if (child > 1u) {
-            return sample;
-        }
-        n = select(n + 1u, second, child == 1u);
-    }
-    if (n == 0u && !(importance(lightBounds(0u), origin, normal) > 0.0f)) {
-        return sample;
-    }
-    let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
-    // Vector from start to the end of the shadow ray
-    var shadow: vec3<f32>;
-    if (leaf.x == 2u) {
-        let light: Light = lights[leaf.y];
-        if (sided) {
-            lift_n = smooth_n * sign(dot(geometry_n, light.position - origin));
-            start = origin + geometry_offset * lift_n;
-        }
-        if (light.variance == 0.0f) {
-            // Delta light at the center: radiance / PDF = I / (d^2 * P(light))
-            shadow = light.position - start;
-            sample.dir = normalize(light.position - start);
-            sample.radiance = light.color * light.intensity / (dot(light.position - start, light.position - start) * probability);
-        } else {
-            sample.dir = sampleSphere(light.position, light.variance, start, random_side.value, random_along.value);
-            sample.density = probability * sphereDensity(light.position, light.variance, start);
-            sample.radiance = pointLightRadiance(light.color, light.intensity, light.variance) / sample.density;
-            shadow = sample.dir * raySphere(light.position, light.variance, Ray(start, sample.dir), POW32);
-        }
-    } else {
-        let triangle_index: u32 = instance_uint[leaf.y * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE + leaf.z;
-        let t: mat3x3<f32> = worldTriangle(leaf.y, triangle_index);
-        let side: f32 = sqrt(random_side.value);
-        let uv: vec2<f32> = vec2<f32>(side * (1.0f - random_along.value), side * random_along.value);
-        let point: vec3<f32> = t * vec3<f32>(1.0f - side, uv);
-        if (sided) {
-            lift_n = smooth_n * sign(dot(geometry_n, point - origin));
-            start = origin + geometry_offset * lift_n;
-        } else if (!(dot(smooth_n, point - origin) > 0.0f)) {
-            return sample;
-        }
-        // Emission at the point as the path tracer shades it
-        let surface: Surface = surfaceAt(Hit(uv, leaf.y, triangle_index, 0u, 0.0f), point, random_along.state);
-        sample.random_state = surface.random_state;
-        sample.dir = normalize(point - start);
-        sample.density = solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
-        sample.radiance = select(surface.material.emissive * max(sign(dot(- sample.dir, surface.smooth_n)), 0.0f), vec3<f32>(0.0f), surface.skip) / sample.density;
-        shadow = point - start;
-    }
-    let transmitted: vec3<f32> = lightTransmittance(origin, lift_n, geometry_offset, shadow);
-    sample.radiance = select(sample.radiance * transmitted, vec3<f32>(0.0f), all(transmitted == vec3<f32>(0.0f)));
-    return sample;
 }
 
 // Trail slot of a triangle hit or of a point light hit
