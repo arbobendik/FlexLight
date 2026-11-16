@@ -11,6 +11,8 @@ struct Material {
     specular_level: f32,
     // Blender's Translucent BSDF's color, which the diffuse lobe transmits to the other side of the face
     translucent: vec3<f32>,
+    // 1 for a sheen of Blender's Sheen BSDF's Ashikhmin distribution, 0 for its Microfiber, in the translucent's padding
+    velvet: f32,
     // Blender's sheen over the base, its weight times its tint, and its roughness
     sheen: vec3<f32>,
     sheen_roughness: f32,
