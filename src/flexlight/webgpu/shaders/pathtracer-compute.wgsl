@@ -544,73 +544,6 @@ fn env_map_sample(dir: vec3<f32>) -> vec3<f32> {
     return textureSampleLevel(environment_map, environment_map_sampler, tex_coord, 0.0f).xyz * 255.0f;
 }
 
-fn environmentMapped() -> bool {
-    return uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u;
-}
-
-// p = p(row) * p(column | row), PDF_st = p * size.x * size.y
-// dw = 2 * PI^2 * sin(theta) ds dt, sin(theta) = length(dir.xz)
-// => PDF = p * size.x * size.y / (2 * PI^2 * sin(theta))
-fn environmentPdf(dir: vec3<f32>) -> f32 {
-    let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
-    // Same coordinates as env_map_sample
-    let st: vec2<f32> = vec2<f32>(atan2(- dir.z, - dir.x) / (2.0f * PI) + 0.5f, acos(clamp(dir.y, -1.0f, 1.0f)) / PI);
-    let cell: vec2<u32> = min(vec2<u32>(st * vec2<f32>(size)), size - 1u);
-    let p: f32 = textureLoad(environment_cdf, cell, 0).y * textureLoad(environment_cdf, vec2<u32>(size.x, cell.y), 0).y;
-    return p * f32(size.x * size.y) / (2.0f * PI * PI * length(dir.xz));
-}
-
-// First entry of a row or of the marginal column of the environment CDF exceeding u
-fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
-    var low: u32 = 0u;
-    var high: u32 = count - 1u;
-    while (low < high) {
-        let middle: u32 = (low + high) / 2u;
-        if (textureLoad(environment_cdf, start + step * middle, 0).x > u) {
-            high = middle;
-        } else {
-            low = middle + 1u;
-        }
-    }
-    return low;
-}
-
-// Radiance the path tracer's ray from a vertex along dir receives from the environment map if it hits nothing on the way.
-fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
-    let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
-    let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
-    return env_map_sample(dir) * shadowTransmittance(ray, POW32);
-}
-
-// Next event estimation toward the environment map, drawing a direction by its luminance
-fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
-    let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
-    let random_0: Random = pcg(init_random_state);
-    let random_1: Random = pcg(random_0.state);
-    let random_2: Random = pcg(random_1.state);
-    let random_3: Random = pcg(random_2.state);
-    let row: u32 = searchCDF(vec2<u32>(size.x, 0u), vec2<u32>(0u, 1u), size.y, random_0.value);
-    let column: u32 = searchCDF(vec2<u32>(0u, row), vec2<u32>(1u, 0u), size.x, random_1.value);
-    let angles: vec2<f32> = (vec2<f32>(f32(column), f32(row)) + vec2<f32>(random_2.value, random_3.value)) / vec2<f32>(size) * vec2<f32>(2.0f * PI, PI);
-    let dir: vec3<f32> = vec3<f32>(sin(angles.y) * cos(angles.x), cos(angles.y), sin(angles.y) * sin(angles.x));
-    let pdf: f32 = environmentPdf(dir);
-    let f: vec3<f32> = skyBSDF(ray.unit_direction, dir, surface, eta, is_inside, pdf, lobe_state);
-    // Only trace toward directions that contribute
-    if (!(pdf > 0.0f) || all(f == vec3<f32>(0.0f))) {
-        return SkySample(dir, vec3<f32>(0.0f), vec3<f32>(0.0f), random_3.state);
-    }
-    let radiance: vec3<f32> = skyRadiance(ray.origin, surface, is_inside, dir);
-    return SkySample(dir, radiance, f * radiance, random_3.state);
-}
-
-// w = PDF_lobe / (PDF_lobe + PDF_env), 1 for delta lobes and without environment sampling
-fn escapeWeight(pdf: f32, dir: vec3<f32>) -> f32 {
-    if (pdf <= 0.0f || !environmentMapped()) {
-        return 1.0f;
-    }
-    return pdf / (pdf + environmentPdf(dir));
-}
-
 @compute
 @workgroup_size(8, 8)
 fn compute(
@@ -778,11 +711,6 @@ fn previousDomain(q: vec2<i32>) -> Domain {
     let x1: vec3<f32> = hitPosition(hit);
     hit.distance = distance(x1, uniforms_float.prev_camera_position);
     return Domain(uniforms_float.prev_camera_position, x1, hit);
-}
-
-// Whether the path tracer considers dir to point towards the incorrect side of the surface
-fn wrongSide(is_inside: bool, refracted: bool, dir: vec3<f32>, geometry_n: vec3<f32>) -> bool {
-    return (is_inside == refracted) != (dot(dir, geometry_n) > 0.0f);
 }
 
 @compute
