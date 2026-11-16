@@ -1,9 +1,3 @@
-const POW32U: u32 = 4294967295u;
-const POW23M1: f32 = 8388607.0f;
-const POW23M1U: u32 = 8388607u;
-const INV_255: f32 = 0.00392156862745098f;
-const UINT_MAX: u32 = 4294967295u;
-
 @group(0) @binding(0) var accumulated_float: texture_2d_array<f32>;
 @group(0) @binding(1) var accumulated_uint: texture_2d_array<u32>;
 @group(0) @binding(2) var shift_out_float: texture_storage_2d_array<rgba32float, write>;
