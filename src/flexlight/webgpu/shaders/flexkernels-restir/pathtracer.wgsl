@@ -4390,64 +4390,35 @@ fn random_sphere( state_4 : u32) -> RandomSphere
     return RandomSphere_x24init_0(_S1140.state, _S1141);
 }
 
-struct RandomHemisphere
-{
-     state : u32,
-     value : vec3<f32>,
-};
-
-fn RandomHemisphere_x24init_0( state_5 : u32,  value_2 : vec3<f32>) -> RandomHemisphere
-{
-    var _S1142 : RandomHemisphere;
-    _S1142.state = state_5;
-    _S1142.value = value_2;
-    return _S1142;
-}
-
-fn random_hemisphere( state_6 : u32,  normal_4 : vec3<f32>) -> RandomHemisphere
-{
-    var _S1143 : RandomSphere = random_sphere(state_6);
-    var _S1144 : bool = (dot(_S1143.value, normal_4)) > 0.0f;
-    if(_S1144)
-    {
-        return RandomHemisphere_x24init_0(_S1143.state, _S1143.value);
-    }
-    else
-    {
-        var _S1145 : vec3<f32> = ((-(_S1143.value)));
-        return RandomHemisphere_x24init_0(_S1143.state, _S1145);
-    }
-}
-
 fn normalMapTBN( p0_0 : vec3<f32>,  p1_0 : vec3<f32>,  p2_0 : vec3<f32>,  uv0_0 : vec2<f32>,  uv1_0 : vec2<f32>,  uv2_0 : vec2<f32>,  n_12 : vec3<f32>) -> mat3x3<f32>
 {
-    var _S1146 : vec3<f32> = p1_0 - p0_0;
-    var _S1147 : vec3<f32> = p2_0 - p0_0;
-    var _S1148 : vec2<f32> = uv1_0 - uv0_0;
-    var _S1149 : vec2<f32> = uv2_0 - uv0_0;
-    var _S1150 : f32 = _S1148.x;
-    var _S1151 : f32 = _S1149.y;
-    var _S1152 : f32 = _S1148.y;
-    var _S1153 : f32 = _S1149.x;
-    var _S1154 : f32 = _S1150 * _S1151 - _S1152 * _S1153;
-    var _S1155 : f32 = 1.0f / _S1154;
-    var _S1156 : vec3<f32> = vec3<f32>(_S1155);
-    var t_20 : vec3<f32> = (_S1146 * vec3<f32>(_S1151) - _S1147 * vec3<f32>(_S1152)) * _S1156;
-    var _S1157 : vec3<f32> = (_S1147 * vec3<f32>(_S1150) - _S1146 * vec3<f32>(_S1153)) * _S1156;
+    var _S1142 : vec3<f32> = p1_0 - p0_0;
+    var _S1143 : vec3<f32> = p2_0 - p0_0;
+    var _S1144 : vec2<f32> = uv1_0 - uv0_0;
+    var _S1145 : vec2<f32> = uv2_0 - uv0_0;
+    var _S1146 : f32 = _S1144.x;
+    var _S1147 : f32 = _S1145.y;
+    var _S1148 : f32 = _S1144.y;
+    var _S1149 : f32 = _S1145.x;
+    var _S1150 : f32 = _S1146 * _S1147 - _S1148 * _S1149;
+    var _S1151 : f32 = 1.0f / _S1150;
+    var _S1152 : vec3<f32> = vec3<f32>(_S1151);
+    var t_20 : vec3<f32> = (_S1142 * vec3<f32>(_S1147) - _S1143 * vec3<f32>(_S1148)) * _S1152;
+    var _S1153 : vec3<f32> = (_S1143 * vec3<f32>(_S1146) - _S1142 * vec3<f32>(_S1149)) * _S1152;
     var t_21 : vec3<f32> = (normalize((t_20 - n_12 * vec3<f32>(dot(n_12, t_20)))));
-    var _S1158 : bool = (dot(cross(n_12, t_21), _S1157)) > 0.0f;
+    var _S1154 : bool = (dot(cross(n_12, t_21), _S1153)) > 0.0f;
     var t_22 : vec3<f32>;
-    if(_S1158)
+    if(_S1154)
     {
-        var _S1159 : vec3<f32> = ((-(t_21)));
-        t_22 = _S1159;
+        var _S1155 : vec3<f32> = ((-(t_21)));
+        t_22 = _S1155;
     }
     else
     {
         t_22 = t_21;
     }
-    var _S1160 : vec3<f32> = cross(n_12, t_22);
-    return mat3x3<f32>(t_22, _S1160, n_12);
+    var _S1156 : vec3<f32> = cross(n_12, t_22);
+    return mat3x3<f32>(t_22, _S1156, n_12);
 }
 
 fn tangentToWorldNormalMap( v_5 : vec3<f32>,  tbn_0 : mat3x3<f32>) -> vec3<f32>
@@ -4457,79 +4428,67 @@ fn tangentToWorldNormalMap( v_5 : vec3<f32>,  tbn_0 : mat3x3<f32>) -> vec3<f32>
 
 fn geometryOffset( t0_0 : vec3<f32>,  t1_0 : vec3<f32>,  t2_2 : vec3<f32>,  n0_0 : vec3<f32>,  n1_0 : vec3<f32>,  n2_0 : vec3<f32>,  geometry_n_5 : vec3<f32>,  uvw_0 : vec3<f32>,  position_1 : vec3<f32>) -> f32
 {
-    var _S1161 : vec3<f32> = t1_0 - t0_0;
-    var _S1162 : vec3<f32> = t2_2 - t0_0;
-    var _S1163 : vec3<f32> = t2_2 - t1_0;
-    var _S1164 : f32 = min(length(_S1161), min(length(_S1162), length(_S1163)));
-    var _S1165 : vec3<f32> = vec3<f32>(distance(position_1, t0_0), distance(position_1, t1_0), distance(position_1, t2_2));
-    var _S1166 : vec3<f32> = (normalize((n0_0)));
-    var _S1167 : f32 = dot(geometry_n_5, _S1166);
-    var _S1168 : vec3<f32> = (normalize((n1_0)));
-    var _S1169 : f32 = dot(geometry_n_5, _S1168);
-    var _S1170 : vec3<f32> = (normalize((n2_0)));
-    var _S1171 : vec3<f32> = acos(abs(vec3<f32>(_S1167, _S1169, dot(geometry_n_5, _S1170))));
-    var _S1172 : vec3<f32> = clamp(tan(_S1171), vec3<f32>(0.0f), vec3<f32>(0.78539818525314331f));
-    return clamp(dot(_S1165 * _S1172, uvw_0), 0.0f, _S1164 * 0.125f);
-}
-
-fn sampleHalfVector( v_6 : vec3<f32>,  n_i_5 : vec3<f32>,  alpha_6 : f32,  random_state_14 : ptr<function, u32>) -> vec3<f32>
-{
-    var _S1173 : vec3<f32> = sampleMaterialHalfVector(v_6, n_i_5, alpha_6, AnisotropicFrame_x24init_0(vec3<f32>(0.0f), vec2<f32>(0.0f)), &((*random_state_14)));
-    return _S1173;
+    var _S1157 : vec3<f32> = t1_0 - t0_0;
+    var _S1158 : vec3<f32> = t2_2 - t0_0;
+    var _S1159 : vec3<f32> = t2_2 - t1_0;
+    var _S1160 : f32 = min(length(_S1157), min(length(_S1158), length(_S1159)));
+    var _S1161 : vec3<f32> = vec3<f32>(distance(position_1, t0_0), distance(position_1, t1_0), distance(position_1, t2_2));
+    var _S1162 : vec3<f32> = (normalize((n0_0)));
+    var _S1163 : f32 = dot(geometry_n_5, _S1162);
+    var _S1164 : vec3<f32> = (normalize((n1_0)));
+    var _S1165 : f32 = dot(geometry_n_5, _S1164);
+    var _S1166 : vec3<f32> = (normalize((n2_0)));
+    var _S1167 : vec3<f32> = acos(abs(vec3<f32>(_S1163, _S1165, dot(geometry_n_5, _S1166))));
+    var _S1168 : vec3<f32> = clamp(tan(_S1167), vec3<f32>(0.0f), vec3<f32>(0.78539818525314331f));
+    return clamp(dot(_S1161 * _S1168, uvw_0), 0.0f, _S1160 * 0.125f);
 }
 
 fn straightThrough( dir_12 : vec3<f32>,  n_13 : vec3<f32>,  material_15 : Material) -> vec3<f32>
 {
-    var _S1174 : vec3<f32> = ((-(dir_12)));
-    var _S1175 : f32 = (sign((dot(n_13, _S1174))));
-    var _S1176 : vec3<f32> = n_13 * vec3<f32>(_S1175);
-    var _S1177 : AnisotropicFrame = anisotropicFrame(material_15, _S1176);
-    var _S1178 : bool = (_S1177.alphas.x) > 0.0f;
-    if(_S1178)
+    var _S1169 : vec3<f32> = ((-(dir_12)));
+    var _S1170 : f32 = (sign((dot(n_13, _S1169))));
+    var _S1171 : vec3<f32> = n_13 * vec3<f32>(_S1170);
+    var _S1172 : AnisotropicFrame = anisotropicFrame(material_15, _S1171);
+    var _S1173 : bool = (_S1172.alphas.x) > 0.0f;
+    if(_S1173)
     {
-        var _S1179 : f32 = material_15.transmission * (1.0f - material_15.metallic);
-        var _S1180 : vec3<f32> = ((-(_S1176)));
-        var _S1181 : vec3<f32> = anisotropicLocal(dir_12, _S1177.tangent, _S1180);
-        var _S1182 : f32 = anisotropicG1(_S1181, _S1177.alphas);
-        return vec3<f32>((_S1179 * _S1182)) * material_15.albedo;
+        var _S1174 : f32 = material_15.transmission * (1.0f - material_15.metallic);
+        var _S1175 : vec3<f32> = ((-(_S1171)));
+        var _S1176 : vec3<f32> = anisotropicLocal(dir_12, _S1172.tangent, _S1175);
+        var _S1177 : f32 = anisotropicG1(_S1176, _S1172.alphas);
+        return vec3<f32>((_S1174 * _S1177)) * material_15.albedo;
     }
-    var _S1183 : f32 = material_15.transmission * (1.0f - material_15.metallic);
-    var _S1184 : f32 = material_15.roughness;
-    var _S1185 : f32 = smithG1(_S1184 * _S1184, abs(dot(n_13, dir_12)));
-    return vec3<f32>((_S1183 * _S1185)) * material_15.albedo;
-}
-
-fn shadowLift( light_n_0 : vec3<f32>,  light_offset_0 : f32,  start_7 : vec3<f32>,  end_1 : vec3<f32>) -> vec3<f32>
-{
-    var _S1186 : f32 = (sign((dot(light_n_0, start_7 - end_1))));
-    return light_n_0 * vec3<f32>((_S1186 * light_offset_0));
+    var _S1178 : f32 = material_15.transmission * (1.0f - material_15.metallic);
+    var _S1179 : f32 = material_15.roughness;
+    var _S1180 : f32 = smithG1(_S1179 * _S1179, abs(dot(n_13, dir_12)));
+    return vec3<f32>((_S1178 * _S1180)) * material_15.albedo;
 }
 
 fn occluderTransmittance( toward_1 : vec3<f32>,  n_14 : vec3<f32>,  material_16 : Material,  coverage_0 : f32) -> vec3<f32>
 {
-    var _S1187 : vec3<f32>;
+    var _S1181 : vec3<f32>;
     if((material_16.ior) == 1.0f)
     {
-        var _S1188 : vec3<f32> = straightThrough(toward_1, n_14, material_16);
-        _S1187 = _S1188;
+        var _S1182 : vec3<f32> = straightThrough(toward_1, n_14, material_16);
+        _S1181 = _S1182;
     }
     else
     {
-        _S1187 = vec3<f32>(0.0f);
+        _S1181 = vec3<f32>(0.0f);
     }
-    return _S1187 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
+    return _S1181 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
 }
 
 fn walk_hook( dom_8 : Domain,  r_12 : Reservoir,  replay_1 : bool,  scale_2 : f32,  sel_7 : ptr<function, Selection>) -> Shift
 {
-    var _S1189 : Shift = walk_0(dom_8, r_12, replay_1, scale_2, &((*sel_7)));
-    return _S1189;
+    var _S1183 : Shift = walk_0(dom_8, r_12, replay_1, scale_2, &((*sel_7)));
+    return _S1183;
 }
 
 fn shift_hook( dom_9 : Domain,  r_13 : Reservoir) -> Shift
 {
-    var _S1190 : Shift = shift_0(dom_9, r_13);
-    return _S1190;
+    var _S1184 : Shift = shift_0(dom_9, r_13);
+    return _S1184;
 }
 
 fn restir_initial_hook( global_invocation_id_9 : vec3<u32>)
