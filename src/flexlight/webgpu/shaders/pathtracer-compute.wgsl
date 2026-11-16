@@ -374,8 +374,7 @@ fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
     return transmitted;
 }
 
-// Shadow test toward a light sample, including the quick exit for lights behind the shading normal, along the shared
-// segment: short of its end
+// Shadow test toward a light sample, short of its end
 fn lightTransmittance(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_offset: f32, light_dir: vec3<f32>) -> vec3<f32> {
     let unit_light_dir: vec3<f32> = normalize(light_dir);
     // Compute quick exit criterion to potentially skip expensive shadow test
@@ -409,14 +408,15 @@ fn worldTriangle(instance_index: u32, triangle_index: u32) -> mat3x3<f32> {
     return transform.rotation * mat3x3<f32>(t0.xyz, vec3<f32>(t0.w, t1.xy), vec3<f32>(t1.zw, t2.x)) + mat3x3<f32>(transform.shift, transform.shift, transform.shift);
 }
 
-// Whether material has Blender's Translucent BSDF, a thin surface transmitting diffusely
+// Whether the material is a thin surface transmitting diffusely
 fn isTranslucent(material: Material) -> bool {
     return rgb_to_greyscale(material.translucent) > 0.0f;
 }
 
-// Light sampling, as flex-cuda-pt's sampleLight: a light the light BVH picks by its importance to origin, a uniform point
-// on it or a direction in the cone of its sphere, seen from origin lifted by geometry_offset in front of smooth_n. Sided,
-// for translucent surfaces, light all around, origin lifted to the side of the face geometry_n the light lies on
+// Light sampling: a light picked by the light tree, P(light) the product of child shares down to it
+// Triangle: uniform point, PDF = solidAngle(P(light))
+// Sphere: uniform in its cone, PDF = P(light) * sphereDensity
+// radiance = L * T / PDF; sided: light all around, origin lifted to the light's side of the face
 fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>, geometry_offset: f32, sided: bool, init_random_state: u32) -> TreeSample {
     let random_pick: Random = pcg(init_random_state);
     let random_side: Random = pcg(random_pick.state);
@@ -441,7 +441,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         return sample;
     }
     let leaf: vec4<u32> = access_light_tree(4u + 4u * n);
-    // Vector from start to the end of the shadow ray, as lightTransmittance() casts it from there
+    // Vector from start to the end of the shadow ray
     var shadow: vec3<f32>;
     if (leaf.x == 2u) {
         let light: Light = lights[leaf.y];
@@ -450,7 +450,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
             start = origin + geometry_offset * lift_n;
         }
         if (light.variance == 0.0f) {
-            // Delta light at the center
+            // Delta light at the center: radiance / PDF = I / (d^2 * P(light))
             shadow = light.position - start;
             sample.dir = normalize(light.position - start);
             sample.radiance = light.color * light.intensity / (dot(light.position - start, light.position - start) * probability);
@@ -472,7 +472,7 @@ fn sampleLightTree(origin: vec3<f32>, smooth_n: vec3<f32>, geometry_n: vec3<f32>
         } else if (!(dot(smooth_n, point - origin) > 0.0f)) {
             return sample;
         }
-        // Emission at the point as the path tracer shades it, toward its smooth normal, the shadow ray ending short of it
+        // Emission at the point as the path tracer shades it
         let surface: Surface = surfaceAt(Hit(uv, leaf.y, triangle_index, 0u, 0.0f), point, random_along.state);
         sample.random_state = surface.random_state;
         sample.dir = normalize(point - start);
@@ -493,8 +493,8 @@ fn lightSlot(hit: Hit) -> u32 {
     return instance_uint[hit.instance_index * INSTANCE_UINT_SIZE + 8u] + hit.triangle_index - instance_uint[hit.instance_index * INSTANCE_UINT_SIZE] / TRIANGLE_SIZE;
 }
 
-// Density in solid angle of light sampling from origin, lifted to start, picking point on the light of trail slot j, down
-// its trail (pbrt-v4's BVHLightSampler::PMF), as flex-cuda-pt's lightPdf; with no smooth_n, sided, all around
+// PDF = solidAngle(P(light)) or P(light) * sphereDensity, P(light) the product of child shares down the trail
+// of slot j (pbrt-v4's BVHLightSampler::PMF); with no smooth_n, all around
 fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, point: vec3<f32>) -> f32 {
     let trail_texel: vec4<u32> = access_light_tree(access_light_tree(0u).y + j);
     var trail: vec2<u32> = trail_texel.xy;
@@ -517,11 +517,13 @@ fn lightPdf(origin: vec3<f32>, smooth_n: vec3<f32>, start: vec3<f32>, j: u32, po
     return solidAngle(probability, cross(t[1] - t[0], t[2] - t[0]), point - start);
 }
 
-// BSDF times the radiance of a light sample, weighted per lobe against sampling the BSDF where a direction it samples
-// competes, by the power heuristic, delta lights never competing
+// radiance = L / PDF_light
+// neeBSDF = BSDF * n_dot_l / PDF_light * w_power
+// => neeBSDF * radiance * PDF_light = BSDF * n_dot_l * L / PDF_light * w_power
+// Delta lights or no competing BSDF sample: w_power = 1
 fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry_n: vec3<f32>, material: Material, eta_i: f32, eta_o: f32, competing: bool, random_state: u32) -> vec3<f32> {
     if (!competing || light.density == 0.0f) {
-        // Translucent materials transmit past the face too, counting none of the share sampling mirrors back across it
+        // Translucent materials transmit past the face too
         if (isTranslucent(material)) {
             return translucentBSDF(in_dir, light.dir, smooth_n, geometry_n, material, eta_i, eta_o, random_state) * light.radiance;
         }
@@ -531,7 +533,7 @@ fn lightBSDF(in_dir: vec3<f32>, light: TreeSample, smooth_n: vec3<f32>, geometry
     return neeBSDF(in_dir, light.dir, smooth_n, material, eta_i, eta_o, refracted, light.density, true, random_state) * light.radiance * light.density;
 }
 
-// Weight of emission met at point on the light of hit against light sampling at the vertex the ray left
+// Power heuristic of BSDF sampling at the vertex the ray left against light sampling of the point met
 fn emissionWeight(vertex: NEEVertex, hit: Hit, point: vec3<f32>) -> f32 {
     if (vertex.none) {
         return 1.0f;
@@ -672,7 +674,7 @@ fn surfaceAt(hit: Hit, origin: vec3<f32>, init_random_state: u32) -> Surface {
     return Surface(smooth_n, geometry_n, geometry_offset, material, skip_hit, random_state);
 }
 
-// Surfaces transmitting nothing face the ray along dir with both normals, as in flex-cuda-pt's walk and Cycles
+// Opaque surfaces face the ray with both normals
 fn facingRay(surface: Surface, dir: vec3<f32>) -> Surface {
     let facing: f32 = facingSign(surface.material.transmission, surface.geometry_n, dir);
     return Surface(surface.smooth_n * facing, surface.geometry_n * facing, surface.geometry_offset, surface.material, surface.skip, surface.random_state);
@@ -783,8 +785,7 @@ fn lightTrace(init_hit: Hit, origin: vec3<f32>, camera: vec3<f32>, init_random_s
                         escape_pdf = bsdf_sampled.pdf;
                     }
                 }
-                // Straight transmission keeps the preceding vertex's density against the sky, as it keeps its light
-                // sample: an escape past it is the direction that vertex's light sampling weighed
+                // Straight transmission keeps the preceding vertex's density against the sky
                 escape_pdf = select(escape_pdf, preceding_escape_pdf, bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o);
                 // Delta lobes have no competing light sample, straight transmission keeps the preceding vertex's weights
                 let delta: bool = bsdf_sampled.lobe != LOBE_DIFFUSE && bsdf_sampled.lobe != LOBE_SHEEN_VELVET && (material.roughness == 0.0f || (bsdf_sampled.lobe == LOBE_REFRACT && eta_i == eta_o));
@@ -873,7 +874,9 @@ fn environmentMapped() -> bool {
     return uniforms_uint.environment_map_size.x > 1u && uniforms_uint.environment_map_size.y > 1u;
 }
 
-// Solid angle density of sampleSky, piecewise constant over the luminance distribution of the environment map
+// p = p(row) * p(column | row), PDF_st = p * size.x * size.y
+// dw = 2 * PI^2 * sin(theta) ds dt, sin(theta) = length(dir.xz)
+// => PDF = p * size.x * size.y / (2 * PI^2 * sin(theta))
 fn environmentPdf(dir: vec3<f32>) -> f32 {
     let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
     // Same coordinates as env_map_sample
@@ -899,14 +902,13 @@ fn searchCDF(start: vec2<u32>, step: vec2<u32>, count: u32, u: f32) -> u32 {
 }
 
 // Radiance the path tracer's ray from a vertex along dir receives from the environment map if it hits nothing on the way.
-// Escapes passing transparent texels are left to BSDF sampling.
 fn skyRadiance(origin: vec3<f32>, surface: Surface, is_inside: bool, dir: vec3<f32>) -> vec3<f32> {
     let inside: bool = is_inside != wrongSide(is_inside, false, dir, surface.geometry_n);
     let ray: Ray = Ray(origin + surface.geometry_offset * select(surface.smooth_n, - surface.smooth_n, inside), dir);
     return env_map_sample(dir) * shadowTransmittance(ray, POW32);
 }
 
-// Next event estimation toward the environment map, drawing a direction by its luminance. lobe_state is the random state of skyBSDF.
+// Next event estimation toward the environment map, drawing a direction by its luminance
 fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_random_state: u32, lobe_state: u32) -> SkySample {
     let size: vec2<u32> = textureDimensions(environment_cdf) - vec2<u32>(1u, 0u);
     let random_0: Random = pcg(init_random_state);
@@ -927,8 +929,7 @@ fn sampleSky(ray: Ray, surface: Surface, eta: vec2<f32>, is_inside: bool, init_r
     return SkySample(dir, radiance, f * radiance, random_3.state);
 }
 
-// MIS weight of a BSDF sampled escape from a vertex doing next event estimation, pdf is the density of the sampled lobe.
-// Delta lobes and rays sampled to the wrong side of the face (pdf zero) are never drawn by sampleSky.
+// w = PDF_lobe / (PDF_lobe + PDF_env), 1 for delta lobes and without environment sampling
 fn escapeWeight(pdf: f32, dir: vec3<f32>) -> f32 {
     if (pdf <= 0.0f || !environmentMapped()) {
         return 1.0f;
@@ -1037,8 +1038,7 @@ fn compute(
     }
 }
 
-// ReSTIR PT Enhanced (Lin, Kettunen and Wyman 2026) on top of the path tracer above.
-// Paths live in primary sample space, vertex b draws its random numbers from stream(seed, b).
+// ReSTIR PT Enhanced (Lin, Kettunen and Wyman 2026)
 
 const LOBE_DIFFUSE: u32 = 0u;
 const LOBE_REFRACT: u32 = 1u;
@@ -1146,7 +1146,6 @@ fn wrongSide(is_inside: bool, refracted: bool, dir: vec3<f32>, geometry_n: vec3<
     return (is_inside == refracted) != (dot(dir, geometry_n) > 0.0f);
 }
 
-// Initial candidates
 @compute
 @workgroup_size(8, 8)
 fn restir_initial(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
