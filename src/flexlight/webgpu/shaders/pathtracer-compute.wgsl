@@ -977,52 +977,21 @@ fn compute(
     }
 
     let absolute_position: vec3<f32> = textureLoad(texture_absolute_position, screen_pos, 0).xyz;
-    let uv: vec2<f32> = textureLoad(texture_uv, screen_pos, 0).xy;
-    let uvw: vec3<f32> = vec3<f32>(uv, 1.0f - uv.x - uv.y);
-    // Generate hit struct for pathtracer
-    let init_hit: Hit = Hit(uvw.yz, instance_index, triangle_index, 0u, distance(absolute_position, uniforms_float.camera_position.xyz));
-    // Determine if additional samples are needed
-    var sampleFactor: u32 = 1u;
-
-    if (uniforms_uint.is_temporal == 1u) {
-        // Get count of shifted texture
-        let shift_out_float_0: vec4<f32> = textureLoad(shift_out_float, screen_pos, 0, 0);
-        let shift_out_float_1: vec4<f32> = textureLoad(shift_out_float, screen_pos, 1, 0);
-        /*
-        let shift_out_uint_0: vec4<u32> = textureLoad(shift_out_uint, screen_pos, 0, 0);
-        let shift_out_uint_2: vec4<u32> = textureLoad(shift_out_uint, screen_pos, 2, 0);
-        // Extract 3d position value
-        let fine_color_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.x), unpack2x16float(shift_out_uint_0.y));
-        let fine_color_low_acc: vec4<f32> = vec4<f32>(unpack2x16float(shift_out_uint_0.z), unpack2x16float(shift_out_uint_0.w));
-        let abs_position_old: vec4<f32> = shift_out_float_1;
-        // If absolute position is all zeros then there is nothing to do
-        let dist: f32 = distance(absolute_position, abs_position_old.xyz);
-        let cur_depth: f32 = distance(absolute_position, uniforms_float.camera_position.xyz);
-        // let norm_color_diff = dot(normalize(current_color.xyz), normalize(accumulated_color.xyz));
-        let old_temporal_target: u32 = shift_out_uint_2.x;
-        let fine_count: u32 = shift_out_uint_2.z;
-
-        let last_frame = old_temporal_target == uniforms_uint.temporal_target;
-
-        if (fine_count == 0u || !last_frame) {
-            sampleFactor = 1u;
-        }
-        */
+    var dom: Domain;
+    hitDomain(vec2<i32>(screen_pos), instance_index, triangle_index, &dom);
+    // Paths seeded as restir_initial seeds them, their contributions summed
+    let pixel_seed: u32 = stream(hash(uniforms_uint.frame), buffer_index);
+    var sel: Selection;
+    // FlexKernels' STREAM_SELECT, the stream restir_initial draws its selection from
+    sel.random_state = stream(pixel_seed, 193u);
+    for (var i: u32 = 0u; i < uniforms_uint.samples; i++) {
+        var r: Reservoir;
+        r.seed = stream(pixel_seed, i);
+        walk_hook(dom, r, false, 1.0f / f32(uniforms_uint.samples), &sel);
     }
-
-    // Init color accumulator and random state
-    var final_color = vec3<f32>(0.0f);
-    var random_state: u32 = stream(hash(uniforms_uint.frame), global_invocation_id.x + uniforms_uint.render_size.x * global_invocation_id.y);
-    // Generate multiple samples
-    for(var i: u32 = 0u; i < uniforms_uint.samples * sampleFactor; i++) {
-        // Use cosine as noise in random coordinate picker
-        let sampled_color: SampledColor = lightTrace(init_hit, absolute_position, uniforms_float.camera_position, random_state, screen_space);
-        random_state = sampled_color.random_state;
-        final_color += sampled_color.color;
-    }
-    // Average ray colors over samples.
-    let inv_samples: f32 = 1.0f / f32(uniforms_uint.samples * sampleFactor);
-    final_color *= inv_samples;
+    // The walk leaves out the primary hit's emission
+    let primary: Surface = surfaceAt(dom.hit, dom.x1, sel.random_state);
+    var final_color: vec3<f32> = sel.color + select(primary.material.emissive * max(sign(dot(normalize(dom.x0 - dom.x1), primary.smooth_n)), 0.0f), vec3<f32>(0.0f), primary.skip);
 
     // Clamp color to 16 bit float
     // Maximal representable number in f16 is 65520
