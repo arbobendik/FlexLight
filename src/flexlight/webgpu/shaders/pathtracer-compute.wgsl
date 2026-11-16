@@ -61,8 +61,6 @@ struct UniformUint {
 @group(0) @binding(1) var<storage, read> texture_offset: array<u32>;
 @group(0) @binding(2) var texture_absolute_position: texture_2d<f32>;
 @group(0) @binding(3) var texture_uv: texture_2d<f32>;
-@group(0) @binding(4) var shift_out_float: texture_2d_array<f32>;
-@group(0) @binding(5) var shift_out_uint: texture_2d_array<u32>;
 // ComputeTextureBindGroup
 @group(1) @binding(0) var texture_data: texture_2d_array<u32>;
 @group(1) @binding(1) var<storage, read> texture_instance: array<u32>;
