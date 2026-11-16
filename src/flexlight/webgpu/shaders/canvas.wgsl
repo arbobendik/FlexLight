@@ -1,16 +1,5 @@
 // const KERNEL_SIZE: u32 = 5u;
 // const NUM_SAMPLES: u32 = KERNEL_SIZE * KERNEL_SIZE;
-const POW32U: u32 = 4294967295u;
-
-struct UniformFloat {
-    view_matrix: mat3x3<f32>,
-    inv_view_matrix: mat3x3<f32>,
-
-    camera_position: vec3<f32>,
-    ambient: vec3<f32>,
-
-    min_importancy: f32,
-};
 
 struct UniformUint {
     render_size: vec2<u32>,
@@ -28,7 +17,6 @@ struct UniformUint {
 @group(0) @binding(0) var compute_out: texture_2d<f32>;
 @group(0) @binding(1) var canvas_out: texture_storage_2d<rgba8unorm, write>;
 
-@group(1) @binding(0) var<uniform> uniforms_float: UniformFloat;
 @group(1) @binding(1) var<uniform> uniforms_uint: UniformUint;
 
 // Based on http://www.oscars.org/science-technology/sci-tech-projects/aces
