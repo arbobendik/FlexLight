@@ -164,7 +164,7 @@ fn raySphere(center: vec3<f32>, radius: f32, ray: Ray, max_len: f32) -> f32 {
 }
 
 // Test for closest ray triangle intersection
-fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
+fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32, skip: Hit) -> Hit {
     // Maximal distance a triangle can be away from the ray origin
     let instance_uint_offset = instance_index * INSTANCE_UINT_SIZE;
 
@@ -208,7 +208,8 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             // Run Moeller-Trumbore algorithm for both triangles
             // Test if ray even intersects
             let intersect0: Intersect = moellerTrumbore(bv0.xyz, vec3<f32>(bv0.w, bv1.xy), vec3<f32>(bv1.zw, bv2.x), t_ray, hit.distance * len_factor);
-            if (intersect0.distance != 0.0) {
+            if (intersect0.distance != 0.0 && !(instance_index == skip.instance_index
+                && triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.y == skip.triangle_index)) {
                 // Calculate intersection point
                 hit.distance = intersect0.distance * len_factor_inv;
                 hit.uv = intersect0.uv;
@@ -219,7 +220,8 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
             if (indicator_and_children.z != UINT_MAX) {
                 // Test if ray even intersects
                 let intersect1: Intersect = moellerTrumbore(bv2.yzw, bv3.xyz, vec3<f32>(bv3.w, bv4.xy), t_ray, hit.distance * len_factor);
-                if (intersect1.distance != 0.0) {
+                if (intersect1.distance != 0.0 && !(instance_index == skip.instance_index
+                    && triangle_instance_offset / TRIANGLE_SIZE + indicator_and_children.z == skip.triangle_index)) {
                     // Calculate intersection point
                     hit.distance = intersect1.distance * len_factor_inv;
                     hit.uv = intersect1.uv;
@@ -256,7 +258,8 @@ fn traverseTriangleBVH(instance_index: u32, ray: Ray, max_len: f32) -> Hit {
 }
 
 // Simplified rayTracer to only test if ray intersects anything
-fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32) -> Hit {
+// skip: the triangle a straight pass leaves by, which its continuing ray ignores; instance UINT_MAX for none
+fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32, skip: Hit) -> Hit {
     // Hit object
     // Maximal distance a triangle can be away from the ray origin is max_len at initialisation
     var hit: Hit = Hit(vec2<f32>(0.0f, 0.0f), UINT_MAX, UINT_MAX, 0u, max_len);
@@ -315,13 +318,13 @@ fn traverseInstanceBVH(ray: Ray, consider_point_lights: bool, max_len: f32) -> H
         if (indicator == 0u) {
             // If node is an instance, test for intersection, closest first
             if (dist_near != POW32) {
-                let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.distance);
+                let new_hit: Hit = traverseTriangleBVH(near_child, ray, hit.distance, skip);
                 if (new_hit.distance < hit.distance) {
                     hit = new_hit;
                 }
             }
             if (dist_far != POW32 && dist_far < hit.distance) {
-                let new_hit: Hit = traverseTriangleBVH(far_child, ray, hit.distance);
+                let new_hit: Hit = traverseTriangleBVH(far_child, ray, hit.distance, skip);
                 if (new_hit.distance < hit.distance) {
                     hit = new_hit;
                 }
@@ -355,7 +358,8 @@ fn shadowTransmittance(ray: Ray, l: f32) -> vec3<f32> {
     var start: vec3<f32> = ray.origin;
     var left: f32 = l;
     while (any(transmitted > vec3<f32>(0.0f))) {
-        let hit: Hit = traverseInstanceBVH(Ray(start, ray.unit_direction), false, left);
+        let hit: Hit = traverseInstanceBVH(Ray(start, ray.unit_direction), false, left,
+            Hit(vec2<f32>(0.0f, 0.0f), UINT_MAX, UINT_MAX, 0u, 0.0f));
         if (hit.instance_index == UINT_MAX) {
             return transmitted;
         }
