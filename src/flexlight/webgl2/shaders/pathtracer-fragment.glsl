@@ -364,8 +364,8 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         // Calculate BSDF for light, its visible normal from a stream of its own, apart from the selection's numbers
         // The light across the face by the geometry normal reaches the lobes that refract or, translucent, pass through
         bool refracted = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0;
-        vec3 throughputs[4];
-        float pdfs[4];
+        vec3 throughputs[5];
+        float pdfs[5];
         vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, material, eta_i, eta_o, refracted,
             stream(random_state, 1u), throughputs, pdfs);
         vec3 color_for_light = color_with_smooth * brightness;
