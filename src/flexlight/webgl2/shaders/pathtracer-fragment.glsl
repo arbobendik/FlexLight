@@ -560,17 +560,11 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 geometry_n *= facing;
 
                 float n_dot_v = dot(smooth_n, - ray.unit_direction);
-                bool is_entering = n_dot_v < 0.0;
-                // Incident side is air, outgoing side is material (entering)
-                float eta_i = is_entering ? material.ior : 1.0;
-                // Incident side is material, outgoing side is air (exiting)
-                float eta_o = is_entering ? 1.0 : material.ior;
-                // Calculate fresnel term
-                vec3 F_n = mix(vec3(fresnel(abs(n_dot_v), eta_i, eta_o)), material.albedo, material.metallic);
-                float F_n_greyscale = rgb_to_greyscale(F_n);
+                vec2 eta = vertexEta(material, n_dot_v);
+                float eta_i = eta.x;
+                float eta_o = eta.y;
 
-                float diffuse_factor_estimate = max((1.0 - F_n_greyscale) * (1.0 - material.metallic) * (1.0 - material.transmission), 0.0);
-                if (diffuse_factor_estimate > 0.04 || material.roughness > 0.2) {
+                if (neeDecision(material, n_dot_v, eta_i, eta_o)) {
                     // Do NEE
                     SampledColor local_sampled = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir);
                     random_state = local_sampled.random_state;
