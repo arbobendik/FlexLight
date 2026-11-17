@@ -38,18 +38,22 @@
 // with its corner normals averaged over the faces meeting there, its face away from the white wall at z = 0 alone
 // emitting and its others black (argument hidden), leaves the wall it hides that face from black, as light sampling's
 // shadow rays end at the sampled point, short of it: a mean under 1e-4, path traced or by the rasterizer (mode raster) at
-// most 1% of its pixels lit, through ReSTIR, whose reuse spreads light over every pixel, its mean alone. As the Sheen
-// BSDF's Ashikhmin distribution over black (argument velvet), the sheen's square holds that sheen's albedo at that
-// cosine, 0.2800 by midpoint quadrature, within four standard errors. The metal's square of roughness 0.15 (argument
-// glossy), white, in the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by
-// midpoint quadrature, within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of
-// eight independent runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets
-// takes the full weight.
+// most 1% of its pixels lit, through ReSTIR, whose reuse spreads light over every pixel, its mean alone. A white diffuse
+// floor seen straight down through a pane 4 x 4 of rough clear glass of IOR 1, 0.25 above it, its normals tilted 37
+// degrees off the face (argument pane), under a point light of intensity 5 at (1.5, 0, 1.5), shows the floor as without the
+// pane, 5 cos(45 deg) / (PI * 4.5) beneath the light: the ray passing straight through starts at the pane, not lifted past
+// the floor, within 3% path traced or through ReSTIR, the rough pane keeping 97.6% of it. As the Sheen BSDF's Ashikhmin
+// distribution over black (argument velvet), the sheen's square holds that sheen's albedo at that cosine, 0.2800 by
+// midpoint quadrature, within four standard errors. The metal's square of roughness 0.15 (argument glossy), white, in
+// the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by midpoint quadrature,
+// within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of eight independent
+// runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets takes the full
+// weight.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
-const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.6953, 0.6351];
+const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.6953, 0.6351];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -138,6 +142,14 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
 const engine = new F.FlexLight(canvas);
 Object.assign(engine.config, { temporal: true, restir: MODE === "restir", antialiasing: undefined, samplesPerPixel: 1, maxBounces: MODE === "direct" ? 0 : 32 });
 if (MATERIAL === "cylinder") await instanceCylinders(F, engine.scene);
+else if (MATERIAL === "pane") {
+  const n = [Math.sin(37 * Math.PI / 180), 0, Math.cos(37 * Math.PI / 180)], black = new F.Vector(0, 0, 0), white = new F.Vector(1, 1, 1);
+  const square = (h, z, normal) => [[[-h, -h], [h, -h], [h, h]], [[-h, -h], [h, h], [-h, h]]].flatMap((t) =>
+    [...t.flatMap(([x, y]) => [x, y, z]), ...normal, ...normal, ...normal, 0, 0, 0, 0, 0, 0]);
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(10, 0, [0, 0, 1]), material: new F.Material(white, black, 1, 0, 0, 1), label: "floor" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(2, 0.25, n), material: new F.Material(white, black, 0.5, 0, 1, 1), label: "pane" }));
+  engine.scene.addPointLight(new F.PointLight(new F.Vector(1.5, 0, 1.5), white, 5, 0.1));
+}
 else if (MATERIAL === "hidden") {
   const lit = [], dark = [];
   for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
@@ -188,14 +200,15 @@ if (MATERIAL === "lit" || MATERIAL === "translucent" || MATERIAL === "glossy") {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: box,
     material: new F.Material(new F.Vector(0, 0, 0), new F.Vector(1, 1, 1), 1, 0, 0, 1), label: "box" }));
 }
-engine.scene.ambientLight = MATERIAL === "lit" || MATERIAL === "glossy" || thin || MATERIAL === "hidden" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
+engine.scene.ambientLight = MATERIAL === "lit" || MATERIAL === "glossy" || thin || MATERIAL === "hidden" || MATERIAL === "pane" ? new F.Vector(0, 0, 0) : new F.Vector(1, 1, 1);
 engine.camera.position = new F.Vector(0, 0.5, 3);
 engine.camera.direction = new F.Vector(0, 0.15);
 if (MODE === "raster") engine.renderer = "rasterizer";
 if (MATERIAL === "raster") engine.renderer = "rasterizer",
   engine.scene.addPointLight(new F.PointLight(new F.Vector(0, 1, 2), new F.Vector(1, 1, 1), 10, 0.5));
 // The wall beside the slab, which the hidden face's smooth normals tilt toward
-if (MATERIAL === "hidden") engine.camera.position = new F.Vector(5, 0, 3), engine.camera.direction = new F.Vector(0, 0), engine.camera.fov = 60;
+if (MATERIAL === "pane") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0), engine.camera.fov = 1;
+else if (MATERIAL === "hidden") engine.camera.position = new F.Vector(5, 0, 3), engine.camera.direction = new F.Vector(0, 0), engine.camera.fov = 60;
 else if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engine.camera.position = new F.Vector(0, 0, 3), engine.camera.direction = new F.Vector(0, 0),
   engine.camera.fov = twin || MATERIAL === "cylinder" || MATERIAL === "shell" ? 40 : 1;
 
@@ -234,6 +247,7 @@ engine.renderer.renderFrame = async (...args) => {
     process.exit(deviation((p) => pixels[p], SIZE) < 0.02 ? 0 : 1);
   // Two orders above the trace shadow rays ending short of the light let past occluders that close to it, ninety times
   // below the lifted end's; ReSTIR's reuse spreads that trace over every pixel, so its count bounds the other modes alone
+  if (MATERIAL === "pane") console.log(`floor ${(mean / PANE).toFixed(4)} of ${PANE.toFixed(4)}`), process.exit(Math.abs(mean / PANE - 1) < 0.03 ? 0 : 1);
   if (MATERIAL === "hidden") process.exit(mean < 1e-4 && (MODE === "restir" || pixels.filter((v) => v > 0).length <= 0.01 * pixels.length) ? 0 : 1);
   // The twins' image leaves pixel 0 in the background, which no random number reaches
   if (MATERIAL === "raster") process.exit((twin ? Math.abs(difference) < 4 * differenceError : first.size > 1) ? 0 : 1);
