@@ -1336,21 +1336,6 @@ fn temporalWeights( c_1 : f32,  p_c_0 : f32,  c_t_0 : f32,  p_t_0 : f32,  g_prev
     return vec2<f32>(_S424 / (_S424 + c_t_0 * g_previous_0), _S425 / (_S425 + c_1 * g_current_0));
 }
 
-fn pairShare( c_n_0 : f32,  c_pair_0 : f32,  c_sum_0 : f32) -> f32
-{
-    return (c_n_0 + c_pair_0) / c_sum_0;
-}
-
-fn neighborWeight( share_0 : f32,  c_n_1 : f32,  p_n_0 : f32,  c_pair_1 : f32,  g_here_0 : f32) -> f32
-{
-    return share_0 * c_n_1 * p_n_0 / (c_n_1 * p_n_0 + c_pair_1 * g_here_0);
-}
-
-fn canonicalWeight( share_1 : f32,  c_pair_2 : f32,  p_c_1 : f32,  c_n_2 : f32,  g_there_0 : f32) -> f32
-{
-    return share_1 * c_pair_2 * p_c_1 / (c_pair_2 * p_c_1 + c_n_2 * g_there_0);
-}
-
 fn cosSubClamped( sin_a_0 : f32,  cos_a_0 : f32,  sin_b_0 : f32,  cos_b_0 : f32) -> f32
 {
     var _S426 : f32 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;

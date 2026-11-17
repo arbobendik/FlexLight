@@ -1472,21 +1472,6 @@ vec2 temporalWeights(float c_1, float p_c_0, float c_t_0, float p_t_0, float g_p
     return vec2(_S428 / (_S428 + c_t_0 * g_previous_0), _S429 / (_S429 + c_1 * g_current_0));
 }
 
-float pairShare(float c_n_0, float c_pair_0, float c_sum_0)
-{
-    return (c_n_0 + c_pair_0) / c_sum_0;
-}
-
-float neighborWeight(float share_0, float c_n_1, float p_n_0, float c_pair_1, float g_here_0)
-{
-    return share_0 * c_n_1 * p_n_0 / (c_n_1 * p_n_0 + c_pair_1 * g_here_0);
-}
-
-float canonicalWeight(float share_1, float c_pair_2, float p_c_1, float c_n_2, float g_there_0)
-{
-    return share_1 * c_pair_2 * p_c_1 / (c_pair_2 * p_c_1 + c_n_2 * g_there_0);
-}
-
 float cosSubClamped(float sin_a_0, float cos_a_0, float sin_b_0, float cos_b_0)
 {
     float _S430 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
