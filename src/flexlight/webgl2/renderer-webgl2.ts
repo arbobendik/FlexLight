@@ -66,6 +66,7 @@ interface EngineState {
   antialiasing: WebGPUAntialiasingType;
   translucent: boolean;
   sheen: boolean;
+  velvet: boolean;
   anisotropic: boolean;
 }
 
@@ -85,7 +86,7 @@ export abstract class RendererWGL2 extends Renderer {
   private resizeHook: (() => void) | undefined;
 
   private antialiasingModule: AntialiasingModule | undefined;
-  private engineState: EngineState = { renderResolution: 0, antialiasing: undefined, translucent: false, sheen: false, anisotropic: false };
+  private engineState: EngineState = { renderResolution: 0, antialiasing: undefined, translucent: false, sheen: false, velvet: false, anisotropic: false };
   // Count of previous frames the last frame has accumulated and camera state they were rendered with
   private accumulationCount: number = 0;
   private accumulationCameraState: Array<number> = [];
@@ -225,14 +226,15 @@ export abstract class RendererWGL2 extends Renderer {
   private createShadingProgram(gl: WebGL2RenderingContext): WebGLProgram {
     this.engineState.translucent = this.scene.translucent;
     this.engineState.sheen = this.scene.sheen;
+    this.engineState.velvet = this.scene.velvet;
     this.engineState.anisotropic = this.scene.anisotropic;
-    return createFullscreenProgram(gl, this.shadingShader.replace("#version 300 es", `#version 300 es\nconst bool TRANSLUCENT = ${this.engineState.translucent};\nconst bool SHEEN = ${this.engineState.sheen};\nconst bool ANISOTROPY = ${this.engineState.anisotropic};`));
+    return createFullscreenProgram(gl, this.shadingShader.replace("#version 300 es", `#version 300 es\nconst bool TRANSLUCENT = ${this.engineState.translucent};\nconst bool SHEEN = ${this.engineState.sheen};\nconst bool VELVET = ${this.engineState.velvet};\nconst bool ANISOTROPY = ${this.engineState.anisotropic};`));
   }
 
   // Internal render engine Functions
   private frameCycle (gl: WebGL2RenderingContext, programs: RendererWGL2Programs, resources: CanvasSizeDependentResources, gpuManagers: RendererWGL2GPUBufferManagers) {
     if (!this.isRunning) return;
-    if (this.engineState.translucent !== this.scene.translucent || this.engineState.sheen !== this.scene.sheen || this.engineState.anisotropic !== this.scene.anisotropic) {
+    if (this.engineState.translucent !== this.scene.translucent || this.engineState.sheen !== this.scene.sheen || this.engineState.velvet !== this.scene.velvet || this.engineState.anisotropic !== this.scene.anisotropic) {
       gl.deleteProgram(programs.shadingProgram);
       programs.shadingProgram = this.createShadingProgram(gl);
     }

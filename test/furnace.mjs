@@ -42,12 +42,14 @@
 // floor seen straight down through a pane 4 x 4 of rough clear glass of IOR 1, 0.25 above it, its normals tilted 37
 // degrees off the face (argument pane), under a point light of intensity 5 at (1.5, 0, 1.5), shows the floor as without the
 // pane, 5 cos(45 deg) / (PI * 4.5) beneath the light: the ray passing straight through starts at the pane, not lifted past
-// the floor, within 3% path traced or through ReSTIR, the rough pane keeping 97.6% of it.
+// the floor, within 3% path traced or through ReSTIR, the rough pane keeping 97.6% of it. As Ashikhmin's velvet over
+// black (argument velvet), the sheen's square holds that sheen's albedo at that cosine, 0.2800 by midpoint quadrature,
+// within four standard errors.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
-const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, ANISO = [0.6953, 0.6351];
+const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, ANISO = [0.6953, 0.6351];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -106,7 +108,7 @@ for (let i = 0; i < SIDES; i++) {
 // The square of the metal, dielectric and raster cases, in the plane of normal (0, sqrt(3) / 2, 1 / 2) through the
 // origin
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
-const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite";
+const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite" || MATERIAL === "velvet";
 const aniso = MATERIAL === "aniso" || MATERIAL === "anisoturned";
 const square = MATERIAL === "metal" || MATERIAL === "dielectric" || MATERIAL === "raster" || sheen || aniso;
 const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
@@ -125,7 +127,7 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
   : MATERIAL === "metal" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0)
   : MATERIAL === "dielectric" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5)
   : sheen ? new F.Material(new F.Vector(...Array(3).fill(Number(MATERIAL === "sheenwhite"))), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined,
-    undefined, undefined, undefined, new F.Vector(1, 1, 1), 0.5)
+    undefined, undefined, undefined, new F.Vector(1, 1, 1), 0.5, undefined, undefined, undefined, MATERIAL === "velvet")
   : aniso ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
     undefined, undefined, undefined, 1, MATERIAL === "anisoturned" ? 0.25 : 0)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
@@ -251,9 +253,9 @@ engine.renderer.renderFrame = async (...args) => {
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
     : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
     : aniso ? Math.abs(mean - ANISO[Number(MATERIAL === "anisoturned")]) < 4 * error
-    : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
+    : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "velvet" ? Math.abs(mean - VELVET) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
     : (thin || MATERIAL === "shell") && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
     && (MATERIAL === "lit" || thin || sheen || MATERIAL === "shell" || brightest < 1.05)
-    && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || aniso || MATERIAL === "shell" || black === 0) ? 0 : 1);
+    && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || MATERIAL === "velvet" || aniso || MATERIAL === "shell" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();

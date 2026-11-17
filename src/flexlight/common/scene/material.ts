@@ -21,13 +21,15 @@ export class Material {
     // Blender's sheen over the base, its weight times its tint, none by default, and its roughness
     sheen: Vector<3>;
     sheenRoughness: number;
+    // Whether the sheen is Blender's Sheen BSDF's Ashikhmin velvet over its Microfiber, the latter by default
+    velvet: boolean;
     // Blender's Principled Anisotropic, none by default, and its rotation in turns about the normal
     anisotropy: number;
     anisotropicRotation: number;
     // The tangent anisotropy turns about: Blender's default, radial about the object's z, or the UV map's
     tangentSource: "radial" | "uv";
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial") {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial", velvet: boolean = false) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -43,11 +45,12 @@ export class Material {
         this.anisotropy = anisotropy;
         this.anisotropicRotation = anisotropicRotation;
         this.tangentSource = tangentSource;
+        this.velvet = velvet;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), and the tangent surfaceAt writes once anisotropy shades
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, Velvet (0 Microfiber, 1 Ashikhmin), SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), and the tangent surfaceAt writes once anisotropy shades
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -78,7 +81,9 @@ export class InstanceMaterial implements Material {
             material.specularLevel,
 
             // Translucent
-            material.translucent.x, material.translucent.y, material.translucent.z, 0,
+            material.translucent.x, material.translucent.y, material.translucent.z,
+            // Velvet
+            Number(material.velvet),
 
             // Sheen
             material.sheen.x, material.sheen.y, material.sheen.z,
@@ -256,5 +261,15 @@ export class InstanceMaterial implements Material {
 
     get tangentSource(): "radial" | "uv" {
         return this.materialArray[30] === 1 ? "uv" : "radial";
+    }
+
+    set velvet(velvet: boolean) {
+        this.materialArray[23] = Number(velvet);
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 23 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get velvet(): boolean {
+        return this.materialArray[23] === 1;
     }
 }
