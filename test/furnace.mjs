@@ -4,12 +4,14 @@
 // sampled to the wrong side of a facet lose no energy, so no pixel gains light, the image's mean stays at one and no
 // pixel turns black. A square of white metal of roughness 0.5 (argument metal), facing the camera at a cosine of
 // 0.5 across its narrow view, scatters each ray once: each pixel holds GGX's single-scatter albedo under exact Smith
-// masking at that cosine, 0.8551, integrated numerically, which the image's mean meets within four standard errors of
-// its pixels', and pixel 0 draws other random numbers each frame. A square of a white opaque dielectric of IOR 1.5 and
-// roughness 0.2 (argument dielectric) in its place holds the diffuse of what its Fresnel does not reflect beside that
-// reflection's single-scatter albedo, 0.9990, no more light than it receives, which the mean meets likewise. Its
-// diffuse samples each carry all of the light, so its pixel 0 need not vary. The rasterizer shading a white
-// square in a sphere light's random points (argument raster) has pixel 0 draw other random numbers each frame as well.
+// masking at that cosine, 0.8551, integrated numerically, raised by FlexKernels' rebounces, limited per view, to
+// 0.9722, which the image's mean meets within four standard errors of its pixels', the rebounces weighing single
+// samples above one, and pixel 0 draws other random numbers each frame. A square of a white opaque dielectric of IOR
+// 1.5 and roughness 0.2 (argument dielectric) in its place holds the diffuse of what its Fresnel does not reflect
+// beside that reflection's single-scatter albedo, 0.9990, no more light than it receives, which the mean meets
+// likewise. Its diffuse samples each carry all of the light, so its pixel 0 need not vary. The rasterizer shading a
+// white square in a sphere light's random points (argument raster) has pixel 0 draw other random numbers each frame as
+// well.
 // Built in object space and turned by its instance's scale (1, 2, 1), its normals those of the object (mode scaled), the
 // metal's square holds its albedo still, and the rasterizer's, beside one built in world space, the same mean: the
 // halves' difference within four standard errors of it, which the frames' differences give.
@@ -29,9 +31,10 @@
 // four standard errors, and within 1% of it. The sheen's noise lets single pixels of either exceed it. Of anisotropy 1
 // (argument aniso), its tangent Blender's default, radial about z through the middle of its prototype's bounds, which a
 // triangle of no area at x = 10 moves so that it runs along the view where seen, the metal holds the albedo of the
-// roughnesses Principled's mapping gives along the view and across, 0.6953 by midpoint quadrature, within four
-// standard errors; turned a quarter about the normal (argument anisoturned), that across and along, 0.6351. Of 1024
-// frames, cylinder.mjs' cylinders (argument cylinder). A white diffuse sphere of radius 1 beside a clear shell of IOR 1
+// roughnesses Principled's mapping gives along the view and across, 0.6953 by midpoint quadrature, raised by the
+// rebounces of its smoother axis to 0.7077, within four standard errors; turned a quarter about the normal (argument
+// anisoturned), that across and along, 0.6351, raised to 0.6464. Of 1024 frames, cylinder.mjs' cylinders (argument
+// cylinder). A white diffuse sphere of radius 1 beside a clear shell of IOR 1
 // and radius 2 above it, under a uniform environment map of white (argument shell), returns all it receives: its sky
 // light passing the shell reaches the sphere's light sampling and its escapes alike and counts once, the image's mean
 // within four standard errors of one path traced and within 2% through ReSTIR. A closed slab 4 x 4 x 0.05 at z = 1, smooth
@@ -48,12 +51,12 @@
 // the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by midpoint quadrature,
 // within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of eight independent
 // runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets takes the full
-// weight.
+// weight, and its mean stays at most one.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
-const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.8551, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
-const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.6953, 0.6351];
+const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.9722, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
+const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.7077, 0.6464];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -257,11 +260,13 @@ engine.renderer.renderFrame = async (...args) => {
     process.exit(Math.abs(half(-1) / BACKLIT - 1) < 0.02 && Math.abs(half(1) / BACKLIT - 0.5) < 0.01 ? 0 : 1);
   process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
     : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
-    : MATERIAL === "glossy" ? MODE === "restir" ? Math.abs(mean / GLOSSY - 1) < 0.002 : Math.abs(mean - GLOSSY) < 4 * error
+    : MATERIAL === "glossy" ? (MODE === "restir" ? Math.abs(mean / GLOSSY - 1) < 0.002 : Math.abs(mean - GLOSSY) < 4 * error)
+      && mean <= 1 + 4 * error
     : aniso ? Math.abs(mean - ANISO[Number(MATERIAL === "anisoturned")]) < 4 * error
     : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "velvet" ? Math.abs(mean - VELVET) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
     : (thin || MATERIAL === "shell") && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
-    && (MATERIAL === "lit" || MATERIAL === "glossy" || thin || sheen || MATERIAL === "shell" || brightest < 1.05)
+    && (MATERIAL === "lit" || MATERIAL === "metal" || MATERIAL === "glossy" || aniso || thin || sheen || MATERIAL === "shell"
+      || brightest < 1.05)
     && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || MATERIAL === "velvet" || aniso || MATERIAL === "shell" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();
