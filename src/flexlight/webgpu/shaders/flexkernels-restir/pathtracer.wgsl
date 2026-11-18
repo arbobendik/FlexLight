@@ -2247,6 +2247,12 @@ fn restir_duplicates_0( global_invocation_id_1 : vec3<u32>,  local_invocation_id
     return;
 }
 
+fn resamplingTarget( f_6 : vec3<f32>) -> f32
+{
+    var _S675 : f32 = rgb_to_greyscale(abs(f_6));
+    return _S675;
+}
+
 struct Selection
 {
      r : Reservoir,
@@ -2257,19 +2263,19 @@ struct Selection
 
 fn Selection_x24init_0( r_2 : Reservoir,  w_sum_0 : f32,  color_2 : vec3<f32>,  random_state_6 : u32) -> Selection
 {
-    var _S675 : Selection;
-    _S675.r = r_2;
-    _S675.w_sum = w_sum_0;
-    _S675.color = color_2;
-    _S675.random_state = random_state_6;
-    return _S675;
+    var _S676 : Selection;
+    _S676.r = r_2;
+    _S676.w_sum = w_sum_0;
+    _S676.color = color_2;
+    _S676.random_state = random_state_6;
+    return _S676;
 }
 
 fn stream( seed_2 : u32,  index_0 : u32) -> u32
 {
-    var _S676 : u32 = hash(index_0);
-    var _S677 : u32 = hash((seed_2 ^ (_S676)));
-    return _S677;
+    var _S677 : u32 = hash(index_0);
+    var _S678 : u32 = hash((seed_2 ^ (_S677)));
+    return _S678;
 }
 
 struct Shift
@@ -2278,40 +2284,40 @@ struct Shift
      jac : f32,
 };
 
-fn Shift_x24init_0( f_6 : vec3<f32>,  jac_1 : f32) -> Shift
+fn Shift_x24init_0( f_7 : vec3<f32>,  jac_1 : f32) -> Shift
 {
-    var _S678 : Shift;
-    _S678.f = f_6;
-    _S678.jac = jac_1;
-    return _S678;
+    var _S679 : Shift;
+    _S679.f = f_7;
+    _S679.jac = jac_1;
+    return _S679;
 }
 
 fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 : vec3<f32>)
 {
-    var _S679 : f32 = rgb_to_greyscale(weight_0);
-    var _S680 : bool = _S679 > 0.0f;
-    var _S681 : bool;
-    if(_S680)
+    var _S680 : f32 = resamplingTarget(weight_0);
+    var _S681 : bool = _S680 > 0.0f;
+    var _S682 : bool;
+    if(_S681)
     {
-        _S681 = _S679 < 3.00000000549775576e+38f;
+        _S682 = _S680 < 3.00000000549775576e+38f;
     }
     else
     {
-        _S681 = false;
+        _S682 = false;
     }
-    var _S682 : bool = !_S681;
-    if(_S682)
+    var _S683 : bool = !_S682;
+    if(_S683)
     {
         return;
     }
-    var _S683 : f32 = (*sel_0).w_sum + _S679;
-    (*sel_0).w_sum = _S683;
-    var _S684 : vec3<f32> = (*sel_0).color + weight_0;
-    (*sel_0).color = _S684;
-    var _S685 : Random = pcg((*sel_0).random_state);
-    (*sel_0).random_state = _S685.state;
-    var _S686 : bool = (_S685.value * (*sel_0).w_sum) <= _S679;
-    if(_S686)
+    var _S684 : f32 = (*sel_0).w_sum + _S680;
+    (*sel_0).w_sum = _S684;
+    var _S685 : vec3<f32> = (*sel_0).color + weight_0;
+    (*sel_0).color = _S685;
+    var _S686 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = _S686.state;
+    var _S687 : bool = (_S686.value * (*sel_0).w_sum) <= _S680;
+    if(_S687)
     {
         (*sel_0).r = candidate_0;
     }
@@ -2321,10 +2327,10 @@ fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 
 fn offerShifted( sel_1 : ptr<function, Selection>,  r_3 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
 {
     var candidate_1 : Reservoir = r_3;
-    var _S687 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
-    candidate_1.f = _S687;
-    var _S688 : f32 = r_3.jac * shifted_0.jac;
-    candidate_1.jac = _S688;
+    var _S688 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S688;
+    var _S689 : f32 = r_3.jac * shifted_0.jac;
+    candidate_1.jac = _S689;
     offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_3.w));
     return;
 }
@@ -2332,164 +2338,164 @@ fn offerShifted( sel_1 : ptr<function, Selection>,  r_3 : Reservoir,  shifted_0 
 fn finalize( sel_2 : Selection,  c_2 : f32) -> Reservoir
 {
     var r_4 : Reservoir = sel_2.r;
-    var _S689 : f32 = rgb_to_greyscale(r_4.f);
-    var _S690 : f32 = sel_2.w_sum / _S689;
-    var _S691 : bool = _S689 > 0.0f;
-    var _S692 : f32 = select(0.0f, _S690, _S691);
-    r_4.w = _S692;
+    var _S690 : f32 = resamplingTarget(r_4.f);
+    var _S691 : f32 = sel_2.w_sum / _S690;
+    var _S692 : bool = _S690 > 0.0f;
+    var _S693 : f32 = select(0.0f, _S691, _S692);
+    r_4.w = _S693;
     r_4.c = c_2;
     return r_4;
 }
 
 fn restir_spatial_0( global_invocation_id_2 : vec3<u32>)
 {
-    var _S693 : vec2<u32> = global_invocation_id_2.xy;
-    var _S694 : vec2<i32> = vec2<i32>(_S693);
-    var _S695 : vec3<f32> = vec3<f32>(0.0f);
-    var _S696 : Domain = Domain_x24init_0(_S695, _S695, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
-    var dom_3 : Domain = _S696;
-    var _S697 : bool = (currentDomain((_S694), &(dom_3)));
-    var _S698 : bool = !_S697;
-    if(_S698)
+    var _S694 : vec2<u32> = global_invocation_id_2.xy;
+    var _S695 : vec2<i32> = vec2<i32>(_S694);
+    var _S696 : vec3<f32> = vec3<f32>(0.0f);
+    var _S697 : Domain = Domain_x24init_0(_S696, _S696, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
+    var dom_3 : Domain = _S697;
+    var _S698 : bool = (currentDomain((_S695), &(dom_3)));
+    var _S699 : bool = !_S698;
+    if(_S699)
     {
-        storeReservoir(reservoir_prev_out, (_S694), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S695, 0.0f, vec4<u32>(u32(0)), _S695, _S695)), (dom_3.hit));
-        var _S699 : vec2<f32> = vec2<f32>(_S693);
-        var _S700 : vec2<u32> = (uniforms_uint.render_size);
-        var _S701 : vec2<f32> = _S699 / vec2<f32>(_S700.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
-        var _S702 : vec3<f32> = vec3<f32>(_S701, 1.0f);
-        var _S703 : mat3x3<f32> = (uniforms_float.inv_view_matrix);
-        var _S704 : vec3<f32> = (normalize(((((_S703) * (_S702))))));
-        var _S705 : vec3<f32> = environment_0(_S704);
-        textureStore(compute_out, (_S694), (u32(0)), (vec4<f32>(_S705, 1.0f)));
-        var _S706 : u32 = (uniforms_uint.is_temporal);
-        var _S707 : bool = _S706 == u32(1);
-        if(_S707)
+        storeReservoir(reservoir_prev_out, (_S695), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S696, 0.0f, vec4<u32>(u32(0)), _S696, _S696)), (dom_3.hit));
+        var _S700 : vec2<f32> = vec2<f32>(_S694);
+        var _S701 : vec2<u32> = (uniforms_uint.render_size);
+        var _S702 : vec2<f32> = _S700 / vec2<f32>(_S701.xy) * vec2<f32>(2.0f, -2.0f) + vec2<f32>(-1.0f, 1.0f);
+        var _S703 : vec3<f32> = vec3<f32>(_S702, 1.0f);
+        var _S704 : mat3x3<f32> = (uniforms_float.inv_view_matrix);
+        var _S705 : vec3<f32> = (normalize(((((_S704) * (_S703))))));
+        var _S706 : vec3<f32> = environment_0(_S705);
+        textureStore(compute_out, (_S695), (u32(0)), (vec4<f32>(_S706, 1.0f)));
+        var _S707 : u32 = (uniforms_uint.is_temporal);
+        var _S708 : bool = _S707 == u32(1);
+        if(_S708)
         {
-            textureStore(compute_out, (_S694), (u32(1)), (vec4<f32>(0.0f)));
+            textureStore(compute_out, (_S695), (u32(1)), (vec4<f32>(0.0f)));
         }
         return;
     }
-    var _S708 : Reservoir = (loadReservoir(reservoir_temp, (_S694)));
+    var _S709 : Reservoir = (loadReservoir(reservoir_temp, (_S695)));
     var t_13 : u32 = u32(0);
     var count_3 : f32 = 0.0f;
-    var c_sum_0 : f32 = _S708.c;
+    var c_sum_0 : f32 = _S709.c;
     loop
     {
-        var _S709 : u32 = (uniforms_uint.restir_neighbours);
-        if(t_13 < _S709)
+        var _S710 : u32 = (uniforms_uint.restir_neighbours);
+        if(t_13 < _S710)
         {
         }
         else
         {
             break;
         }
-        var _S710 : vec2<i32> = partner_0(_S694, t_13);
-        var neighbor_0 : Domain = _S696;
-        var _S711 : bool = (currentDomain((_S710), &(neighbor_0)));
-        if(_S711)
+        var _S711 : vec2<i32> = partner_0(_S695, t_13);
+        var neighbor_0 : Domain = _S697;
+        var _S712 : bool = (currentDomain((_S711), &(neighbor_0)));
+        if(_S712)
         {
             var count_4 : f32 = count_3 + 1.0f;
-            var _S712 : vec4<u32> = (textureLoad(reservoir_temp, (_S710), (u32(0)), 0));
-            var c_sum_1 : f32 = c_sum_0 + (bitcast<f32>((_S712.w)));
+            var _S713 : vec4<u32> = (textureLoad(reservoir_temp, (_S711), (u32(0)), 0));
+            var c_sum_1 : f32 = c_sum_0 + (bitcast<f32>((_S713.w)));
             count_3 = count_4;
             c_sum_0 = c_sum_1;
         }
         var t_14 : u32 = t_13 + u32(1);
         t_13 = t_14;
     }
-    var _S713 : f32 = _S708.c / max(count_3, 1.0f);
-    var _S714 : f32 = rgb_to_greyscale(_S708.f);
-    var _S715 : bool = count_3 == 0.0f;
-    var _S716 : f32 = select(0.0f, 1.0f, _S715);
-    var _S717 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S695, 0.0f, vec4<u32>(u32(0)), _S695, _S695), 0.0f, _S695, u32(0));
-    var sel_3 : Selection = _S717;
-    var _S718 : u32 = (uniforms_uint.frame);
-    var _S719 : u32 = hash(_S718);
-    var _S720 : u32 = global_invocation_id_2.x;
-    var _S721 : vec2<u32> = (uniforms_uint.render_size);
-    var _S722 : u32 = stream(_S719, _S720 + _S721.x * global_invocation_id_2.y);
-    var _S723 : u32 = stream(_S722, u32(195));
-    sel_3.random_state = _S723;
+    var _S714 : f32 = _S709.c / max(count_3, 1.0f);
+    var _S715 : f32 = resamplingTarget(_S709.f);
+    var _S716 : bool = count_3 == 0.0f;
+    var _S717 : f32 = select(0.0f, 1.0f, _S716);
+    var _S718 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S696, 0.0f, vec4<u32>(u32(0)), _S696, _S696), 0.0f, _S696, u32(0));
+    var sel_3 : Selection = _S718;
+    var _S719 : u32 = (uniforms_uint.frame);
+    var _S720 : u32 = hash(_S719);
+    var _S721 : u32 = global_invocation_id_2.x;
+    var _S722 : vec2<u32> = (uniforms_uint.render_size);
+    var _S723 : u32 = stream(_S720, _S721 + _S722.x * global_invocation_id_2.y);
+    var _S724 : u32 = stream(_S723, u32(195));
+    sel_3.random_state = _S724;
     t_13 = u32(0);
-    var canonical_mis_0 : f32 = _S716;
+    var canonical_mis_0 : f32 = _S717;
     loop
     {
-        var _S724 : u32 = (uniforms_uint.restir_neighbours);
-        if(t_13 < _S724)
+        var _S725 : u32 = (uniforms_uint.restir_neighbours);
+        if(t_13 < _S725)
         {
         }
         else
         {
             break;
         }
-        var _S725 : vec2<i32> = partner_0(_S694, t_13);
-        var neighbor_dom_0 : Domain = _S696;
-        var _S726 : bool = (currentDomain((_S725), &(neighbor_dom_0)));
-        if(_S726)
+        var _S726 : vec2<i32> = partner_0(_S695, t_13);
+        var neighbor_dom_0 : Domain = _S697;
+        var _S727 : bool = (currentDomain((_S726), &(neighbor_dom_0)));
+        if(_S727)
         {
-            var _S727 : Reservoir = (loadReservoir(reservoir_temp, (_S725)));
-            var _S728 : vec4<u32> = (textureLoad(shift_data, (_S725), (t_13), 0));
-            var _S729 : vec4<f32> = (bitcast<vec4<f32>>((_S728)));
-            var _S730 : vec4<u32> = (textureLoad(shift_data, (_S694), (t_13), 0));
-            var _S731 : vec4<f32> = (bitcast<vec4<f32>>((_S730)));
-            var _S732 : f32 = (_S727.c + _S713) / c_sum_0;
-            var _S733 : bool = _S714 > 0.0f;
+            var _S728 : Reservoir = (loadReservoir(reservoir_temp, (_S726)));
+            var _S729 : vec4<u32> = (textureLoad(shift_data, (_S726), (t_13), 0));
+            var _S730 : vec4<f32> = (bitcast<vec4<f32>>((_S729)));
+            var _S731 : vec4<u32> = (textureLoad(shift_data, (_S695), (t_13), 0));
+            var _S732 : vec4<f32> = (bitcast<vec4<f32>>((_S731)));
+            var _S733 : f32 = (_S728.c + _S714) / c_sum_0;
+            var _S734 : bool = _S715 > 0.0f;
             var canonical_mis_1 : f32;
-            if(_S733)
+            if(_S734)
             {
-                var _S734 : f32 = _S732 * _S713 * _S714;
-                var _S735 : f32 = _S713 * _S714;
-                var _S736 : f32 = rgb_to_greyscale(_S731.xyz);
-                var canonical_mis_2 : f32 = canonical_mis_0 + _S734 / (_S735 + _S727.c * _S736);
+                var _S735 : f32 = _S733 * _S714 * _S715;
+                var _S736 : f32 = _S714 * _S715;
+                var _S737 : f32 = resamplingTarget(_S732.xyz);
+                var canonical_mis_2 : f32 = canonical_mis_0 + _S735 / (_S736 + _S728.c * _S737);
                 canonical_mis_1 = canonical_mis_2;
             }
             else
             {
                 canonical_mis_1 = canonical_mis_0;
             }
-            var _S737 : vec3<f32> = _S729.xyz;
-            var _S738 : Shift = Shift_x24init_0(_S737, _S729.w);
-            var _S739 : f32 = _S732 * _S727.c;
-            var _S740 : f32 = rgb_to_greyscale(_S727.f);
-            var _S741 : f32 = _S739 * _S740;
-            var _S742 : f32 = rgb_to_greyscale(_S727.f);
-            var _S743 : f32 = _S727.c * _S742;
-            var _S744 : f32 = rgb_to_greyscale(_S737);
-            offerShifted(&(sel_3), _S727, _S738, _S741 / (_S743 + _S713 * _S744));
+            var _S738 : vec3<f32> = _S730.xyz;
+            var _S739 : Shift = Shift_x24init_0(_S738, _S730.w);
+            var _S740 : f32 = _S733 * _S728.c;
+            var _S741 : f32 = resamplingTarget(_S728.f);
+            var _S742 : f32 = _S740 * _S741;
+            var _S743 : f32 = resamplingTarget(_S728.f);
+            var _S744 : f32 = _S728.c * _S743;
+            var _S745 : f32 = resamplingTarget(_S738);
+            offerShifted(&(sel_3), _S728, _S739, _S742 / (_S744 + _S714 * _S745));
             canonical_mis_0 = canonical_mis_1;
         }
         var t_15 : u32 = t_13 + u32(1);
         t_13 = t_15;
     }
-    offerShifted(&(sel_3), _S708, Shift_x24init_0(_S708.f, 1.0f), canonical_mis_0);
-    var _S745 : Reservoir = finalize(sel_3, c_sum_0);
-    storeReservoir(reservoir_prev_out, (_S694), (_S745), (dom_3.hit));
-    textureStore(reservoir_prev_out, (_S694), (u32(5)), (vec4<u32>((bitcast<vec2<u32>>((dom_3.hit.uv))), u32(0), u32(0))));
-    var _S746 : Surface = (surfaceAt((dom_3.hit), (dom_3.x1), (sel_3.random_state)));
-    var _S747 : vec3<f32> = (normalize((dom_3.x0 - dom_3.x1)));
-    var _S748 : f32 = (sign((dot(_S747, _S746.smooth_n))));
-    var _S749 : vec3<f32> = _S746.material.emissive * vec3<f32>(max(_S748, 0.0f));
-    var _S750 : vec3<f32> = select(_S749, _S695, _S746.skip);
-    var _S751 : vec3<f32> = clamp(sel_3.color + _S750, _S695, vec3<f32>(65519.0f));
-    textureStore(compute_out, (_S694), (u32(0)), (vec4<f32>(_S751, 1.0f)));
-    var _S752 : u32 = (uniforms_uint.is_temporal);
-    var _S753 : bool = _S752 == u32(1);
-    if(_S753)
+    offerShifted(&(sel_3), _S709, Shift_x24init_0(_S709.f, 1.0f), canonical_mis_0);
+    var _S746 : Reservoir = finalize(sel_3, c_sum_0);
+    storeReservoir(reservoir_prev_out, (_S695), (_S746), (dom_3.hit));
+    textureStore(reservoir_prev_out, (_S695), (u32(5)), (vec4<u32>((bitcast<vec2<u32>>((dom_3.hit.uv))), u32(0), u32(0))));
+    var _S747 : Surface = (surfaceAt((dom_3.hit), (dom_3.x1), (sel_3.random_state)));
+    var _S748 : vec3<f32> = (normalize((dom_3.x0 - dom_3.x1)));
+    var _S749 : f32 = (sign((dot(_S748, _S747.smooth_n))));
+    var _S750 : vec3<f32> = _S747.material.emissive * vec3<f32>(max(_S749, 0.0f));
+    var _S751 : vec3<f32> = select(_S750, _S696, _S747.skip);
+    var _S752 : vec3<f32> = clamp(sel_3.color + _S751, vec3<f32>(-65519.0f), vec3<f32>(65519.0f));
+    textureStore(compute_out, (_S695), (u32(0)), (vec4<f32>(_S752, 1.0f)));
+    var _S753 : u32 = (uniforms_uint.is_temporal);
+    var _S754 : bool = _S753 == u32(1);
+    if(_S754)
     {
-        textureStore(compute_out, (_S694), (u32(1)), (vec4<f32>(dom_3.x1, f32(dom_3.hit.instance_index))));
+        textureStore(compute_out, (_S695), (u32(1)), (vec4<f32>(dom_3.x1, f32(dom_3.hit.instance_index))));
     }
     return;
 }
 
 fn NEEVertex_x24init_0( none_0 : bool,  pdf_2 : f32,  origin_5 : vec3<f32>,  smooth_n_3 : vec3<f32>,  start_6 : vec3<f32>) -> NEEVertex
 {
-    var _S754 : NEEVertex;
-    _S754.none = none_0;
-    _S754.pdf = pdf_2;
-    _S754.origin = origin_5;
-    _S754.smooth_n = smooth_n_3;
-    _S754.start = start_6;
-    return _S754;
+    var _S755 : NEEVertex;
+    _S755.none = none_0;
+    _S755.pdf = pdf_2;
+    _S755.origin = origin_5;
+    _S755.smooth_n = smooth_n_3;
+    _S755.start = start_6;
+    return _S755;
 }
 
 struct Vertex
@@ -2503,136 +2509,203 @@ struct Vertex
 
 fn Vertex_x24init_0( rough_0 : bool,  lobe_0 : u32,  pdf_3 : f32,  cos_0 : f32,  inside_0 : bool) -> Vertex
 {
-    var _S755 : Vertex;
-    _S755.rough = rough_0;
-    _S755.lobe = lobe_0;
-    _S755.pdf = pdf_3;
-    _S755.cos = cos_0;
-    _S755.inside = inside_0;
-    return _S755;
+    var _S756 : Vertex;
+    _S756.rough = rough_0;
+    _S756.lobe = lobe_0;
+    _S756.pdf = pdf_3;
+    _S756.cos = cos_0;
+    _S756.inside = inside_0;
+    return _S756;
 }
 
-fn Material_x24init_0( albedo_1 : vec3<f32>,  emissive_0 : vec3<f32>,  roughness_0 : f32,  metallic_0 : f32,  transmission_0 : f32,  ior_0 : f32,  absorption_0 : vec3<f32>,  specular_tint_0 : vec3<f32>,  specular_level_0 : f32,  translucent_0 : vec3<f32>,  sheen_2 : vec3<f32>,  sheen_roughness_0 : f32,  anisotropy_0 : f32,  anisotropic_rotation_0 : f32,  tangent_2 : vec3<f32>,  velvet_0 : f32) -> Material
+fn Material_x24init_0( albedo_1 : vec3<f32>,  emissive_0 : vec3<f32>,  roughness_0 : f32,  metallic_0 : f32,  transmission_0 : f32,  ior_0 : f32,  absorption_0 : vec3<f32>,  specular_tint_0 : vec3<f32>,  specular_level_0 : f32,  translucent_0 : vec3<f32>,  sheen_2 : vec3<f32>,  sheen_roughness_0 : f32,  anisotropy_0 : f32,  anisotropic_rotation_0 : f32,  tangent_2 : vec3<f32>,  velvet_0 : f32,  dispersion_0 : f32) -> Material
 {
-    var _S756 : Material;
-    _S756.albedo = albedo_1;
-    _S756.emissive = emissive_0;
-    _S756.roughness = roughness_0;
-    _S756.metallic = metallic_0;
-    _S756.transmission = transmission_0;
-    _S756.ior = ior_0;
-    _S756.absorption = absorption_0;
-    _S756.specular_tint = specular_tint_0;
-    _S756.specular_level = specular_level_0;
-    _S756.translucent = translucent_0;
-    _S756.sheen = sheen_2;
-    _S756.sheen_roughness = sheen_roughness_0;
-    _S756.anisotropy = anisotropy_0;
-    _S756.anisotropic_rotation = anisotropic_rotation_0;
-    _S756.tangent = tangent_2;
-    _S756.velvet = velvet_0;
-    return _S756;
+    var _S757 : Material;
+    _S757.albedo = albedo_1;
+    _S757.emissive = emissive_0;
+    _S757.roughness = roughness_0;
+    _S757.metallic = metallic_0;
+    _S757.transmission = transmission_0;
+    _S757.ior = ior_0;
+    _S757.absorption = absorption_0;
+    _S757.specular_tint = specular_tint_0;
+    _S757.specular_level = specular_level_0;
+    _S757.translucent = translucent_0;
+    _S757.sheen = sheen_2;
+    _S757.sheen_roughness = sheen_roughness_0;
+    _S757.anisotropy = anisotropy_0;
+    _S757.anisotropic_rotation = anisotropic_rotation_0;
+    _S757.tangent = tangent_2;
+    _S757.velvet = velvet_0;
+    _S757.dispersion = dispersion_0;
+    return _S757;
 }
 
 fn Surface_x24init_0( smooth_n_4 : vec3<f32>,  geometry_n_2 : vec3<f32>,  geometry_offset_2 : f32,  material_10 : Material,  skip_0 : bool,  random_state_7 : u32) -> Surface
 {
-    var _S757 : Surface;
-    _S757.smooth_n = smooth_n_4;
-    _S757.geometry_n = geometry_n_2;
-    _S757.geometry_offset = geometry_offset_2;
-    _S757.material = material_10;
-    _S757.skip = skip_0;
-    _S757.random_state = random_state_7;
-    return _S757;
+    var _S758 : Surface;
+    _S758.smooth_n = smooth_n_4;
+    _S758.geometry_n = geometry_n_2;
+    _S758.geometry_offset = geometry_offset_2;
+    _S758.material = material_10;
+    _S758.skip = skip_0;
+    _S758.random_state = random_state_7;
+    return _S758;
 }
 
 fn facingSign( transmission_1 : f32,  face_0 : vec3<f32>,  direction_0 : vec3<f32>) -> f32
 {
-    var _S758 : bool = transmission_1 > 0.0f;
-    var _S759 : bool;
-    if(_S758)
-    {
-        _S759 = true;
-    }
-    else
-    {
-        _S759 = (dot(face_0, direction_0)) < 0.0f;
-    }
-    var _S760 : f32;
+    var _S759 : bool = transmission_1 > 0.0f;
+    var _S760 : bool;
     if(_S759)
     {
-        _S760 = 1.0f;
+        _S760 = true;
     }
     else
     {
-        _S760 = -1.0f;
+        _S760 = (dot(face_0, direction_0)) < 0.0f;
     }
-    return _S760;
+    var _S761 : f32;
+    if(_S760)
+    {
+        _S761 = 1.0f;
+    }
+    else
+    {
+        _S761 = -1.0f;
+    }
+    return _S761;
 }
 
 fn facingRay_0( surface_3 : Surface,  dir_9 : vec3<f32>) -> Surface
 {
-    var _S761 : f32 = facingSign(surface_3.material.transmission, surface_3.geometry_n, dir_9);
-    var _S762 : vec3<f32> = vec3<f32>(_S761);
-    return Surface_x24init_0(surface_3.smooth_n * _S762, surface_3.geometry_n * _S762, surface_3.geometry_offset, surface_3.material, surface_3.skip, surface_3.random_state);
+    var _S762 : f32 = facingSign(surface_3.material.transmission, surface_3.geometry_n, dir_9);
+    var _S763 : vec3<f32> = vec3<f32>(_S762);
+    return Surface_x24init_0(surface_3.smooth_n * _S763, surface_3.geometry_n * _S763, surface_3.geometry_offset, surface_3.material, surface_3.skip, surface_3.random_state);
 }
 
 fn beerLambert( distance_1 : f32,  absorption_1 : vec3<f32>) -> vec3<f32>
 {
-    var _S763 : vec3<f32> = max(absorption_1, vec3<f32>(0.0000152587890625f));
-    return exp(vec3<f32>(distance_1) * log(_S763));
+    var _S764 : vec3<f32> = max(absorption_1, vec3<f32>(0.0000152587890625f));
+    return exp(vec3<f32>(distance_1) * log(_S764));
 }
 
-fn vertexEta( material_11 : Material,  n_dot_v_0 : f32) -> vec2<f32>
+fn dispersive( material_11 : Material) -> bool
 {
-    var _S764 : bool = n_dot_v_0 < 0.0f;
-    var _S765 : f32 = select(1.0f, material_11.ior, _S764);
-    var _S766 : f32 = select(material_11.ior, 1.0f, _S764);
-    return vec2<f32>(_S765, _S766);
-}
-
-fn neeDecision( material_12 : Material,  n_dot_v_1 : f32,  eta_i_8 : f32,  eta_o_8 : f32) -> bool
-{
-    var _S767 : f32 = fresnel(abs(n_dot_v_1), eta_i_8, eta_o_8);
-    var _S768 : vec3<f32> = (mix((vec3<f32>(_S767)), (material_12.albedo), (material_12.metallic)));
-    var _S769 : f32 = rgb_to_greyscale(_S768);
-    var _S770 : f32 = max((1.0f - _S769) * (1.0f - material_12.metallic) * (1.0f - material_12.transmission), 0.0f);
-    var _S771 : bool = _S770 > 0.03999999910593033f;
-    var _S772 : bool;
-    if(_S771)
+    var _S765 : bool = (material_11.dispersion) > 0.0f;
+    var _S766 : bool;
+    if(_S765)
     {
-        _S772 = true;
+        _S766 = (material_11.ior) != 1.0f;
     }
     else
     {
-        _S772 = (material_12.roughness) > 0.20000000298023224f;
+        _S766 = false;
     }
-    return _S772;
+    return _S766;
 }
 
-fn isTranslucent_0( material_13 : Material) -> bool
+var<private> WAVELENGTH_CDF_0 : array<f32, i32(81)> = array<f32, i32(81)>( 0.0f, 0.00006510900129797f, 0.00018772999465f, 0.00045414001215249f, 0.00105610000900924f, 0.00218509999103844f, 0.00430169980973005f, 0.00824129953980446f, 0.01521500013768673f, 0.02649199962615967f, 0.04202799871563911f, 0.06183499842882156f, 0.08581099659204483f, 0.11225000023841858f, 0.1395999938249588f, 0.16642999649047852f, 0.19130000472068787f, 0.21376000344753265f, 0.23378999531269073f, 0.25200000405311584f, 0.26912999153137207f, 0.28512999415397644f, 0.3002299964427948f, 0.31536000967025757f, 0.33153998851776123f, 0.34944000840187073f, 0.36937999725341797f, 0.39127999544143677f, 0.41528999805450439f, 0.4412899911403656f, 0.46840000152587891f, 0.49524000287055969f, 0.52063000202178955f, 0.54398000240325928f, 0.56476002931594849f, 0.58348000049591064f, 0.60238999128341675f, 0.62285000085830688f, 0.64474999904632568f, 0.66809999942779541f, 0.69291001558303833f, 0.71846002340316772f, 0.74393999576568604f, 0.76951998472213745f, 0.79534000158309937f, 0.82078999280929565f, 0.8454899787902832f, 0.86935001611709595f, 0.89191997051239014f, 0.91228997707366943f, 0.92987000942230225f, 0.94483000040054321f, 0.95753002166748047f, 0.96790999174118042f, 0.97605997323989868f, 0.98237001895904541f, 0.98721998929977417f, 0.9908599853515625f, 0.99356001615524292f, 0.99550998210906982f, 0.9969099760055542f, 0.99787998199462891f, 0.99852001667022705f, 0.99895000457763672f, 0.99924999475479126f, 0.99948000907897949f, 0.99963998794555664f, 0.99975001811981201f, 0.99983000755310059f, 0.99988001585006714f, 0.99990999698638916f, 0.99993997812271118f, 0.99996000528335571f, 0.99997997283935547f, 0.99998998641967773f, 0.99998998641967773f, 0.99998998641967773f, 1.0f, 1.0f, 1.0f, 1.0f );
+fn sampleWavelength( u_1 : f32) -> vec2<f32>
 {
-    var _S773 : f32 = rgb_to_greyscale(material_13.translucent);
-    var _S774 : bool = _S773 > 0.0f;
-    return _S774;
+    var low_1 : u32 = u32(0);
+    var high_1 : u32 = u32(79);
+    loop
+    {
+        if(low_1 < high_1)
+        {
+        }
+        else
+        {
+            break;
+        }
+        var _S767 : u32 = (low_1 + high_1 + u32(1)) / u32(2);
+        var _S768 : bool = (WAVELENGTH_CDF_0[_S767]) <= u_1;
+        if(_S768)
+        {
+            low_1 = _S767;
+        }
+        else
+        {
+            var _S769 : u32 = _S767 - u32(1);
+            high_1 = _S769;
+        }
+    }
+    var _S770 : u32 = low_1;
+    var _S771 : f32 = WAVELENGTH_CDF_0[low_1 + u32(1)] - WAVELENGTH_CDF_0[low_1];
+    return vec2<f32>(0.37999999523162842f + 0.00499999988824129f * (f32(low_1) + (u_1 - WAVELENGTH_CDF_0[_S770]) / _S771), _S771 / 0.00499999988824129f);
+}
+
+var<private> WAVELENGTH_WEIGHTS_0 : array<f32, i32(243)> = array<f32, i32(243)>( 0.00547470012679696f, -0.00465690018609166f, 0.03257500007748604f, 0.00934640038758516f, -0.00796370021998882f, 0.05577300116419792f, 0.01846100017428398f, -0.01579399965703487f, 0.11072999984025955f, 0.0416410006582737f, -0.03577499836683273f, 0.2513900101184845f, 0.09349299967288971f, -0.08071800321340561f, 0.56742000579833984f, 0.1585099995136261f, -0.13764999806880951f, 0.97018998861312866f, 0.30943000316619873f, -0.27083000540733337f, 1.91740000247955322f, 0.55217999219894409f, -0.48754000663757324f, 3.46889996528625488f, 0.95016998052597046f, -0.84802001714706421f, 6.09439992904663086f, 1.42110002040863037f, -1.28929996490478516f, 9.45199966430664062f, 1.73409998416900635f, -1.6062999963760376f, 12.12800025939941406f, 2.08030009269714355f, -1.98810005187988281f, 15.68700027465820312f, 2.20600008964538574f, -2.20120000839233398f, 18.47699928283691406f, 2.03040003776550293f, -2.17700004577636719f, 19.92700004577636719f, 1.63429999351501465f, -2.00340008735656738f, 20.86899948120117188f, 0.99410998821258545f, -1.62629997730255127f, 20.57799911499023438f, 0.20011000335216522f, -1.11409997940063477f, 19.72100067138671875f, -0.67960000038146973f, -0.45403000712394714f, 17.77599906921386719f, -1.61679995059967041f, 0.37860000133514404f, 14.71500015258789062f, -2.53410005569458008f, 1.27540004253387451f, 11.86499977111816406f, -3.39079999923706055f, 2.2146000862121582f, 9.17669963836669922f, -4.03749990463256836f, 3.0522000789642334f, 6.59509992599487305f, -4.61299991607666016f, 3.89779996871948242f, 4.64589977264404297f, -5.43039989471435547f, 5.0121002197265625f, 3.3199000358581543f, -6.37769985198974609f, 6.33809995651245117f, 2.29699993133544922f, -7.44140005111694336f, 7.91739988327026367f, 1.45389997959136963f, -8.38580036163330078f, 9.60109996795654297f, 0.66465997695922852f, -9.0167999267578125f, 11.23999977111816406f, -0.04403600096702576f, -9.17749977111816406f, 12.63199996948242188f, -0.58126997947692871f, -8.97550010681152344f, 13.91499996185302734f, -0.95730000734329224f, -8.25290012359619141f, 14.86200046539306641f, -1.24430000782012939f, -6.92129993438720703f, 15.03899955749511719f, -1.43069994449615479f, -5.29169988632202148f, 14.90900039672851562f, -1.55149996280670166f, -3.43219995498657227f, 14.70499992370605469f, -1.63569998741149902f, -1.27190005779266357f, 14.24400043487548828f, -1.67030000686645508f, 1.15170001983642578f, 13.32199954986572266f, -1.636199951171875f, 3.73889994621276855f, 12.21199989318847656f, -1.56920003890991211f, 6.43590021133422852f, 10.94699954986572266f, -1.47730004787445068f, 9.16440010070800781f, 9.54769992828369141f, -1.36399996280670166f, 12.02000045776367188f, 8.18799972534179688f, -1.25450003147125244f, 14.78699970245361328f, 6.74429988861083984f, -1.13110005855560303f, 16.72299957275390625f, 5.08780002593994141f, -0.96561002731323242f, 18.14299964904785156f, 3.57019996643066406f, -0.80725997686386108f, 19.91900062561035156f, 2.36269998550415039f, -0.69273000955581665f, 21.05500030517578125f, 1.31369996070861816f, -0.58597999811172485f, 21.3899993896484375f, 0.42390000820159912f, -0.48298001289367676f, 20.99300003051757812f, -0.23857000470161438f, -0.39412000775337219f, 19.82200050354003906f, -0.6866300106048584f, -0.31501999497413635f, 18.12000083923339844f, -0.9412500262260437f, -0.24890999495983124f, 15.7089996337890625f, -1.02020001411437988f, -0.19076000154018402f, 13.19799995422363281f, -0.98919999599456787f, -0.14401000738143921f, 11.23999977111816406f, -0.93347001075744629f, -0.11133000254631042f, 9.36649990081787109f, -0.83820998668670654f, -0.08524099737405777f, 7.41249990463256836f, -0.70064002275466919f, -0.06283199787139893f, 5.71229982376098633f, -0.56079000234603882f, -0.04586699977517128f, 4.42280006408691406f, -0.44653001427650452f, -0.03396600112318993f, 3.34489989280700684f, -0.34457001090049744f, -0.02482499927282333f, 2.49309992790222168f, -0.26017999649047852f, -0.01808100007474422f, 1.82239997386932373f, -0.1921599954366684f, -0.01296999957412481f, 1.29499995708465576f, -0.13766999542713165f, -0.00907570030540228f, 0.92928999662399292f, -0.09956400096416473f, -0.00641620019450784f, 0.61835998296737671f, -0.06671299785375595f, -0.00421149982139468f, 0.40211999416351318f, -0.04354599863290787f, -0.00271830009296536f, 0.2844499945640564f, -0.03087200038135052f, -0.00191440002527088f, 0.20672999322414398f, -0.02246100082993507f, -0.00138829997740686f, 0.15044000744819641f, -0.01634499989449978f, -0.00101030000951141f, 0.10942000150680542f, -0.01188699994236231f, -0.0007347899954766f, 0.07099699974060059f, -0.00771349994465709f, -0.00047679000999779f, 0.04539500176906586f, -0.00493190018460155f, -0.00030484999297187f, 0.03424099832773209f, -0.00372010003775358f, -0.00022995000472292f, 0.02557599917054176f, -0.00277870008721948f, -0.00017175999528263f, 0.01842200011014938f, -0.00200140010565519f, -0.0001237099932041f, 0.01316899992525578f, -0.00143079995177686f, -0.00008843900286593f, 0.00838890019804239f, -0.00091141002485529f, -0.00005633700129692f, 0.00537079991772771f, -0.00058350997278467f, -0.00003606799873523f, 0.00328280008397996f, -0.00035665999166667f, -0.00002204600059486f, 0.00196009990759194f, -0.00021296000340953f, -0.00001316300040344f, 0.00168939994182438f, -0.00018354000349063f, -0.00001134499962063f, 0.00141050003003329f, -0.00015325000276789f, -0.00000947250009631f, 0.00097123999148607f, -0.00010551999730524f, -6.52239987175562419e-06f, 0.00066868000430986f, -0.00007264900341397f, -4.49060007667867467e-06f );
+fn wavelengthWeights( wavelength_0 : f32) -> vec3<f32>
+{
+    var _S772 : f32 = clamp((wavelength_0 - 0.37999999523162842f) / 0.00499999988824129f, 0.0f, 80.0f);
+    var _S773 : u32 = min(u32(_S772), u32(79));
+    var _S774 : u32 = u32(3) * _S773;
+    var _S775 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S774], WAVELENGTH_WEIGHTS_0[_S774 + u32(1)], WAVELENGTH_WEIGHTS_0[_S774 + u32(2)]);
+    var _S776 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S774 + u32(3)], WAVELENGTH_WEIGHTS_0[_S774 + u32(4)], WAVELENGTH_WEIGHTS_0[_S774 + u32(5)]);
+    return _S775 + (_S776 - _S775) * vec3<f32>((_S772 - f32(_S773)));
+}
+
+fn dispersedIor( ior_1 : f32,  dispersion_1 : f32,  wavelength_1 : f32) -> f32
+{
+    var _S777 : f32 = (ior_1 - 1.0f) * dispersion_1 / 1.90962409973144531f;
+    var _S778 : f32 = _S777 * (1.0f / (wavelength_1 * wavelength_1) - 2.89662933349609375f);
+    var _S779 : bool = dispersion_1 > 0.0f;
+    var _S780 : f32 = select(0.0f, _S778, _S779);
+    return ior_1 + _S780;
+}
+
+fn vertexEta( material_12 : Material,  n_dot_v_0 : f32) -> vec2<f32>
+{
+    var _S781 : bool = n_dot_v_0 < 0.0f;
+    var _S782 : f32 = select(1.0f, material_12.ior, _S781);
+    var _S783 : f32 = select(material_12.ior, 1.0f, _S781);
+    return vec2<f32>(_S782, _S783);
+}
+
+fn neeDecision( material_13 : Material,  n_dot_v_1 : f32,  eta_i_8 : f32,  eta_o_8 : f32) -> bool
+{
+    var _S784 : f32 = fresnel(abs(n_dot_v_1), eta_i_8, eta_o_8);
+    var _S785 : vec3<f32> = (mix((vec3<f32>(_S784)), (material_13.albedo), (material_13.metallic)));
+    var _S786 : f32 = rgb_to_greyscale(_S785);
+    var _S787 : f32 = max((1.0f - _S786) * (1.0f - material_13.metallic) * (1.0f - material_13.transmission), 0.0f);
+    var _S788 : bool = _S787 > 0.03999999910593033f;
+    var _S789 : bool;
+    if(_S788)
+    {
+        _S789 = true;
+    }
+    else
+    {
+        _S789 = (material_13.roughness) > 0.20000000298023224f;
+    }
+    return _S789;
+}
+
+fn isTranslucent_0( material_14 : Material) -> bool
+{
+    var _S790 : f32 = rgb_to_greyscale(material_14.translucent);
+    var _S791 : bool = _S790 > 0.0f;
+    return _S791;
 }
 
 fn safeDivide( a_6 : vec3<f32>,  b_2 : vec3<f32>) -> vec3<f32>
 {
-    var _S775 : vec3<f32> = a_6 / b_2;
-    var _S776 : vec3<f32> = vec3<f32>(0.0f);
-    var _S777 : vec3<bool> = b_2 == _S776;
-    var _S778 : vec3<f32> = select(_S775, _S776, _S777);
-    return _S778;
+    var _S792 : vec3<f32> = a_6 / b_2;
+    var _S793 : vec3<f32> = vec3<f32>(0.0f);
+    var _S794 : vec3<bool> = b_2 == _S793;
+    var _S795 : vec3<f32> = select(_S792, _S793, _S794);
+    return _S795;
 }
 
-fn withEnd( r_5 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_7 : vec3<f32>) -> Reservoir
+fn withEnd( r_5 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_8 : vec3<f32>) -> Reservoir
 {
     var candidate_2 : Reservoir = r_5;
-    var _S779 : u32 = (insertBits((r_5.path), (end_0), (u32(0)), (u32(5))));
-    var _S780 : u32 = (insertBits((_S779), (end_type_0), (u32(12)), (u32(3))));
-    candidate_2.path = _S780;
-    candidate_2.f = f_7;
+    var _S796 : u32 = (insertBits((r_5.path), (end_0), (u32(0)), (u32(5))));
+    var _S797 : u32 = (insertBits((_S796), (end_type_0), (u32(12)), (u32(3))));
+    candidate_2.path = _S797;
+    candidate_2.f = f_8;
     return candidate_2;
 }
 
@@ -2648,167 +2721,167 @@ struct SampleBSDF
 
 fn SampleBSDF_x24init_0( unit_direction_1 : vec3<f32>,  throughput_0 : vec3<f32>,  random_state_8 : u32,  refracted_3 : bool,  lobe_1 : u32,  pdf_4 : f32) -> SampleBSDF
 {
-    var _S781 : SampleBSDF;
-    _S781.unit_direction = unit_direction_1;
-    _S781.throughput = throughput_0;
-    _S781.random_state = random_state_8;
-    _S781.refracted = refracted_3;
-    _S781.lobe = lobe_1;
-    _S781.pdf = pdf_4;
-    return _S781;
+    var _S798 : SampleBSDF;
+    _S798.unit_direction = unit_direction_1;
+    _S798.throughput = throughput_0;
+    _S798.random_state = random_state_8;
+    _S798.refracted = refracted_3;
+    _S798.lobe = lobe_1;
+    _S798.pdf = pdf_4;
+    return _S798;
 }
 
-fn sheenVelvetSample( n_i_8 : vec3<f32>,  n_i_dot_v_5 : f32,  alpha_13 : f32,  material_14 : Material,  lobes_9 : BSDFLobes,  eta_i_9 : f32,  eta_o_9 : f32,  random_state_9 : u32) -> SampleBSDF
+fn sheenVelvetSample( n_i_8 : vec3<f32>,  n_i_dot_v_5 : f32,  alpha_13 : f32,  material_15 : Material,  lobes_9 : BSDFLobes,  eta_i_9 : f32,  eta_o_9 : f32,  random_state_9 : u32) -> SampleBSDF
 {
-    var _S782 : vec3<f32> = vec3<f32>(1.0f);
-    var _S783 : SampleBSDF = SampleBSDF_x24init_0(_S782, _S782, u32(0), false, u32(0), 0.0f);
-    var sample_1 : SampleBSDF = _S783;
-    var _S784 : Random = pcg(random_state_9);
-    var _S785 : Random = pcg(_S784.state);
-    sample_1.random_state = _S785.state;
-    var _S786 : f32 = _S784.value;
-    var _S787 : f32 = sqrt(max(0.0f, 1.0f - _S786 * _S786));
-    var _S788 : f32 = 6.28318548202514648f * _S785.value;
-    var _S789 : vec3<f32> = tangentToWorld(vec3<f32>(_S787 * cos(_S788), _S784.value, _S787 * sin(_S788)), n_i_8);
-    sample_1.unit_direction = _S789;
+    var _S799 : vec3<f32> = vec3<f32>(1.0f);
+    var _S800 : SampleBSDF = SampleBSDF_x24init_0(_S799, _S799, u32(0), false, u32(0), 0.0f);
+    var sample_1 : SampleBSDF = _S800;
+    var _S801 : Random = pcg(random_state_9);
+    var _S802 : Random = pcg(_S801.state);
+    sample_1.random_state = _S802.state;
+    var _S803 : f32 = _S801.value;
+    var _S804 : f32 = sqrt(max(0.0f, 1.0f - _S803 * _S803));
+    var _S805 : f32 = 6.28318548202514648f * _S802.value;
+    var _S806 : vec3<f32> = tangentToWorld(vec3<f32>(_S804 * cos(_S805), _S801.value, _S804 * sin(_S805)), n_i_8);
+    sample_1.unit_direction = _S806;
     sample_1.lobe = u32(4);
-    var _S790 : vec3<f32> = sheenVelvetBSDF(sample_1.unit_direction, n_i_8, alpha_13, material_14, lobes_9);
-    sample_1.throughput = _S790;
-    var _S791 : f32 = sheenVelvetPDF(_S784.value, 0.0f, n_i_dot_v_5, alpha_13, lobes_9, eta_i_9, eta_o_9);
-    sample_1.pdf = _S791;
+    var _S807 : vec3<f32> = sheenVelvetBSDF(sample_1.unit_direction, n_i_8, alpha_13, material_15, lobes_9);
+    sample_1.throughput = _S807;
+    var _S808 : f32 = sheenVelvetPDF(_S801.value, 0.0f, n_i_dot_v_5, alpha_13, lobes_9, eta_i_9, eta_o_9);
+    sample_1.pdf = _S808;
     return sample_1;
 }
 
 fn sampleCosWeightedHemisphere( random_1_0 : f32,  random_2_0 : f32) -> vec3<f32>
 {
-    var _S792 : f32 = sqrt(random_1_0);
-    var _S793 : f32 = 6.28318548202514648f * random_2_0;
-    var _S794 : f32 = _S792 * cos(_S793);
-    var _S795 : f32 = _S792 * sin(_S793);
-    var _S796 : f32 = sqrt(max(0.0f, 1.0f - _S794 * _S794 - _S795 * _S795));
-    return vec3<f32>(_S794, _S796, _S795);
+    var _S809 : f32 = sqrt(random_1_0);
+    var _S810 : f32 = 6.28318548202514648f * random_2_0;
+    var _S811 : f32 = _S809 * cos(_S810);
+    var _S812 : f32 = _S809 * sin(_S810);
+    var _S813 : f32 = sqrt(max(0.0f, 1.0f - _S811 * _S811 - _S812 * _S812));
+    return vec3<f32>(_S811, _S813, _S812);
 }
 
-fn diffuseSample( u_1 : f32,  n_i_9 : vec3<f32>,  n_i_dot_v_6 : f32,  alpha_14 : f32,  material_15 : Material,  lobes_10 : BSDFLobes,  eta_i_10 : f32,  eta_o_10 : f32,  random_state_10 : u32) -> SampleBSDF
+fn diffuseSample( u_2 : f32,  n_i_9 : vec3<f32>,  n_i_dot_v_6 : f32,  alpha_14 : f32,  material_16 : Material,  lobes_10 : BSDFLobes,  eta_i_10 : f32,  eta_o_10 : f32,  random_state_10 : u32) -> SampleBSDF
 {
-    var _S797 : vec3<f32> = vec3<f32>(1.0f);
-    var _S798 : SampleBSDF = SampleBSDF_x24init_0(_S797, _S797, u32(0), false, u32(0), 0.0f);
-    var sample_2 : SampleBSDF = _S798;
-    var _S799 : Random = pcg(random_state_10);
-    var _S800 : Random = pcg(_S799.state);
-    sample_2.random_state = _S800.state;
-    var _S801 : vec3<f32> = sampleCosWeightedHemisphere(_S799.value, _S800.value);
-    var _S802 : bool = u_1 < (lobes_10.p_diffuse * lobes_10.translucent_share);
-    var _S803 : f32 = _S801.y;
-    var _S804 : f32 = - _S803;
-    var _S805 : f32 = select(_S803, _S804, _S802);
-    var _S806 : vec3<f32> = tangentToWorld(vec3<f32>(_S801.x, _S805, _S801.z), n_i_9);
-    sample_2.unit_direction = _S806;
-    sample_2.refracted = _S802;
+    var _S814 : vec3<f32> = vec3<f32>(1.0f);
+    var _S815 : SampleBSDF = SampleBSDF_x24init_0(_S814, _S814, u32(0), false, u32(0), 0.0f);
+    var sample_2 : SampleBSDF = _S815;
+    var _S816 : Random = pcg(random_state_10);
+    var _S817 : Random = pcg(_S816.state);
+    sample_2.random_state = _S817.state;
+    var _S818 : vec3<f32> = sampleCosWeightedHemisphere(_S816.value, _S817.value);
+    var _S819 : bool = u_2 < (lobes_10.p_diffuse * lobes_10.translucent_share);
+    var _S820 : f32 = _S818.y;
+    var _S821 : f32 = - _S820;
+    var _S822 : f32 = select(_S820, _S821, _S819);
+    var _S823 : vec3<f32> = tangentToWorld(vec3<f32>(_S818.x, _S822, _S818.z), n_i_9);
+    sample_2.unit_direction = _S823;
+    sample_2.refracted = _S819;
     sample_2.lobe = u32(0);
-    var _S807 : vec3<f32> = diffuseBSDF(sample_2.unit_direction, n_i_9, alpha_14, material_15, lobes_10);
-    sample_2.throughput = _S807;
-    var _S808 : f32 = diffusePDF(_S805, 0.0f, n_i_dot_v_6, alpha_14, lobes_10, eta_i_10, eta_o_10);
-    sample_2.pdf = _S808;
+    var _S824 : vec3<f32> = diffuseBSDF(sample_2.unit_direction, n_i_9, alpha_14, material_16, lobes_10);
+    sample_2.throughput = _S824;
+    var _S825 : f32 = diffusePDF(_S822, 0.0f, n_i_dot_v_6, alpha_14, lobes_10, eta_i_10, eta_o_10);
+    sample_2.pdf = _S825;
     return sample_2;
 }
 
-fn refractSample( ggx_n_1 : vec3<f32>,  n_i_10 : vec3<f32>,  n_i_dot_v_7 : f32,  alpha_15 : f32,  material_16 : Material,  lobes_11 : BSDFLobes,  eta_i_11 : f32,  eta_o_11 : f32,  random_state_11 : u32) -> SampleBSDF
+fn refractSample( ggx_n_1 : vec3<f32>,  n_i_10 : vec3<f32>,  n_i_dot_v_7 : f32,  alpha_15 : f32,  material_17 : Material,  lobes_11 : BSDFLobes,  eta_i_11 : f32,  eta_o_11 : f32,  random_state_11 : u32) -> SampleBSDF
 {
-    var _S809 : vec3<f32> = vec3<f32>(1.0f);
-    var _S810 : SampleBSDF = SampleBSDF_x24init_0(_S809, _S809, u32(0), false, u32(0), 0.0f);
-    var sample_3 : SampleBSDF = _S810;
+    var _S826 : vec3<f32> = vec3<f32>(1.0f);
+    var _S827 : SampleBSDF = SampleBSDF_x24init_0(_S826, _S826, u32(0), false, u32(0), 0.0f);
+    var sample_3 : SampleBSDF = _S827;
     sample_3.unit_direction = lobes_11.refracted;
     sample_3.random_state = random_state_11;
     sample_3.refracted = true;
     sample_3.lobe = u32(1);
-    var _S811 : vec3<f32> = refractBSDF(sample_3.unit_direction, n_i_10, alpha_15, material_16, lobes_11);
-    sample_3.throughput = _S811;
-    var _S812 : f32 = refractPDF(0.0f, dot(sample_3.unit_direction, ggx_n_1), n_i_dot_v_7, alpha_15, lobes_11, eta_i_11, eta_o_11);
-    sample_3.pdf = _S812;
+    var _S828 : vec3<f32> = refractBSDF(sample_3.unit_direction, n_i_10, alpha_15, material_17, lobes_11);
+    sample_3.throughput = _S828;
+    var _S829 : f32 = refractPDF(0.0f, dot(sample_3.unit_direction, ggx_n_1), n_i_dot_v_7, alpha_15, lobes_11, eta_i_11, eta_o_11);
+    sample_3.pdf = _S829;
     return sample_3;
 }
 
-fn reflectSample( in_dir_6 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_11 : vec3<f32>,  n_i_dot_v_8 : f32,  alpha_16 : f32,  material_17 : Material,  lobes_12 : BSDFLobes,  eta_i_12 : f32,  eta_o_12 : f32,  random_state_12 : u32) -> SampleBSDF
+fn reflectSample( in_dir_6 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_11 : vec3<f32>,  n_i_dot_v_8 : f32,  alpha_16 : f32,  material_18 : Material,  lobes_12 : BSDFLobes,  eta_i_12 : f32,  eta_o_12 : f32,  random_state_12 : u32) -> SampleBSDF
 {
-    var _S813 : vec3<f32> = vec3<f32>(1.0f);
-    var _S814 : SampleBSDF = SampleBSDF_x24init_0(_S813, _S813, u32(0), false, u32(0), 0.0f);
-    var sample_4 : SampleBSDF = _S814;
-    var _S815 : vec3<f32> = (normalize((reflect(in_dir_6, ggx_n_2))));
-    sample_4.unit_direction = _S815;
+    var _S830 : vec3<f32> = vec3<f32>(1.0f);
+    var _S831 : SampleBSDF = SampleBSDF_x24init_0(_S830, _S830, u32(0), false, u32(0), 0.0f);
+    var sample_4 : SampleBSDF = _S831;
+    var _S832 : vec3<f32> = (normalize((reflect(in_dir_6, ggx_n_2))));
+    sample_4.unit_direction = _S832;
     sample_4.random_state = random_state_12;
     sample_4.lobe = u32(2);
-    var _S816 : vec3<f32> = reflectBSDF(sample_4.unit_direction, n_i_11, alpha_16, material_17, lobes_12);
-    sample_4.throughput = _S816;
-    var _S817 : f32 = reflectPDF(0.0f, 0.0f, n_i_dot_v_8, alpha_16, lobes_12, eta_i_12, eta_o_12);
-    sample_4.pdf = _S817;
+    var _S833 : vec3<f32> = reflectBSDF(sample_4.unit_direction, n_i_11, alpha_16, material_18, lobes_12);
+    sample_4.throughput = _S833;
+    var _S834 : f32 = reflectPDF(0.0f, 0.0f, n_i_dot_v_8, alpha_16, lobes_12, eta_i_12, eta_o_12);
+    sample_4.pdf = _S834;
     return sample_4;
 }
 
-fn sampleBSDF( in_dir_7 : vec3<f32>,  n_8 : vec3<f32>,  material_18 : Material,  eta_i_13 : f32,  eta_o_13 : f32,  random_init_0 : u32) -> SampleBSDF
+fn sampleBSDF( in_dir_7 : vec3<f32>,  n_8 : vec3<f32>,  material_19 : Material,  eta_i_13 : f32,  eta_o_13 : f32,  random_init_0 : u32) -> SampleBSDF
 {
     var random_state_13 : u32 = random_init_0;
-    var _S818 : vec3<f32> = ((-(in_dir_7)));
-    var _S819 : f32 = dot(n_8, _S818);
-    var _S820 : f32 = (sign((_S819)));
-    var n_i_12 : vec3<f32> = n_8 * vec3<f32>(_S820);
-    var _S821 : f32 = abs(_S819);
-    var _S822 : f32 = material_18.roughness;
-    var _S823 : f32 = _S822 * _S822;
-    var _S824 : AnisotropicFrame = anisotropicFrame(material_18, n_i_12);
-    var _S825 : f32 = sheenAlbedo(_S818, n_i_12, material_18);
-    var _S826 : vec3<f32> = sampleHalfVector(_S818, n_i_12, _S823, _S824, &(random_state_13));
-    var _S827 : BSDFLobes = bsdfLobes(in_dir_7, _S818, n_i_12, _S826, material_18, eta_i_13, eta_o_13, _S824, _S825);
-    var lobes_13 : BSDFLobes = _S827;
-    var _S828 : f32 = translucentShare(material_18);
-    lobes_13.translucent_share = _S828;
-    var _S829 : Random = pcg(random_state_13);
-    random_state_13 = _S829.state;
-    var _S830 : bool = (_S829.value) < (lobes_13.p_sheen_velvet);
-    if(_S830)
+    var _S835 : vec3<f32> = ((-(in_dir_7)));
+    var _S836 : f32 = dot(n_8, _S835);
+    var _S837 : f32 = (sign((_S836)));
+    var n_i_12 : vec3<f32> = n_8 * vec3<f32>(_S837);
+    var _S838 : f32 = abs(_S836);
+    var _S839 : f32 = material_19.roughness;
+    var _S840 : f32 = _S839 * _S839;
+    var _S841 : AnisotropicFrame = anisotropicFrame(material_19, n_i_12);
+    var _S842 : f32 = sheenAlbedo(_S835, n_i_12, material_19);
+    var _S843 : vec3<f32> = sampleHalfVector(_S835, n_i_12, _S840, _S841, &(random_state_13));
+    var _S844 : BSDFLobes = bsdfLobes(in_dir_7, _S835, n_i_12, _S843, material_19, eta_i_13, eta_o_13, _S841, _S842);
+    var lobes_13 : BSDFLobes = _S844;
+    var _S845 : f32 = translucentShare(material_19);
+    lobes_13.translucent_share = _S845;
+    var _S846 : Random = pcg(random_state_13);
+    random_state_13 = _S846.state;
+    var _S847 : bool = (_S846.value) < (lobes_13.p_sheen_velvet);
+    if(_S847)
     {
-        var _S831 : SampleBSDF = sheenVelvetSample(n_i_12, _S821, _S823, material_18, lobes_13, eta_i_13, eta_o_13, random_state_13);
-        return _S831;
+        var _S848 : SampleBSDF = sheenVelvetSample(n_i_12, _S838, _S840, material_19, lobes_13, eta_i_13, eta_o_13, random_state_13);
+        return _S848;
     }
-    var _S832 : f32 = _S829.value - lobes_13.p_sheen_velvet;
-    var _S833 : bool = _S832 < (lobes_13.p_diffuse);
-    if(_S833)
+    var _S849 : f32 = _S846.value - lobes_13.p_sheen_velvet;
+    var _S850 : bool = _S849 < (lobes_13.p_diffuse);
+    if(_S850)
     {
-        var _S834 : SampleBSDF = diffuseSample(_S832, n_i_12, _S821, _S823, material_18, lobes_13, eta_i_13, eta_o_13, random_state_13);
-        return _S834;
+        var _S851 : SampleBSDF = diffuseSample(_S849, n_i_12, _S838, _S840, material_19, lobes_13, eta_i_13, eta_o_13, random_state_13);
+        return _S851;
     }
-    var _S835 : bool = _S832 < (lobes_13.p_diffuse + lobes_13.p_refract);
-    if(_S835)
+    var _S852 : bool = _S849 < (lobes_13.p_diffuse + lobes_13.p_refract);
+    if(_S852)
     {
-        var _S836 : SampleBSDF = refractSample(_S826, n_i_12, _S821, _S823, material_18, lobes_13, eta_i_13, eta_o_13, random_state_13);
-        return _S836;
+        var _S853 : SampleBSDF = refractSample(_S843, n_i_12, _S838, _S840, material_19, lobes_13, eta_i_13, eta_o_13, random_state_13);
+        return _S853;
     }
-    var _S837 : SampleBSDF = reflectSample(in_dir_7, _S826, n_i_12, _S821, _S823, material_18, lobes_13, eta_i_13, eta_o_13, random_state_13);
-    return _S837;
+    var _S854 : SampleBSDF = reflectSample(in_dir_7, _S843, n_i_12, _S838, _S840, material_19, lobes_13, eta_i_13, eta_o_13, random_state_13);
+    return _S854;
 }
 
 fn survivalProbability( throughput_1 : vec3<f32>,  density_1 : f32) -> f32
 {
-    var _S838 : vec3<f32> = throughput_1 / vec3<f32>(density_1);
-    return clamp(max(_S838.x, max(_S838.y, _S838.z)), 0.0f, 1.0f);
+    var _S855 : vec3<f32> = throughput_1 / vec3<f32>(density_1);
+    return clamp(max(_S855.x, max(_S855.y, _S855.z)), 0.0f, 1.0f);
 }
 
 fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  sel_4 : ptr<function, Selection>) -> Shift
 {
-    var _S839 : vec3<f32> = vec3<f32>(0.0f);
-    var _S840 : Shift = Shift_x24init_0(_S839, 0.0f);
-    var _S841 : u32 = (extractBits((r_6.path), (u32(0)), (u32(5))));
-    var _S842 : u32 = (extractBits((r_6.path), (u32(5)), (u32(5))));
-    var _S843 : u32 = (extractBits((r_6.path), (u32(10)), (u32(2))));
-    var _S844 : u32 = (extractBits((r_6.path), (u32(12)), (u32(3))));
+    var _S856 : vec3<f32> = vec3<f32>(0.0f);
+    var _S857 : Shift = Shift_x24init_0(_S856, 0.0f);
+    var _S858 : u32 = (extractBits((r_6.path), (u32(0)), (u32(5))));
+    var _S859 : u32 = (extractBits((r_6.path), (u32(5)), (u32(5))));
+    var _S860 : u32 = (extractBits((r_6.path), (u32(10)), (u32(2))));
+    var _S861 : u32 = (extractBits((r_6.path), (u32(12)), (u32(3))));
     var is_inside_4 : bool;
     if(replay_0)
     {
-        var _S845 : bool = _S844 >= u32(3);
-        var _S846 : u32 = select(u32(0), u32(1), _S845);
-        var _S847 : u32 = _S841 + _S846;
-        var _S848 : u32 = (uniforms_uint.max_bounces);
-        is_inside_4 = _S847 > _S848;
+        var _S862 : bool = _S861 >= u32(3);
+        var _S863 : u32 = select(u32(0), u32(1), _S862);
+        var _S864 : u32 = _S858 + _S863;
+        var _S865 : u32 = (uniforms_uint.max_bounces);
+        is_inside_4 = _S864 > _S865;
     }
     else
     {
@@ -2816,216 +2889,133 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
     }
     if(is_inside_4)
     {
-        return _S840;
+        return _S857;
     }
-    var _S849 : u32 = _S842 - u32(1);
-    var _S850 : bool = _S844 == u32(3);
-    var _S851 : u32 = select(u32(0), u32(1), _S850);
-    var _S852 : u32 = _S841 + _S851;
-    var _S853 : bool = _S843 == u32(0);
-    var _S854 : u32 = select(_S849, _S852, _S853);
-    var _S855 : Hit = Hit_x24init_0((bitcast<vec2<f32>>((r_6.rc.zw))), r_6.rc.x, r_6.rc.y, u32(0), 0.0f);
-    var _S856 : vec3<f32> = (normalize((dom_4.x1 - dom_4.x0)));
-    var _S857 : Ray = Ray_x24init_0(dom_4.x1, _S856);
-    var ray_2 : Ray = _S857;
+    var _S866 : u32 = _S859 - u32(1);
+    var _S867 : bool = _S861 == u32(3);
+    var _S868 : u32 = select(u32(0), u32(1), _S867);
+    var _S869 : u32 = _S858 + _S868;
+    var _S870 : bool = _S860 == u32(0);
+    var _S871 : u32 = select(_S866, _S869, _S870);
+    var _S872 : Hit = Hit_x24init_0((bitcast<vec2<f32>>((r_6.rc.zw))), r_6.rc.x, r_6.rc.y, u32(0), 0.0f);
+    var _S873 : vec3<f32> = (normalize((dom_4.x1 - dom_4.x0)));
+    var _S874 : Ray = Ray_x24init_0(dom_4.x1, _S873);
+    var ray_2 : Ray = _S874;
     var hit_2 : Hit = dom_4.hit;
-    var _S858 : vec3<f32> = vec3<f32>(1.0f);
-    var _S859 : NEEVertex = NEEVertex_x24init_0(true, 0.0f, _S839, _S839, _S839);
-    var nee_vertex_0 : NEEVertex = _S859;
-    var _S860 : Vertex = Vertex_x24init_0(false, u32(0), 0.0f, 0.0f, false);
-    var prev_0 : Vertex = _S860;
-    var _S861 : Reservoir = Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S839, 0.0f, vec4<u32>(u32(0)), _S839, _S839);
-    var chain_0 : Reservoir = _S861;
+    var _S875 : vec3<f32> = vec3<f32>(1.0f);
+    var _S876 : NEEVertex = NEEVertex_x24init_0(true, 0.0f, _S856, _S856, _S856);
+    var nee_vertex_0 : NEEVertex = _S876;
+    var _S877 : Vertex = Vertex_x24init_0(false, u32(0), 0.0f, 0.0f, false);
+    var prev_0 : Vertex = _S877;
+    var _S878 : Reservoir = Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S856, 0.0f, vec4<u32>(u32(0)), _S856, _S856);
+    var chain_0 : Reservoir = _S878;
     chain_0.seed = r_6.seed;
     is_inside_4 = false;
     var threshold_0 : f32 = 0.0f;
-    var chain_throughput_0 : vec3<f32> = _S839;
-    var reconnection_0 : vec3<f32> = _S839;
+    var wavelength_2 : f32 = 0.0f;
+    var chain_throughput_0 : vec3<f32> = _S856;
+    var reconnection_0 : vec3<f32> = _S856;
     var b_3 : u32 = u32(0);
-    var throughput_2 : vec3<f32> = _S858;
+    var throughput_2 : vec3<f32> = _S875;
     var density_2 : f32 = 1.0f;
     var sky_pdf_0 : f32 = 0.0f;
     loop
     {
-        var _S862 : bool = (hit_2.is_point_light) == u32(1);
-        var _S863 : bool;
+        var _S879 : bool = (hit_2.is_point_light) == u32(1);
+        var _S880 : bool;
         if(replay_0)
         {
-            _S863 = _S843 == u32(1);
+            _S880 = _S860 == u32(1);
         }
         else
         {
-            _S863 = false;
+            _S880 = false;
         }
-        var _S864 : bool;
-        if(_S863)
+        var _S881 : bool;
+        if(_S880)
         {
-            _S864 = b_3 == _S842;
+            _S881 = b_3 == _S859;
         }
         else
         {
-            _S864 = false;
+            _S881 = false;
         }
-        var _S865 : bool;
-        if(_S864)
+        var _S882 : bool;
+        if(_S881)
         {
-            var _S866 : bool = (hit_2.instance_index) != (_S855.instance_index);
-            if(_S866)
+            var _S883 : bool = (hit_2.instance_index) != (_S872.instance_index);
+            if(_S883)
             {
-                _S865 = true;
+                _S882 = true;
             }
             else
             {
-                _S865 = (hit_2.triangle_index) != (_S855.triangle_index);
+                _S882 = (hit_2.triangle_index) != (_S872.triangle_index);
             }
         }
         else
         {
-            _S865 = false;
+            _S882 = false;
         }
-        if(_S865)
+        if(_S882)
         {
-            return _S840;
+            return _S857;
         }
-        var _S867 : Surface = Surface_x24init_0(_S839, _S839, 0.0f, Material_x24init_0(_S839, _S839, 0.0f, 0.0f, 0.0f, 0.0f, _S839, _S858, 1.0f, _S839, _S839, 0.5f, 0.0f, 0.0f, _S839, 0.0f), false, u32(0));
-        var _S868 : bool = !_S862;
+        var _S884 : Surface = Surface_x24init_0(_S856, _S856, 0.0f, Material_x24init_0(_S856, _S856, 0.0f, 0.0f, 0.0f, 0.0f, _S856, _S875, 1.0f, _S856, _S856, 0.5f, 0.0f, 0.0f, _S856, 0.0f, 0.0f), false, u32(0));
+        var _S885 : bool = !_S879;
         var scatter_0 : bool;
         var geometry_density_0 : f32;
         var front_n_0 : vec3<f32>;
         var throughput_3 : vec3<f32>;
         var surface_4 : Surface;
-        if(_S868)
+        if(_S885)
         {
-            var _S869 : u32 = stream(r_6.seed, b_3);
-            var _S870 : Surface = (surfaceAt((hit_2), (ray_2.origin), (_S869)));
-            var surface_5 : Surface = facingRay_0(_S870, ray_2.unit_direction);
+            var _S886 : u32 = stream(r_6.seed, b_3);
+            var _S887 : Surface = (surfaceAt((hit_2), (ray_2.origin), (_S886)));
+            var surface_5 : Surface = facingRay_0(_S887, ray_2.unit_direction);
             if(is_inside_4)
             {
-                var _S871 : vec3<f32> = beerLambert(hit_2.distance, surface_5.material.absorption);
-                var _S872 : vec3<f32> = throughput_2 * _S871;
-                front_n_0 = _S872;
+                var _S888 : vec3<f32> = beerLambert(hit_2.distance, surface_5.material.absorption);
+                var _S889 : vec3<f32> = throughput_2 * _S888;
+                front_n_0 = _S889;
             }
             else
             {
                 front_n_0 = throughput_2;
             }
-            var _S873 : bool = !surface_5.skip;
+            var _S890 : bool = !surface_5.skip;
             var geometry_density_1 : f32 = abs(dot(surface_5.geometry_n, ray_2.unit_direction)) / (hit_2.distance * hit_2.distance);
-            var _S874 : bool = b_3 == u32(0);
-            if(_S874)
+            var _S891 : bool = b_3 == u32(0);
+            if(_S891)
             {
-                var _S875 : f32 = 0.00251327408477664f / geometry_density_1;
-                geometry_density_0 = _S875;
+                var _S892 : f32 = 0.00251327408477664f / geometry_density_1;
+                geometry_density_0 = _S892;
             }
             else
             {
                 geometry_density_0 = threshold_0;
             }
-            var _S876 : vec3<f32> = front_n_0;
-            var _S877 : f32 = geometry_density_0;
-            scatter_0 = _S873;
+            var _S893 : vec3<f32> = front_n_0;
+            var _S894 : f32 = geometry_density_0;
+            scatter_0 = _S890;
             geometry_density_0 = geometry_density_1;
-            threshold_0 = _S877;
-            front_n_0 = _S870.smooth_n;
+            threshold_0 = _S894;
+            front_n_0 = _S887.smooth_n;
             surface_4 = surface_5;
-            throughput_3 = _S876;
+            throughput_3 = _S893;
         }
         else
         {
             scatter_0 = false;
             geometry_density_0 = 0.0f;
-            front_n_0 = _S839;
-            surface_4 = _S867;
+            front_n_0 = _S856;
+            surface_4 = _S884;
             throughput_3 = throughput_2;
         }
-        var _S878 : bool;
-        if(scatter_0)
-        {
-            _S878 = prev_0.rough;
-        }
-        else
-        {
-            _S878 = false;
-        }
-        var _S879 : bool;
-        if(_S878)
-        {
-            _S879 = (prev_0.pdf * geometry_density_0 * threshold_0) <= 1.0f;
-        }
-        else
-        {
-            _S879 = false;
-        }
-        var _S880 : Surface = surface_4;
-        var _S881 : Surface = surface_4;
-        var _S882 : f32 = dot(surface_4.smooth_n, (vec3<f32>(0) - ray_2.unit_direction));
-        var _S883 : vec2<f32> = vertexEta(_S880.material, _S882);
-        var _S884 : bool;
-        if(scatter_0)
-        {
-            var _S885 : bool = neeDecision(_S880.material, _S882, _S883.x, _S883.y);
-            _S884 = _S885;
-        }
-        else
-        {
-            _S884 = false;
-        }
-        var _S886 : f32 = (sign((dot((vec3<f32>(0) - ray_2.unit_direction), front_n_0))));
-        var _S887 : vec3<f32> = _S880.material.emissive * vec3<f32>(max(_S886, 0.0f));
-        var emission_0 : vec3<f32>;
-        if(_S862)
-        {
-            var _S888 : vec3<f32> = (calculatePointLightContrib((hit_2.instance_index)));
-            emission_0 = _S888;
-        }
-        else
-        {
-            emission_0 = _S887;
-        }
-        var _S889 : bool = !replay_0;
-        var _S890 : bool;
-        if(_S889)
-        {
-            _S890 = true;
-        }
-        else
-        {
-            _S890 = b_3 >= _S854;
-        }
-        var _S891 : bool;
-        if(_S890)
-        {
-            var _S892 : f32 = rgb_to_greyscale(emission_0);
-            _S891 = _S892 > 0.0f;
-        }
-        else
-        {
-            _S891 = false;
-        }
-        var emission_1 : vec3<f32>;
-        if(_S891)
-        {
-            var _S893 : f32 = emissionWeight_0(nee_vertex_0, hit_2, ray_2.origin);
-            var emission_2 : vec3<f32> = emission_0 * vec3<f32>(_S893);
-            emission_1 = emission_2;
-        }
-        else
-        {
-            emission_1 = emission_0;
-        }
-        var _S894 : bool;
-        if(replay_0)
-        {
-            _S894 = _S843 == u32(1);
-        }
-        else
-        {
-            _S894 = false;
-        }
         var _S895 : bool;
-        if(_S894)
+        if(scatter_0)
         {
-            _S895 = b_3 > _S842;
+            _S895 = prev_0.rough;
         }
         else
         {
@@ -3034,206 +3024,344 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
         var _S896 : bool;
         if(_S895)
         {
-            _S896 = b_3 == _S841;
+            _S896 = (prev_0.pdf * geometry_density_0 * threshold_0) <= 1.0f;
         }
         else
         {
             _S896 = false;
         }
-        var _S897 : bool;
-        if(_S896)
+        var _S897 : Surface = surface_4;
+        var _S898 : Surface = surface_4;
+        var _S899 : f32 = dot(surface_4.smooth_n, (vec3<f32>(0) - ray_2.unit_direction));
+        var _S900 : bool = ((true));
+        var _S901 : bool;
+        if(_S900)
         {
-            var _S898 : bool = _S844 == u32(1);
-            if(_S898)
-            {
-                _S897 = true;
-            }
-            else
-            {
-                _S897 = _S844 == u32(2);
-            }
+            _S901 = wavelength_2 == 0.0f;
         }
         else
         {
-            _S897 = false;
+            _S901 = false;
         }
-        if(_S897)
+        var _S902 : bool;
+        if(_S901)
         {
-            var _S899 : bool = _S862 != (_S844 == u32(2));
-            if(_S899)
-            {
-                return _S840;
-            }
-            return Shift_x24init_0(throughput_3 * emission_1 / vec3<f32>(r_6.jac), density_2 / r_6.jac);
-        }
-        var _S900 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
-        var _S901 : bool = _S900 == u32(1);
-        var here_0 : Reservoir = chain_0;
-        var _S902 : u32 = (insertBits((u32(0)), (b_3), (u32(5)), (u32(5))));
-        var _S903 : u32 = (insertBits((_S902), (u32(1)), (u32(10)), (u32(2))));
-        var _S904 : u32 = (insertBits((_S903), (prev_0.lobe), (u32(15)), (u32(3))));
-        var _S905 : bool = prev_0.inside;
-        var _S906 : u32 = select(u32(0), u32(1), _S905);
-        var _S907 : u32 = (insertBits((_S904), (_S906), (u32(22)), (u32(1))));
-        here_0.path = _S907;
-        var _S908 : f32 = prev_0.pdf * geometry_density_0;
-        here_0.jac = _S908;
-        var _S909 : vec4<u32> = vec4<u32>(hit_2.instance_index, hit_2.triangle_index, (bitcast<vec2<u32>>((hit_2.uv))));
-        here_0.rc = _S909;
-        var _S910 : bool;
-        if(replay_0)
-        {
-            _S910 = _S843 == u32(1);
+            _S902 = scatter_0;
         }
         else
         {
-            _S910 = false;
+            _S902 = false;
         }
-        var _S911 : bool;
-        if(_S910)
+        var _S903 : bool;
+        if(_S902)
         {
-            _S911 = b_3 == _S842;
+            var _S904 : bool = dispersive(_S897.material);
+            _S903 = _S904;
         }
         else
         {
-            _S911 = false;
+            _S903 = false;
         }
-        var _S912 : bool = b_3 == _S854;
-        var _S913 : bool;
-        if(_S912)
+        var throughput_4 : vec3<f32>;
+        if(_S903)
         {
-            var _S914 : bool = !scatter_0;
-            if(_S914)
-            {
-                _S913 = true;
-            }
-            else
-            {
-                var _S915 : bool = _S843 != u32(1);
-                if(_S915)
-                {
-                    _S913 = _S843 != u32(3);
-                }
-                else
-                {
-                    _S913 = false;
-                }
-            }
+            var _S905 : u32 = stream(r_6.seed, u32(512));
+            var _S906 : Random = pcg(_S905);
+            var _S907 : vec2<f32> = sampleWavelength(_S906.value);
+            var _S908 : f32 = _S907.x;
+            var _S909 : vec3<f32> = wavelengthWeights(_S908);
+            var _S910 : vec3<f32> = throughput_3 * (_S909 / vec3<f32>(_S907.y));
+            wavelength_2 = _S908;
+            throughput_4 = _S910;
         }
         else
         {
-            _S913 = false;
+            throughput_4 = throughput_3;
         }
-        var _S916 : bool;
-        if(_S913)
+        var refractive_0 : Material = _S897.material;
+        var _S911 : f32 = dispersedIor(_S897.material.ior, _S897.material.dispersion, wavelength_2);
+        var _S912 : bool = wavelength_2 > 0.0f;
+        var _S913 : f32 = select(_S897.material.ior, _S911, _S912);
+        refractive_0.ior = _S913;
+        var _S914 : vec2<f32> = vertexEta(refractive_0, _S899);
+        var _S915 : bool;
+        if(scatter_0)
         {
-            _S916 = _S843 == u32(2);
+            var _S916 : bool = neeDecision(_S897.material, _S899, _S914.x, _S914.y);
+            _S915 = _S916;
         }
         else
         {
-            _S916 = false;
+            _S915 = false;
         }
-        var _S917 : bool;
-        if(_S916)
+        var _S917 : f32 = (sign((dot((vec3<f32>(0) - ray_2.unit_direction), front_n_0))));
+        var _S918 : vec3<f32> = _S897.material.emissive * vec3<f32>(max(_S917, 0.0f));
+        var emission_0 : vec3<f32>;
+        if(_S879)
         {
-            _S917 = !_S879;
+            var _S919 : vec3<f32> = (calculatePointLightContrib((hit_2.instance_index)));
+            emission_0 = _S919;
         }
         else
         {
-            _S917 = false;
+            emission_0 = _S918;
         }
-        var _S918 : bool;
-        if(_S917)
-        {
-            _S918 = _S844 != u32(4);
-        }
-        else
-        {
-            _S918 = false;
-        }
-        var _S919 : bool = _S842 == _S841;
-        var _S920 : bool;
-        if(_S919)
-        {
-            _S920 = _S844 == u32(0);
-        }
-        else
-        {
-            _S920 = false;
-        }
+        var _S920 : bool = !replay_0;
         var _S921 : bool;
         if(_S920)
         {
-            _S921 = (hit_2.instance_index) == (_S855.instance_index);
+            _S921 = true;
         }
         else
         {
-            _S921 = false;
+            _S921 = b_3 >= _S871;
         }
         var _S922 : bool;
         if(_S921)
         {
-            _S922 = (hit_2.triangle_index) == (_S855.triangle_index);
+            var _S923 : f32 = rgb_to_greyscale(emission_0);
+            _S922 = _S923 > 0.0f;
         }
         else
         {
             _S922 = false;
         }
-        var _S923 : bool;
+        var emission_1 : vec3<f32>;
         if(_S922)
         {
-            _S923 = _S879;
+            var _S924 : f32 = emissionWeight_0(nee_vertex_0, hit_2, ray_2.origin);
+            var emission_2 : vec3<f32> = emission_0 * vec3<f32>(_S924);
+            emission_1 = emission_2;
         }
         else
         {
-            _S923 = false;
+            emission_1 = emission_0;
         }
-        var _S924 : bool = select(_S918, _S923, _S911);
         var _S925 : bool;
-        if(_S884)
+        if(replay_0)
         {
-            _S925 = select(scatter_0, _S924, replay_0);
+            _S925 = _S860 == u32(1);
         }
         else
         {
             _S925 = false;
         }
-        var _S926 : TreeSample = TreeSample_x24init_0(_S839, _S839, 0.0f, u32(0));
-        var _S927 : bool;
-        var lit_0 : vec3<f32>;
-        var lobe_index_0 : u32;
-        var light_0 : TreeSample;
+        var _S926 : bool;
         if(_S925)
         {
-            var _S928 : Surface = surface_4;
-            var _S929 : bool = isTranslucent_0(_S880.material);
-            var _S930 : u32 = stream(r_6.seed, b_3 + u32(64));
-            var _S931 : TreeSample = sampleLightTree_0(ray_2.origin, _S881.smooth_n, surface_4.geometry_n, surface_4.geometry_offset, _S929, _S930);
-            var _S932 : bool = (any(((_S931.radiance) != _S839)));
-            if(_S932)
+            _S926 = b_3 > _S859;
+        }
+        else
+        {
+            _S926 = false;
+        }
+        var _S927 : bool;
+        if(_S926)
+        {
+            _S927 = b_3 == _S858;
+        }
+        else
+        {
+            _S927 = false;
+        }
+        var _S928 : bool;
+        if(_S927)
+        {
+            var _S929 : bool = _S861 == u32(1);
+            if(_S929)
             {
-                var throughputs_2 : array<vec3<f32>, i32(5)>;
-                var pdfs_2 : array<f32, i32(5)>;
-                var _S933 : vec3<f32> = BSDF(ray_2.unit_direction, _S931.dir, _S881.smooth_n, _S880.material, _S883.x, _S883.y, (dot(_S928.geometry_n, (vec3<f32>(0) - ray_2.unit_direction)) * dot(_S928.geometry_n, _S931.dir)) <= 0.0f, surface_4.random_state, u32(4294967295), &(throughputs_2), &(pdfs_2));
-                var _S934 : u32 = (uniforms_uint.max_bounces);
-                var _S935 : bool = !(b_3 < _S934);
-                if(_S935)
+                _S928 = true;
+            }
+            else
+            {
+                _S928 = _S861 == u32(2);
+            }
+        }
+        else
+        {
+            _S928 = false;
+        }
+        if(_S928)
+        {
+            var _S930 : bool = _S879 != (_S861 == u32(2));
+            if(_S930)
+            {
+                return _S857;
+            }
+            return Shift_x24init_0(throughput_4 * emission_1 / vec3<f32>(r_6.jac), density_2 / r_6.jac);
+        }
+        var _S931 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
+        var _S932 : bool = _S931 == u32(1);
+        var here_0 : Reservoir = chain_0;
+        var _S933 : u32 = (insertBits((u32(0)), (b_3), (u32(5)), (u32(5))));
+        var _S934 : u32 = (insertBits((_S933), (u32(1)), (u32(10)), (u32(2))));
+        var _S935 : u32 = (insertBits((_S934), (prev_0.lobe), (u32(15)), (u32(3))));
+        var _S936 : bool = prev_0.inside;
+        var _S937 : u32 = select(u32(0), u32(1), _S936);
+        var _S938 : u32 = (insertBits((_S935), (_S937), (u32(22)), (u32(1))));
+        here_0.path = _S938;
+        var _S939 : u32 = here_0.path;
+        var _S940 : u32 = select(u32(0), u32(1), _S912);
+        var _S941 : u32 = (insertBits((_S939), (_S940), (u32(23)), (u32(1))));
+        here_0.path = _S941;
+        var _S942 : f32 = prev_0.pdf * geometry_density_0;
+        here_0.jac = _S942;
+        var _S943 : vec4<u32> = vec4<u32>(hit_2.instance_index, hit_2.triangle_index, (bitcast<vec2<u32>>((hit_2.uv))));
+        here_0.rc = _S943;
+        var _S944 : bool;
+        if(replay_0)
+        {
+            _S944 = _S860 == u32(1);
+        }
+        else
+        {
+            _S944 = false;
+        }
+        var _S945 : bool;
+        if(_S944)
+        {
+            _S945 = b_3 == _S859;
+        }
+        else
+        {
+            _S945 = false;
+        }
+        var _S946 : bool = b_3 == _S871;
+        var _S947 : bool;
+        if(_S946)
+        {
+            var _S948 : bool = !scatter_0;
+            if(_S948)
+            {
+                _S947 = true;
+            }
+            else
+            {
+                var _S949 : bool = _S860 != u32(1);
+                if(_S949)
                 {
-                    _S927 = true;
+                    _S947 = _S860 != u32(3);
                 }
                 else
                 {
-                    _S927 = (_S931.density) == 0.0f;
+                    _S947 = false;
                 }
-                if(_S927)
+            }
+        }
+        else
+        {
+            _S947 = false;
+        }
+        var _S950 : bool;
+        if(_S947)
+        {
+            _S950 = _S860 == u32(2);
+        }
+        else
+        {
+            _S950 = false;
+        }
+        var _S951 : bool;
+        if(_S950)
+        {
+            _S951 = !_S896;
+        }
+        else
+        {
+            _S951 = false;
+        }
+        var _S952 : bool;
+        if(_S951)
+        {
+            _S952 = _S861 != u32(4);
+        }
+        else
+        {
+            _S952 = false;
+        }
+        var _S953 : bool = _S859 == _S858;
+        var _S954 : bool;
+        if(_S953)
+        {
+            _S954 = _S861 == u32(0);
+        }
+        else
+        {
+            _S954 = false;
+        }
+        var _S955 : bool;
+        if(_S954)
+        {
+            _S955 = (hit_2.instance_index) == (_S872.instance_index);
+        }
+        else
+        {
+            _S955 = false;
+        }
+        var _S956 : bool;
+        if(_S955)
+        {
+            _S956 = (hit_2.triangle_index) == (_S872.triangle_index);
+        }
+        else
+        {
+            _S956 = false;
+        }
+        var _S957 : bool;
+        if(_S956)
+        {
+            _S957 = _S896;
+        }
+        else
+        {
+            _S957 = false;
+        }
+        var _S958 : bool = select(_S952, _S957, _S945);
+        var _S959 : bool;
+        if(_S915)
+        {
+            _S959 = select(scatter_0, _S958, replay_0);
+        }
+        else
+        {
+            _S959 = false;
+        }
+        var _S960 : TreeSample = TreeSample_x24init_0(_S856, _S856, 0.0f, u32(0));
+        var _S961 : bool;
+        var lit_0 : vec3<f32>;
+        var lobe_index_0 : u32;
+        var light_0 : TreeSample;
+        if(_S959)
+        {
+            var _S962 : Surface = surface_4;
+            var _S963 : bool = isTranslucent_0(_S897.material);
+            var _S964 : u32 = stream(r_6.seed, b_3 + u32(64));
+            var _S965 : TreeSample = sampleLightTree_0(ray_2.origin, _S898.smooth_n, surface_4.geometry_n, surface_4.geometry_offset, _S963, _S964);
+            var _S966 : bool = (any(((_S965.radiance) != _S856)));
+            if(_S966)
+            {
+                var throughputs_2 : array<vec3<f32>, i32(5)>;
+                var pdfs_2 : array<f32, i32(5)>;
+                var _S967 : vec3<f32> = BSDF(ray_2.unit_direction, _S965.dir, _S898.smooth_n, _S897.material, _S914.x, _S914.y, (dot(_S962.geometry_n, (vec3<f32>(0) - ray_2.unit_direction)) * dot(_S962.geometry_n, _S965.dir)) <= 0.0f, surface_4.random_state, u32(4294967295), &(throughputs_2), &(pdfs_2));
+                var _S968 : u32 = (uniforms_uint.max_bounces);
+                var _S969 : bool = !(b_3 < _S968);
+                if(_S969)
                 {
-                    var _S936 : vec3<f32> = _S933 * _S931.radiance;
-                    lit_0 = _S936;
+                    _S961 = true;
+                }
+                else
+                {
+                    _S961 = (_S965.density) == 0.0f;
+                }
+                if(_S961)
+                {
+                    var _S970 : vec3<f32> = _S967 * _S965.radiance;
+                    lit_0 = _S970;
                 }
                 else
                 {
                     lobe_index_0 = u32(0);
-                    lit_0 = _S839;
+                    lit_0 = _S856;
                     loop
                     {
                         if(lobe_index_0 < u32(5))
@@ -3243,61 +3371,67 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                         {
                             break;
                         }
-                        var _S937 : bool = (pdfs_2[lobe_index_0]) > 0.0f;
-                        if(_S937)
+                        var _S971 : bool = (pdfs_2[lobe_index_0]) > 0.0f;
+                        if(_S971)
                         {
-                            var _S938 : f32 = pdfs_2[lobe_index_0] / _S931.density;
-                            var lit_1 : vec3<f32> = lit_0 + throughputs_2[lobe_index_0] * vec3<f32>(pdfs_2[lobe_index_0]) / vec3<f32>((_S931.density * (1.0f + _S938 * _S938)));
+                            var _S972 : f32 = pdfs_2[lobe_index_0] / _S965.density;
+                            var lit_1 : vec3<f32> = lit_0 + throughputs_2[lobe_index_0] * vec3<f32>(pdfs_2[lobe_index_0]) / vec3<f32>((_S965.density * (1.0f + _S972 * _S972)));
                             lit_0 = lit_1;
                         }
                         var i_8 : u32 = lobe_index_0 + u32(1);
                         lobe_index_0 = i_8;
                     }
-                    var _S939 : vec3<f32> = lit_0 * _S931.radiance * vec3<f32>(_S931.density);
-                    lit_0 = _S939;
+                    var _S973 : vec3<f32> = lit_0 * _S965.radiance * vec3<f32>(_S965.density);
+                    lit_0 = _S973;
                 }
             }
             else
             {
-                lit_0 = _S839;
+                lit_0 = _S856;
             }
-            light_0 = _S931;
+            light_0 = _S965;
         }
         else
         {
-            light_0 = _S926;
-            lit_0 = _S839;
+            light_0 = _S960;
+            lit_0 = _S856;
         }
         var wrong_side_0 : bool;
         var refracted_4 : bool;
-        var _S940 : bool;
-        var _S941 : bool;
+        var _S974 : bool;
+        var _S975 : bool;
         var density_3 : f32;
-        var throughput_4 : vec3<f32>;
-        if(_S911)
+        var throughput_5 : vec3<f32>;
+        if(_S945)
         {
-            var _S942 : bool = !_S879;
-            if(_S942)
+            var _S976 : bool = !_S896;
+            if(_S976)
             {
-                return _S840;
+                return _S857;
             }
-            var throughput_5 : vec3<f32> = throughput_3 * vec3<f32>(geometry_density_0);
-            var density_4 : f32 = density_2 * geometry_density_0;
-            if(_S919)
+            var _S977 : u32 = (extractBits((r_6.path), (u32(23)), (u32(1))));
+            var _S978 : bool = _S912 != (_S977 == u32(1));
+            if(_S978)
             {
-                _S927 = _S844 == u32(1);
+                return _S857;
+            }
+            var throughput_6 : vec3<f32> = throughput_4 * vec3<f32>(geometry_density_0);
+            var density_4 : f32 = density_2 * geometry_density_0;
+            if(_S953)
+            {
+                _S961 = _S861 == u32(1);
             }
             else
             {
-                _S927 = false;
+                _S961 = false;
             }
-            if(_S927)
+            if(_S961)
             {
-                return Shift_x24init_0(throughput_5 * emission_1 / vec3<f32>(r_6.jac), density_4 / r_6.jac);
+                return Shift_x24init_0(throughput_6 * emission_1 / vec3<f32>(r_6.jac), density_4 / r_6.jac);
             }
-            if(_S919)
+            if(_S953)
             {
-                wrong_side_0 = _S844 == u32(0);
+                wrong_side_0 = _S861 == u32(0);
             }
             else
             {
@@ -3305,25 +3439,25 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
             }
             if(wrong_side_0)
             {
-                var _S943 : bool = !_S884;
-                if(_S943)
+                var _S979 : bool = !_S915;
+                if(_S979)
                 {
                     is_inside_4 = true;
                 }
                 else
                 {
-                    var _S944 : f32 = rgb_to_greyscale(light_0.radiance);
-                    is_inside_4 = !(_S944 > 0.0f);
+                    var _S980 : f32 = rgb_to_greyscale(light_0.radiance);
+                    is_inside_4 = !(_S980 > 0.0f);
                 }
                 if(is_inside_4)
                 {
-                    return _S840;
+                    return _S857;
                 }
-                return Shift_x24init_0(throughput_5 * lit_0 / vec3<f32>(r_6.jac), density_4 / r_6.jac);
+                return Shift_x24init_0(throughput_6 * lit_0 / vec3<f32>(r_6.jac), density_4 / r_6.jac);
             }
-            if(_S919)
+            if(_S953)
             {
-                refracted_4 = _S844 == u32(4);
+                refracted_4 = _S861 == u32(4);
             }
             else
             {
@@ -3331,47 +3465,47 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
             }
             if(refracted_4)
             {
-                var _S945 : bool = !_S884;
-                if(_S945)
+                var _S981 : bool = !_S915;
+                if(_S981)
                 {
-                    return _S840;
+                    return _S857;
                 }
-                var _S946 : f32 = environmentPdf_0(r_6.dir);
-                var _S947 : vec3<f32> = skyBSDF(ray_2.unit_direction, r_6.dir, surface_4, _S883, is_inside_4, _S946, surface_4.random_state);
-                return Shift_x24init_0(throughput_5 * _S947 * r_6.radiance / vec3<f32>(r_6.jac), density_4 / r_6.jac);
+                var _S982 : f32 = environmentPdf_0(r_6.dir);
+                var _S983 : vec3<f32> = skyBSDF(ray_2.unit_direction, r_6.dir, surface_4, _S914, is_inside_4, _S982, surface_4.random_state);
+                return Shift_x24init_0(throughput_6 * _S983 * r_6.radiance / vec3<f32>(r_6.jac), density_4 / r_6.jac);
             }
-            var _S948 : u32 = (extractBits((r_6.path), (u32(21)), (u32(1))));
-            var _S949 : bool = _S884 != (_S948 == u32(1));
-            if(_S949)
+            var _S984 : u32 = (extractBits((r_6.path), (u32(21)), (u32(1))));
+            var _S985 : bool = _S915 != (_S984 == u32(1));
+            if(_S985)
             {
-                return _S840;
+                return _S857;
             }
-            throughput_4 = throughput_5;
+            throughput_5 = throughput_6;
             density_3 = density_4;
         }
         else
         {
             if(replay_0)
             {
-                _S927 = _S912;
+                _S961 = _S946;
             }
             else
             {
-                _S927 = false;
+                _S961 = false;
             }
-            if(_S927)
+            if(_S961)
             {
-                var _S950 : bool = !scatter_0;
-                if(_S950)
+                var _S986 : bool = !scatter_0;
+                if(_S986)
                 {
                     wrong_side_0 = true;
                 }
                 else
                 {
-                    var _S951 : bool = _S843 != u32(1);
-                    if(_S951)
+                    var _S987 : bool = _S860 != u32(1);
+                    if(_S987)
                     {
-                        wrong_side_0 = _S843 != u32(3);
+                        wrong_side_0 = _S860 != u32(3);
                     }
                     else
                     {
@@ -3385,48 +3519,40 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
             }
             if(wrong_side_0)
             {
-                var _S952 : bool = _S843 == u32(2);
-                if(_S952)
+                var _S988 : bool = _S860 == u32(2);
+                if(_S988)
                 {
-                    _S863 = _S884;
+                    _S880 = _S915;
                 }
                 else
                 {
-                    _S863 = false;
+                    _S880 = false;
                 }
-                if(_S863)
+                if(_S880)
                 {
-                    _S863 = !_S879;
-                }
-                else
-                {
-                    _S863 = false;
-                }
-                if(_S863)
-                {
-                    _S863 = _S844 == u32(4);
+                    _S880 = !_S896;
                 }
                 else
                 {
-                    _S863 = false;
+                    _S880 = false;
                 }
-                if(_S863)
+                if(_S880)
                 {
-                    var _S953 : u32 = stream(r_6.seed, b_3 + u32(256));
-                    var _S954 : SkySample = sampleSky_0(ray_2, surface_4, _S883, is_inside_4, _S953, surface_4.random_state);
-                    return Shift_x24init_0(throughput_3 * _S954.color, 1.0f);
-                }
-                if(_S952)
-                {
-                    is_inside_4 = _S884;
+                    _S880 = _S861 == u32(4);
                 }
                 else
                 {
-                    is_inside_4 = false;
+                    _S880 = false;
                 }
-                if(is_inside_4)
+                if(_S880)
                 {
-                    is_inside_4 = !_S879;
+                    var _S989 : u32 = stream(r_6.seed, b_3 + u32(256));
+                    var _S990 : SkySample = sampleSky_0(ray_2, surface_4, _S914, is_inside_4, _S989, surface_4.random_state);
+                    return Shift_x24init_0(throughput_4 * _S990.color, 1.0f);
+                }
+                if(_S988)
+                {
+                    is_inside_4 = _S915;
                 }
                 else
                 {
@@ -3434,25 +3560,25 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    var _S955 : f32 = rgb_to_greyscale(light_0.radiance);
-                    var _S956 : bool = !(_S955 > 0.0f);
-                    if(_S956)
+                    is_inside_4 = !_S896;
+                }
+                else
+                {
+                    is_inside_4 = false;
+                }
+                if(is_inside_4)
+                {
+                    var _S991 : f32 = rgb_to_greyscale(light_0.radiance);
+                    var _S992 : bool = !(_S991 > 0.0f);
+                    if(_S992)
                     {
-                        return _S840;
+                        return _S857;
                     }
-                    return Shift_x24init_0(throughput_3 * lit_0, 1.0f);
+                    return Shift_x24init_0(throughput_4 * lit_0, 1.0f);
                 }
-                if(_S853)
+                if(_S870)
                 {
-                    is_inside_4 = _S844 == u32(2);
-                }
-                else
-                {
-                    is_inside_4 = false;
-                }
-                if(is_inside_4)
-                {
-                    is_inside_4 = _S862;
+                    is_inside_4 = _S861 == u32(2);
                 }
                 else
                 {
@@ -3460,11 +3586,19 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    return Shift_x24init_0(throughput_3 * emission_1, 1.0f);
+                    is_inside_4 = _S879;
                 }
-                if(_S853)
+                else
                 {
-                    is_inside_4 = _S844 == u32(1);
+                    is_inside_4 = false;
+                }
+                if(is_inside_4)
+                {
+                    return Shift_x24init_0(throughput_4 * emission_1, 1.0f);
+                }
+                if(_S870)
+                {
+                    is_inside_4 = _S861 == u32(1);
                 }
                 else
                 {
@@ -3480,7 +3614,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    is_inside_4 = !_S879;
+                    is_inside_4 = !_S896;
                 }
                 else
                 {
@@ -3488,13 +3622,13 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    return Shift_x24init_0(throughput_3 * emission_1, 1.0f);
+                    return Shift_x24init_0(throughput_4 * emission_1, 1.0f);
                 }
-                return _S840;
+                return _S857;
             }
             else
             {
-                if(_S889)
+                if(_S920)
                 {
                     refracted_4 = scatter_0;
                 }
@@ -3504,147 +3638,147 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(refracted_4)
                 {
-                    var _S957 : bool = b_3 > u32(0);
-                    if(_S957)
+                    var _S993 : bool = b_3 > u32(0);
+                    if(_S993)
                     {
                         var candidate_3 : Reservoir = chain_0;
-                        if(_S901)
+                        if(_S932)
                         {
-                            var _S958 : vec3<f32> = safeDivide(throughput_3 * emission_1, chain_throughput_0);
-                            candidate_3.radiance = _S958;
+                            var _S994 : vec3<f32> = safeDivide(throughput_4 * emission_1, chain_throughput_0);
+                            candidate_3.radiance = _S994;
                         }
                         else
                         {
-                            if(_S879)
+                            if(_S896)
                             {
                                 candidate_3 = here_0;
                             }
                         }
-                        var _S959 : vec3<f32> = throughput_3 * emission_1;
-                        var _S960 : Reservoir = withEnd(candidate_3, u32(1), b_3, _S959);
-                        offer(&((*sel_4)), _S960, _S959 * vec3<f32>(scale_1) / vec3<f32>(density_2));
+                        var _S995 : vec3<f32> = throughput_4 * emission_1;
+                        var _S996 : Reservoir = withEnd(candidate_3, u32(1), b_3, _S995);
+                        offer(&((*sel_4)), _S996, _S995 * vec3<f32>(scale_1) / vec3<f32>(density_2));
                     }
-                    if(_S884)
+                    if(_S915)
                     {
-                        var _S961 : vec3<f32> = throughput_3 * lit_0;
+                        var _S997 : vec3<f32> = throughput_4 * lit_0;
                         var candidate_4 : Reservoir = chain_0;
-                        if(_S901)
+                        if(_S932)
                         {
-                            var _S962 : vec3<f32> = safeDivide(_S961, chain_throughput_0);
-                            candidate_4.radiance = _S962;
+                            var _S998 : vec3<f32> = safeDivide(_S997, chain_throughput_0);
+                            candidate_4.radiance = _S998;
                         }
                         else
                         {
-                            if(_S879)
+                            if(_S896)
                             {
                                 candidate_4 = here_0;
-                                var _S963 : u32 = (insertBits((candidate_4.path), (u32(1)), (u32(21)), (u32(1))));
-                                candidate_4.path = _S963;
+                                var _S999 : u32 = (insertBits((candidate_4.path), (u32(1)), (u32(21)), (u32(1))));
+                                candidate_4.path = _S999;
                                 candidate_4.dir = light_0.dir;
                                 candidate_4.radiance = light_0.radiance;
                             }
                             else
                             {
-                                var _S964 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
-                                var _S965 : u32 = (insertBits((_S964), (u32(2)), (u32(10)), (u32(2))));
-                                candidate_4.path = _S965;
+                                var _S1000 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
+                                var _S1001 : u32 = (insertBits((_S1000), (u32(2)), (u32(10)), (u32(2))));
+                                candidate_4.path = _S1001;
                             }
                         }
-                        var _S966 : Reservoir = withEnd(candidate_4, u32(0), b_3, _S961);
-                        offer(&((*sel_4)), _S966, _S961 * vec3<f32>(scale_1) / vec3<f32>(density_2));
+                        var _S1002 : Reservoir = withEnd(candidate_4, u32(0), b_3, _S997);
+                        offer(&((*sel_4)), _S1002, _S997 * vec3<f32>(scale_1) / vec3<f32>(density_2));
                     }
-                    if(_S884)
+                    if(_S915)
                     {
-                        var _S967 : bool = environmentMapped_0();
-                        _S940 = _S967;
-                    }
-                    else
-                    {
-                        _S940 = false;
-                    }
-                    if(_S940)
-                    {
-                        var _S968 : u32 = (uniforms_uint.max_bounces);
-                        _S941 = b_3 < _S968;
+                        var _S1003 : bool = environmentMapped_0();
+                        _S974 = _S1003;
                     }
                     else
                     {
-                        _S941 = false;
+                        _S974 = false;
                     }
-                    if(_S941)
+                    if(_S974)
                     {
-                        var _S969 : u32 = stream(r_6.seed, b_3 + u32(256));
-                        var _S970 : SkySample = sampleSky_0(ray_2, surface_4, _S883, is_inside_4, _S969, surface_4.random_state);
-                        var _S971 : vec3<f32> = throughput_3 * _S970.color;
+                        var _S1004 : u32 = (uniforms_uint.max_bounces);
+                        _S975 = b_3 < _S1004;
+                    }
+                    else
+                    {
+                        _S975 = false;
+                    }
+                    if(_S975)
+                    {
+                        var _S1005 : u32 = stream(r_6.seed, b_3 + u32(256));
+                        var _S1006 : SkySample = sampleSky_0(ray_2, surface_4, _S914, is_inside_4, _S1005, surface_4.random_state);
+                        var _S1007 : vec3<f32> = throughput_4 * _S1006.color;
                         var candidate_5 : Reservoir = chain_0;
-                        if(_S901)
+                        if(_S932)
                         {
-                            var _S972 : vec3<f32> = safeDivide(_S971, chain_throughput_0);
-                            candidate_5.radiance = _S972;
+                            var _S1008 : vec3<f32> = safeDivide(_S1007, chain_throughput_0);
+                            candidate_5.radiance = _S1008;
                         }
                         else
                         {
-                            if(_S879)
+                            if(_S896)
                             {
                                 candidate_5 = here_0;
-                                var _S973 : u32 = (insertBits((candidate_5.path), (u32(1)), (u32(21)), (u32(1))));
-                                candidate_5.path = _S973;
-                                candidate_5.dir = _S970.dir;
-                                candidate_5.radiance = _S970.radiance;
+                                var _S1009 : u32 = (insertBits((candidate_5.path), (u32(1)), (u32(21)), (u32(1))));
+                                candidate_5.path = _S1009;
+                                candidate_5.dir = _S1006.dir;
+                                candidate_5.radiance = _S1006.radiance;
                             }
                             else
                             {
-                                var _S974 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
-                                var _S975 : u32 = (insertBits((_S974), (u32(2)), (u32(10)), (u32(2))));
-                                candidate_5.path = _S975;
+                                var _S1010 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
+                                var _S1011 : u32 = (insertBits((_S1010), (u32(2)), (u32(10)), (u32(2))));
+                                candidate_5.path = _S1011;
                             }
                         }
-                        var _S976 : Reservoir = withEnd(candidate_5, u32(4), b_3, _S971);
-                        offer(&((*sel_4)), _S976, _S971 * vec3<f32>(scale_1) / vec3<f32>(density_2));
+                        var _S1012 : Reservoir = withEnd(candidate_5, u32(4), b_3, _S1007);
+                        offer(&((*sel_4)), _S1012, _S1007 * vec3<f32>(scale_1) / vec3<f32>(density_2));
                     }
                 }
             }
-            throughput_4 = throughput_3;
+            throughput_5 = throughput_4;
             density_3 = density_2;
         }
-        var _S977 : bool;
-        var _S978 : bool;
+        var _S1013 : bool;
+        var _S1014 : bool;
         var straight_0 : bool;
-        var _S979 : bool;
-        var _S980 : bool;
+        var _S1015 : bool;
+        var _S1016 : bool;
         var density_5 : f32;
         var survival_probability_0 : f32;
         if(scatter_0)
         {
             if(replay_0)
             {
-                _S927 = _S912;
+                _S961 = _S946;
             }
             else
             {
-                _S927 = false;
+                _S961 = false;
             }
-            var _S981 : u32 = (extractBits((r_6.path), (u32(15)), (u32(3))));
-            var _S982 : u32 = (extractBits((r_6.path), (u32(18)), (u32(3))));
-            var _S983 : u32 = select(_S981, _S982, _S911);
-            var refracted_5 : bool = _S983 == u32(1);
-            var _S984 : SampleBSDF = SampleBSDF_x24init_0(_S839, _S839, u32(0), false, u32(0), 0.0f);
-            var lobe_2 : SampleBSDF = _S984;
+            var _S1017 : u32 = (extractBits((r_6.path), (u32(15)), (u32(3))));
+            var _S1018 : u32 = (extractBits((r_6.path), (u32(18)), (u32(3))));
+            var _S1019 : u32 = select(_S1017, _S1018, _S945);
+            var refracted_5 : bool = _S1019 == u32(1);
+            var _S1020 : SampleBSDF = SampleBSDF_x24init_0(_S856, _S856, u32(0), false, u32(0), 0.0f);
+            var lobe_2 : SampleBSDF = _S1020;
             var dir_10 : vec3<f32>;
             var reconnection_1 : vec3<f32>;
-            if(_S927)
+            if(_S961)
             {
-                var _S985 : u32 = (extractBits((r_6.path), (u32(22)), (u32(1))));
-                var _S986 : bool = is_inside_4 != (_S985 == u32(1));
-                if(_S986)
+                var _S1021 : u32 = (extractBits((r_6.path), (u32(22)), (u32(1))));
+                var _S1022 : bool = is_inside_4 != (_S1021 == u32(1));
+                if(_S1022)
                 {
-                    return _S840;
+                    return _S857;
                 }
-                var _S987 : bool = _S843 == u32(1);
-                if(_S987)
+                var _S1023 : bool = _S860 == u32(1);
+                if(_S1023)
                 {
-                    var _S988 : vec3<f32> = (hitPosition((_S855)));
-                    dir_10 = _S988;
+                    var _S1024 : vec3<f32> = (hitPosition((_S872)));
+                    dir_10 = _S1024;
                 }
                 else
                 {
@@ -3656,10 +3790,10 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 else
                 {
-                    var _S989 : bool = isTranslucent_0(_S880.material);
-                    if(_S989)
+                    var _S1025 : bool = isTranslucent_0(_S897.material);
+                    if(_S1025)
                     {
-                        wrong_side_0 = _S983 == u32(0);
+                        wrong_side_0 = _S1019 == u32(0);
                     }
                     else
                     {
@@ -3667,54 +3801,54 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                     }
                     if(wrong_side_0)
                     {
-                        var _S990 : vec3<f32> = dir_10 - ray_2.origin;
-                        var _S991 : vec3<f32> = select(r_6.dir, _S990, _S987);
-                        refracted_4 = (dot(_S881.smooth_n, _S991) * _S882) < 0.0f;
+                        var _S1026 : vec3<f32> = dir_10 - ray_2.origin;
+                        var _S1027 : vec3<f32> = select(r_6.dir, _S1026, _S1023);
+                        refracted_4 = (dot(_S898.smooth_n, _S1027) * _S899) < 0.0f;
                     }
                     else
                     {
                         refracted_4 = false;
                     }
                 }
-                if(_S987)
+                if(_S1023)
                 {
-                    var _S992 : vec3<f32> = ray_2.origin;
-                    var _S993 : Surface = surface_4;
-                    var _S994 : vec3<f32> = (vec3<f32>(0) - _S881.smooth_n);
-                    var _S995 : bool = is_inside_4 != refracted_4;
-                    var _S996 : vec3<f32> = select(_S881.smooth_n, _S994, _S995);
-                    var _S997 : vec3<f32> = (normalize((dir_10 - (_S992 + vec3<f32>(_S993.geometry_offset) * _S996))));
-                    reconnection_1 = _S997;
+                    var _S1028 : vec3<f32> = ray_2.origin;
+                    var _S1029 : Surface = surface_4;
+                    var _S1030 : vec3<f32> = (vec3<f32>(0) - _S898.smooth_n);
+                    var _S1031 : bool = is_inside_4 != refracted_4;
+                    var _S1032 : vec3<f32> = select(_S898.smooth_n, _S1030, _S1031);
+                    var _S1033 : vec3<f32> = (normalize((dir_10 - (_S1028 + vec3<f32>(_S1029.geometry_offset) * _S1032))));
+                    reconnection_1 = _S1033;
                 }
                 else
                 {
                     reconnection_1 = r_6.dir;
                 }
-                var _S998 : bool = wrongSide_0(is_inside_4, refracted_4, reconnection_1, surface_4.geometry_n);
-                if(_S998)
+                var _S1034 : bool = wrongSide_0(is_inside_4, refracted_4, reconnection_1, surface_4.geometry_n);
+                if(_S1034)
                 {
-                    return _S840;
+                    return _S857;
                 }
-                var _S999 : vec3<f32> = dir_10;
-                lobe_index_0 = _S983;
+                var _S1035 : vec3<f32> = dir_10;
+                lobe_index_0 = _S1019;
                 dir_10 = reconnection_1;
                 wrong_side_0 = false;
-                reconnection_1 = _S999;
+                reconnection_1 = _S1035;
             }
             else
             {
-                var _S1000 : bool = !_S911;
-                if(_S1000)
+                var _S1036 : bool = !_S945;
+                if(_S1036)
                 {
-                    var _S1001 : f32 = _S883.x;
-                    var _S1002 : f32 = _S883.y;
-                    var _S1003 : SampleBSDF = sampleBSDF(ray_2.unit_direction, _S881.smooth_n, _S880.material, _S1001, _S1002, surface_4.random_state);
-                    var bsdf_sampled_0 : SampleBSDF = _S1003;
-                    var _S1004 : Surface = surface_4;
+                    var _S1037 : f32 = _S914.x;
+                    var _S1038 : f32 = _S914.y;
+                    var _S1039 : SampleBSDF = sampleBSDF(ray_2.unit_direction, _S898.smooth_n, _S897.material, _S1037, _S1038, surface_4.random_state);
+                    var bsdf_sampled_0 : SampleBSDF = _S1039;
+                    var _S1040 : Surface = surface_4;
                     var wrong_side_1 : bool = wrongSide_0(is_inside_4, bsdf_sampled_0.refracted, bsdf_sampled_0.unit_direction, surface_4.geometry_n);
                     if(wrong_side_1)
                     {
-                        wrong_side_0 = (_S880.material.transmission) > 0.0f;
+                        wrong_side_0 = (_S897.material.transmission) > 0.0f;
                     }
                     else
                     {
@@ -3722,522 +3856,522 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                     }
                     if(wrong_side_0)
                     {
-                        var _S1005 : SampleBSDF = sampleBSDF(bsdf_sampled_0.unit_direction, _S1004.geometry_n, _S880.material, _S1001, _S1002, bsdf_sampled_0.random_state);
-                        bsdf_sampled_0.unit_direction = _S1005.unit_direction;
-                        bsdf_sampled_0.refracted = _S1005.refracted;
-                        bsdf_sampled_0.throughput = _S1005.throughput;
+                        var _S1041 : SampleBSDF = sampleBSDF(bsdf_sampled_0.unit_direction, _S1040.geometry_n, _S897.material, _S1037, _S1038, bsdf_sampled_0.random_state);
+                        bsdf_sampled_0.unit_direction = _S1041.unit_direction;
+                        bsdf_sampled_0.refracted = _S1041.refracted;
+                        bsdf_sampled_0.throughput = _S1041.throughput;
                     }
                     else
                     {
                         if(wrong_side_1)
                         {
-                            var _S1006 : vec3<f32> = bsdf_sampled_0.unit_direction - vec3<f32>((2.0f * dot(bsdf_sampled_0.unit_direction, _S1004.geometry_n))) * _S1004.geometry_n;
-                            bsdf_sampled_0.unit_direction = _S1006;
+                            var _S1042 : vec3<f32> = bsdf_sampled_0.unit_direction - vec3<f32>((2.0f * dot(bsdf_sampled_0.unit_direction, _S1040.geometry_n))) * _S1040.geometry_n;
+                            bsdf_sampled_0.unit_direction = _S1042;
                         }
                     }
-                    var _S1007 : u32 = bsdf_sampled_0.lobe;
-                    var _S1008 : vec3<f32> = bsdf_sampled_0.unit_direction;
-                    var _S1009 : bool = bsdf_sampled_0.refracted;
+                    var _S1043 : u32 = bsdf_sampled_0.lobe;
+                    var _S1044 : vec3<f32> = bsdf_sampled_0.unit_direction;
+                    var _S1045 : bool = bsdf_sampled_0.refracted;
                     lobe_2 = bsdf_sampled_0;
-                    var _S1010 : f32 = bsdf_sampled_0.pdf;
-                    var _S1011 : f32 = select(_S1010, 0.0f, wrong_side_1);
-                    lobe_2.pdf = _S1011;
-                    lobe_index_0 = _S1007;
-                    dir_10 = _S1008;
+                    var _S1046 : f32 = bsdf_sampled_0.pdf;
+                    var _S1047 : f32 = select(_S1046, 0.0f, wrong_side_1);
+                    lobe_2.pdf = _S1047;
+                    lobe_index_0 = _S1043;
+                    dir_10 = _S1044;
                     wrong_side_0 = wrong_side_1;
-                    refracted_4 = _S1009;
+                    refracted_4 = _S1045;
                 }
                 else
                 {
-                    lobe_index_0 = _S983;
+                    lobe_index_0 = _S1019;
                     dir_10 = r_6.dir;
                     wrong_side_0 = false;
                     refracted_4 = refracted_5;
                 }
                 reconnection_1 = reconnection_0;
             }
-            if(_S927)
+            if(_S961)
             {
-                _S940 = true;
+                _S974 = true;
             }
             else
             {
-                _S940 = _S911;
+                _S974 = _S945;
             }
-            if(_S940)
+            if(_S974)
             {
-                var _S1012 : u32;
+                var _S1048 : u32;
                 if(lobe_index_0 == u32(4))
                 {
-                    _S1012 = u32(3);
+                    _S1048 = u32(3);
                 }
                 else
                 {
                     if(lobe_index_0 == u32(6))
                     {
-                        _S1012 = u32(4);
+                        _S1048 = u32(4);
                     }
                     else
                     {
-                        _S1012 = lobe_index_0;
+                        _S1048 = lobe_index_0;
                     }
                 }
-                var _S1013 : f32 = _S883.x;
-                var _S1014 : f32 = _S883.y;
-                var _S1015 : bool = wrongSide_0(is_inside_4, false, dir_10, surface_4.geometry_n);
-                var _S1016 : Surface = surface_4;
+                var _S1049 : f32 = _S914.x;
+                var _S1050 : f32 = _S914.y;
+                var _S1051 : bool = wrongSide_0(is_inside_4, false, dir_10, surface_4.geometry_n);
+                var _S1052 : Surface = surface_4;
                 var throughputs_3 : array<vec3<f32>, i32(5)>;
                 var pdfs_3 : array<f32, i32(5)>;
-                var _S1017 : vec3<f32> = BSDF(ray_2.unit_direction, dir_10, _S881.smooth_n, _S880.material, _S1013, _S1014, _S1015, surface_4.random_state, (u32(1) << (_S1012)), &(throughputs_3), &(pdfs_3));
-                var _S1018 : bool = (pdfs_3[_S1012]) > 0.0f;
-                if(_S1018)
+                var _S1053 : vec3<f32> = BSDF(ray_2.unit_direction, dir_10, _S898.smooth_n, _S897.material, _S1049, _S1050, _S1051, surface_4.random_state, (u32(1) << (_S1048)), &(throughputs_3), &(pdfs_3));
+                var _S1054 : bool = (pdfs_3[_S1048]) > 0.0f;
+                if(_S1054)
                 {
-                    var _S1019 : SampleBSDF = SampleBSDF_x24init_0(dir_10, throughputs_3[_S1012], _S1016.random_state, lobe_index_0 == u32(1), lobe_index_0, pdfs_3[_S1012]);
-                    lobe_2 = _S1019;
+                    var _S1055 : SampleBSDF = SampleBSDF_x24init_0(dir_10, throughputs_3[_S1048], _S1052.random_state, lobe_index_0 == u32(1), lobe_index_0, pdfs_3[_S1048]);
+                    lobe_2 = _S1055;
                 }
             }
-            var _S1020 : bool = lobe_index_0 == u32(0);
-            if(_S1020)
+            var _S1056 : bool = lobe_index_0 == u32(0);
+            if(_S1056)
             {
-                _S941 = true;
+                _S975 = true;
             }
             else
             {
-                _S941 = lobe_index_0 == u32(4);
+                _S975 = lobe_index_0 == u32(4);
             }
-            if(_S941)
+            if(_S975)
             {
-                _S977 = true;
+                _S1013 = true;
             }
             else
             {
-                _S977 = lobe_index_0 == u32(6);
+                _S1013 = lobe_index_0 == u32(6);
             }
-            var _S1021 : bool = !_S977;
-            if(_S1021)
+            var _S1057 : bool = !_S1013;
+            if(_S1057)
             {
-                var _S1022 : bool = (_S880.material.roughness) == 0.0f;
-                if(_S1022)
+                var _S1058 : bool = (_S897.material.roughness) == 0.0f;
+                if(_S1058)
                 {
-                    _S978 = true;
+                    _S1014 = true;
                 }
                 else
                 {
-                    var _S1023 : bool = lobe_index_0 == u32(1);
-                    if(_S1023)
+                    var _S1059 : bool = lobe_index_0 == u32(1);
+                    if(_S1059)
                     {
-                        _S978 = (_S883.x) == (_S883.y);
+                        _S1014 = (_S914.x) == (_S914.y);
                     }
                     else
                     {
-                        _S978 = false;
+                        _S1014 = false;
                     }
                 }
             }
             else
             {
-                _S978 = false;
+                _S1014 = false;
             }
-            var _S1024 : bool = lobe_index_0 == u32(1);
-            if(_S1024)
+            var _S1060 : bool = lobe_index_0 == u32(1);
+            if(_S1060)
             {
-                straight_0 = (_S880.material.ior) == 1.0f;
+                straight_0 = (_S897.material.ior) == 1.0f;
             }
             else
             {
                 straight_0 = false;
             }
-            var _S1025 : bool = isTranslucent_0(_S880.material);
-            if(_S1025)
+            var _S1061 : bool = isTranslucent_0(_S897.material);
+            if(_S1061)
             {
-                _S979 = _S1020;
+                _S1015 = _S1056;
             }
             else
             {
-                _S979 = false;
+                _S1015 = false;
             }
-            if(_S979)
+            if(_S1015)
             {
-                _S980 = (dot(dir_10, surface_4.geometry_n)) < 0.0f;
-            }
-            else
-            {
-                _S980 = false;
-            }
-            var _S1026 : bool;
-            if(_S884)
-            {
-                _S1026 = !_S978;
+                _S1016 = (dot(dir_10, surface_4.geometry_n)) < 0.0f;
             }
             else
             {
-                _S1026 = false;
+                _S1016 = false;
             }
-            var _S1027 : bool;
-            if(_S1026)
+            var _S1062 : bool;
+            if(_S915)
             {
-                _S1027 = !wrong_side_0;
-            }
-            else
-            {
-                _S1027 = false;
-            }
-            var _S1028 : bool;
-            if(_S1027)
-            {
-                var _S1029 : f32 = lobe_2.pdf;
-                var _S1030 : vec3<f32> = ray_2.origin;
-                var _S1031 : bool = isTranslucent_0(_S880.material);
-                var _S1032 : vec3<f32> = select(_S881.smooth_n, _S839, _S1031);
-                var _S1033 : vec3<f32> = ray_2.origin;
-                var _S1034 : Surface = surface_4;
-                var _S1035 : vec3<f32> = (vec3<f32>(0) - _S881.smooth_n);
-                var _S1036 : vec3<f32> = select(_S881.smooth_n, _S1035, _S980);
-                var _S1037 : NEEVertex = NEEVertex_x24init_0(false, _S1029, _S1030, _S1032, _S1033 + vec3<f32>(_S1034.geometry_offset) * _S1036);
-                nee_vertex_0 = _S1037;
+                _S1062 = !_S1014;
             }
             else
             {
-                var _S1038 : bool = lobe_index_0 != u32(1);
-                if(_S1038)
+                _S1062 = false;
+            }
+            var _S1063 : bool;
+            if(_S1062)
+            {
+                _S1063 = !wrong_side_0;
+            }
+            else
+            {
+                _S1063 = false;
+            }
+            var _S1064 : bool;
+            if(_S1063)
+            {
+                var _S1065 : f32 = lobe_2.pdf;
+                var _S1066 : vec3<f32> = ray_2.origin;
+                var _S1067 : bool = isTranslucent_0(_S897.material);
+                var _S1068 : vec3<f32> = select(_S898.smooth_n, _S856, _S1067);
+                var _S1069 : vec3<f32> = ray_2.origin;
+                var _S1070 : Surface = surface_4;
+                var _S1071 : vec3<f32> = (vec3<f32>(0) - _S898.smooth_n);
+                var _S1072 : vec3<f32> = select(_S898.smooth_n, _S1071, _S1016);
+                var _S1073 : NEEVertex = NEEVertex_x24init_0(false, _S1065, _S1066, _S1068, _S1069 + vec3<f32>(_S1070.geometry_offset) * _S1072);
+                nee_vertex_0 = _S1073;
+            }
+            else
+            {
+                var _S1074 : bool = lobe_index_0 != u32(1);
+                if(_S1074)
                 {
-                    _S1028 = true;
+                    _S1064 = true;
                 }
                 else
                 {
-                    _S1028 = (_S883.x) != (_S883.y);
+                    _S1064 = (_S914.x) != (_S914.y);
                 }
-                if(_S1028)
+                if(_S1064)
                 {
                     nee_vertex_0.none = true;
                 }
             }
-            var _S1039 : bool = (lobe_2.pdf) > 0.0f;
-            if(_S1039)
+            var _S1075 : bool = (lobe_2.pdf) > 0.0f;
+            if(_S1075)
             {
-                if(_S977)
+                if(_S1013)
                 {
-                    _S1028 = true;
+                    _S1064 = true;
                 }
                 else
                 {
-                    _S1028 = (lobe_2.pdf * prev_0.cos / (hit_2.distance * hit_2.distance) * threshold_0) <= 1.0f;
+                    _S1064 = (lobe_2.pdf * prev_0.cos / (hit_2.distance * hit_2.distance) * threshold_0) <= 1.0f;
                 }
             }
             else
             {
-                _S1028 = false;
+                _S1064 = false;
             }
-            var _S1040 : bool = (lobe_2.pdf) > 0.0f;
-            var _S1041 : bool;
-            if(_S1040)
+            var _S1076 : bool = (lobe_2.pdf) > 0.0f;
+            var _S1077 : bool;
+            if(_S1076)
             {
-                if(_S977)
+                if(_S1013)
                 {
-                    _S1041 = true;
+                    _S1077 = true;
                 }
                 else
                 {
-                    _S1041 = (_S880.material.roughness) >= 0.20000000298023224f;
+                    _S1077 = (_S897.material.roughness) >= 0.20000000298023224f;
                 }
             }
             else
             {
-                _S1041 = false;
+                _S1077 = false;
             }
-            var _S1042 : bool;
-            var throughput_6 : vec3<f32>;
-            if(_S911)
+            var _S1078 : bool;
+            var throughput_7 : vec3<f32>;
+            if(_S945)
             {
-                var _S1043 : bool = !_S1028;
-                if(_S1043)
+                var _S1079 : bool = !_S1064;
+                if(_S1079)
                 {
-                    return _S840;
+                    return _S857;
                 }
-                var _S1044 : bool = _S844 != u32(1);
-                if(_S1044)
+                var _S1080 : bool = _S861 != u32(1);
+                if(_S1080)
                 {
-                    _S1042 = _S844 != u32(2);
+                    _S1078 = _S861 != u32(2);
                 }
                 else
                 {
-                    _S1042 = false;
+                    _S1078 = false;
                 }
-                if(_S1042)
+                if(_S1078)
                 {
-                    var _S1045 : f32 = lobe_2.pdf;
-                    var _S1046 : f32 = select(0.0f, _S1045, _S884);
-                    var _S1047 : f32 = escapeWeight_0(_S1046, r_6.dir);
-                    if(_S919)
+                    var _S1081 : f32 = lobe_2.pdf;
+                    var _S1082 : f32 = select(0.0f, _S1081, _S915);
+                    var _S1083 : f32 = escapeWeight_0(_S1082, r_6.dir);
+                    if(_S953)
                     {
-                        is_inside_4 = _S850;
+                        is_inside_4 = _S867;
                     }
                     else
                     {
                         is_inside_4 = false;
                     }
-                    var _S1048 : f32 = select(1.0f, _S1047, is_inside_4);
-                    return Shift_x24init_0(throughput_4 * (lobe_2.throughput * vec3<f32>(lobe_2.pdf)) * r_6.radiance * vec3<f32>(_S1048) / vec3<f32>(r_6.jac), density_3 * lobe_2.pdf / r_6.jac);
+                    var _S1084 : f32 = select(1.0f, _S1083, is_inside_4);
+                    return Shift_x24init_0(throughput_5 * (lobe_2.throughput * vec3<f32>(lobe_2.pdf)) * r_6.radiance * vec3<f32>(_S1084) / vec3<f32>(r_6.jac), density_3 * lobe_2.pdf / r_6.jac);
                 }
-                var _S1049 : vec3<f32> = throughput_4 * vec3<f32>(lobe_2.pdf);
-                var _S1050 : f32 = density_3 * lobe_2.pdf;
-                throughput_6 = _S1049;
-                density_5 = _S1050;
+                var _S1085 : vec3<f32> = throughput_5 * vec3<f32>(lobe_2.pdf);
+                var _S1086 : f32 = density_3 * lobe_2.pdf;
+                throughput_7 = _S1085;
+                density_5 = _S1086;
             }
             else
             {
-                throughput_6 = throughput_4;
+                throughput_7 = throughput_5;
                 density_5 = density_3;
             }
             if(replay_0)
             {
-                _S1042 = b_3 <= _S854;
+                _S1078 = b_3 <= _S871;
             }
             else
             {
-                _S1042 = false;
+                _S1078 = false;
             }
-            var _S1051 : bool;
-            if(_S1042)
+            var _S1087 : bool;
+            if(_S1078)
             {
-                _S1051 = _S879;
-            }
-            else
-            {
-                _S1051 = false;
-            }
-            var _S1052 : bool;
-            if(_S1051)
-            {
-                _S1052 = _S1028;
+                _S1087 = _S896;
             }
             else
             {
-                _S1052 = false;
+                _S1087 = false;
             }
-            var _S1053 : bool;
-            if(_S1052)
+            var _S1088 : bool;
+            if(_S1087)
             {
-                _S1053 = true;
+                _S1088 = _S1064;
             }
             else
             {
-                if(_S927)
+                _S1088 = false;
+            }
+            var _S1089 : bool;
+            if(_S1088)
+            {
+                _S1089 = true;
+            }
+            else
+            {
+                if(_S961)
                 {
-                    _S1053 = !_S1041;
+                    _S1089 = !_S1077;
                 }
                 else
                 {
-                    _S1053 = false;
+                    _S1089 = false;
                 }
             }
-            if(_S1053)
+            if(_S1089)
             {
-                return _S840;
+                return _S857;
             }
-            var throughput_7 : vec3<f32>;
-            if(_S927)
+            var throughput_8 : vec3<f32>;
+            if(_S961)
             {
-                var _S1054 : vec3<f32> = throughput_6 * (lobe_2.throughput * vec3<f32>(lobe_2.pdf));
-                var _S1055 : f32 = lobe_2.pdf;
-                throughput_7 = _S1054;
-                survival_probability_0 = _S1055;
+                var _S1090 : vec3<f32> = throughput_7 * (lobe_2.throughput * vec3<f32>(lobe_2.pdf));
+                var _S1091 : f32 = lobe_2.pdf;
+                throughput_8 = _S1090;
+                survival_probability_0 = _S1091;
             }
             else
             {
-                var _S1056 : vec3<f32> = throughput_6 * max(lobe_2.throughput, _S839);
-                throughput_7 = _S1056;
+                var _S1092 : vec3<f32> = throughput_7 * max(lobe_2.throughput, _S856);
+                throughput_8 = _S1092;
                 survival_probability_0 = density_5;
             }
-            var _S1057 : bool;
-            if(_S889)
+            var _S1093 : bool;
+            if(_S920)
             {
-                _S1057 = !_S901;
+                _S1093 = !_S932;
             }
             else
             {
-                _S1057 = false;
+                _S1093 = false;
             }
-            var _S1058 : bool;
-            if(_S1057)
+            var _S1094 : bool;
+            if(_S1093)
             {
-                _S1058 = _S879;
-            }
-            else
-            {
-                _S1058 = false;
-            }
-            var _S1059 : bool;
-            if(_S1058)
-            {
-                _S1059 = _S1028;
+                _S1094 = _S896;
             }
             else
             {
-                _S1059 = false;
+                _S1094 = false;
+            }
+            var _S1095 : bool;
+            if(_S1094)
+            {
+                _S1095 = _S1064;
+            }
+            else
+            {
+                _S1095 = false;
             }
             var chain_throughput_1 : vec3<f32>;
-            if(_S1059)
+            if(_S1095)
             {
                 chain_0 = here_0;
-                var _S1060 : u32 = (insertBits((chain_0.path), (lobe_index_0), (u32(18)), (u32(3))));
-                var _S1061 : u32 = select(u32(0), u32(1), _S884);
-                var _S1062 : u32 = (insertBits((_S1060), (_S1061), (u32(21)), (u32(1))));
-                chain_0.path = _S1062;
-                var _S1063 : f32 = chain_0.jac * lobe_2.pdf;
-                chain_0.jac = _S1063;
+                var _S1096 : u32 = (insertBits((chain_0.path), (lobe_index_0), (u32(18)), (u32(3))));
+                var _S1097 : u32 = select(u32(0), u32(1), _S915);
+                var _S1098 : u32 = (insertBits((_S1096), (_S1097), (u32(21)), (u32(1))));
+                chain_0.path = _S1098;
+                var _S1099 : f32 = chain_0.jac * lobe_2.pdf;
+                chain_0.jac = _S1099;
                 chain_0.dir = dir_10;
-                chain_throughput_1 = throughput_7;
+                chain_throughput_1 = throughput_8;
             }
             else
             {
                 chain_throughput_1 = chain_throughput_0;
             }
-            var _S1064 : Vertex = Vertex_x24init_0(_S1041, lobe_index_0, lobe_2.pdf, abs(dot(surface_4.geometry_n, dir_10)), is_inside_4);
-            prev_0 = _S1064;
-            var _S1065 : f32 = lobe_2.pdf;
-            var _S1066 : bool;
-            if(_S1024)
+            var _S1100 : Vertex = Vertex_x24init_0(_S1077, lobe_index_0, lobe_2.pdf, abs(dot(surface_4.geometry_n, dir_10)), is_inside_4);
+            prev_0 = _S1100;
+            var _S1101 : f32 = lobe_2.pdf;
+            var _S1102 : bool;
+            if(_S1060)
             {
-                _S1066 = (_S883.x) == (_S883.y);
+                _S1102 = (_S914.x) == (_S914.y);
             }
             else
             {
-                _S1066 = false;
+                _S1102 = false;
             }
-            var _S1067 : f32 = select(_S1065, sky_pdf_0, _S1066);
-            var _S1068 : bool;
+            var _S1103 : f32 = select(_S1101, sky_pdf_0, _S1102);
+            var _S1104 : bool;
             if(refracted_4)
             {
-                _S1068 = !_S980;
+                _S1104 = !_S1016;
             }
             else
             {
-                _S1068 = false;
+                _S1104 = false;
             }
             var is_inside_5 : bool;
-            if(_S1068)
+            if(_S1104)
             {
-                var _S1069 : bool = !is_inside_4;
-                is_inside_5 = _S1069;
+                var _S1105 : bool = !is_inside_4;
+                is_inside_5 = _S1105;
             }
             else
             {
                 is_inside_5 = is_inside_4;
             }
             ray_2.unit_direction = dir_10;
-            var _S1070 : Surface = surface_4;
-            var _S1071 : f32 = select(_S1070.geometry_offset, 0.0f, straight_0);
-            var _S1072 : vec3<f32> = (vec3<f32>(0) - _S881.smooth_n);
-            var _S1073 : bool = is_inside_5 != _S980;
-            var _S1074 : vec3<f32> = select(_S881.smooth_n, _S1072, _S1073);
-            var _S1075 : vec3<f32> = ray_2.origin + vec3<f32>(_S1071) * _S1074;
-            ray_2.origin = _S1075;
+            var _S1106 : Surface = surface_4;
+            var _S1107 : f32 = select(_S1106.geometry_offset, 0.0f, straight_0);
+            var _S1108 : vec3<f32> = (vec3<f32>(0) - _S898.smooth_n);
+            var _S1109 : bool = is_inside_5 != _S1016;
+            var _S1110 : vec3<f32> = select(_S898.smooth_n, _S1108, _S1109);
+            var _S1111 : vec3<f32> = ray_2.origin + vec3<f32>(_S1107) * _S1110;
+            ray_2.origin = _S1111;
             chain_throughput_0 = chain_throughput_1;
             reconnection_0 = reconnection_1;
             is_inside_4 = is_inside_5;
-            throughput_2 = throughput_7;
+            throughput_2 = throughput_8;
             density_5 = survival_probability_0;
-            sky_pdf_0 = _S1067;
+            sky_pdf_0 = _S1103;
         }
         else
         {
             prev_0.rough = false;
             prev_0.pdf = 0.0f;
             straight_0 = false;
-            throughput_2 = throughput_4;
+            throughput_2 = throughput_5;
             density_5 = density_3;
             sky_pdf_0 = 0.0f;
         }
-        if(_S889)
+        if(_S920)
         {
-            if(_S862)
+            if(_S879)
             {
-                var _S1076 : vec3<f32> = throughput_2 * emission_1;
+                var _S1112 : vec3<f32> = throughput_2 * emission_1;
                 var candidate_6 : Reservoir = chain_0;
-                var _S1077 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
-                var _S1078 : bool = _S1077 == u32(1);
-                if(_S1078)
+                var _S1113 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
+                var _S1114 : bool = _S1113 == u32(1);
+                if(_S1114)
                 {
-                    var _S1079 : vec3<f32> = safeDivide(_S1076, chain_throughput_0);
-                    candidate_6.radiance = _S1079;
+                    var _S1115 : vec3<f32> = safeDivide(_S1112, chain_throughput_0);
+                    candidate_6.radiance = _S1115;
                 }
-                var _S1080 : Reservoir = withEnd(candidate_6, u32(2), b_3, _S1076);
-                offer(&((*sel_4)), _S1080, _S1076 * vec3<f32>(scale_1) / vec3<f32>(density_5));
+                var _S1116 : Reservoir = withEnd(candidate_6, u32(2), b_3, _S1112);
+                offer(&((*sel_4)), _S1116, _S1112 * vec3<f32>(scale_1) / vec3<f32>(density_5));
             }
-            if(_S862)
+            if(_S879)
             {
-                _S927 = true;
+                _S961 = true;
             }
             else
             {
-                _S927 = scatter_0;
+                _S961 = scatter_0;
             }
-            if(_S927)
+            if(_S961)
             {
-                var _S1081 : f32 = survivalProbability(throughput_2, density_5);
-                survival_probability_0 = _S1081;
+                var _S1117 : f32 = survivalProbability(abs(throughput_2), density_5);
+                survival_probability_0 = _S1117;
             }
             else
             {
                 survival_probability_0 = 1.0f;
             }
-            var _S1082 : u32 = stream(r_6.seed, b_3 + u32(128));
-            var _S1083 : Random = pcg(_S1082);
-            var _S1084 : bool = survival_probability_0 < (_S1083.value);
-            if(_S1084)
+            var _S1118 : u32 = stream(r_6.seed, b_3 + u32(128));
+            var _S1119 : Random = pcg(_S1118);
+            var _S1120 : bool = survival_probability_0 < (_S1119.value);
+            if(_S1120)
             {
                 wrong_side_0 = true;
             }
             else
             {
-                var _S1085 : u32 = (uniforms_uint.max_bounces);
-                wrong_side_0 = b_3 >= _S1085;
+                var _S1121 : u32 = (uniforms_uint.max_bounces);
+                wrong_side_0 = b_3 >= _S1121;
             }
             if(wrong_side_0)
             {
                 break;
             }
-            var _S1086 : f32 = density_5 * survival_probability_0;
-            density_2 = _S1086;
+            var _S1122 : f32 = density_5 * survival_probability_0;
+            density_2 = _S1122;
         }
         else
         {
             density_2 = density_5;
         }
-        var _S1087 : Ray = ray_2;
-        var _S1088 : f32 = distance(reconnection_0, ray_2.origin) * 1.0010000467300415f;
+        var _S1123 : Ray = ray_2;
+        var _S1124 : f32 = distance(reconnection_0, ray_2.origin) * 1.0010000467300415f;
         if(replay_0)
         {
-            _S927 = _S912;
+            _S961 = _S946;
         }
         else
         {
-            _S927 = false;
+            _S961 = false;
         }
-        if(_S927)
+        if(_S961)
         {
-            wrong_side_0 = _S843 == u32(1);
+            wrong_side_0 = _S860 == u32(1);
         }
         else
         {
             wrong_side_0 = false;
         }
-        var _S1089 : f32 = select(4.294967296e+09f, _S1088, wrong_side_0);
-        var _S1090 : Hit;
+        var _S1125 : f32 = select(4.294967296e+09f, _S1124, wrong_side_0);
+        var _S1126 : Hit;
         if(straight_0)
         {
-            _S1090 = hit_2;
+            _S1126 = hit_2;
         }
         else
         {
-            _S1090 = Hit_x24init_0(vec2<f32>(0.0f), u32(4294967295), u32(0), u32(0), 0.0f);
+            _S1126 = Hit_x24init_0(vec2<f32>(0.0f), u32(4294967295), u32(0), u32(0), 0.0f);
         }
-        var _S1091 : Hit = (traverseInstanceBVH((_S1087), (_S868), (_S1089), (_S1090)));
-        hit_2 = _S1091;
+        var _S1127 : Hit = (traverseInstanceBVH((_S1123), (_S885), (_S1125), (_S1126)));
+        hit_2 = _S1127;
         if(replay_0)
         {
-            refracted_4 = _S912;
+            refracted_4 = _S946;
         }
         else
         {
@@ -4245,75 +4379,75 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
         }
         if(refracted_4)
         {
-            _S940 = _S843 == u32(1);
+            _S974 = _S860 == u32(1);
         }
         else
         {
-            _S940 = false;
+            _S974 = false;
         }
-        if(_S940)
+        if(_S974)
         {
-            _S941 = (hit_2.instance_index) == (_S855.instance_index);
-        }
-        else
-        {
-            _S941 = false;
-        }
-        if(_S941)
-        {
-            _S977 = (hit_2.triangle_index) == (_S855.triangle_index);
+            _S975 = (hit_2.instance_index) == (_S872.instance_index);
         }
         else
         {
-            _S977 = false;
+            _S975 = false;
         }
-        if(_S977)
+        if(_S975)
         {
-            hit_2.uv = _S855.uv;
-            var _S1092 : f32 = distance(reconnection_0, ray_2.origin);
-            hit_2.distance = _S1092;
+            _S1013 = (hit_2.triangle_index) == (_S872.triangle_index);
+        }
+        else
+        {
+            _S1013 = false;
+        }
+        if(_S1013)
+        {
+            hit_2.uv = _S872.uv;
+            var _S1128 : f32 = distance(reconnection_0, ray_2.origin);
+            hit_2.distance = _S1128;
         }
         if(replay_0)
         {
-            _S978 = _S912;
+            _S1014 = _S946;
         }
         else
         {
-            _S978 = false;
+            _S1014 = false;
         }
-        if(_S978)
+        if(_S1014)
         {
-            _S979 = _S843 == u32(3);
-        }
-        else
-        {
-            _S979 = false;
-        }
-        if(_S979)
-        {
-            _S980 = (hit_2.instance_index) != u32(4294967295);
+            _S1015 = _S860 == u32(3);
         }
         else
         {
-            _S980 = false;
+            _S1015 = false;
         }
-        if(_S980)
+        if(_S1015)
         {
-            return _S840;
+            _S1016 = (hit_2.instance_index) != u32(4294967295);
         }
-        var _S1093 : bool = (hit_2.instance_index) == u32(4294967295);
-        if(_S1093)
+        else
         {
-            var _S1094 : bool = !nee_vertex_0.none;
-            var _S1095 : f32 = select(0.0f, sky_pdf_0, _S1094);
-            var _S1096 : f32 = escapeWeight_0(_S1095, ray_2.unit_direction);
-            var _S1097 : vec3<f32> = environment_0(ray_2.unit_direction);
-            var _S1098 : vec3<f32> = throughput_2 * _S1097;
+            _S1016 = false;
+        }
+        if(_S1016)
+        {
+            return _S857;
+        }
+        var _S1129 : bool = (hit_2.instance_index) == u32(4294967295);
+        if(_S1129)
+        {
+            var _S1130 : bool = !nee_vertex_0.none;
+            var _S1131 : f32 = select(0.0f, sky_pdf_0, _S1130);
+            var _S1132 : f32 = escapeWeight_0(_S1131, ray_2.unit_direction);
+            var _S1133 : vec3<f32> = environment_0(ray_2.unit_direction);
+            var _S1134 : vec3<f32> = throughput_2 * _S1133;
             if(replay_0)
             {
-                if(_S912)
+                if(_S946)
                 {
-                    is_inside_4 = _S843 == u32(3);
+                    is_inside_4 = _S860 == u32(3);
                 }
                 else
                 {
@@ -4321,11 +4455,11 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    return Shift_x24init_0(_S1098 * vec3<f32>(_S1096) / vec3<f32>(r_6.jac), density_2 / r_6.jac);
+                    return Shift_x24init_0(_S1134 * vec3<f32>(_S1132) / vec3<f32>(r_6.jac), density_2 / r_6.jac);
                 }
-                if(_S853)
+                if(_S870)
                 {
-                    is_inside_4 = _S850;
+                    is_inside_4 = _S867;
                 }
                 else
                 {
@@ -4333,7 +4467,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    is_inside_4 = b_3 == _S841;
+                    is_inside_4 = b_3 == _S858;
                 }
                 else
                 {
@@ -4349,88 +4483,88 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 }
                 if(is_inside_4)
                 {
-                    return Shift_x24init_0(_S1098 * vec3<f32>(_S1096), 1.0f);
+                    return Shift_x24init_0(_S1134 * vec3<f32>(_S1132), 1.0f);
                 }
-                return _S840;
+                return _S857;
             }
             var candidate_7 : Reservoir = chain_0;
-            var _S1099 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
-            var _S1100 : bool = _S1099 == u32(1);
-            if(_S1100)
+            var _S1135 : u32 = (extractBits((chain_0.path), (u32(10)), (u32(2))));
+            var _S1136 : bool = _S1135 == u32(1);
+            if(_S1136)
             {
-                var _S1101 : u32 = (extractBits((chain_0.path), (u32(5)), (u32(5))));
-                var _S1102 : bool = _S1101 == b_3;
-                var _S1103 : f32 = select(_S1096, 1.0f, _S1102);
-                var _S1104 : vec3<f32> = safeDivide(_S1098 * vec3<f32>(_S1103), chain_throughput_0);
-                candidate_7.radiance = _S1104;
+                var _S1137 : u32 = (extractBits((chain_0.path), (u32(5)), (u32(5))));
+                var _S1138 : bool = _S1137 == b_3;
+                var _S1139 : f32 = select(_S1132, 1.0f, _S1138);
+                var _S1140 : vec3<f32> = safeDivide(_S1134 * vec3<f32>(_S1139), chain_throughput_0);
+                candidate_7.radiance = _S1140;
             }
             else
             {
-                var _S1105 : bool = prev_0.rough;
-                if(_S1105)
+                var _S1141 : bool = prev_0.rough;
+                if(_S1141)
                 {
-                    var _S1106 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
-                    var _S1107 : u32 = (insertBits((_S1106), (u32(3)), (u32(10)), (u32(2))));
-                    var _S1108 : u32 = (insertBits((_S1107), (prev_0.lobe), (u32(15)), (u32(3))));
-                    var _S1109 : bool = prev_0.inside;
-                    var _S1110 : u32 = select(u32(0), u32(1), _S1109);
-                    var _S1111 : u32 = (insertBits((_S1108), (_S1110), (u32(22)), (u32(1))));
-                    candidate_7.path = _S1111;
+                    var _S1142 : u32 = (insertBits((u32(0)), (b_3 + u32(1)), (u32(5)), (u32(5))));
+                    var _S1143 : u32 = (insertBits((_S1142), (u32(3)), (u32(10)), (u32(2))));
+                    var _S1144 : u32 = (insertBits((_S1143), (prev_0.lobe), (u32(15)), (u32(3))));
+                    var _S1145 : bool = prev_0.inside;
+                    var _S1146 : u32 = select(u32(0), u32(1), _S1145);
+                    var _S1147 : u32 = (insertBits((_S1144), (_S1146), (u32(22)), (u32(1))));
+                    candidate_7.path = _S1147;
                     candidate_7.jac = prev_0.pdf;
                     candidate_7.dir = ray_2.unit_direction;
                 }
             }
-            var _S1112 : vec3<f32> = _S1098 * vec3<f32>(_S1096);
-            var _S1113 : Reservoir = withEnd(candidate_7, u32(3), b_3, _S1112);
-            offer(&((*sel_4)), _S1113, _S1112 * vec3<f32>(scale_1) / vec3<f32>(density_2));
+            var _S1148 : vec3<f32> = _S1134 * vec3<f32>(_S1132);
+            var _S1149 : Reservoir = withEnd(candidate_7, u32(3), b_3, _S1148);
+            offer(&((*sel_4)), _S1149, _S1148 * vec3<f32>(scale_1) / vec3<f32>(density_2));
             break;
         }
-        var _S1114 : vec3<f32> = ray_2.origin + vec3<f32>(hit_2.distance) * ray_2.unit_direction;
-        ray_2.origin = _S1114;
-        var _S1115 : u32 = b_3 + u32(1);
-        b_3 = _S1115;
+        var _S1150 : vec3<f32> = ray_2.origin + vec3<f32>(hit_2.distance) * ray_2.unit_direction;
+        ray_2.origin = _S1150;
+        var _S1151 : u32 = b_3 + u32(1);
+        b_3 = _S1151;
     }
-    return _S840;
+    return _S857;
 }
 
 fn shift_0( dom_5 : Domain,  r_7 : Reservoir) -> Shift
 {
-    var _S1116 : vec3<f32> = vec3<f32>(0.0f);
-    var _S1117 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1116, 0.0f, vec4<u32>(u32(0)), _S1116, _S1116), 0.0f, _S1116, u32(0));
-    var sel_5 : Selection = _S1117;
-    var _S1118 : bool = (r_7.w) <= 0.0f;
-    if(_S1118)
+    var _S1152 : vec3<f32> = vec3<f32>(0.0f);
+    var _S1153 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1152, 0.0f, vec4<u32>(u32(0)), _S1152, _S1152), 0.0f, _S1152, u32(0));
+    var sel_5 : Selection = _S1153;
+    var _S1154 : bool = (r_7.w) <= 0.0f;
+    if(_S1154)
     {
-        return Shift_x24init_0(_S1116, 0.0f);
+        return Shift_x24init_0(_S1152, 0.0f);
     }
-    var _S1119 : Shift = walk_0(dom_5, r_7, true, 0.0f, &(sel_5));
-    return _S1119;
+    var _S1155 : Shift = walk_0(dom_5, r_7, true, 0.0f, &(sel_5));
+    return _S1155;
 }
 
 fn restir_shift_0( workgroup_id_1 : vec3<u32>,  local_invocation_index_4 : u32)
 {
-    var _S1120 : u32 = queuedShift_0(workgroup_id_1, local_invocation_index_4);
-    var _S1121 : bool = _S1120 != u32(4294967295);
-    if(_S1121)
+    var _S1156 : u32 = queuedShift_0(workgroup_id_1, local_invocation_index_4);
+    var _S1157 : bool = _S1156 != u32(4294967295);
+    if(_S1157)
     {
-        var _S1122 : vec2<i32> = vec2<i32>((vec2<u32>(_S1120, (_S1120 >> (u32(14)))) & (vec2<u32>(u32(16383)))));
-        var _S1123 : vec3<f32> = vec3<f32>(0.0f);
-        var _S1124 : ShiftJob = ShiftJob_x24init_0(Domain_x24init_0(_S1123, _S1123, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f)), Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1123, 0.0f, vec4<u32>(u32(0)), _S1123, _S1123));
-        var shift_job_0 : ShiftJob = _S1124;
-        var _S1125 : u32 = (_S1120 >> (u32(28)));
-        var _S1126 : bool = spatialJob_0(_S1122, _S1125, &(shift_job_0));
-        var _S1127 : Shift = shift_0(shift_job_0.dom, shift_job_0.r);
-        textureStore(shift_data_out, (_S1122), (_S1125), (vec4<u32>((bitcast<vec3<u32>>((_S1127.f))), (bitcast<u32>((_S1127.jac))))));
+        var _S1158 : vec2<i32> = vec2<i32>((vec2<u32>(_S1156, (_S1156 >> (u32(14)))) & (vec2<u32>(u32(16383)))));
+        var _S1159 : vec3<f32> = vec3<f32>(0.0f);
+        var _S1160 : ShiftJob = ShiftJob_x24init_0(Domain_x24init_0(_S1159, _S1159, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f)), Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1159, 0.0f, vec4<u32>(u32(0)), _S1159, _S1159));
+        var shift_job_0 : ShiftJob = _S1160;
+        var _S1161 : u32 = (_S1156 >> (u32(28)));
+        var _S1162 : bool = spatialJob_0(_S1158, _S1161, &(shift_job_0));
+        var _S1163 : Shift = shift_0(shift_job_0.dom, shift_job_0.r);
+        textureStore(shift_data_out, (_S1158), (_S1161), (vec4<u32>((bitcast<vec3<u32>>((_S1163.f))), (bitcast<u32>((_S1163.jac))))));
     }
     return;
 }
 
 fn restir_prepass_0( global_invocation_id_3 : vec3<u32>,  local_invocation_index_5 : u32)
 {
-    var _S1128 : vec2<i32> = vec2<i32>(global_invocation_id_3.xy);
-    var _S1129 : array<u32, i32(3)>;
-    spatialBins_0(_S1128, &(_S1129));
-    var _S1130 : array<u32, i32(3)> = _S1129;
+    var _S1164 : vec2<i32> = vec2<i32>(global_invocation_id_3.xy);
+    var _S1165 : array<u32, i32(3)>;
+    spatialBins_0(_S1164, &(_S1165));
+    var _S1166 : array<u32, i32(3)> = _S1165;
     var t_16 : u32 = u32(0);
     loop
     {
@@ -4441,50 +4575,50 @@ fn restir_prepass_0( global_invocation_id_3 : vec3<u32>,  local_invocation_index
         {
             break;
         }
-        var _S1131 : bool = (_S1130[t_16]) == u32(40);
-        if(_S1131)
+        var _S1167 : bool = (_S1166[t_16]) == u32(40);
+        if(_S1167)
         {
-            textureStore(shift_data_out, (_S1128), (t_16), (vec4<u32>(u32(0))));
+            textureStore(shift_data_out, (_S1164), (t_16), (vec4<u32>(u32(0))));
         }
         var t_17 : u32 = t_16 + u32(1);
         t_16 = t_17;
     }
-    queueShifts_0(_S1128, _S1130, global_invocation_id_3, local_invocation_index_5);
+    queueShifts_0(_S1164, _S1166, global_invocation_id_3, local_invocation_index_5);
     return;
 }
 
 fn restir_count_0( global_invocation_id_4 : vec3<u32>,  local_invocation_index_6 : u32)
 {
-    var _S1132 : array<u32, i32(3)>;
-    spatialBins_0(vec2<i32>(global_invocation_id_4.xy), &(_S1132));
-    countShifts_0(_S1132, local_invocation_index_6);
+    var _S1168 : array<u32, i32(3)>;
+    spatialBins_0(vec2<i32>(global_invocation_id_4.xy), &(_S1168));
+    countShifts_0(_S1168, local_invocation_index_6);
     return;
 }
 
 fn restir_temporal_shift_0( workgroup_id_2 : vec3<u32>,  local_invocation_index_7 : u32)
 {
-    var _S1133 : u32 = queuedShift_0(workgroup_id_2, local_invocation_index_7);
-    var _S1134 : bool = _S1133 != u32(4294967295);
-    if(_S1134)
+    var _S1169 : u32 = queuedShift_0(workgroup_id_2, local_invocation_index_7);
+    var _S1170 : bool = _S1169 != u32(4294967295);
+    if(_S1170)
     {
-        var _S1135 : vec2<i32> = vec2<i32>((vec2<u32>(_S1133, (_S1133 >> (u32(14)))) & (vec2<u32>(u32(16383)))));
-        var _S1136 : vec3<f32> = vec3<f32>(0.0f);
-        var _S1137 : ShiftJob = ShiftJob_x24init_0(Domain_x24init_0(_S1136, _S1136, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f)), Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1136, 0.0f, vec4<u32>(u32(0)), _S1136, _S1136));
-        var shift_job_1 : ShiftJob = _S1137;
-        var _S1138 : u32 = (_S1133 >> (u32(28)));
-        var _S1139 : bool = temporalJob_0(_S1135, _S1138, &(shift_job_1));
-        var _S1140 : Shift = shift_0(shift_job_1.dom, shift_job_1.r);
-        textureStore(temporal_shifts_out, (_S1135), (_S1138), (vec4<u32>((bitcast<vec3<u32>>((_S1140.f))), (bitcast<u32>((_S1140.jac))))));
+        var _S1171 : vec2<i32> = vec2<i32>((vec2<u32>(_S1169, (_S1169 >> (u32(14)))) & (vec2<u32>(u32(16383)))));
+        var _S1172 : vec3<f32> = vec3<f32>(0.0f);
+        var _S1173 : ShiftJob = ShiftJob_x24init_0(Domain_x24init_0(_S1172, _S1172, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f)), Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1172, 0.0f, vec4<u32>(u32(0)), _S1172, _S1172));
+        var shift_job_1 : ShiftJob = _S1173;
+        var _S1174 : u32 = (_S1169 >> (u32(28)));
+        var _S1175 : bool = temporalJob_0(_S1171, _S1174, &(shift_job_1));
+        var _S1176 : Shift = shift_0(shift_job_1.dom, shift_job_1.r);
+        textureStore(temporal_shifts_out, (_S1171), (_S1174), (vec4<u32>((bitcast<vec3<u32>>((_S1176.f))), (bitcast<u32>((_S1176.jac))))));
     }
     return;
 }
 
 fn restir_temporal_prepass_0( global_invocation_id_5 : vec3<u32>,  local_invocation_index_8 : u32)
 {
-    var _S1141 : vec2<i32> = vec2<i32>(global_invocation_id_5.xy);
-    var _S1142 : array<u32, i32(3)>;
-    temporalBins_0(_S1141, &(_S1142));
-    var _S1143 : array<u32, i32(3)> = _S1142;
+    var _S1177 : vec2<i32> = vec2<i32>(global_invocation_id_5.xy);
+    var _S1178 : array<u32, i32(3)>;
+    temporalBins_0(_S1177, &(_S1178));
+    var _S1179 : array<u32, i32(3)> = _S1178;
     var t_18 : u32 = u32(0);
     loop
     {
@@ -4495,156 +4629,156 @@ fn restir_temporal_prepass_0( global_invocation_id_5 : vec3<u32>,  local_invocat
         {
             break;
         }
-        var _S1144 : bool = (_S1143[t_18]) == u32(40);
-        if(_S1144)
+        var _S1180 : bool = (_S1179[t_18]) == u32(40);
+        if(_S1180)
         {
-            textureStore(temporal_shifts_out, (_S1141), (t_18), (vec4<u32>(u32(0))));
+            textureStore(temporal_shifts_out, (_S1177), (t_18), (vec4<u32>(u32(0))));
         }
         var t_19 : u32 = t_18 + u32(1);
         t_18 = t_19;
     }
-    queueShifts_0(_S1141, _S1143, global_invocation_id_5, local_invocation_index_8);
+    queueShifts_0(_S1177, _S1179, global_invocation_id_5, local_invocation_index_8);
     return;
 }
 
 fn restir_temporal_count_0( global_invocation_id_6 : vec3<u32>,  local_invocation_index_9 : u32)
 {
-    var _S1145 : array<u32, i32(3)>;
-    temporalBins_0(vec2<i32>(global_invocation_id_6.xy), &(_S1145));
-    countShifts_0(_S1145, local_invocation_index_9);
+    var _S1181 : array<u32, i32(3)>;
+    temporalBins_0(vec2<i32>(global_invocation_id_6.xy), &(_S1181));
+    countShifts_0(_S1181, local_invocation_index_9);
     return;
 }
 
 fn restir_temporal_0( global_invocation_id_7 : vec3<u32>)
 {
-    var _S1146 : vec2<i32> = vec2<i32>(global_invocation_id_7.xy);
-    var _S1147 : vec3<f32> = vec3<f32>(0.0f);
-    var _S1148 : Domain = Domain_x24init_0(_S1147, _S1147, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
-    var dom_6 : Domain = _S1148;
-    var _S1149 : bool = (currentDomain((_S1146), &(dom_6)));
-    var _S1150 : bool = !_S1149;
-    if(_S1150)
+    var _S1182 : vec2<i32> = vec2<i32>(global_invocation_id_7.xy);
+    var _S1183 : vec3<f32> = vec3<f32>(0.0f);
+    var _S1184 : Domain = Domain_x24init_0(_S1183, _S1183, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
+    var dom_6 : Domain = _S1184;
+    var _S1185 : bool = (currentDomain((_S1182), &(dom_6)));
+    var _S1186 : bool = !_S1185;
+    if(_S1186)
     {
-        storeReservoir(reservoir_temp_out, (_S1146), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1147, 0.0f, vec4<u32>(u32(0)), _S1147, _S1147)), (dom_6.hit));
+        storeReservoir(reservoir_temp_out, (_S1182), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1183, 0.0f, vec4<u32>(u32(0)), _S1183, _S1183)), (dom_6.hit));
         return;
     }
-    var _S1151 : Reservoir = (loadReservoir(reservoir_initial, (_S1146)));
-    var _S1152 : vec2<i32> = temporalNeighbor_0(_S1146, dom_6);
-    var _S1153 : bool = (_S1152.x) >= i32(0);
+    var _S1187 : Reservoir = (loadReservoir(reservoir_initial, (_S1182)));
+    var _S1188 : vec2<i32> = temporalNeighbor_0(_S1182, dom_6);
+    var _S1189 : bool = (_S1188.x) >= i32(0);
     var r_8 : Reservoir;
-    if(_S1153)
+    if(_S1189)
     {
-        var _S1154 : Reservoir = (loadReservoir(reservoir_prev, (_S1152)));
-        var _S1155 : vec4<u32> = (textureLoad(duplication, (_S1152), 0, 0));
-        var _S1156 : f32 = (bitcast<f32>((_S1155.x)));
-        var _S1157 : u32 = (uniforms_uint.restir_decorrelation);
-        var _S1158 : bool = _S1157 == u32(1);
-        var _S1159 : f32 = select(0.0f, _S1156, _S1158);
-        var _S1160 : f32 = (mix((20.0f), (1.0f), (pow(_S1159, 0.10000000149011612f))));
-        var _S1161 : f32 = min(_S1154.c, _S1160);
-        var _S1162 : vec4<u32> = (textureLoad(temporal_shifts, (_S1146), (u32(0)), 0));
-        var _S1163 : vec4<f32> = (bitcast<vec4<f32>>((_S1162)));
-        var _S1164 : vec4<f32> = vec4<f32>(_S1151.f, 1.0f);
-        var _S1165 : Domain = (previousDomain((_S1152)));
-        var _S1166 : bool = sameDomain_0(_S1165, dom_6);
-        var _S1167 : bool = !_S1166;
+        var _S1190 : Reservoir = (loadReservoir(reservoir_prev, (_S1188)));
+        var _S1191 : vec4<u32> = (textureLoad(duplication, (_S1188), 0, 0));
+        var _S1192 : f32 = (bitcast<f32>((_S1191.x)));
+        var _S1193 : u32 = (uniforms_uint.restir_decorrelation);
+        var _S1194 : bool = _S1193 == u32(1);
+        var _S1195 : f32 = select(0.0f, _S1192, _S1194);
+        var _S1196 : f32 = (mix((20.0f), (1.0f), (pow(_S1195, 0.10000000149011612f))));
+        var _S1197 : f32 = min(_S1190.c, _S1196);
+        var _S1198 : vec4<u32> = (textureLoad(temporal_shifts, (_S1182), (u32(0)), 0));
+        var _S1199 : vec4<f32> = (bitcast<vec4<f32>>((_S1198)));
+        var _S1200 : vec4<f32> = vec4<f32>(_S1187.f, 1.0f);
+        var _S1201 : Domain = (previousDomain((_S1188)));
+        var _S1202 : bool = sameDomain_0(_S1201, dom_6);
+        var _S1203 : bool = !_S1202;
         var to_previous_0 : vec4<f32>;
-        if(_S1167)
+        if(_S1203)
         {
-            var _S1168 : vec4<u32> = (textureLoad(temporal_shifts, (_S1146), (u32(1)), 0));
-            var _S1169 : vec4<f32> = (bitcast<vec4<f32>>((_S1168)));
-            to_previous_0 = _S1169;
+            var _S1204 : vec4<u32> = (textureLoad(temporal_shifts, (_S1182), (u32(1)), 0));
+            var _S1205 : vec4<f32> = (bitcast<vec4<f32>>((_S1204)));
+            to_previous_0 = _S1205;
         }
         else
         {
-            to_previous_0 = _S1164;
+            to_previous_0 = _S1200;
         }
-        var _S1170 : f32 = rgb_to_greyscale(_S1151.f);
-        var _S1171 : f32 = rgb_to_greyscale(_S1154.f);
-        var _S1172 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1147, 0.0f, vec4<u32>(u32(0)), _S1147, _S1147), 0.0f, _S1147, u32(0));
-        var sel_6 : Selection = _S1172;
-        var _S1173 : u32 = (uniforms_uint.frame);
-        var _S1174 : u32 = hash(_S1173);
-        var _S1175 : u32 = global_invocation_id_7.x;
-        var _S1176 : vec2<u32> = (uniforms_uint.render_size);
-        var _S1177 : u32 = stream(_S1174, _S1175 + _S1176.x * global_invocation_id_7.y);
-        var _S1178 : u32 = stream(_S1177, u32(194));
-        sel_6.random_state = _S1178;
-        var _S1179 : f32 = _S1151.c * _S1170;
-        var _S1180 : f32 = rgb_to_greyscale(to_previous_0.xyz);
-        var _S1181 : f32 = _S1179 / (_S1179 + _S1161 * _S1180);
-        var _S1182 : f32 = _S1161 * _S1171;
-        var _S1183 : vec3<f32> = _S1163.xyz;
-        var _S1184 : f32 = rgb_to_greyscale(_S1183);
-        var _S1185 : f32 = _S1182 / (_S1182 + _S1151.c * _S1184);
-        var _S1186 : vec2<f32> = vec2<f32>(_S1181, _S1185);
-        offerShifted(&(sel_6), _S1151, Shift_x24init_0(_S1151.f, 1.0f), _S1181);
-        offerShifted(&(sel_6), _S1154, Shift_x24init_0(_S1183, _S1163.w), _S1185);
-        var _S1187 : Reservoir = finalize(sel_6, _S1151.c + _S1161);
-        r_8 = _S1187;
+        var _S1206 : f32 = resamplingTarget(_S1187.f);
+        var _S1207 : f32 = resamplingTarget(_S1190.f);
+        var _S1208 : Selection = Selection_x24init_0(Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1183, 0.0f, vec4<u32>(u32(0)), _S1183, _S1183), 0.0f, _S1183, u32(0));
+        var sel_6 : Selection = _S1208;
+        var _S1209 : u32 = (uniforms_uint.frame);
+        var _S1210 : u32 = hash(_S1209);
+        var _S1211 : u32 = global_invocation_id_7.x;
+        var _S1212 : vec2<u32> = (uniforms_uint.render_size);
+        var _S1213 : u32 = stream(_S1210, _S1211 + _S1212.x * global_invocation_id_7.y);
+        var _S1214 : u32 = stream(_S1213, u32(194));
+        sel_6.random_state = _S1214;
+        var _S1215 : f32 = _S1187.c * _S1206;
+        var _S1216 : f32 = resamplingTarget(to_previous_0.xyz);
+        var _S1217 : f32 = _S1215 / (_S1215 + _S1197 * _S1216);
+        var _S1218 : f32 = _S1197 * _S1207;
+        var _S1219 : vec3<f32> = _S1199.xyz;
+        var _S1220 : f32 = resamplingTarget(_S1219);
+        var _S1221 : f32 = _S1218 / (_S1218 + _S1187.c * _S1220);
+        var _S1222 : vec2<f32> = vec2<f32>(_S1217, _S1221);
+        offerShifted(&(sel_6), _S1187, Shift_x24init_0(_S1187.f, 1.0f), _S1217);
+        offerShifted(&(sel_6), _S1190, Shift_x24init_0(_S1219, _S1199.w), _S1221);
+        var _S1223 : Reservoir = finalize(sel_6, _S1187.c + _S1197);
+        r_8 = _S1223;
     }
     else
     {
-        r_8 = _S1151;
+        r_8 = _S1187;
     }
-    storeReservoir(reservoir_temp_out, (_S1146), (r_8), (dom_6.hit));
+    storeReservoir(reservoir_temp_out, (_S1182), (r_8), (dom_6.hit));
     return;
 }
 
 fn restir_initial_0( global_invocation_id_8 : vec3<u32>)
 {
-    var _S1188 : vec2<i32> = vec2<i32>(global_invocation_id_8.xy);
-    var _S1189 : vec3<f32> = vec3<f32>(0.0f);
-    var _S1190 : Domain = Domain_x24init_0(_S1189, _S1189, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
-    var dom_7 : Domain = _S1190;
-    var _S1191 : bool = (currentDomain((_S1188), &(dom_7)));
-    var _S1192 : bool = !_S1191;
-    if(_S1192)
+    var _S1224 : vec2<i32> = vec2<i32>(global_invocation_id_8.xy);
+    var _S1225 : vec3<f32> = vec3<f32>(0.0f);
+    var _S1226 : Domain = Domain_x24init_0(_S1225, _S1225, Hit_x24init_0(vec2<f32>(0.0f), u32(0), u32(0), u32(0), 0.0f));
+    var dom_7 : Domain = _S1226;
+    var _S1227 : bool = (currentDomain((_S1224), &(dom_7)));
+    var _S1228 : bool = !_S1227;
+    if(_S1228)
     {
-        storeReservoir(reservoir_initial_out, (_S1188), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1189, 0.0f, vec4<u32>(u32(0)), _S1189, _S1189)), (dom_7.hit));
+        storeReservoir(reservoir_initial_out, (_S1224), (Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1225, 0.0f, vec4<u32>(u32(0)), _S1225, _S1225)), (dom_7.hit));
         return;
     }
-    var _S1193 : u32 = (uniforms_uint.frame);
-    var _S1194 : u32 = hash(_S1193);
-    var _S1195 : u32 = global_invocation_id_8.x;
-    var _S1196 : vec2<u32> = (uniforms_uint.render_size);
-    var _S1197 : u32 = stream(_S1194, _S1195 + _S1196.x * global_invocation_id_8.y);
-    var _S1198 : Reservoir = Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1189, 0.0f, vec4<u32>(u32(0)), _S1189, _S1189);
-    var _S1199 : Selection = Selection_x24init_0(_S1198, 0.0f, _S1189, u32(0));
-    var initial_0 : Selection = _S1199;
-    var _S1200 : u32 = stream(_S1197, u32(193));
-    initial_0.random_state = _S1200;
+    var _S1229 : u32 = (uniforms_uint.frame);
+    var _S1230 : u32 = hash(_S1229);
+    var _S1231 : u32 = global_invocation_id_8.x;
+    var _S1232 : vec2<u32> = (uniforms_uint.render_size);
+    var _S1233 : u32 = stream(_S1230, _S1231 + _S1232.x * global_invocation_id_8.y);
+    var _S1234 : Reservoir = Reservoir_x24init_0(u32(0), u32(0), 0.0f, 0.0f, _S1225, 0.0f, vec4<u32>(u32(0)), _S1225, _S1225);
+    var _S1235 : Selection = Selection_x24init_0(_S1234, 0.0f, _S1225, u32(0));
+    var initial_0 : Selection = _S1235;
+    var _S1236 : u32 = stream(_S1233, u32(193));
+    initial_0.random_state = _S1236;
     var i_9 : u32 = u32(0);
     loop
     {
-        var _S1201 : u32 = (uniforms_uint.samples);
-        if(i_9 < _S1201)
+        var _S1237 : u32 = (uniforms_uint.samples);
+        if(i_9 < _S1237)
         {
         }
         else
         {
             break;
         }
-        var r_9 : Reservoir = _S1198;
-        var _S1202 : u32 = stream(_S1197, i_9);
-        r_9.seed = _S1202;
-        var _S1203 : u32 = (uniforms_uint.samples);
-        var _S1204 : Shift = walk_0(dom_7, r_9, false, 1.0f / f32(_S1203), &(initial_0));
+        var r_9 : Reservoir = _S1234;
+        var _S1238 : u32 = stream(_S1233, i_9);
+        r_9.seed = _S1238;
+        var _S1239 : u32 = (uniforms_uint.samples);
+        var _S1240 : Shift = walk_0(dom_7, r_9, false, 1.0f / f32(_S1239), &(initial_0));
         var i_10 : u32 = i_9 + u32(1);
         i_9 = i_10;
     }
-    var _S1205 : Reservoir = finalize(initial_0, 1.0f);
-    storeReservoir(reservoir_initial_out, (_S1188), (_S1205), (dom_7.hit));
+    var _S1241 : Reservoir = finalize(initial_0, 1.0f);
+    storeReservoir(reservoir_initial_out, (_S1224), (_S1241), (dom_7.hit));
     return;
 }
 
 fn normal_distribution( state_3 : u32) -> Random
 {
-    var _S1206 : Random = pcg(state_3);
-    var _S1207 : Random = pcg(_S1206.state);
-    var _S1208 : f32 = 6.28318548202514648f * _S1206.value;
-    var _S1209 : f32 = sqrt(-2.0f * clamp(log(_S1207.value), -8.388607e+06f, 0.0f));
-    return Random_x24init_0(_S1207.state, _S1209 * cos(_S1208));
+    var _S1242 : Random = pcg(state_3);
+    var _S1243 : Random = pcg(_S1242.state);
+    var _S1244 : f32 = 6.28318548202514648f * _S1242.value;
+    var _S1245 : f32 = sqrt(-2.0f * clamp(log(_S1243.value), -8.388607e+06f, 0.0f));
+    return Random_x24init_0(_S1243.state, _S1245 * cos(_S1244));
 }
 
 struct RandomSphere
@@ -4655,50 +4789,50 @@ struct RandomSphere
 
 fn RandomSphere_x24init_0( state_4 : u32,  value_1 : vec3<f32>) -> RandomSphere
 {
-    var _S1210 : RandomSphere;
-    _S1210.state = state_4;
-    _S1210.value = value_1;
-    return _S1210;
+    var _S1246 : RandomSphere;
+    _S1246.state = state_4;
+    _S1246.value = value_1;
+    return _S1246;
 }
 
 fn random_sphere( state_5 : u32) -> RandomSphere
 {
-    var _S1211 : Random = normal_distribution(state_5);
-    var _S1212 : Random = normal_distribution(_S1211.state);
-    var _S1213 : Random = normal_distribution(_S1212.state);
-    var _S1214 : vec3<f32> = (normalize((vec3<f32>(_S1211.value, _S1212.value, _S1213.value))));
-    return RandomSphere_x24init_0(_S1213.state, _S1214);
+    var _S1247 : Random = normal_distribution(state_5);
+    var _S1248 : Random = normal_distribution(_S1247.state);
+    var _S1249 : Random = normal_distribution(_S1248.state);
+    var _S1250 : vec3<f32> = (normalize((vec3<f32>(_S1247.value, _S1248.value, _S1249.value))));
+    return RandomSphere_x24init_0(_S1249.state, _S1250);
 }
 
 fn normalMapTBN( p0_0 : vec3<f32>,  p1_0 : vec3<f32>,  p2_0 : vec3<f32>,  uv0_0 : vec2<f32>,  uv1_0 : vec2<f32>,  uv2_0 : vec2<f32>,  n_9 : vec3<f32>) -> mat3x3<f32>
 {
-    var _S1215 : vec3<f32> = p1_0 - p0_0;
-    var _S1216 : vec3<f32> = p2_0 - p0_0;
-    var _S1217 : vec2<f32> = uv1_0 - uv0_0;
-    var _S1218 : vec2<f32> = uv2_0 - uv0_0;
-    var _S1219 : f32 = _S1217.x;
-    var _S1220 : f32 = _S1218.y;
-    var _S1221 : f32 = _S1217.y;
-    var _S1222 : f32 = _S1218.x;
-    var _S1223 : f32 = _S1219 * _S1220 - _S1221 * _S1222;
-    var _S1224 : f32 = 1.0f / _S1223;
-    var _S1225 : vec3<f32> = vec3<f32>(_S1224);
-    var t_20 : vec3<f32> = (_S1215 * vec3<f32>(_S1220) - _S1216 * vec3<f32>(_S1221)) * _S1225;
-    var _S1226 : vec3<f32> = (_S1216 * vec3<f32>(_S1219) - _S1215 * vec3<f32>(_S1222)) * _S1225;
+    var _S1251 : vec3<f32> = p1_0 - p0_0;
+    var _S1252 : vec3<f32> = p2_0 - p0_0;
+    var _S1253 : vec2<f32> = uv1_0 - uv0_0;
+    var _S1254 : vec2<f32> = uv2_0 - uv0_0;
+    var _S1255 : f32 = _S1253.x;
+    var _S1256 : f32 = _S1254.y;
+    var _S1257 : f32 = _S1253.y;
+    var _S1258 : f32 = _S1254.x;
+    var _S1259 : f32 = _S1255 * _S1256 - _S1257 * _S1258;
+    var _S1260 : f32 = 1.0f / _S1259;
+    var _S1261 : vec3<f32> = vec3<f32>(_S1260);
+    var t_20 : vec3<f32> = (_S1251 * vec3<f32>(_S1256) - _S1252 * vec3<f32>(_S1257)) * _S1261;
+    var _S1262 : vec3<f32> = (_S1252 * vec3<f32>(_S1255) - _S1251 * vec3<f32>(_S1258)) * _S1261;
     var t_21 : vec3<f32> = (normalize((t_20 - n_9 * vec3<f32>(dot(n_9, t_20)))));
-    var _S1227 : bool = (dot(cross(n_9, t_21), _S1226)) > 0.0f;
+    var _S1263 : bool = (dot(cross(n_9, t_21), _S1262)) > 0.0f;
     var t_22 : vec3<f32>;
-    if(_S1227)
+    if(_S1263)
     {
-        var _S1228 : vec3<f32> = ((-(t_21)));
-        t_22 = _S1228;
+        var _S1264 : vec3<f32> = ((-(t_21)));
+        t_22 = _S1264;
     }
     else
     {
         t_22 = t_21;
     }
-    var _S1229 : vec3<f32> = cross(n_9, t_22);
-    return mat3x3<f32>(t_22, _S1229, n_9);
+    var _S1265 : vec3<f32> = cross(n_9, t_22);
+    return mat3x3<f32>(t_22, _S1265, n_9);
 }
 
 fn tangentToWorldNormalMap( v_5 : vec3<f32>,  tbn_0 : mat3x3<f32>) -> vec3<f32>
@@ -4708,67 +4842,67 @@ fn tangentToWorldNormalMap( v_5 : vec3<f32>,  tbn_0 : mat3x3<f32>) -> vec3<f32>
 
 fn geometryOffset( t0_0 : vec3<f32>,  t1_0 : vec3<f32>,  t2_2 : vec3<f32>,  n0_0 : vec3<f32>,  n1_0 : vec3<f32>,  n2_0 : vec3<f32>,  geometry_n_3 : vec3<f32>,  uvw_0 : vec3<f32>,  position_1 : vec3<f32>) -> f32
 {
-    var _S1230 : vec3<f32> = t1_0 - t0_0;
-    var _S1231 : vec3<f32> = t2_2 - t0_0;
-    var _S1232 : vec3<f32> = t2_2 - t1_0;
-    var _S1233 : f32 = min(length(_S1230), min(length(_S1231), length(_S1232)));
-    var _S1234 : vec3<f32> = vec3<f32>(distance(position_1, t0_0), distance(position_1, t1_0), distance(position_1, t2_2));
-    var _S1235 : vec3<f32> = (normalize((n0_0)));
-    var _S1236 : f32 = dot(geometry_n_3, _S1235);
-    var _S1237 : vec3<f32> = (normalize((n1_0)));
-    var _S1238 : f32 = dot(geometry_n_3, _S1237);
-    var _S1239 : vec3<f32> = (normalize((n2_0)));
-    var _S1240 : vec3<f32> = acos(abs(vec3<f32>(_S1236, _S1238, dot(geometry_n_3, _S1239))));
-    var _S1241 : vec3<f32> = clamp(tan(_S1240), vec3<f32>(0.0f), vec3<f32>(0.78539818525314331f));
-    return clamp(dot(_S1234 * _S1241, uvw_0), 0.0f, _S1233 * 0.125f);
+    var _S1266 : vec3<f32> = t1_0 - t0_0;
+    var _S1267 : vec3<f32> = t2_2 - t0_0;
+    var _S1268 : vec3<f32> = t2_2 - t1_0;
+    var _S1269 : f32 = min(length(_S1266), min(length(_S1267), length(_S1268)));
+    var _S1270 : vec3<f32> = vec3<f32>(distance(position_1, t0_0), distance(position_1, t1_0), distance(position_1, t2_2));
+    var _S1271 : vec3<f32> = (normalize((n0_0)));
+    var _S1272 : f32 = dot(geometry_n_3, _S1271);
+    var _S1273 : vec3<f32> = (normalize((n1_0)));
+    var _S1274 : f32 = dot(geometry_n_3, _S1273);
+    var _S1275 : vec3<f32> = (normalize((n2_0)));
+    var _S1276 : vec3<f32> = acos(abs(vec3<f32>(_S1272, _S1274, dot(geometry_n_3, _S1275))));
+    var _S1277 : vec3<f32> = clamp(tan(_S1276), vec3<f32>(0.0f), vec3<f32>(0.78539818525314331f));
+    return clamp(dot(_S1270 * _S1277, uvw_0), 0.0f, _S1269 * 0.125f);
 }
 
-fn straightThrough( dir_11 : vec3<f32>,  n_10 : vec3<f32>,  material_19 : Material) -> vec3<f32>
+fn straightThrough( dir_11 : vec3<f32>,  n_10 : vec3<f32>,  material_20 : Material) -> vec3<f32>
 {
-    var _S1242 : vec3<f32> = ((-(dir_11)));
-    var _S1243 : f32 = (sign((dot(n_10, _S1242))));
-    var _S1244 : vec3<f32> = n_10 * vec3<f32>(_S1243);
-    var _S1245 : AnisotropicFrame = anisotropicFrame(material_19, _S1244);
-    var _S1246 : bool = (_S1245.alphas.x) > 0.0f;
-    if(_S1246)
+    var _S1278 : vec3<f32> = ((-(dir_11)));
+    var _S1279 : f32 = (sign((dot(n_10, _S1278))));
+    var _S1280 : vec3<f32> = n_10 * vec3<f32>(_S1279);
+    var _S1281 : AnisotropicFrame = anisotropicFrame(material_20, _S1280);
+    var _S1282 : bool = (_S1281.alphas.x) > 0.0f;
+    if(_S1282)
     {
-        var _S1247 : f32 = material_19.transmission * (1.0f - material_19.metallic);
-        var _S1248 : vec3<f32> = ((-(_S1244)));
-        var _S1249 : vec3<f32> = anisotropicLocal(dir_11, _S1245.tangent, _S1248);
-        var _S1250 : f32 = anisotropicG1(_S1249, _S1245.alphas);
-        return vec3<f32>((_S1247 * _S1250)) * material_19.albedo;
+        var _S1283 : f32 = material_20.transmission * (1.0f - material_20.metallic);
+        var _S1284 : vec3<f32> = ((-(_S1280)));
+        var _S1285 : vec3<f32> = anisotropicLocal(dir_11, _S1281.tangent, _S1284);
+        var _S1286 : f32 = anisotropicG1(_S1285, _S1281.alphas);
+        return vec3<f32>((_S1283 * _S1286)) * material_20.albedo;
     }
-    var _S1251 : f32 = material_19.transmission * (1.0f - material_19.metallic);
-    var _S1252 : f32 = material_19.roughness;
-    var _S1253 : f32 = smithG1(_S1252 * _S1252, abs(dot(n_10, dir_11)));
-    return vec3<f32>((_S1251 * _S1253)) * material_19.albedo;
+    var _S1287 : f32 = material_20.transmission * (1.0f - material_20.metallic);
+    var _S1288 : f32 = material_20.roughness;
+    var _S1289 : f32 = smithG1(_S1288 * _S1288, abs(dot(n_10, dir_11)));
+    return vec3<f32>((_S1287 * _S1289)) * material_20.albedo;
 }
 
-fn occluderTransmittance( toward_1 : vec3<f32>,  n_11 : vec3<f32>,  material_20 : Material,  coverage_0 : f32) -> vec3<f32>
+fn occluderTransmittance( toward_1 : vec3<f32>,  n_11 : vec3<f32>,  material_21 : Material,  coverage_0 : f32) -> vec3<f32>
 {
-    var _S1254 : vec3<f32>;
-    if((material_20.ior) == 1.0f)
+    var _S1290 : vec3<f32>;
+    if((material_21.ior) == 1.0f)
     {
-        var _S1255 : vec3<f32> = straightThrough(toward_1, n_11, material_20);
-        _S1254 = _S1255;
+        var _S1291 : vec3<f32> = straightThrough(toward_1, n_11, material_21);
+        _S1290 = _S1291;
     }
     else
     {
-        _S1254 = vec3<f32>(0.0f);
+        _S1290 = vec3<f32>(0.0f);
     }
-    return _S1254 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
+    return _S1290 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
 }
 
 fn walk_hook( dom_8 : Domain,  r_10 : Reservoir,  replay_1 : bool,  scale_2 : f32,  sel_7 : ptr<function, Selection>) -> Shift
 {
-    var _S1256 : Shift = walk_0(dom_8, r_10, replay_1, scale_2, &((*sel_7)));
-    return _S1256;
+    var _S1292 : Shift = walk_0(dom_8, r_10, replay_1, scale_2, &((*sel_7)));
+    return _S1292;
 }
 
 fn shift_hook( dom_9 : Domain,  r_11 : Reservoir) -> Shift
 {
-    var _S1257 : Shift = shift_0(dom_9, r_11);
-    return _S1257;
+    var _S1293 : Shift = shift_0(dom_9, r_11);
+    return _S1293;
 }
 
 fn restir_initial_hook( global_invocation_id_9 : vec3<u32>)
