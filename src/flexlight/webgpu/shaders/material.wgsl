@@ -21,5 +21,8 @@ struct Material {
     anisotropy: f32,
     anisotropic_rotation: f32,
     tangent_source: f32,
-    tangent: vec3<f32>
+    tangent: vec3<f32>,
+    // FlexKernels' dispersion of the index of refraction, none at 0, in the tangent's padding (byte 140), which the
+    // upload leaves 0
+    dispersion: f32
 };
