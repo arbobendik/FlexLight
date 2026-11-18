@@ -1231,6 +1231,12 @@ fn safeDivide( a_4 : vec3<f32>,  b_0 : vec3<f32>) -> vec3<f32>
     return _S415;
 }
 
+fn resamplingTarget( f_2 : vec3<f32>) -> f32
+{
+    var _S416 : f32 = rgb_to_greyscale(abs(f_2));
+    return _S416;
+}
+
 struct Reservoir
 {
      seed : u32,
@@ -1254,30 +1260,30 @@ struct Selection
 
 fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_0 : vec3<f32>)
 {
-    var _S416 : f32 = rgb_to_greyscale(weight_0);
-    var _S417 : bool = _S416 > 0.0f;
-    var _S418 : bool;
-    if(_S417)
+    var _S417 : f32 = resamplingTarget(weight_0);
+    var _S418 : bool = _S417 > 0.0f;
+    var _S419 : bool;
+    if(_S418)
     {
-        _S418 = _S416 < 3.00000000549775576e+38f;
+        _S419 = _S417 < 3.00000000549775576e+38f;
     }
     else
     {
-        _S418 = false;
+        _S419 = false;
     }
-    var _S419 : bool = !_S418;
-    if(_S419)
+    var _S420 : bool = !_S419;
+    if(_S420)
     {
         return;
     }
-    var _S420 : f32 = (*sel_0).w_sum + _S416;
-    (*sel_0).w_sum = _S420;
-    var _S421 : vec3<f32> = (*sel_0).color + weight_0;
-    (*sel_0).color = _S421;
-    var _S422 : Random = pcg((*sel_0).random_state);
-    (*sel_0).random_state = _S422.state;
-    var _S423 : bool = (_S422.value * (*sel_0).w_sum) <= _S416;
-    if(_S423)
+    var _S421 : f32 = (*sel_0).w_sum + _S417;
+    (*sel_0).w_sum = _S421;
+    var _S422 : vec3<f32> = (*sel_0).color + weight_0;
+    (*sel_0).color = _S422;
+    var _S423 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = _S423.state;
+    var _S424 : bool = (_S423.value * (*sel_0).w_sum) <= _S417;
+    if(_S424)
     {
         (*sel_0).r = candidate_0;
     }
@@ -1293,10 +1299,10 @@ struct Shift
 fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
 {
     var candidate_1 : Reservoir = r_0;
-    var _S424 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
-    candidate_1.f = _S424;
-    var _S425 : f32 = r_0.jac * shifted_0.jac;
-    candidate_1.jac = _S425;
+    var _S425 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S425;
+    var _S426 : f32 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S426;
     offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_0.w));
     return;
 }
@@ -1304,61 +1310,61 @@ fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 
 fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 {
     var r_1 : Reservoir = sel_2.r;
-    var _S426 : f32 = rgb_to_greyscale(r_1.f);
-    var _S427 : f32 = sel_2.w_sum / _S426;
-    var _S428 : bool = _S426 > 0.0f;
-    var _S429 : f32 = select(0.0f, _S427, _S428);
-    r_1.w = _S429;
+    var _S427 : f32 = resamplingTarget(r_1.f);
+    var _S428 : f32 = sel_2.w_sum / _S427;
+    var _S429 : bool = _S427 > 0.0f;
+    var _S430 : f32 = select(0.0f, _S428, _S429);
+    r_1.w = _S430;
     r_1.c = c_0;
     return r_1;
 }
 
-fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_2 : vec3<f32>) -> Reservoir
+fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_3 : vec3<f32>) -> Reservoir
 {
     var candidate_2 : Reservoir = r_2;
-    var _S430 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
-    var _S431 : u32 = (insertBits((_S430), (end_type_0), (u32(12)), (u32(3))));
-    candidate_2.path = _S431;
-    candidate_2.f = f_2;
+    var _S431 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
+    var _S432 : u32 = (insertBits((_S431), (end_type_0), (u32(12)), (u32(3))));
+    candidate_2.path = _S432;
+    candidate_2.f = f_3;
     return candidate_2;
 }
 
 fn facingSign( transmission_0 : f32,  face_0 : vec3<f32>,  direction_0 : vec3<f32>) -> f32
 {
-    var _S432 : bool = transmission_0 > 0.0f;
-    var _S433 : bool;
-    if(_S432)
-    {
-        _S433 = true;
-    }
-    else
-    {
-        _S433 = (dot(face_0, direction_0)) < 0.0f;
-    }
-    var _S434 : f32;
+    var _S433 : bool = transmission_0 > 0.0f;
+    var _S434 : bool;
     if(_S433)
     {
-        _S434 = 1.0f;
+        _S434 = true;
     }
     else
     {
-        _S434 = -1.0f;
+        _S434 = (dot(face_0, direction_0)) < 0.0f;
     }
-    return _S434;
+    var _S435 : f32;
+    if(_S434)
+    {
+        _S435 = 1.0f;
+    }
+    else
+    {
+        _S435 = -1.0f;
+    }
+    return _S435;
 }
 
 fn survivalProbability( throughput_1 : vec3<f32>,  density_0 : f32) -> f32
 {
-    var _S435 : vec3<f32> = throughput_1 / vec3<f32>(density_0);
-    return clamp(max(_S435.x, max(_S435.y, _S435.z)), 0.0f, 1.0f);
+    var _S436 : vec3<f32> = throughput_1 / vec3<f32>(density_0);
+    return clamp(max(_S436.x, max(_S436.y, _S436.z)), 0.0f, 1.0f);
 }
 
 fn cosSubClamped( sin_a_0 : f32,  cos_a_0 : f32,  sin_b_0 : f32,  cos_b_0 : f32) -> f32
 {
-    var _S436 : f32 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
-    var _S437 : bool = cos_a_0 > cos_b_0;
-    var _S438 : f32 = select(_S436, 1.0f, _S437);
-    return _S438;
+    var _S437 : f32 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
+    var _S438 : bool = cos_a_0 > cos_b_0;
+    var _S439 : f32 = select(_S437, 1.0f, _S438);
+    return _S439;
 }
 
 fn sine( c_1 : f32) -> f32
@@ -1377,37 +1383,37 @@ struct LightBounds
 
 fn importance( node_0 : LightBounds,  p_0 : vec3<f32>,  normal_0 : vec3<f32>) -> f32
 {
-    var _S439 : vec3<f32> = (node_0.low + node_0.high) * vec3<f32>(0.5f);
-    var _S440 : vec3<f32> = node_0.high - node_0.low;
-    var _S441 : vec3<f32> = p_0 - _S439;
-    var _S442 : vec3<f32> = (normalize((_S441)));
-    var _S443 : f32 = dot(_S441, _S441);
-    var _S444 : f32 = dot(_S440, _S440) / 4.0f;
-    var _S445 : f32 = abs(dot(node_0.w, _S442));
-    var _S446 : f32 = sine(node_0.cos_theta_o);
-    var _S447 : f32 = sqrt(max(1.0f - _S444 / _S443, 0.0f));
-    var _S448 : bool = _S443 < _S444;
-    var _S449 : f32 = select(_S447, -1.0f, _S448);
-    var _S450 : f32 = sine(_S449);
-    var _S451 : f32 = sine(_S445);
-    var _S452 : f32 = cosSubClamped(_S451, _S445, _S446, node_0.cos_theta_o);
-    var _S453 : f32 = sine(_S445);
-    var _S454 : f32 = _S453 * node_0.cos_theta_o - _S445 * _S446;
-    var _S455 : bool = _S445 > (node_0.cos_theta_o);
-    var _S456 : f32 = select(_S454, 0.0f, _S455);
-    var _S457 : f32 = cosSubClamped(_S456, _S452, _S450, _S449);
-    var _S458 : bool = _S457 <= 0.0f;
-    if(_S458)
+    var _S440 : vec3<f32> = (node_0.low + node_0.high) * vec3<f32>(0.5f);
+    var _S441 : vec3<f32> = node_0.high - node_0.low;
+    var _S442 : vec3<f32> = p_0 - _S440;
+    var _S443 : vec3<f32> = (normalize((_S442)));
+    var _S444 : f32 = dot(_S442, _S442);
+    var _S445 : f32 = dot(_S441, _S441) / 4.0f;
+    var _S446 : f32 = abs(dot(node_0.w, _S443));
+    var _S447 : f32 = sine(node_0.cos_theta_o);
+    var _S448 : f32 = sqrt(max(1.0f - _S445 / _S444, 0.0f));
+    var _S449 : bool = _S444 < _S445;
+    var _S450 : f32 = select(_S448, -1.0f, _S449);
+    var _S451 : f32 = sine(_S450);
+    var _S452 : f32 = sine(_S446);
+    var _S453 : f32 = cosSubClamped(_S452, _S446, _S447, node_0.cos_theta_o);
+    var _S454 : f32 = sine(_S446);
+    var _S455 : f32 = _S454 * node_0.cos_theta_o - _S446 * _S447;
+    var _S456 : bool = _S446 > (node_0.cos_theta_o);
+    var _S457 : f32 = select(_S455, 0.0f, _S456);
+    var _S458 : f32 = cosSubClamped(_S457, _S453, _S451, _S450);
+    var _S459 : bool = _S458 <= 0.0f;
+    if(_S459)
     {
         return 0.0f;
     }
-    var _S459 : f32 = - dot(_S442, normal_0);
-    var _S460 : f32 = node_0.phi * _S457 / max(_S443, length(_S440) / 2.0f);
-    var _S461 : f32 = sine(_S459);
-    var _S462 : f32 = cosSubClamped(_S461, _S459, _S450, _S449);
-    var _S463 : bool = (dot(normal_0, normal_0)) == 0.0f;
-    var _S464 : f32 = select(_S462, 1.0f, _S463);
-    return max(_S460 * _S464, 0.0f);
+    var _S460 : f32 = - dot(_S443, normal_0);
+    var _S461 : f32 = node_0.phi * _S458 / max(_S444, length(_S441) / 2.0f);
+    var _S462 : f32 = sine(_S460);
+    var _S463 : f32 = cosSubClamped(_S462, _S460, _S451, _S450);
+    var _S464 : bool = (dot(normal_0, normal_0)) == 0.0f;
+    var _S465 : f32 = select(_S463, 1.0f, _S464);
+    return max(_S461 * _S465, 0.0f);
 }
 
 fn solidAngle( probability_0 : f32,  normal_1 : vec3<f32>,  toward_1 : vec3<f32>) -> f32
@@ -1417,85 +1423,85 @@ fn solidAngle( probability_0 : f32,  normal_1 : vec3<f32>,  toward_1 : vec3<f32>
 
 fn pickChild( first_0 : LightBounds,  second_0 : LightBounds,  p_1 : vec3<f32>,  normal_2 : vec3<f32>,  pick_0 : ptr<function, f32>,  probability_1 : ptr<function, f32>) -> u32
 {
-    var _S465 : f32 = importance(first_0, p_1, normal_2);
-    var _S466 : f32 = importance(second_0, p_1, normal_2);
-    var _S467 : vec2<f32> = vec2<f32>(_S465, _S466);
-    var _S468 : bool = _S465 == 0.0f;
-    var _S469 : bool;
-    if(_S468)
+    var _S466 : f32 = importance(first_0, p_1, normal_2);
+    var _S467 : f32 = importance(second_0, p_1, normal_2);
+    var _S468 : vec2<f32> = vec2<f32>(_S466, _S467);
+    var _S469 : bool = _S466 == 0.0f;
+    var _S470 : bool;
+    if(_S469)
     {
-        _S469 = _S466 == 0.0f;
+        _S470 = _S467 == 0.0f;
     }
     else
     {
-        _S469 = false;
+        _S470 = false;
     }
-    if(_S469)
+    if(_S470)
     {
         return u32(2);
     }
-    var _S470 : f32 = _S465 + _S466;
-    var _S471 : bool = _S466 > 0.0f;
-    if(_S471)
+    var _S471 : f32 = _S466 + _S467;
+    var _S472 : bool = _S467 > 0.0f;
+    if(_S472)
     {
-        _S469 = ((*pick_0) * _S470) >= _S465;
+        _S470 = ((*pick_0) * _S471) >= _S466;
     }
     else
     {
-        _S469 = false;
+        _S470 = false;
     }
-    var _S472 : u32 = select(u32(0), u32(1), _S469);
-    var _S473 : f32 = min(((*pick_0) * _S470 - f32(_S472) * _S465) / _S467[_S472], 0.99999994039535522f);
-    (*pick_0) = _S473;
-    var _S474 : f32 = (*probability_1) * (_S467[_S472] / _S470);
-    (*probability_1) = _S474;
-    return _S472;
+    var _S473 : u32 = select(u32(0), u32(1), _S470);
+    var _S474 : f32 = min(((*pick_0) * _S471 - f32(_S473) * _S466) / _S468[_S473], 0.99999994039535522f);
+    (*pick_0) = _S474;
+    var _S475 : f32 = (*probability_1) * (_S468[_S473] / _S471);
+    (*probability_1) = _S475;
+    return _S473;
 }
 
 fn childShare( first_1 : LightBounds,  second_1 : LightBounds,  p_2 : vec3<f32>,  normal_3 : vec3<f32>,  child_0 : u32) -> f32
 {
-    var _S475 : f32 = importance(first_1, p_2, normal_3);
-    var _S476 : f32 = importance(second_1, p_2, normal_3);
-    var _S477 : vec2<f32> = vec2<f32>(_S475, _S476);
-    var _S478 : f32 = _S477[child_0] / (_S475 + _S476);
-    var _S479 : bool = (_S477[child_0]) > 0.0f;
-    var _S480 : f32 = select(0.0f, _S478, _S479);
-    return _S480;
+    var _S476 : f32 = importance(first_1, p_2, normal_3);
+    var _S477 : f32 = importance(second_1, p_2, normal_3);
+    var _S478 : vec2<f32> = vec2<f32>(_S476, _S477);
+    var _S479 : f32 = _S478[child_0] / (_S476 + _S477);
+    var _S480 : bool = (_S478[child_0]) > 0.0f;
+    var _S481 : f32 = select(0.0f, _S479, _S480);
+    return _S481;
 }
 
 fn powerHeuristic( a_5 : f32,  b_1 : f32) -> f32
 {
-    var _S481 : f32 = 1.0f / (1.0f + b_1 / a_5 * (b_1 / a_5));
-    var _S482 : bool = b_1 > 0.0f;
-    var _S483 : f32 = select(1.0f, _S481, _S482);
-    return _S483;
+    var _S482 : f32 = 1.0f / (1.0f + b_1 / a_5 * (b_1 / a_5));
+    var _S483 : bool = b_1 > 0.0f;
+    var _S484 : f32 = select(1.0f, _S482, _S483);
+    return _S484;
 }
 
 fn sphereDensity( center_0 : vec3<f32>,  radius_1 : f32,  p_3 : vec3<f32>) -> f32
 {
-    var _S484 : vec3<f32> = center_0 - p_3;
-    var _S485 : f32 = radius_1 * radius_1 / dot(_S484, _S484);
-    var _S486 : bool = _S485 >= 1.0f;
-    if(_S486)
+    var _S485 : vec3<f32> = center_0 - p_3;
+    var _S486 : f32 = radius_1 * radius_1 / dot(_S485, _S485);
+    var _S487 : bool = _S486 >= 1.0f;
+    if(_S487)
     {
         return 0.07957746833562851f;
     }
-    return (1.0f + sqrt(1.0f - _S485)) / (6.28318548202514648f * _S485);
+    return (1.0f + sqrt(1.0f - _S486)) / (6.28318548202514648f * _S486);
 }
 
 fn sampleSphere( center_1 : vec3<f32>,  radius_2 : f32,  p_4 : vec3<f32>,  u1_0 : f32,  u2_0 : f32) -> vec3<f32>
 {
-    var _S487 : vec3<f32> = center_1 - p_4;
-    var _S488 : f32 = radius_2 * radius_2 / dot(_S487, _S487);
-    var _S489 : f32 = u1_0 * _S488 / (1.0f + sqrt(max(1.0f - _S488, 0.0f)));
-    var _S490 : f32 = 2.0f * u1_0;
-    var _S491 : bool = _S488 >= 1.0f;
-    var _S492 : f32 = select(_S489, _S490, _S491);
-    var _S493 : f32 = sqrt(max(_S492 * (2.0f - _S492), 0.0f));
-    var _S494 : f32 = 6.28318548202514648f * u2_0;
-    var _S495 : vec3<f32> = vec3<f32>(_S493 * cos(_S494), 1.0f - _S492, _S493 * sin(_S494));
-    var _S496 : vec3<f32> = (normalize((_S487)));
-    var _S497 : vec3<f32> = tangentToWorld(_S495, _S496);
-    return _S497;
+    var _S488 : vec3<f32> = center_1 - p_4;
+    var _S489 : f32 = radius_2 * radius_2 / dot(_S488, _S488);
+    var _S490 : f32 = u1_0 * _S489 / (1.0f + sqrt(max(1.0f - _S489, 0.0f)));
+    var _S491 : f32 = 2.0f * u1_0;
+    var _S492 : bool = _S489 >= 1.0f;
+    var _S493 : f32 = select(_S490, _S491, _S492);
+    var _S494 : f32 = sqrt(max(_S493 * (2.0f - _S493), 0.0f));
+    var _S495 : f32 = 6.28318548202514648f * u2_0;
+    var _S496 : vec3<f32> = vec3<f32>(_S494 * cos(_S495), 1.0f - _S493, _S494 * sin(_S495));
+    var _S497 : vec3<f32> = (normalize((_S488)));
+    var _S498 : vec3<f32> = tangentToWorld(_S496, _S497);
+    return _S498;
 }
 
