@@ -51,12 +51,17 @@
 // the closed box of the lit case, holds GGX's single-scatter albedo at that cosine, 0.9986 by midpoint quadrature,
 // within four standard errors path traced and within 0.2% through ReSTIR, four times the spread of eight independent
 // runs, whose pixels share samples: where light sampling skips it, the emission its reflection meets takes the full
-// weight, and its mean stays at most one.
+// weight, and its mean stays at most one. The metal's square of roughness 0.2, black and opaque, its specular tinted
+// (1, 0.5, 0.25) at level 0.5 (argument tint), holds the tinted reflection alone in each channel, (0.0593, 0.0498,
+// 0.0450) by FlexKernels' sampling of its BSDF, within four standard errors path traced. Through ReSTIR, whose pixels
+// share samples, the metal, dielectric, sheen and anisotropic squares meet their values within 2%, the sheen over white
+// diffuse at most what it receives and within 2% of it.
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.9722, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
 const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.7077, 0.6464];
+const TINT = [0.0593, 0.0498, 0.0450];
 // ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
 let seed = 1;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -117,7 +122,8 @@ for (let i = 0; i < SIDES; i++) {
 const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [0.5, 0.5, -tilt], [-0.5, 0.5, -tilt]];
 const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite" || MATERIAL === "velvet";
 const aniso = MATERIAL === "aniso" || MATERIAL === "anisoturned";
-const square = MATERIAL === "metal" || MATERIAL === "glossy" || MATERIAL === "dielectric" || MATERIAL === "raster" || sheen || aniso;
+const square = MATERIAL === "metal" || MATERIAL === "glossy" || MATERIAL === "dielectric" || MATERIAL === "raster"
+  || sheen || aniso || MATERIAL === "tint";
 const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
 const scaled = [0, tilt, 0.5].map((c, i) => c * SCALE[i]), length = Math.hypot(...scaled);
 if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => (c + twin * (i === 0)) / SCALE[i])),
@@ -138,6 +144,8 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
     undefined, undefined, undefined, new F.Vector(1, 1, 1), 0.5, undefined, undefined, undefined, MATERIAL === "velvet")
   : aniso ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
     undefined, undefined, undefined, 1, MATERIAL === "anisoturned" ? 0.25 : 0)
+  : MATERIAL === "tint" ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5, undefined,
+    new F.Vector(1, 0.5, 0.25), 0.5)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
   : MATERIAL === "lit" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0, 1)
   : thin ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 1, 0, 0, 1, undefined, undefined, undefined, new F.Vector(1, 1, 1))
@@ -216,7 +224,8 @@ else if (square || thin || MATERIAL === "cylinder" || MATERIAL === "shell") engi
   engine.camera.fov = twin || MATERIAL === "cylinder" || MATERIAL === "shell" ? 40 : 1;
 
 // Each frame's estimate summed per pixel, then the bounds checked over their mean
-const sum = new Float64Array(SIZE * SIZE), row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
+const channels = [0, 1, 2].map(() => new Float64Array(SIZE * SIZE)), sum = new Float64Array(SIZE * SIZE);
+const row = Math.ceil(SIZE * 16 / 256) * 256, first = new Set(), differences = [];
 let frame = 0, read = 0;
 const renderFrame = engine.renderer.renderFrame.bind(engine.renderer);
 engine.renderer.renderFrame = async (...args) => {
@@ -232,7 +241,8 @@ engine.renderer.renderFrame = async (...args) => {
   // And the frame's left half's mean less its right half's, of the columns more than two away from the middle
   let split = 0;
   for (let p = 0, i, v, x; p < SIZE * SIZE; p++) i = (p / SIZE | 0) * row / 4 + p % SIZE * 4, v = (data[i] + data[i + 1] + data[i + 2]) / 3,
-    sum[p] += v, x = p % SIZE + 0.5 - SIZE / 2, split += Math.abs(x) > 2 ? -Math.sign(x) * v / (SIZE * (SIZE / 2 - 2)) : 0;
+    sum[p] += v, channels.forEach((c, k) => c[p] += data[i + k]), x = p % SIZE + 0.5 - SIZE / 2,
+    split += Math.abs(x) > 2 ? -Math.sign(x) * v / (SIZE * (SIZE / 2 - 2)) : 0;
   differences.push(split);
   first.add(data[0]);
   buffer.destroy();
@@ -258,15 +268,26 @@ engine.renderer.renderFrame = async (...args) => {
   const half = (x) => { const side = pixels.filter((_, p) => x * (p % SIZE + 0.5 - SIZE / 2) > 2); return side.reduce((a, b) => a + b) / side.length; };
   if (backlit) console.log(`halves ${half(-1).toFixed(4)} and ${half(1).toFixed(4)} of ${BACKLIT.toFixed(4)} and half of it`),
     process.exit(Math.abs(half(-1) / BACKLIT - 1) < 0.02 && Math.abs(half(1) / BACKLIT - 0.5) < 0.01 ? 0 : 1);
-  process.exit((MATERIAL === "metal" ? Math.abs(mean - METAL) < 4 * error && first.size > 1
-    : MATERIAL === "dielectric" ? Math.abs(mean - DIELECTRIC) < 4 * error
+  // A derived value met within four standard errors path traced, within 2% through ReSTIR
+  const meets = (m, e, x) => MODE === "restir" ? Math.abs(m / x - 1) < 0.02 : Math.abs(m - x) < 4 * e;
+  // The tint's channels, each with its own standard error
+  const tinted = channels.map((c) => {
+    const px = Array.from(c, (v) => v / FRAMES), m = px.reduce((a, b) => a + b) / px.length;
+    return [m, Math.sqrt(px.reduce((a, v) => a + (v - m) ** 2, 0) / px.length / px.length)]; });
+  if (MATERIAL === "tint") console.log(
+    `channels ${tinted.map(([m]) => m.toFixed(4)).join(", ")} of ${TINT.join(", ")}`);
+  process.exit((MATERIAL === "metal" ? meets(mean, error, METAL) && first.size > 1
+    : MATERIAL === "dielectric" ? meets(mean, error, DIELECTRIC)
     : MATERIAL === "glossy" ? (MODE === "restir" ? Math.abs(mean / GLOSSY - 1) < 0.002 : Math.abs(mean - GLOSSY) < 4 * error)
       && mean <= 1 + 4 * error
-    : aniso ? Math.abs(mean - ANISO[Number(MATERIAL === "anisoturned")]) < 4 * error
-    : MATERIAL === "sheen" ? Math.abs(mean - SHEEN) < 4 * error : MATERIAL === "velvet" ? Math.abs(mean - VELVET) < 4 * error : MATERIAL === "sheenwhite" ? mean > 0.99 && mean <= 1 + 4 * error
+    : aniso ? meets(mean, error, ANISO[Number(MATERIAL === "anisoturned")])
+    : MATERIAL === "tint" ? tinted.every(([m, e], k) => meets(m, e, TINT[k]))
+    : MATERIAL === "sheen" ? meets(mean, error, SHEEN) : MATERIAL === "velvet" ? meets(mean, error, VELVET)
+    : MATERIAL === "sheenwhite" ? (MODE === "restir" ? mean > 0.98 && mean <= 1 : mean > 0.99 && mean <= 1 + 4 * error)
     : (thin || MATERIAL === "shell") && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
     && (MATERIAL === "lit" || MATERIAL === "metal" || MATERIAL === "glossy" || aniso || thin || sheen || MATERIAL === "shell"
       || brightest < 1.05)
-    && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || MATERIAL === "velvet" || aniso || MATERIAL === "shell" || black === 0) ? 0 : 1);
+    && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || MATERIAL === "velvet" || aniso
+      || MATERIAL === "tint" || MATERIAL === "shell" || black === 0) ? 0 : 1);
 };
 engine.renderer.render();
