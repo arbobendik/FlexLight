@@ -1345,6 +1345,12 @@ vec3 safeDivide(vec3 a_5, vec3 b_0)
     return _S415;
 }
 
+float resamplingTarget(vec3 f_2)
+{
+    float _S416 = rgb_to_greyscale(abs(f_2));
+    return _S416;
+}
+
 struct Reservoir
 {
     uint seed;
@@ -1368,30 +1374,30 @@ struct Selection
 
 void offer(inout Selection sel_0, Reservoir candidate_0, vec3 weight_0)
 {
-    float _S416 = rgb_to_greyscale(weight_0);
-    bool _S417 = _S416 > 0.0;
-    bool _S418;
-    if(_S417)
+    float _S417 = resamplingTarget(weight_0);
+    bool _S418 = _S417 > 0.0;
+    bool _S419;
+    if(_S418)
     {
-        _S418 = _S416 < 3.00000000549775576e+38;
+        _S419 = _S417 < 3.00000000549775576e+38;
     }
     else
     {
-        _S418 = false;
+        _S419 = false;
     }
-    bool _S419 = !_S418;
-    if(_S419)
+    bool _S420 = !_S419;
+    if(_S420)
     {
         return;
     }
-    float _S420 = sel_0.w_sum + _S416;
-    sel_0.w_sum = _S420;
-    vec3 _S421 = sel_0.color + weight_0;
-    sel_0.color = _S421;
-    Random _S422 = pcg(sel_0.random_state);
-    sel_0.random_state = _S422.state;
-    bool _S423 = (_S422.value * sel_0.w_sum) <= _S416;
-    if(_S423)
+    float _S421 = sel_0.w_sum + _S417;
+    sel_0.w_sum = _S421;
+    vec3 _S422 = sel_0.color + weight_0;
+    sel_0.color = _S422;
+    Random _S423 = pcg(sel_0.random_state);
+    sel_0.random_state = _S423.state;
+    bool _S424 = (_S423.value * sel_0.w_sum) <= _S417;
+    if(_S424)
     {
         sel_0.r = candidate_0;
     }
@@ -1407,10 +1413,10 @@ struct Shift
 void offerShifted(inout Selection sel_1, Reservoir r_0, Shift shifted_0, float mis_0)
 {
     Reservoir candidate_1 = r_0;
-    vec3 _S424 = shifted_0.f / shifted_0.jac;
-    candidate_1.f = _S424;
-    float _S425 = r_0.jac * shifted_0.jac;
-    candidate_1.jac = _S425;
+    vec3 _S425 = shifted_0.f / shifted_0.jac;
+    candidate_1.f = _S425;
+    float _S426 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S426;
     offer(sel_1, candidate_1, mis_0 * shifted_0.f * r_0.w);
     return;
 }
@@ -1418,53 +1424,53 @@ void offerShifted(inout Selection sel_1, Reservoir r_0, Shift shifted_0, float m
 Reservoir finalize(Selection sel_2, float c_0)
 {
     Reservoir r_1 = sel_2.r;
-    float _S426 = rgb_to_greyscale(r_1.f);
-    float _S427 = sel_2.w_sum / _S426;
-    bool _S428 = _S426 > 0.0;
-    float _S429 = _S428 ? _S427 : 0.0;
-    r_1.w = _S429;
+    float _S427 = resamplingTarget(r_1.f);
+    float _S428 = sel_2.w_sum / _S427;
+    bool _S429 = _S427 > 0.0;
+    float _S430 = _S429 ? _S428 : 0.0;
+    r_1.w = _S430;
     r_1.c = c_0;
     return r_1;
 }
 
 uint insertBits_0(uint e_1, uint newbits_0, uint offset_0, uint count_0)
 {
-    uint _S430 = (1U << count_0) - 1U;
-    return (e_1 & (~(_S430 << offset_0))) | ((newbits_0 & _S430) << offset_0);
+    uint _S431 = (1U << count_0) - 1U;
+    return (e_1 & (~(_S431 << offset_0))) | ((newbits_0 & _S431) << offset_0);
 }
 
-Reservoir withEnd(Reservoir r_2, uint end_type_0, uint end_0, vec3 f_2)
+Reservoir withEnd(Reservoir r_2, uint end_type_0, uint end_0, vec3 f_3)
 {
     Reservoir candidate_2 = r_2;
-    uint _S431 = insertBits_0(r_2.path, end_0, 0U, 5U);
-    uint _S432 = insertBits_0(_S431, end_type_0, 12U, 3U);
-    candidate_2.path = _S432;
-    candidate_2.f = f_2;
+    uint _S432 = insertBits_0(r_2.path, end_0, 0U, 5U);
+    uint _S433 = insertBits_0(_S432, end_type_0, 12U, 3U);
+    candidate_2.path = _S433;
+    candidate_2.f = f_3;
     return candidate_2;
 }
 
 float facingSign(float transmission_0, vec3 face_0, vec3 direction_0)
 {
-    bool _S433 = transmission_0 > 0.0;
-    bool _S434;
-    if(_S433)
-    {
-        _S434 = true;
-    }
-    else
-    {
-        _S434 = (dot(face_0, direction_0)) < 0.0;
-    }
-    float _S435;
+    bool _S434 = transmission_0 > 0.0;
+    bool _S435;
     if(_S434)
     {
-        _S435 = 1.0;
+        _S435 = true;
     }
     else
     {
-        _S435 = -1.0;
+        _S435 = (dot(face_0, direction_0)) < 0.0;
     }
-    return _S435;
+    float _S436;
+    if(_S435)
+    {
+        _S436 = 1.0;
+    }
+    else
+    {
+        _S436 = -1.0;
+    }
+    return _S436;
 }
 
 float geometryDensity(vec3 geometry_n_1, vec3 direction_1, float distance_1)
@@ -1479,68 +1485,68 @@ float footprintThreshold(float geometry_density_0)
 
 bool withinFootprint(bool open_0, bool prev_rough_0, float prev_pdf_0, float geometry_density_1, float threshold_0)
 {
-    bool _S436;
+    bool _S437;
     if(open_0)
     {
-        _S436 = prev_rough_0;
+        _S437 = prev_rough_0;
     }
     else
     {
-        _S436 = false;
+        _S437 = false;
     }
-    if(_S436)
+    if(_S437)
     {
-        _S436 = (prev_pdf_0 * geometry_density_1 * threshold_0) <= 1.0;
+        _S437 = (prev_pdf_0 * geometry_density_1 * threshold_0) <= 1.0;
     }
     else
     {
-        _S436 = false;
+        _S437 = false;
     }
-    return _S436;
+    return _S437;
 }
 
 bool withinInverseFootprint(float pdf_1, bool diffuse_0, float prev_cos_0, float distance_2, float threshold_1)
 {
-    bool _S437 = pdf_1 > 0.0;
-    bool _S438;
-    if(_S437)
+    bool _S438 = pdf_1 > 0.0;
+    bool _S439;
+    if(_S438)
     {
         if(diffuse_0)
         {
-            _S438 = true;
+            _S439 = true;
         }
         else
         {
-            _S438 = (pdf_1 * prev_cos_0 / (distance_2 * distance_2) * threshold_1) <= 1.0;
+            _S439 = (pdf_1 * prev_cos_0 / (distance_2 * distance_2) * threshold_1) <= 1.0;
         }
     }
     else
     {
-        _S438 = false;
+        _S439 = false;
     }
-    return _S438;
+    return _S439;
 }
 
 bool roughLobe(float pdf_2, bool diffuse_1, float roughness_0)
 {
-    bool _S439 = pdf_2 > 0.0;
-    bool _S440;
-    if(_S439)
+    bool _S440 = pdf_2 > 0.0;
+    bool _S441;
+    if(_S440)
     {
         if(diffuse_1)
         {
-            _S440 = true;
+            _S441 = true;
         }
         else
         {
-            _S440 = roughness_0 >= 0.20000000298023224;
+            _S441 = roughness_0 >= 0.20000000298023224;
         }
     }
     else
     {
-        _S440 = false;
+        _S441 = false;
     }
-    return _S440;
+    return _S441;
 }
 
 float survivalProbability(vec3 throughput_1, float density_0)
@@ -1555,15 +1561,15 @@ float interpolate_0(float a_6, float b_1, float t_4)
 
 float confidenceCap(float duplicated_0)
 {
-    float _S441 = interpolate_0(20.0, 1.0, pow(duplicated_0, 0.10000000149011612));
-    return _S441;
+    float _S442 = interpolate_0(20.0, 1.0, pow(duplicated_0, 0.10000000149011612));
+    return _S442;
 }
 
 vec2 temporalWeights(float c_1, float p_c_0, float c_t_0, float p_t_0, float g_previous_0, float g_current_0)
 {
-    float _S442 = c_1 * p_c_0;
-    float _S443 = c_t_0 * p_t_0;
-    return vec2(_S442 / (_S442 + c_t_0 * g_previous_0), _S443 / (_S443 + c_1 * g_current_0));
+    float _S443 = c_1 * p_c_0;
+    float _S444 = c_t_0 * p_t_0;
+    return vec2(_S443 / (_S443 + c_t_0 * g_previous_0), _S444 / (_S444 + c_1 * g_current_0));
 }
 
 float pairShare(float c_n_0, float c_pair_0, float c_sum_0)
@@ -1583,18 +1589,18 @@ float canonicalWeight(float share_1, float c_pair_2, float p_c_1, float c_n_2, f
 
 float cosSubClamped(float sin_a_0, float cos_a_0, float sin_b_0, float cos_b_0)
 {
-    float _S444 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
-    bool _S445 = cos_a_0 > cos_b_0;
-    float _S446 = _S445 ? 1.0 : _S444;
-    return _S446;
+    float _S445 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
+    bool _S446 = cos_a_0 > cos_b_0;
+    float _S447 = _S446 ? 1.0 : _S445;
+    return _S447;
 }
 
 float sinSubClamped(float sin_a_1, float cos_a_1, float sin_b_1, float cos_b_1)
 {
-    float _S447 = sin_a_1 * cos_b_1 - cos_a_1 * sin_b_1;
-    bool _S448 = cos_a_1 > cos_b_1;
-    float _S449 = _S448 ? 0.0 : _S447;
-    return _S449;
+    float _S448 = sin_a_1 * cos_b_1 - cos_a_1 * sin_b_1;
+    bool _S449 = cos_a_1 > cos_b_1;
+    float _S450 = _S449 ? 0.0 : _S448;
+    return _S450;
 }
 
 float sine(float c_2)
@@ -1613,35 +1619,35 @@ struct LightBounds
 
 float importance(LightBounds node_0, vec3 p_0, vec3 normal_0)
 {
-    vec3 _S450 = (node_0.low + node_0.high) * 0.5;
-    vec3 _S451 = node_0.high - node_0.low;
-    vec3 _S452 = p_0 - _S450;
-    vec3 _S453 = normalize_0(_S452);
-    float _S454 = dot(_S452, _S452);
-    float _S455 = dot(_S451, _S451) / 4.0;
-    float _S456 = abs(dot(node_0.w, _S453));
-    float _S457 = sine(node_0.cos_theta_o);
-    float _S458 = sqrt(max(1.0 - _S455 / _S454, 0.0));
-    bool _S459 = _S454 < _S455;
-    float _S460 = _S459 ? -1.0 : _S458;
-    float _S461 = sine(_S460);
-    float _S462 = sine(_S456);
-    float _S463 = cosSubClamped(_S462, _S456, _S457, node_0.cos_theta_o);
-    float _S464 = sine(_S456);
-    float _S465 = sinSubClamped(_S464, _S456, _S457, node_0.cos_theta_o);
-    float _S466 = cosSubClamped(_S465, _S463, _S461, _S460);
-    bool _S467 = _S466 <= 0.0;
-    if(_S467)
+    vec3 _S451 = (node_0.low + node_0.high) * 0.5;
+    vec3 _S452 = node_0.high - node_0.low;
+    vec3 _S453 = p_0 - _S451;
+    vec3 _S454 = normalize_0(_S453);
+    float _S455 = dot(_S453, _S453);
+    float _S456 = dot(_S452, _S452) / 4.0;
+    float _S457 = abs(dot(node_0.w, _S454));
+    float _S458 = sine(node_0.cos_theta_o);
+    float _S459 = sqrt(max(1.0 - _S456 / _S455, 0.0));
+    bool _S460 = _S455 < _S456;
+    float _S461 = _S460 ? -1.0 : _S459;
+    float _S462 = sine(_S461);
+    float _S463 = sine(_S457);
+    float _S464 = cosSubClamped(_S463, _S457, _S458, node_0.cos_theta_o);
+    float _S465 = sine(_S457);
+    float _S466 = sinSubClamped(_S465, _S457, _S458, node_0.cos_theta_o);
+    float _S467 = cosSubClamped(_S466, _S464, _S462, _S461);
+    bool _S468 = _S467 <= 0.0;
+    if(_S468)
     {
         return 0.0;
     }
-    float _S468 = - dot(_S453, normal_0);
-    float _S469 = node_0.phi * _S466 / max(_S454, length(_S451) / 2.0);
-    float _S470 = sine(_S468);
-    float _S471 = cosSubClamped(_S470, _S468, _S461, _S460);
-    bool _S472 = (dot(normal_0, normal_0)) == 0.0;
-    float _S473 = _S472 ? 1.0 : _S471;
-    return max(_S469 * _S473, 0.0);
+    float _S469 = - dot(_S454, normal_0);
+    float _S470 = node_0.phi * _S467 / max(_S455, length(_S452) / 2.0);
+    float _S471 = sine(_S469);
+    float _S472 = cosSubClamped(_S471, _S469, _S462, _S461);
+    bool _S473 = (dot(normal_0, normal_0)) == 0.0;
+    float _S474 = _S473 ? 1.0 : _S472;
+    return max(_S470 * _S474, 0.0);
 }
 
 float solidAngle(float probability_0, vec3 normal_1, vec3 toward_1)
@@ -1651,85 +1657,85 @@ float solidAngle(float probability_0, vec3 normal_1, vec3 toward_1)
 
 uint pickChild(LightBounds first_0, LightBounds second_0, vec3 p_1, vec3 normal_2, inout float pick_0, inout float probability_1)
 {
-    float _S474 = importance(first_0, p_1, normal_2);
-    float _S475 = importance(second_0, p_1, normal_2);
-    vec2 _S476 = vec2(_S474, _S475);
-    bool _S477 = _S474 == 0.0;
-    bool _S478;
-    if(_S477)
+    float _S475 = importance(first_0, p_1, normal_2);
+    float _S476 = importance(second_0, p_1, normal_2);
+    vec2 _S477 = vec2(_S475, _S476);
+    bool _S478 = _S475 == 0.0;
+    bool _S479;
+    if(_S478)
     {
-        _S478 = _S475 == 0.0;
+        _S479 = _S476 == 0.0;
     }
     else
     {
-        _S478 = false;
+        _S479 = false;
     }
-    if(_S478)
+    if(_S479)
     {
         return 2U;
     }
-    float _S479 = _S474 + _S475;
-    bool _S480 = _S475 > 0.0;
-    if(_S480)
+    float _S480 = _S475 + _S476;
+    bool _S481 = _S476 > 0.0;
+    if(_S481)
     {
-        _S478 = (pick_0 * _S479) >= _S474;
+        _S479 = (pick_0 * _S480) >= _S475;
     }
     else
     {
-        _S478 = false;
+        _S479 = false;
     }
-    uint _S481 = uint(_S478);
-    float _S482 = min((pick_0 * _S479 - float(_S481) * _S474) / _S476[_S481], 0.99999994039535522);
-    pick_0 = _S482;
-    float _S483 = probability_1 * (_S476[_S481] / _S479);
-    probability_1 = _S483;
-    return _S481;
+    uint _S482 = uint(_S479);
+    float _S483 = min((pick_0 * _S480 - float(_S482) * _S475) / _S477[_S482], 0.99999994039535522);
+    pick_0 = _S483;
+    float _S484 = probability_1 * (_S477[_S482] / _S480);
+    probability_1 = _S484;
+    return _S482;
 }
 
 float childShare(LightBounds first_1, LightBounds second_1, vec3 p_2, vec3 normal_3, uint child_0)
 {
-    float _S484 = importance(first_1, p_2, normal_3);
-    float _S485 = importance(second_1, p_2, normal_3);
-    vec2 _S486 = vec2(_S484, _S485);
-    float _S487 = _S486[child_0] / (_S484 + _S485);
-    bool _S488 = (_S486[child_0]) > 0.0;
-    float _S489 = _S488 ? _S487 : 0.0;
-    return _S489;
+    float _S485 = importance(first_1, p_2, normal_3);
+    float _S486 = importance(second_1, p_2, normal_3);
+    vec2 _S487 = vec2(_S485, _S486);
+    float _S488 = _S487[child_0] / (_S485 + _S486);
+    bool _S489 = (_S487[child_0]) > 0.0;
+    float _S490 = _S489 ? _S488 : 0.0;
+    return _S490;
 }
 
 float powerHeuristic(float a_7, float b_2)
 {
-    float _S490 = 1.0 / (1.0 + b_2 / a_7 * (b_2 / a_7));
-    bool _S491 = b_2 > 0.0;
-    float _S492 = _S491 ? _S490 : 1.0;
-    return _S492;
+    float _S491 = 1.0 / (1.0 + b_2 / a_7 * (b_2 / a_7));
+    bool _S492 = b_2 > 0.0;
+    float _S493 = _S492 ? _S491 : 1.0;
+    return _S493;
 }
 
 float sphereDensity(vec3 center_0, float radius_1, vec3 p_3)
 {
-    vec3 _S493 = center_0 - p_3;
-    float _S494 = radius_1 * radius_1 / dot(_S493, _S493);
-    bool _S495 = _S494 >= 1.0;
-    if(_S495)
+    vec3 _S494 = center_0 - p_3;
+    float _S495 = radius_1 * radius_1 / dot(_S494, _S494);
+    bool _S496 = _S495 >= 1.0;
+    if(_S496)
     {
         return 0.07957746833562851;
     }
-    return (1.0 + sqrt(1.0 - _S494)) / (6.28318548202514648 * _S494);
+    return (1.0 + sqrt(1.0 - _S495)) / (6.28318548202514648 * _S495);
 }
 
 vec3 sampleSphere(vec3 center_1, float radius_2, vec3 p_4, float u1_0, float u2_0)
 {
-    vec3 _S496 = center_1 - p_4;
-    float _S497 = radius_2 * radius_2 / dot(_S496, _S496);
-    float _S498 = u1_0 * _S497 / (1.0 + sqrt(max(1.0 - _S497, 0.0)));
-    float _S499 = 2.0 * u1_0;
-    bool _S500 = _S497 >= 1.0;
-    float _S501 = _S500 ? _S499 : _S498;
-    float _S502 = sqrt(max(_S501 * (2.0 - _S501), 0.0));
-    float _S503 = 6.28318548202514648 * u2_0;
-    vec3 _S504 = vec3(_S502 * cos(_S503), 1.0 - _S501, _S502 * sin(_S503));
-    vec3 _S505 = normalize_0(_S496);
-    vec3 _S506 = tangentToWorld(_S504, _S505);
-    return _S506;
+    vec3 _S497 = center_1 - p_4;
+    float _S498 = radius_2 * radius_2 / dot(_S497, _S497);
+    float _S499 = u1_0 * _S498 / (1.0 + sqrt(max(1.0 - _S498, 0.0)));
+    float _S500 = 2.0 * u1_0;
+    bool _S501 = _S498 >= 1.0;
+    float _S502 = _S501 ? _S500 : _S499;
+    float _S503 = sqrt(max(_S502 * (2.0 - _S502), 0.0));
+    float _S504 = 6.28318548202514648 * u2_0;
+    vec3 _S505 = vec3(_S503 * cos(_S504), 1.0 - _S502, _S503 * sin(_S504));
+    vec3 _S506 = normalize_0(_S497);
+    vec3 _S507 = tangentToWorld(_S505, _S506);
+    return _S507;
 }
 

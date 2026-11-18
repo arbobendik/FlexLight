@@ -604,7 +604,7 @@ fn compute(
 
     // Clamp color to 16 bit float
     // Maximal representable number in f16 is 65520
-    final_color = clamp(final_color, vec3<f32>(0.0f), vec3<f32>(65519.0f));
+    final_color = clamp(final_color, vec3<f32>(-65519.0f), vec3<f32>(65519.0f));
     // Write to additional textures for temporal pass
     if (uniforms_uint.is_temporal == 1u) {
         // Render to compute target
