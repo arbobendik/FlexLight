@@ -157,7 +157,7 @@ Transform access_instance_transform(uint index) {
 }
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
-// translucent, velvet | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, pad
+// translucent, velvet | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, dispersion
 Material access_instance_material(uint index) {
     uint offset = index * 9u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
