@@ -5,21 +5,21 @@
 // center, 4 / PI * s * atan(s) for s = 2 / hypot(2, 0.25), times a half and a quarter, within 2%. In the box of
 // furnace.mjs emitting a half (argument furnace), its shading normals tilted to (0.95, 0, 0.3122499), the lossless sheet
 // returns all of it, a half, within four standard errors of each half's pixels; white diffuse on both halves (argument
-// diffuse) too. furnace.mjs's metal square, built in object space and turned by its instance's scale (1, 2, 1), its normals
-// the object's (argument scaled), holds GGX's albedo there, 0.8551, under white light of 0.9 within 0.5%; the rasterizer's
-// beside one built in world space (argument rasterscaled), lit by a sphere light above, the same mean: the halves'
-// difference within four standard errors of it, which the mirror image's pairs of pixels give. Of anisotropy 1 about
-// Blender's default tangent (argument aniso), its bounds moved by furnace.mjs's triangle of no area at x = 10, the square
-// holds the albedo of the roughnesses along the view and across, 0.6953, under the white light within 0.5%; turned a
-// quarter (argument anisoturned), 0.6351; of anisotropy 1e-6 (argument anisolimit), the isotropic 0.8551; a white sheen of
-// roughness 0.5 over black (argument sheen), furnace.mjs's 0.2671, and as velvet (argument velvet) its 0.2800, within
-// the 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it. After 1364
-// frames; it fails unless the renderer is SwiftShader. cylinder.mjs' cylinders (argument cylinder), under the white light.
-// furnace.mjs's closed slab whose hidden face alone emits (argument hidden) leaves the wall it hides that face from
-// black, light sampling's shadow rays ending at the sampled point: a mean under 1e-4, at most 1% of its pixels lit.
-// furnace.mjs's glossy metal in that box emitting a half (argument glossy), its albedo 0.9986 times a half, within the
-// 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it.
-// The page posts what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
+// diffuse) too. furnace.mjs's metal square, built in object space and turned by its instance's scale (1, 2, 1), its
+// normals the object's (argument scaled), holds GGX's albedo with its rebounces there, 0.9722, under white light of 0.9
+// within 0.5%; the rasterizer's beside one built in world space (argument rasterscaled), lit by a sphere light above,
+// the same mean: the halves' difference within four standard errors of it, which the mirror image's pairs of pixels
+// give. Of anisotropy 1 about Blender's default tangent (argument aniso), its bounds moved by furnace.mjs's triangle of
+// no area at x = 10, the square holds the albedo of the roughnesses along the view and across, 0.7077, under the white
+// light within 0.5%; turned a quarter (argument anisoturned), 0.6464; of anisotropy 1e-6 (argument anisolimit), the
+// isotropic 0.9722; a white sheen of roughness 0.5 over black (argument sheen), furnace.mjs's 0.2671, and as velvet
+// (argument velvet) its 0.2800, within the 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share
+// it. After 1364 frames; it fails unless the renderer is SwiftShader. cylinder.mjs' cylinders (argument cylinder),
+// under the white light. furnace.mjs's closed slab whose hidden face alone emits (argument hidden) leaves the wall it
+// hides that face from black, light sampling's shadow rays ending at the sampled point: a mean under 1e-4, at most 1%
+// of its pixels lit. furnace.mjs's glossy metal in that box emitting a half (argument glossy), its albedo 0.9986 times
+// a half, within the 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it. The page posts
+// what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
@@ -28,10 +28,10 @@ import { join } from "node:path";
 import { deviation } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = 1364, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
-const ANISO = { aniso: 0.6953, anisoturned: 0.6351, anisolimit: 0.8551, sheen: 0.2671, velvet: 0.2800 }[CASE];
+const ANISO = { aniso: 0.7077, anisoturned: 0.6464, anisolimit: 0.9722, sheen: 0.2671, velvet: 0.2800 }[CASE];
 const HIDDEN = CASE === "hidden", SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
 const GLOSSY = CASE === "glossy";
-const FURNACE = CASE !== "backlit" && !SQUARE && !HIDDEN, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.8551), 0.9 * (ANISO ?? 0.8551)] : FURNACE ? [0.5, 0.5].map((k) => GLOSSY ? 0.9986 * k : k) : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
+const FURNACE = CASE !== "backlit" && !SQUARE && !HIDDEN, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.9722), 0.9 * (ANISO ?? 0.9722)] : FURNACE ? [0.5, 0.5].map((k) => GLOSSY ? 0.9986 * k : k) : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
 // every animation frame's callbacks dropped once the renderer has rendered a fixed count, its own count, not the
