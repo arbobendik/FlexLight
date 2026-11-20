@@ -271,7 +271,7 @@ struct SampledColor {
     uint random_state;
 };
 
-SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray camera_ray, uint init_random_state, vec3 smooth_n, vec3 geometry_n, float geometry_offset, vec3 light_offset_dir) {
+SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray camera_ray, uint init_random_state, vec3 smooth_n, vec3 geometry_n, float geometry_offset, vec3 light_offset_dir, MaterialTerms terms, ViewTerms view_terms) {
     uint m = light_count + 1u;
     // If no lights, return emissive color
     if (m <= 1u) {
@@ -362,7 +362,7 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         // Apply inverse square law
         vec3 brightness = light.color * intensity / max(len * len, BIAS);
         // Calculate BSDF for light, its visible normal from a stream of its own, apart from the selection's numbers
-        vec3 color_with_smooth = TRANSLUCENT ? translucentBSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u)) : BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u));
+        vec3 color_with_smooth = TRANSLUCENT ? translucentBSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u)) : BSDF(camera_ray.unit_direction, l, smooth_n, geometry_n, material, eta_i, eta_o, stream(random_state, 1u), terms, view_terms);
         vec3 color_for_light = color_with_smooth * brightness;
         float w_i = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small
@@ -563,10 +563,13 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 vec2 eta = vertexEta(material, n_dot_v);
                 float eta_i = eta.x;
                 float eta_o = eta.y;
+                // The material's and the view's terms of FlexKernels' BSDF, once per vertex
+                MaterialTerms terms = precomputeMaterial(material, eta_i, eta_o);
+                ViewTerms view_terms = precomputeView(ray.unit_direction, smooth_n, material, terms);
 
                 if (neeDecision(material, n_dot_v, eta_i, eta_o)) {
                     // Do NEE
-                    SampledColor local_sampled = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir);
+                    SampledColor local_sampled = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, terms, view_terms);
                     random_state = local_sampled.random_state;
                     final_color += local_sampled.color * importancy_factor;
                 } else {
@@ -574,7 +577,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     direct_light_emission = true;
                 }
                 // Attempt ray bounce with material normal first
-                SampleBSDF bsdf_sampled = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state, vec2(0.0));
+                SampleBSDF bsdf_sampled = sampleBSDF(ray.unit_direction, smooth_n, material, eta_i, eta_o, random_state, vec2(0.0), terms, view_terms);
                 random_state = bsdf_sampled.random_state;
                 // Meassure if outgoing ray points towards incorrect side of the sphere.
                 bool expected_out_dir_normal_aligned = (!is_inside && !bsdf_sampled.refracted) || (is_inside && bsdf_sampled.refracted);
@@ -586,7 +589,8 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     direct_light_emission = true;
                     if (material.transmission > 0.0) {
                         // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
-                        SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, vec2(0.0));
+                        SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, vec2(0.0),
+                            terms, precomputeView(bsdf_sampled.unit_direction, geometry_n, material, terms));
                         random_state = geometry_bsdf_sampled.random_state;
                         // Redirect outgoing ray according to new bsdf sample.
                         bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;
