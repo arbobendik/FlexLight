@@ -124,7 +124,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
     let eta_o: f32 = select(1.0f, material.ior, front);
     // The material's and the view's terms of FlexKernels' BSDF, once for all lights
     let terms: MaterialTerms = precomputeMaterial(shaded, eta_i, eta_o);
-    let view_terms: ViewTerms = precomputeView(camera_ray.unit_direction, smooth_n, shaded, terms);
+    let view_terms: ViewTerms = precomputeView(camera_ray.unit_direction, smooth_n, shaded, terms, random_state, vec3<f32>(0.0f));
 
     //let size: u32 = u32(arrayLength(&lights));
     for (var i: u32 = 1u; i < size; i++) {

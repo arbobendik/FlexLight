@@ -23,13 +23,20 @@ export class Material {
     sheenRoughness: number;
     // Whether the sheen is Blender's Sheen BSDF's Ashikhmin distribution over its Microfiber, the latter by default
     velvet: boolean;
+    // Blender's coat over the base: its weight, none by default, roughness, IOR and tint, and the normal it shades by,
+    // the shading normal's at zero
+    coat: number;
+    coatRoughness: number;
+    coatIor: number;
+    coatTint: Vector<3>;
+    coatNormal: Vector<3>;
     // Blender's Principled Anisotropic, none by default, and its rotation in turns about the normal
     anisotropy: number;
     anisotropicRotation: number;
     // The tangent anisotropy turns about: Blender's default, radial about the object's z, or the UV map's
     tangentSource: "radial" | "uv";
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial", velvet: boolean = false) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial", velvet: boolean = false, coat: number = 0, coatRoughness: number = 0.03, coatIor: number = 1.5, coatTint: Vector<3> = new Vector(1, 1, 1), coatNormal: Vector<3> = new Vector(0, 0, 0)) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -46,11 +53,16 @@ export class Material {
         this.anisotropicRotation = anisotropicRotation;
         this.tangentSource = tangentSource;
         this.velvet = velvet;
+        this.coat = coat;
+        this.coatRoughness = coatRoughness;
+        this.coatIor = coatIor;
+        this.coatTint = coatTint;
+        this.coatNormal = coatNormal;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, Velvet (0 Microfiber, 1 Ashikhmin), SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), and the tangent surfaceAt writes once anisotropy shades
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, Velvet (0 Microfiber, 1 Ashikhmin), SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), the tangent surfaceAt writes once anisotropy shades, Dispersion, Coat, CoatRoughness, CoatIOR, CoatTintR, CoatTintG, CoatTintB, CoatNormalX, CoatNormalY, CoatNormalZ
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -93,7 +105,14 @@ export class InstanceMaterial implements Material {
             // Anisotropy and its rotation
             material.anisotropy, material.anisotropicRotation, Number(material.tangentSource === "uv"), 0,
             // Tangent
-            0, 0, 0, 0
+            0, 0, 0, 0,
+
+            // Coat, its roughness and IOR
+            material.coat, material.coatRoughness, material.coatIor, 0,
+            // Coat tint
+            material.coatTint.x, material.coatTint.y, material.coatTint.z, 0,
+            // Coat normal
+            material.coatNormal.x, material.coatNormal.y, material.coatNormal.z, 0
         ]);
     }
 
@@ -271,5 +290,59 @@ export class InstanceMaterial implements Material {
 
     get velvet(): boolean {
         return this.materialArray[23] === 1;
+    }
+
+    set coat(coat: number) {
+        this.materialArray[36] = coat;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 36 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get coat(): number {
+        return this.materialArray[36] ?? 0;
+    }
+
+    set coatRoughness(coatRoughness: number) {
+        this.materialArray[37] = coatRoughness;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 37 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get coatRoughness(): number {
+        return this.materialArray[37] ?? 0.03;
+    }
+
+    set coatIor(coatIor: number) {
+        this.materialArray[38] = coatIor;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 38 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get coatIor(): number {
+        return this.materialArray[38] ?? 1.5;
+    }
+
+    set coatTint(coatTint: Vector<3>) {
+        this.materialArray[40] = coatTint.x;
+        this.materialArray[41] = coatTint.y;
+        this.materialArray[42] = coatTint.z;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 40 * this.materialArray.BYTES_PER_ELEMENT, 3);
+    }
+
+    get coatTint(): Vector<3> {
+        return new Vector<3>(this.materialArray[40] ?? 1, this.materialArray[41] ?? 1, this.materialArray[42] ?? 1);
+    }
+
+    set coatNormal(coatNormal: Vector<3>) {
+        this.materialArray[44] = coatNormal.x;
+        this.materialArray[45] = coatNormal.y;
+        this.materialArray[46] = coatNormal.z;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 44 * this.materialArray.BYTES_PER_ELEMENT, 3);
+    }
+
+    get coatNormal(): Vector<3> {
+        return new Vector<3>(this.materialArray[44] ?? 0, this.materialArray[45] ?? 0, this.materialArray[46] ?? 0);
     }
 }
