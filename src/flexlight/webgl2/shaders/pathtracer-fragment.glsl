@@ -565,7 +565,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 float eta_o = eta.y;
                 // The material's and the view's terms of FlexKernels' BSDF, once per vertex
                 MaterialTerms terms = precomputeMaterial(material, eta_i, eta_o);
-                ViewTerms view_terms = precomputeView(ray.unit_direction, smooth_n, material, terms);
+                ViewTerms view_terms = precomputeView(ray.unit_direction, smooth_n, material, terms, random_state, vec3(0.0));
 
                 if (neeDecision(material, n_dot_v, eta_i, eta_o)) {
                     // Do NEE
@@ -590,7 +590,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     if (material.transmission > 0.0) {
                         // Continue ray bounce and pretend the self reflection faces according to the geometry normal, making incorrect bounces impossible.
                         SampleBSDF geometry_bsdf_sampled = sampleBSDF(bsdf_sampled.unit_direction, geometry_n, material, eta_i, eta_o, random_state, vec2(0.0),
-                            terms, precomputeView(bsdf_sampled.unit_direction, geometry_n, material, terms));
+                            terms, precomputeView(bsdf_sampled.unit_direction, geometry_n, material, terms, random_state, vec3(0.0)));
                         random_state = geometry_bsdf_sampled.random_state;
                         // Redirect outgoing ray according to new bsdf sample.
                         bsdf_sampled.unit_direction = geometry_bsdf_sampled.unit_direction;

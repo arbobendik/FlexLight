@@ -24,5 +24,12 @@ struct Material {
     tangent: vec3<f32>,
     // FlexKernels' dispersion of the index of refraction, none at 0, in the tangent's padding (byte 140), which the
     // upload leaves 0
-    dispersion: f32
+    dispersion: f32,
+    // Blender's coat over the base, its weight, roughness and IOR (bytes 144 to 152), its tint (160) and the normal it
+    // shades by (176), the shading normal's at zero
+    coat: f32,
+    coat_roughness: f32,
+    coat_ior: f32,
+    coat_tint: vec3<f32>,
+    coat_normal: vec3<f32>
 };

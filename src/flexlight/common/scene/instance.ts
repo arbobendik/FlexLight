@@ -46,6 +46,11 @@ export class Instance {
         this._material.sheen = material.sheen;
         this._material.sheenRoughness = material.sheenRoughness;
         this._material.velvet = material.velvet;
+        this._material.coat = material.coat;
+        this._material.coatRoughness = material.coatRoughness;
+        this._material.coatIor = material.coatIor;
+        this._material.coatTint = material.coatTint;
+        this._material.coatNormal = material.coatNormal;
         this._material.anisotropy = material.anisotropy;
         this._material.anisotropicRotation = material.anisotropicRotation;
         this._material.tangentSource = material.tangentSource;

@@ -60,6 +60,13 @@ struct Material {
     // Whether the tangent is the UV map's over Blender's default
     float tangent_source;
     vec3 tangent;
+    // Blender's coat over the base, its weight, roughness, IOR and tint, and the normal it shades by, the shading normal's
+    // at zero
+    float coat;
+    float coat_roughness;
+    float coat_ior;
+    vec3 coat_tint;
+    vec3 coat_normal;
 };
 
 struct Light {
@@ -157,9 +164,10 @@ Transform access_instance_transform(uint index) {
 }
 
 // Albedo, pad | emissive, roughness | metallic, transmission, ior, pad | absorption, pad | specular tint and level |
-// translucent, velvet | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, pad
+// translucent, velvet | sheen and its roughness | anisotropy, its rotation, tangent source, pad | tangent, dispersion |
+// coat, its roughness and IOR, pad | coat tint, pad | coat normal, pad
 Material access_instance_material(uint index) {
-    uint offset = index * 9u;
+    uint offset = index * 12u;
     vec4 m0 = texelFetch(instance_material, buffer_position(offset), 0);
     vec4 m1 = texelFetch(instance_material, buffer_position(offset + 1u), 0);
     vec4 m2 = texelFetch(instance_material, buffer_position(offset + 2u), 0);
@@ -168,9 +176,12 @@ Material access_instance_material(uint index) {
     vec4 m5 = texelFetch(instance_material, buffer_position(offset + 5u), 0);
     vec4 m6 = texelFetch(instance_material, buffer_position(offset + 6u), 0);
     vec4 m7 = texelFetch(instance_material, buffer_position(offset + 7u), 0);
-    // Without a translucent, sheen or anisotropic material in the scene, none, which compiles it out
+    vec4 m9 = texelFetch(instance_material, buffer_position(offset + 9u), 0);
+    vec4 m10 = texelFetch(instance_material, buffer_position(offset + 10u), 0);
+    vec4 m11 = texelFetch(instance_material, buffer_position(offset + 11u), 0);
+    // Without a translucent, sheen, anisotropic or coated material in the scene, none, which compiles it out
     return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m4.xyz, m4.w, SHEEN ? m6.xyz : vec3(0.0), m6.w, m5.w, TRANSLUCENT ? m5.xyz : vec3(0.0),
-        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0));
+        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0), COAT ? m9.x : 0.0, m9.y, m9.z, m10.xyz, m11.xyz);
 }
 
 // Position, is area light | color, intensity | variance, pad

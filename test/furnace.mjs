@@ -55,15 +55,37 @@
 // (1, 0.5, 0.25) at level 0.5 (argument tint), holds the tinted reflection alone in each channel, (0.0593, 0.0498,
 // 0.0450) by FlexKernels' sampling of its BSDF, within four standard errors path traced. Through ReSTIR, whose pixels
 // share samples, the metal, dielectric, sheen and anisotropic squares meet their values within 2%, the sheen over white
-// diffuse at most what it receives and within 2% of it.
+// diffuse at most what it receives and within 2% of it. Under a smooth clear coat of IOR 1.5, its base diffuse and of
+// specular level 0, the square at that cosine returns E_c + (1 - E_c) t^2 c (1 - R_i) / (1 - c R_i) per channel, E_c =
+// 0.0892 the coat's own return by midpoint quadrature, R_i = 0.5963 its internal reflection, c the base's albedo and t
+// the coat's tint: over white (argument coatwhite) all it receives, within four standard errors and never above one
+// plus them; over (0.8, 0.2, 0.05) (argument coatcolour) (0.6516, 0.1727, 0.1081); tinted (0.9, 0.6, 0.3) over white
+// (argument coattint) (0.8269, 0.4171, 0.1712), each within four standard errors path traced; through ReSTIR each
+// channel's mean over eight independent realisations within 2%.
+import { spawnSync } from "node:child_process";
 import { create, globals } from "webgpu";
 import { deviation, instanceCylinders } from "./cylinder.mjs";
 
 const SIZE = 64, FRAMES = process.argv[2] === "cylinder" ? 1024 : 64, SIDES = 6, METAL = 0.9722, DIELECTRIC = 0.9990, [MATERIAL, MODE] = process.argv.slice(2);
 const S = 2 / Math.hypot(2, 0.25), BACKLIT = 4 / Math.PI * S * Math.atan(S), PANE = 5 * Math.SQRT1_2 / (Math.PI * 4.5), SHEEN = 0.2671, VELVET = 0.2800, GLOSSY = 0.9986, ANISO = [0.7077, 0.6464];
 const TINT = [0.0593, 0.0498, 0.0450];
-// ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same
-let seed = 1;
+const COATED = { coatwhite: [1, 1, 1], coatcolour: [0.6516, 0.1727, 0.1081], coattint: [0.8269, 0.4171, 0.1712] };
+// Through ReSTIR, whose pixels share samples, a coat row is eight independent realisations: this file run again with
+// each index as a third argument, which seeds the pairings and starts the frame counter apart, the coat's channels,
+// each the mean of the eight, within 2% of the derived values the path tracer meets
+const REALISATION = Number(process.argv[4] ?? 0);
+if (MATERIAL in COATED && MODE === "restir" && process.argv[4] === undefined) {
+  const runs = Array.from({ length: 8 }, (_, k) =>
+    spawnSync(process.execPath, [process.argv[1], MATERIAL, MODE, String(k)], { encoding: "utf8" }));
+  const realised = runs.map((r) => r.stdout.match(/^channels ([0-9., ]+) of/m)[1].split(", ").map(Number));
+  const means = [0, 1, 2].map((k) => realised.reduce((a, r) => a + r[k], 0) / realised.length);
+  console.log(`channels ${means.map((m) => m.toFixed(4)).join(", ")} of ${COATED[MATERIAL].join(", ")}`
+    + `, of 8 realisations ${realised.map((r) => r.map((m) => m.toFixed(4)).join(" ")).join("; ")}`);
+  process.exit(runs.every((r) => r.status === 0)
+    && means.every((m, k) => Math.abs(m / COATED[MATERIAL][k] - 1) < 0.02) ? 0 : 1);
+}
+// ReSTIR shuffles its pairings with Math.random, seeded here so that every run is the same, each realisation its own
+let seed = 1 + REALISATION;
 Math.random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 Object.assign(globalThis, globals);
 const gpu = create([]);
@@ -123,7 +145,7 @@ const tilt = Math.sqrt(3) / 2, metal = [[-0.5, -0.5, tilt], [0.5, -0.5, tilt], [
 const sheen = MATERIAL === "sheen" || MATERIAL === "sheenwhite" || MATERIAL === "velvet";
 const aniso = MATERIAL === "aniso" || MATERIAL === "anisoturned";
 const square = MATERIAL === "metal" || MATERIAL === "glossy" || MATERIAL === "dielectric" || MATERIAL === "raster"
-  || sheen || aniso || MATERIAL === "tint";
+  || sheen || aniso || MATERIAL === "tint" || MATERIAL in COATED;
 const SCALE = MODE === "scaled" ? [1, 2, 1] : [1, 1, 1], twin = MATERIAL === "raster" && MODE === "scaled" ? 0.6 : 0;
 const scaled = [0, tilt, 0.5].map((c, i) => c * SCALE[i]), length = Math.hypot(...scaled);
 if (square) triangles.length = 0, [[0, 1, 2], [0, 2, 3]].forEach((t) => push(t.map((k) => metal[k].map((c, i) => (c + twin * (i === 0)) / SCALE[i])),
@@ -144,6 +166,10 @@ const material = MATERIAL === "mirror" ? new F.Material(new F.Vector(1, 1, 1), n
     undefined, undefined, undefined, new F.Vector(1, 1, 1), 0.5, undefined, undefined, undefined, MATERIAL === "velvet")
   : aniso ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0.5, 1, 0, 1.5, undefined, undefined, undefined,
     undefined, undefined, undefined, 1, MATERIAL === "anisoturned" ? 0.25 : 0)
+  : MATERIAL in COATED ? new F.Material(new F.Vector(...(MATERIAL === "coatcolour" ? [0.8, 0.2, 0.05] : [1, 1, 1])),
+    new F.Vector(0, 0, 0), 1, 0, 0, 1.5, undefined, undefined, 0, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, 1, 0.03, 1.5,
+    new F.Vector(...(MATERIAL === "coattint" ? [0.9, 0.6, 0.3] : [1, 1, 1])))
   : MATERIAL === "tint" ? new F.Material(new F.Vector(0, 0, 0), new F.Vector(0, 0, 0), 0.2, 0, 0, 1.5, undefined,
     new F.Vector(1, 0.5, 0.25), 0.5)
   : MATERIAL === "raster" ? new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 1, 0, 0)
@@ -274,6 +300,8 @@ engine.renderer.renderFrame = async (...args) => {
   const tinted = channels.map((c) => {
     const px = Array.from(c, (v) => v / FRAMES), m = px.reduce((a, b) => a + b) / px.length;
     return [m, Math.sqrt(px.reduce((a, v) => a + (v - m) ** 2, 0) / px.length / px.length)]; });
+  if (MATERIAL in COATED) console.log(
+    `channels ${tinted.map(([m]) => m.toFixed(4)).join(", ")} of ${COATED[MATERIAL].join(", ")}`);
   if (MATERIAL === "tint") console.log(
     `channels ${tinted.map(([m]) => m.toFixed(4)).join(", ")} of ${TINT.join(", ")}`);
   process.exit((MATERIAL === "metal" ? meets(mean, error, METAL) && first.size > 1
@@ -282,12 +310,18 @@ engine.renderer.renderFrame = async (...args) => {
       && mean <= 1 + 4 * error
     : aniso ? meets(mean, error, ANISO[Number(MATERIAL === "anisoturned")])
     : MATERIAL === "tint" ? tinted.every(([m, e], k) => meets(m, e, TINT[k]))
+    // White under the coat returns all it receives exactly where every sample does, without a spread: 1e-5 beside it
+    : MATERIAL in COATED ? MODE === "restir"
+      || tinted.every(([m, e], k) => Math.abs(m - COATED[MATERIAL][k]) < 4 * e + 1e-5
+      && (MATERIAL !== "coatwhite" || m <= 1 + 4 * e + 1e-5))
     : MATERIAL === "sheen" ? meets(mean, error, SHEEN) : MATERIAL === "velvet" ? meets(mean, error, VELVET)
     : MATERIAL === "sheenwhite" ? (MODE === "restir" ? mean > 0.98 && mean <= 1 : mean > 0.99 && mean <= 1 + 4 * error)
     : (thin || MATERIAL === "shell") && MODE !== "restir" ? Math.abs(mean - 1) < 4 * error : Math.abs(mean - 1) < 0.02)
     && (MATERIAL === "lit" || MATERIAL === "metal" || MATERIAL === "glossy" || aniso || thin || sheen || MATERIAL === "shell"
+      || MATERIAL in COATED
       || brightest < 1.05)
     && ((MATERIAL === "lit" || thin) && MODE === "restir" || MATERIAL === "sheen" || MATERIAL === "velvet" || aniso
-      || MATERIAL === "tint" || MATERIAL === "shell" || black === 0) ? 0 : 1);
+      || MATERIAL === "tint" || MATERIAL in COATED || MATERIAL === "shell" || black === 0) ? 0 : 1);
 };
+engine.renderer._frameCounter = REALISATION * 1000003;
 engine.renderer.render();

@@ -73,6 +73,12 @@ export class Scene {
         return false;
     }
 
+    // Whether an instance's material has a coat, which WebGL2's path tracer compiles the coat in for alone
+    get coat () {
+        for (const instance of this.instances) if (instance._material.coat > 0) return true;
+        return false;
+    }
+
     // Whether an instance's material is anisotropic, which the path tracer compiles anisotropy in for alone
     get anisotropic () {
         for (const instance of this.instances) if (instance._material.anisotropy !== 0) return true;
