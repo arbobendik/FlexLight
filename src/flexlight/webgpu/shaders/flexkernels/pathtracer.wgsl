@@ -292,21 +292,21 @@ fn sampledHalf( in_dir_0 : vec3<f32>,  n_4 : vec3<f32>,  material_0 : Material, 
     return _S108;
 }
 
-fn reflectedHalf( in_dir_1 : vec3<f32>,  out_dir_0 : vec3<f32>) -> vec3<f32>
+fn refractedHalf( in_dir_1 : vec3<f32>,  out_dir_0 : vec3<f32>,  n_5 : vec3<f32>,  eta_i_1 : f32,  eta_o_1 : f32) -> vec3<f32>
 {
     var _S109 : vec3<f32> = ((-(in_dir_1)));
-    var _S110 : vec3<f32> = (normalize((_S109 + out_dir_0)));
-    return _S110;
+    var _S110 : vec3<f32> = ((-(vec3<f32>(eta_i_1) * _S109 + vec3<f32>(eta_o_1) * out_dir_0)));
+    var _S111 : vec3<f32> = (normalize((_S110)));
+    var _S112 : f32 = (sign((dot(n_5, _S109))));
+    var _S113 : f32 = (sign((dot(_S110, n_5 * vec3<f32>(_S112)))));
+    return _S111 * vec3<f32>(_S113);
 }
 
-fn refractedHalf( in_dir_2 : vec3<f32>,  out_dir_1 : vec3<f32>,  n_5 : vec3<f32>,  eta_i_1 : f32,  eta_o_1 : f32) -> vec3<f32>
+fn reflectedHalf( in_dir_2 : vec3<f32>,  out_dir_1 : vec3<f32>) -> vec3<f32>
 {
-    var _S111 : vec3<f32> = ((-(in_dir_2)));
-    var _S112 : vec3<f32> = ((-(vec3<f32>(eta_i_1) * _S111 + vec3<f32>(eta_o_1) * out_dir_1)));
-    var _S113 : vec3<f32> = (normalize((_S112)));
-    var _S114 : f32 = (sign((dot(n_5, _S111))));
-    var _S115 : f32 = (sign((dot(_S112, n_5 * vec3<f32>(_S114)))));
-    return _S113 * vec3<f32>(_S115);
+    var _S114 : vec3<f32> = ((-(in_dir_2)));
+    var _S115 : vec3<f32> = (normalize((_S114 + out_dir_1)));
+    return _S115;
 }
 
 fn anisotropicG1( w_1 : vec3<f32>,  alphas_0 : vec2<f32>) -> f32
@@ -685,11 +685,12 @@ fn BSDF( in_dir_4 : vec3<f32>,  out_dir_2 : vec3<f32>,  n_6 : vec3<f32>,  g_n_0 
     {
         _S235 = u32(1);
     }
-    var _S236 : vec3<f32> = sampledHalf(in_dir_4, n_6, material_6, random_state_2, view_terms_2);
-    var _S237 : vec3<f32> = reflectedHalf(in_dir_4, out_dir_2);
-    var _S238 : vec3<f32> = refractedHalf(in_dir_4, out_dir_2, n_6, eta_i_7, eta_o_7);
-    var _S239 : vec3<f32> = vec3<f32>(0.0f);
-    var f_1 : vec3<f32> = _S239;
+    var _S236 : vec3<f32> = vec3<f32>(0.0f);
+    var _S237 : HalfTerms = HalfTerms_x24init_0(0.0f, 0.0f, _S236, _S236, 0.0f, 0.0f, _S236, _S236, 0.0f, 0.0f, 0.0f, 0.0f, _S236, 0.0f, _S236, _S236, vec2<f32>(0.0f), 0.0f);
+    var half_of_0 : u32 = u32(4294967295);
+    var lobe_terms_0 : HalfTerms = _S237;
+    var ggx_n_1 : vec3<f32> = _S236;
+    var f_1 : vec3<f32> = _S236;
     var i_0 : u32 = u32(0);
     loop
     {
@@ -700,114 +701,136 @@ fn BSDF( in_dir_4 : vec3<f32>,  out_dir_2 : vec3<f32>,  n_6 : vec3<f32>,  g_n_0 
         {
             break;
         }
-        var _S240 : u32;
+        var _S238 : u32;
         if(!_S234)
         {
-            _S240 = u32(1);
+            _S238 = u32(1);
         }
         else
         {
             if(i_0 == u32(0))
             {
-                _S240 = u32(0);
+                _S238 = u32(0);
             }
             else
             {
                 if(i_0 == u32(1))
                 {
-                    _S240 = u32(2);
+                    _S238 = u32(2);
                 }
                 else
                 {
                     if(i_0 == u32(2))
                     {
-                        _S240 = u32(4);
+                        _S238 = u32(4);
                     }
                     else
                     {
-                        _S240 = u32(6);
+                        _S238 = u32(6);
                     }
                 }
             }
         }
-        var _S241 : vec3<f32>;
-        if(_S240 == u32(1))
+        var _S239 : u32;
+        if(_S238 == u32(6))
         {
-            _S241 = _S238;
+            _S239 = u32(0);
         }
         else
         {
-            var _S242 : bool = _S240 == u32(0);
-            var _S243 : bool;
-            if(_S242)
+            if(_S238 == u32(4))
             {
-                _S243 = true;
+                _S239 = u32(2);
             }
             else
             {
-                _S243 = _S240 == u32(6);
-            }
-            if(_S243)
-            {
-                _S241 = _S236;
-            }
-            else
-            {
-                _S241 = _S237;
+                _S239 = _S238;
             }
         }
-        var _S244 : HalfTerms = precomputeHalf(in_dir_4, _S241, material_6, eta_i_7, eta_o_7, terms_1, view_terms_2);
+        var _S240 : bool = _S239 != half_of_0;
+        var ggx_n_2 : vec3<f32>;
+        if(_S240)
+        {
+            var _S241 : bool = _S239 == u32(0);
+            if(_S241)
+            {
+                var _S242 : vec3<f32> = sampledHalf(in_dir_4, n_6, material_6, random_state_2, view_terms_2);
+                ggx_n_2 = _S242;
+            }
+            else
+            {
+                var _S243 : bool = _S239 == u32(1);
+                if(_S243)
+                {
+                    var _S244 : vec3<f32> = refractedHalf(in_dir_4, out_dir_2, n_6, eta_i_7, eta_o_7);
+                    ggx_n_2 = _S244;
+                }
+                else
+                {
+                    var _S245 : vec3<f32> = reflectedHalf(in_dir_4, out_dir_2);
+                    ggx_n_2 = _S245;
+                }
+            }
+            var _S246 : HalfTerms = precomputeHalf(in_dir_4, ggx_n_2, material_6, eta_i_7, eta_o_7, terms_1, view_terms_2);
+            lobe_terms_0 = _S246;
+            half_of_0 = _S239;
+        }
+        else
+        {
+            ggx_n_2 = ggx_n_1;
+        }
         var throughput_0 : vec3<f32>;
         var pdf_0 : f32;
-        switch(_S240)
+        switch(_S238)
         {
         case u32(0):
             {
-                var _S245 : f32 = diffusePDF(_S231, 0.0f, abs(_S228), _S233, _S244, eta_i_7, eta_o_7);
-                var _S246 : vec3<f32> = diffuseBSDF(out_dir_2, _S230, _S233, material_6, _S244);
-                pdf_0 = _S245;
-                throughput_0 = _S246;
-            }
-        case u32(1):
-            {
-                var _S247 : f32 = refractPDF(_S231, dot(out_dir_2, _S241), abs(_S228), _S233, _S244, eta_i_7, eta_o_7);
-                var _S248 : vec3<f32> = refractBSDF(out_dir_2, _S230, _S233, material_6, _S244);
+                var _S247 : f32 = diffusePDF(_S231, 0.0f, abs(_S228), _S233, lobe_terms_0, eta_i_7, eta_o_7);
+                var _S248 : vec3<f32> = diffuseBSDF(out_dir_2, _S230, _S233, material_6, lobe_terms_0);
                 pdf_0 = _S247;
                 throughput_0 = _S248;
             }
-        case u32(4):
+        case u32(1):
             {
-                var _S249 : f32 = sheenVelvetPDF(_S231, 0.0f, abs(_S228), _S233, _S244, eta_i_7, eta_o_7);
-                var _S250 : vec3<f32> = sheenVelvetBSDF(out_dir_2, _S230, _S233, material_6, _S244);
+                var _S249 : f32 = refractPDF(_S231, dot(out_dir_2, ggx_n_2), abs(_S228), _S233, lobe_terms_0, eta_i_7, eta_o_7);
+                var _S250 : vec3<f32> = refractBSDF(out_dir_2, _S230, _S233, material_6, lobe_terms_0);
                 pdf_0 = _S249;
                 throughput_0 = _S250;
             }
-        default :
+        case u32(4):
             {
-                var _S251 : f32 = reflectPDF(_S231, 0.0f, abs(_S228), _S233, _S244, eta_i_7, eta_o_7);
-                var _S252 : vec3<f32> = reflectBSDF(out_dir_2, _S230, _S233, material_6, _S244);
+                var _S251 : f32 = sheenVelvetPDF(_S231, 0.0f, abs(_S228), _S233, lobe_terms_0, eta_i_7, eta_o_7);
+                var _S252 : vec3<f32> = sheenVelvetBSDF(out_dir_2, _S230, _S233, material_6, lobe_terms_0);
                 pdf_0 = _S251;
                 throughput_0 = _S252;
             }
+        default :
+            {
+                var _S253 : f32 = reflectPDF(_S231, 0.0f, abs(_S228), _S233, lobe_terms_0, eta_i_7, eta_o_7);
+                var _S254 : vec3<f32> = reflectBSDF(out_dir_2, _S230, _S233, material_6, lobe_terms_0);
+                pdf_0 = _S253;
+                throughput_0 = _S254;
+            }
         }
-        var _S253 : vec3<f32>;
+        var _S255 : vec3<f32>;
         if(pdf_0 > 0.0f)
         {
-            _S253 = throughput_0 * vec3<f32>(pdf_0);
+            _S255 = throughput_0 * vec3<f32>(pdf_0);
         }
         else
         {
-            _S253 = _S239;
+            _S255 = _S236;
         }
         if(i_0 == u32(0))
         {
-            f_1 = _S253;
+            f_1 = _S255;
         }
         else
         {
-            f_1 = f_1 + _S253;
+            f_1 = f_1 + _S255;
         }
         var i_1 : u32 = i_0 + u32(1);
+        ggx_n_1 = ggx_n_2;
         i_0 = i_1;
     }
     return f_1;
@@ -815,202 +838,202 @@ fn BSDF( in_dir_4 : vec3<f32>,  out_dir_2 : vec3<f32>,  n_6 : vec3<f32>,  g_n_0 
 
 fn translucentCorrection( in_dir_5 : vec3<f32>,  out_dir_3 : vec3<f32>,  n_7 : vec3<f32>,  g_n_1 : vec3<f32>,  material_7 : Material,  eta_i_8 : f32,  eta_o_8 : f32,  random_state_3 : u32,  terms_2 : MaterialTerms,  view_terms_3 : ViewTerms) -> vec3<f32>
 {
-    var _S254 : f32 = dot(n_7, out_dir_3);
-    var _S255 : vec3<f32> = ((-(in_dir_5)));
-    var _S256 : bool = (_S254 * dot(n_7, _S255)) < 0.0f;
+    var _S256 : f32 = dot(n_7, out_dir_3);
     var _S257 : vec3<f32> = ((-(in_dir_5)));
-    var _S258 : f32 = dot(n_7, _S257);
-    var _S259 : f32 = (sign((_S258)));
-    var _S260 : vec3<f32> = n_7 * vec3<f32>(_S259);
-    var _S261 : f32 = material_7.roughness;
-    var _S262 : f32 = _S261 * _S261;
-    var _S263 : vec3<f32> = sampledHalf(in_dir_5, n_7, material_7, random_state_3, view_terms_3);
-    var _S264 : HalfTerms = precomputeHalf(in_dir_5, _S263, material_7, eta_i_8, eta_o_8, terms_2, view_terms_3);
-    var _S265 : f32 = diffusePDF(dot(_S260, out_dir_3), 0.0f, abs(_S258), _S262, _S264, eta_i_8, eta_o_8);
-    var _S266 : vec3<f32>;
-    if(_S265 > 0.0f)
+    var _S258 : bool = (_S256 * dot(n_7, _S257)) < 0.0f;
+    var _S259 : vec3<f32> = ((-(in_dir_5)));
+    var _S260 : f32 = dot(n_7, _S259);
+    var _S261 : f32 = (sign((_S260)));
+    var _S262 : vec3<f32> = n_7 * vec3<f32>(_S261);
+    var _S263 : f32 = material_7.roughness;
+    var _S264 : f32 = _S263 * _S263;
+    var _S265 : vec3<f32> = sampledHalf(in_dir_5, n_7, material_7, random_state_3, view_terms_3);
+    var _S266 : HalfTerms = precomputeHalf(in_dir_5, _S265, material_7, eta_i_8, eta_o_8, terms_2, view_terms_3);
+    var _S267 : f32 = diffusePDF(dot(_S262, out_dir_3), 0.0f, abs(_S260), _S264, _S266, eta_i_8, eta_o_8);
+    var _S268 : vec3<f32>;
+    if(_S267 > 0.0f)
     {
-        var _S267 : vec3<f32> = diffuseBSDF(out_dir_3, _S260, _S262, material_7, _S264);
-        _S266 = _S267 * vec3<f32>(_S265);
+        var _S269 : vec3<f32> = diffuseBSDF(out_dir_3, _S262, _S264, material_7, _S266);
+        _S268 = _S269 * vec3<f32>(_S267);
     }
     else
     {
-        _S266 = vec3<f32>(0.0f);
+        _S268 = vec3<f32>(0.0f);
     }
-    var _S268 : vec3<f32> = ((-(in_dir_5)));
-    var _S269 : bool = (dot(g_n_1, _S268) * dot(g_n_1, out_dir_3)) > 0.0f;
-    var _S270 : vec3<f32> = vec3<f32>(0.0f);
-    var _S271 : f32 = select(1.0f, -1.0f, _S269);
-    var _S272 : vec3<f32> = _S266 * vec3<f32>(_S271);
-    var _S273 : vec3<f32> = select(_S270, _S272, _S256);
-    return _S273;
+    var _S270 : vec3<f32> = ((-(in_dir_5)));
+    var _S271 : bool = (dot(g_n_1, _S270) * dot(g_n_1, out_dir_3)) > 0.0f;
+    var _S272 : vec3<f32> = vec3<f32>(0.0f);
+    var _S273 : f32 = select(1.0f, -1.0f, _S271);
+    var _S274 : vec3<f32> = _S268 * vec3<f32>(_S273);
+    var _S275 : vec3<f32> = select(_S272, _S274, _S258);
+    return _S275;
 }
 
 fn translucentShare( material_8 : Material) -> f32
 {
-    var _S274 : f32 = rgb_to_greyscale(material_8.translucent);
-    var _S275 : f32 = rgb_to_greyscale(material_8.albedo);
-    var _S276 : f32 = _S274 / (_S275 + _S274);
-    var _S277 : bool = _S274 > 0.0f;
-    var _S278 : f32 = select(0.0f, _S276, _S277);
-    return _S278;
+    var _S276 : f32 = rgb_to_greyscale(material_8.translucent);
+    var _S277 : f32 = rgb_to_greyscale(material_8.albedo);
+    var _S278 : f32 = _S276 / (_S277 + _S276);
+    var _S279 : bool = _S276 > 0.0f;
+    var _S280 : f32 = select(0.0f, _S278, _S279);
+    return _S280;
 }
 
 fn MaterialTerms_x24init_0( f0_0 : f32,  eta_level_0 : f32,  translucent_share_1 : f32) -> MaterialTerms
 {
-    var _S279 : MaterialTerms;
-    _S279.f0 = f0_0;
-    _S279.eta_level = eta_level_0;
-    _S279.translucent_share = translucent_share_1;
-    return _S279;
+    var _S281 : MaterialTerms;
+    _S281.f0 = f0_0;
+    _S281.eta_level = eta_level_0;
+    _S281.translucent_share = translucent_share_1;
+    return _S281;
 }
 
 fn precomputeMaterial( material_9 : Material,  eta_i_9 : f32,  eta_o_9 : f32) -> MaterialTerms
 {
-    var _S280 : f32 = min(sqrt(material_9.specular_level) * abs(eta_i_9 - eta_o_9) / (eta_i_9 + eta_o_9), 0.9999847412109375f);
-    var _S281 : f32 = _S280 * _S280;
-    var _S282 : f32 = (1.0f + _S280) / (1.0f - _S280);
-    var _S283 : f32 = translucentShare(material_9);
-    return MaterialTerms_x24init_0(_S281, _S282, _S283);
+    var _S282 : f32 = min(sqrt(material_9.specular_level) * abs(eta_i_9 - eta_o_9) / (eta_i_9 + eta_o_9), 0.9999847412109375f);
+    var _S283 : f32 = _S282 * _S282;
+    var _S284 : f32 = (1.0f + _S282) / (1.0f - _S282);
+    var _S285 : f32 = translucentShare(material_9);
+    return MaterialTerms_x24init_0(_S283, _S284, _S285);
 }
 
 fn AnisotropicFrame_x24init_0( tangent_1 : vec3<f32>,  alphas_3 : vec2<f32>) -> AnisotropicFrame
 {
-    var _S284 : AnisotropicFrame;
-    _S284.tangent = tangent_1;
-    _S284.alphas = alphas_3;
-    return _S284;
+    var _S286 : AnisotropicFrame;
+    _S286.tangent = tangent_1;
+    _S286.alphas = alphas_3;
+    return _S286;
 }
 
 fn anisotropicFrame( material_10 : Material,  n_i_5 : vec3<f32>) -> AnisotropicFrame
 {
-    var _S285 : f32 = material_10.roughness;
-    var _S286 : f32 = _S285 * _S285;
-    var _S287 : bool = (material_10.anisotropy) == 0.0f;
-    var _S288 : bool;
-    if(_S287)
+    var _S287 : f32 = material_10.roughness;
+    var _S288 : f32 = _S287 * _S287;
+    var _S289 : bool = (material_10.anisotropy) == 0.0f;
+    var _S290 : bool;
+    if(_S289)
     {
-        _S288 = true;
+        _S290 = true;
     }
     else
     {
-        _S288 = !(_S286 > 0.0f);
+        _S290 = !(_S288 > 0.0f);
     }
-    if(_S288)
+    if(_S290)
     {
         return AnisotropicFrame_x24init_0(vec3<f32>(0.0f), vec2<f32>(0.0f));
     }
-    var _S289 : vec3<f32> = material_10.tangent - n_i_5 * vec3<f32>(dot(n_i_5, material_10.tangent));
-    var _S290 : vec3<f32> = tangentToWorld(vec3<f32>(1.0f, 0.0f, 0.0f), n_i_5);
-    var _S291 : bool = (dot(_S289, _S289)) > 0.0f;
-    var _S292 : vec3<f32> = select(_S290, _S289, _S291);
-    var _S293 : vec3<f32> = (normalize((_S292)));
-    var _S294 : f32 = 6.28318548202514648f * material_10.anisotropic_rotation;
-    var _S295 : f32 = sqrt(1.0f - 0.89999997615814209f * abs(material_10.anisotropy));
-    var _S296 : f32 = 1.0f / _S295;
-    var _S297 : bool = (material_10.anisotropy) < 0.0f;
-    var _S298 : f32 = select(_S295, _S296, _S297);
-    return AnisotropicFrame_x24init_0(_S293 * vec3<f32>(cos(_S294)) + cross(n_i_5, _S293) * vec3<f32>(sin(_S294)), vec2<f32>(_S286 / _S298, _S286 * _S298));
+    var _S291 : vec3<f32> = material_10.tangent - n_i_5 * vec3<f32>(dot(n_i_5, material_10.tangent));
+    var _S292 : vec3<f32> = tangentToWorld(vec3<f32>(1.0f, 0.0f, 0.0f), n_i_5);
+    var _S293 : bool = (dot(_S291, _S291)) > 0.0f;
+    var _S294 : vec3<f32> = select(_S292, _S291, _S293);
+    var _S295 : vec3<f32> = (normalize((_S294)));
+    var _S296 : f32 = 6.28318548202514648f * material_10.anisotropic_rotation;
+    var _S297 : f32 = sqrt(1.0f - 0.89999997615814209f * abs(material_10.anisotropy));
+    var _S298 : f32 = 1.0f / _S297;
+    var _S299 : bool = (material_10.anisotropy) < 0.0f;
+    var _S300 : f32 = select(_S297, _S298, _S299);
+    return AnisotropicFrame_x24init_0(_S295 * vec3<f32>(cos(_S296)) + cross(n_i_5, _S295) * vec3<f32>(sin(_S296)), vec2<f32>(_S288 / _S300, _S288 * _S300));
 }
 
 fn ViewTerms_x24init_0( v_4 : vec3<f32>,  n_i_6 : vec3<f32>,  frame_1 : AnisotropicFrame,  scale_0 : vec3<f32>,  sheen_component_0 : f32,  sheen_1 : vec3<f32>,  view_1 : vec3<f32>,  rebounce_0 : vec3<f32>) -> ViewTerms
 {
-    var _S299 : ViewTerms;
-    _S299.v = v_4;
-    _S299.n_i = n_i_6;
-    _S299.frame = frame_1;
-    _S299.scale = scale_0;
-    _S299.sheen_component = sheen_component_0;
-    _S299.sheen = sheen_1;
-    _S299.view = view_1;
-    _S299.rebounce = rebounce_0;
-    return _S299;
+    var _S301 : ViewTerms;
+    _S301.v = v_4;
+    _S301.n_i = n_i_6;
+    _S301.frame = frame_1;
+    _S301.scale = scale_0;
+    _S301.sheen_component = sheen_component_0;
+    _S301.sheen = sheen_1;
+    _S301.view = view_1;
+    _S301.rebounce = rebounce_0;
+    return _S301;
 }
 
 fn precomputeView( in_dir_6 : vec3<f32>,  n_8 : vec3<f32>,  material_11 : Material,  terms_3 : MaterialTerms) -> ViewTerms
 {
-    var _S300 : vec3<f32> = ((-(in_dir_6)));
-    var _S301 : f32 = (sign((dot(n_8, _S300))));
-    var _S302 : vec3<f32> = n_8 * vec3<f32>(_S301);
-    var _S303 : AnisotropicFrame = anisotropicFrame(material_11, _S302);
-    var _S304 : vec3<f32> = vec3<f32>(1.0f);
-    var _S305 : vec3<f32> = vec3<f32>(0.0f);
-    var _S306 : f32 = rgb_to_greyscale(material_11.sheen);
-    var _S307 : bool = _S306 > 0.0f;
+    var _S302 : vec3<f32> = ((-(in_dir_6)));
+    var _S303 : f32 = (sign((dot(n_8, _S302))));
+    var _S304 : vec3<f32> = n_8 * vec3<f32>(_S303);
+    var _S305 : AnisotropicFrame = anisotropicFrame(material_11, _S304);
+    var _S306 : vec3<f32> = vec3<f32>(1.0f);
+    var _S307 : vec3<f32> = vec3<f32>(0.0f);
+    var _S308 : f32 = rgb_to_greyscale(material_11.sheen);
+    var _S309 : bool = _S308 > 0.0f;
     var sheen_component_1 : f32;
     var scale_1 : vec3<f32>;
     var sheen_2 : vec3<f32>;
     var view_2 : vec3<f32>;
-    if(_S307)
+    if(_S309)
     {
-        var _S308 : f32 = clamp(sqrt(max(dot(_S302, _S300), 0.0f)), 0.0f, 1.0f) * 23.0f;
-        var _S309 : u32 = min(u32(_S308), u32(22));
+        var _S310 : f32 = clamp(sqrt(max(dot(_S304, _S302), 0.0f)), 0.0f, 1.0f) * 23.0f;
+        var _S311 : u32 = min(u32(_S310), u32(22));
         var least_0 : f32 = sqrt(0.05000000074505806f);
-        var _S310 : f32 = sqrt(0.10000000149011612f);
-        var _S311 : bool = (material_11.velvet) > 0.0f;
-        var _S312 : f32 = select(least_0, _S310, _S311);
-        var _S313 : f32 = (clamp(sqrt(max(material_11.sheen_roughness, 0.0f)), _S312, 1.0f) - _S312) / (1.0f - _S312) * 23.0f;
-        var _S314 : u32 = min(u32(_S313), u32(22));
-        var _S315 : u32 = _S309 * u32(24) + _S314;
-        var _S316 : f32 = _S308 - f32(_S309);
-        var _S317 : f32 = _S313 - f32(_S314);
-        var _S318 : u32 = _S315 + u32(24);
-        var a_4 : f32 = SHEEN_ALBEDO_0[_S315] + (SHEEN_ALBEDO_0[_S318] - SHEEN_ALBEDO_0[_S315]) * _S316;
-        var _S319 : u32 = _S315 + u32(1);
-        var _S320 : u32 = _S318 + u32(1);
-        var b_0 : f32 = SHEEN_ALBEDO_0[_S319] + (SHEEN_ALBEDO_0[_S320] - SHEEN_ALBEDO_0[_S319]) * _S316;
-        var _S321 : f32 = exp(a_4 + (b_0 - a_4) * _S317);
-        if(_S311)
+        var _S312 : f32 = sqrt(0.10000000149011612f);
+        var _S313 : bool = (material_11.velvet) > 0.0f;
+        var _S314 : f32 = select(least_0, _S312, _S313);
+        var _S315 : f32 = (clamp(sqrt(max(material_11.sheen_roughness, 0.0f)), _S314, 1.0f) - _S314) / (1.0f - _S314) * 23.0f;
+        var _S316 : u32 = min(u32(_S315), u32(22));
+        var _S317 : u32 = _S311 * u32(24) + _S316;
+        var _S318 : f32 = _S310 - f32(_S311);
+        var _S319 : f32 = _S315 - f32(_S316);
+        var _S320 : u32 = _S317 + u32(24);
+        var a_4 : f32 = SHEEN_ALBEDO_0[_S317] + (SHEEN_ALBEDO_0[_S320] - SHEEN_ALBEDO_0[_S317]) * _S318;
+        var _S321 : u32 = _S317 + u32(1);
+        var _S322 : u32 = _S320 + u32(1);
+        var b_0 : f32 = SHEEN_ALBEDO_0[_S321] + (SHEEN_ALBEDO_0[_S322] - SHEEN_ALBEDO_0[_S321]) * _S318;
+        var _S323 : f32 = exp(a_4 + (b_0 - a_4) * _S319);
+        if(_S313)
         {
-            var a_5 : f32 = VELVET_ALBEDO_0[_S315] + (VELVET_ALBEDO_0[_S318] - VELVET_ALBEDO_0[_S315]) * _S316;
-            var b_1 : f32 = VELVET_ALBEDO_0[_S319] + (VELVET_ALBEDO_0[_S320] - VELVET_ALBEDO_0[_S319]) * _S316;
-            var _S322 : f32 = a_5 + (b_1 - a_5) * _S317;
-            sheen_component_1 = _S322;
+            var a_5 : f32 = VELVET_ALBEDO_0[_S317] + (VELVET_ALBEDO_0[_S320] - VELVET_ALBEDO_0[_S317]) * _S318;
+            var b_1 : f32 = VELVET_ALBEDO_0[_S321] + (VELVET_ALBEDO_0[_S322] - VELVET_ALBEDO_0[_S321]) * _S318;
+            var _S324 : f32 = a_5 + (b_1 - a_5) * _S319;
+            sheen_component_1 = _S324;
         }
         else
         {
-            sheen_component_1 = _S321;
+            sheen_component_1 = _S323;
         }
-        var _S323 : f32 = min(sheen_component_1, 1.0f);
-        var _S324 : vec3<f32> = vec3<f32>(1.0f) - material_11.sheen * vec3<f32>(_S323);
-        var _S325 : f32 = rgb_to_greyscale(material_11.sheen);
-        var _S326 : f32 = _S325 * _S323;
-        var _S327 : vec3<f32> = material_11.sheen / vec3<f32>(max(sheen_component_1, 1.0f));
-        scale_1 = _S324;
-        sheen_component_1 = _S326;
-        sheen_2 = _S327;
-        view_2 = _S300;
+        var _S325 : f32 = min(sheen_component_1, 1.0f);
+        var _S326 : vec3<f32> = vec3<f32>(1.0f) - material_11.sheen * vec3<f32>(_S325);
+        var _S327 : f32 = rgb_to_greyscale(material_11.sheen);
+        var _S328 : f32 = _S327 * _S325;
+        var _S329 : vec3<f32> = material_11.sheen / vec3<f32>(max(sheen_component_1, 1.0f));
+        scale_1 = _S326;
+        sheen_component_1 = _S328;
+        sheen_2 = _S329;
+        view_2 = _S302;
     }
     else
     {
-        scale_1 = _S304;
+        scale_1 = _S306;
         sheen_component_1 = 0.0f;
-        sheen_2 = _S305;
-        view_2 = _S305;
+        sheen_2 = _S307;
+        view_2 = _S307;
     }
-    var _S328 : f32 = _S303.alphas.x;
-    var _S329 : f32 = sqrt(min(_S328, _S303.alphas.y));
-    var _S330 : bool = _S328 > 0.0f;
-    var _S331 : f32 = select(material_11.roughness, _S329, _S330);
-    var _S332 : f32 = _S331 * _S331;
-    var _S333 : f32 = pow(_S332, 1.81585001945495605f) * (2.15371990203857422f - 0.73285001516342163f * _S332) / (1.0f + 1.28094995021820068f * _S332);
-    var _S334 : bool = _S332 > 0.0f;
-    var _S335 : f32 = select(0.0f, _S333, _S334);
-    var _S336 : f32 = clamp(dot(_S302, _S300), 0.0f, 1.0f);
-    var _S337 : f32 = _S332 * _S331;
-    var _S338 : f32 = min(1.00064504146575928f - _S331 * (0.00375499995425344f + _S336 * (-0.04133399948477745f + _S336 * (-0.90938502550125122f + _S336 * 0.35275399684906006f))) - _S332 * (0.27602800726890564f + _S336 * (1.27023398876190186f + _S336 * 0.04740000143647194f)) - _S337 * (0.31452900171279907f - _S336 * 0.34830701351165771f) + _S337 * _S331 * 0.27229699492454529f, 1.0f);
-    var _S339 : vec3<f32> = vec3<f32>(1.0f);
-    var _S340 : vec3<f32> = min(_S339 / (_S339 - material_11.albedo * vec3<f32>(_S335)), vec3<f32>((1.0f / max(_S338, 0.0000152587890625f))));
-    return ViewTerms_x24init_0(_S300, _S302, _S303, scale_1, sheen_component_1, sheen_2, view_2, _S340);
+    var _S330 : f32 = _S305.alphas.x;
+    var _S331 : f32 = sqrt(min(_S330, _S305.alphas.y));
+    var _S332 : bool = _S330 > 0.0f;
+    var _S333 : f32 = select(material_11.roughness, _S331, _S332);
+    var _S334 : f32 = _S333 * _S333;
+    var _S335 : f32 = pow(_S334, 1.81585001945495605f) * (2.15371990203857422f - 0.73285001516342163f * _S334) / (1.0f + 1.28094995021820068f * _S334);
+    var _S336 : bool = _S334 > 0.0f;
+    var _S337 : f32 = select(0.0f, _S335, _S336);
+    var _S338 : f32 = clamp(dot(_S304, _S302), 0.0f, 1.0f);
+    var _S339 : f32 = _S334 * _S333;
+    var _S340 : f32 = min(1.00064504146575928f - _S333 * (0.00375499995425344f + _S338 * (-0.04133399948477745f + _S338 * (-0.90938502550125122f + _S338 * 0.35275399684906006f))) - _S334 * (0.27602800726890564f + _S338 * (1.27023398876190186f + _S338 * 0.04740000143647194f)) - _S339 * (0.31452900171279907f - _S338 * 0.34830701351165771f) + _S339 * _S333 * 0.27229699492454529f, 1.0f);
+    var _S341 : vec3<f32> = vec3<f32>(1.0f);
+    var _S342 : vec3<f32> = min(_S341 / (_S341 - material_11.albedo * vec3<f32>(_S337)), vec3<f32>((1.0f / max(_S340, 0.0000152587890625f))));
+    return ViewTerms_x24init_0(_S302, _S304, _S305, scale_1, sheen_component_1, sheen_2, view_2, _S342);
 }
 
 fn translucentBSDF( in_dir_7 : vec3<f32>,  out_dir_4 : vec3<f32>,  n_9 : vec3<f32>,  g_n_2 : vec3<f32>,  material_12 : Material,  eta_i_10 : f32,  eta_o_10 : f32,  random_state_4 : u32) -> vec3<f32>
 {
-    var _S341 : MaterialTerms = precomputeMaterial(material_12, eta_i_10, eta_o_10);
-    var _S342 : ViewTerms = precomputeView(in_dir_7, n_9, material_12, _S341);
-    var _S343 : vec3<f32> = BSDF(in_dir_7, out_dir_4, n_9, g_n_2, material_12, eta_i_10, eta_o_10, random_state_4, _S341, _S342);
-    var _S344 : vec3<f32> = translucentCorrection(in_dir_7, out_dir_4, n_9, g_n_2, material_12, eta_i_10, eta_o_10, random_state_4, _S341, _S342);
-    return _S343 + _S344;
+    var _S343 : MaterialTerms = precomputeMaterial(material_12, eta_i_10, eta_o_10);
+    var _S344 : ViewTerms = precomputeView(in_dir_7, n_9, material_12, _S343);
+    var _S345 : vec3<f32> = BSDF(in_dir_7, out_dir_4, n_9, g_n_2, material_12, eta_i_10, eta_o_10, random_state_4, _S343, _S344);
+    var _S346 : vec3<f32> = translucentCorrection(in_dir_7, out_dir_4, n_9, g_n_2, material_12, eta_i_10, eta_o_10, random_state_4, _S343, _S344);
+    return _S345 + _S346;
 }
 
 struct SampleBSDF
@@ -1025,128 +1048,128 @@ struct SampleBSDF
 
 fn SampleBSDF_x24init_0( unit_direction_0 : vec3<f32>,  throughput_1 : vec3<f32>,  random_state_5 : u32,  refracted_1 : bool,  lobe_0 : u32,  pdf_1 : f32) -> SampleBSDF
 {
-    var _S345 : SampleBSDF;
-    _S345.unit_direction = unit_direction_0;
-    _S345.throughput = throughput_1;
-    _S345.random_state = random_state_5;
-    _S345.refracted = refracted_1;
-    _S345.lobe = lobe_0;
-    _S345.pdf = pdf_1;
-    return _S345;
+    var _S347 : SampleBSDF;
+    _S347.unit_direction = unit_direction_0;
+    _S347.throughput = throughput_1;
+    _S347.random_state = random_state_5;
+    _S347.refracted = refracted_1;
+    _S347.lobe = lobe_0;
+    _S347.pdf = pdf_1;
+    return _S347;
 }
 
 fn diffuseSample( u_0 : f32,  n_i_7 : vec3<f32>,  n_i_dot_v_5 : f32,  alpha_13 : f32,  material_13 : Material,  lobes_9 : HalfTerms,  eta_i_11 : f32,  eta_o_11 : f32,  random_state_6 : u32) -> SampleBSDF
 {
-    var _S346 : vec3<f32> = vec3<f32>(1.0f);
-    var _S347 : SampleBSDF = SampleBSDF_x24init_0(_S346, _S346, u32(0), false, u32(0), 0.0f);
-    var sample_0 : SampleBSDF = _S347;
-    var _S348 : Random = pcg(random_state_6);
-    var _S349 : Random = pcg(_S348.state);
-    sample_0.random_state = _S349.state;
-    var _S350 : vec3<f32> = sampleCosWeightedHemisphere(_S348.value, _S349.value);
-    var _S351 : bool = u_0 < (lobes_9.p_diffuse * lobes_9.translucent_share);
-    var _S352 : f32 = _S350.y;
-    var _S353 : f32 = - _S352;
-    var _S354 : f32 = select(_S352, _S353, _S351);
-    var _S355 : vec3<f32> = tangentToWorld(vec3<f32>(_S350.x, _S354, _S350.z), n_i_7);
-    sample_0.unit_direction = _S355;
-    sample_0.refracted = _S351;
+    var _S348 : vec3<f32> = vec3<f32>(1.0f);
+    var _S349 : SampleBSDF = SampleBSDF_x24init_0(_S348, _S348, u32(0), false, u32(0), 0.0f);
+    var sample_0 : SampleBSDF = _S349;
+    var _S350 : Random = pcg(random_state_6);
+    var _S351 : Random = pcg(_S350.state);
+    sample_0.random_state = _S351.state;
+    var _S352 : vec3<f32> = sampleCosWeightedHemisphere(_S350.value, _S351.value);
+    var _S353 : bool = u_0 < (lobes_9.p_diffuse * lobes_9.translucent_share);
+    var _S354 : f32 = _S352.y;
+    var _S355 : f32 = - _S354;
+    var _S356 : f32 = select(_S354, _S355, _S353);
+    var _S357 : vec3<f32> = tangentToWorld(vec3<f32>(_S352.x, _S356, _S352.z), n_i_7);
+    sample_0.unit_direction = _S357;
+    sample_0.refracted = _S353;
     sample_0.lobe = u32(0);
-    var _S356 : vec3<f32> = diffuseBSDF(sample_0.unit_direction, n_i_7, alpha_13, material_13, lobes_9);
-    sample_0.throughput = _S356;
-    var _S357 : f32 = diffusePDF(_S354, 0.0f, n_i_dot_v_5, alpha_13, lobes_9, eta_i_11, eta_o_11);
-    sample_0.pdf = _S357;
+    var _S358 : vec3<f32> = diffuseBSDF(sample_0.unit_direction, n_i_7, alpha_13, material_13, lobes_9);
+    sample_0.throughput = _S358;
+    var _S359 : f32 = diffusePDF(_S356, 0.0f, n_i_dot_v_5, alpha_13, lobes_9, eta_i_11, eta_o_11);
+    sample_0.pdf = _S359;
     return sample_0;
 }
 
 fn sheenVelvetSample( n_i_8 : vec3<f32>,  n_i_dot_v_6 : f32,  alpha_14 : f32,  material_14 : Material,  lobes_10 : HalfTerms,  eta_i_12 : f32,  eta_o_12 : f32,  random_state_7 : u32) -> SampleBSDF
 {
-    var _S358 : vec3<f32> = vec3<f32>(1.0f);
-    var _S359 : SampleBSDF = SampleBSDF_x24init_0(_S358, _S358, u32(0), false, u32(0), 0.0f);
-    var sample_1 : SampleBSDF = _S359;
-    var _S360 : Random = pcg(random_state_7);
-    var _S361 : Random = pcg(_S360.state);
-    sample_1.random_state = _S361.state;
-    var _S362 : f32 = _S360.value;
-    var _S363 : f32 = sqrt(max(0.0f, 1.0f - _S362 * _S362));
-    var _S364 : f32 = 6.28318548202514648f * _S361.value;
-    var _S365 : vec3<f32> = tangentToWorld(vec3<f32>(_S363 * cos(_S364), _S360.value, _S363 * sin(_S364)), n_i_8);
-    sample_1.unit_direction = _S365;
+    var _S360 : vec3<f32> = vec3<f32>(1.0f);
+    var _S361 : SampleBSDF = SampleBSDF_x24init_0(_S360, _S360, u32(0), false, u32(0), 0.0f);
+    var sample_1 : SampleBSDF = _S361;
+    var _S362 : Random = pcg(random_state_7);
+    var _S363 : Random = pcg(_S362.state);
+    sample_1.random_state = _S363.state;
+    var _S364 : f32 = _S362.value;
+    var _S365 : f32 = sqrt(max(0.0f, 1.0f - _S364 * _S364));
+    var _S366 : f32 = 6.28318548202514648f * _S363.value;
+    var _S367 : vec3<f32> = tangentToWorld(vec3<f32>(_S365 * cos(_S366), _S362.value, _S365 * sin(_S366)), n_i_8);
+    sample_1.unit_direction = _S367;
     sample_1.lobe = u32(4);
-    var _S366 : vec3<f32> = sheenVelvetBSDF(sample_1.unit_direction, n_i_8, alpha_14, material_14, lobes_10);
-    sample_1.throughput = _S366;
-    var _S367 : f32 = sheenVelvetPDF(_S360.value, 0.0f, n_i_dot_v_6, alpha_14, lobes_10, eta_i_12, eta_o_12);
-    sample_1.pdf = _S367;
+    var _S368 : vec3<f32> = sheenVelvetBSDF(sample_1.unit_direction, n_i_8, alpha_14, material_14, lobes_10);
+    sample_1.throughput = _S368;
+    var _S369 : f32 = sheenVelvetPDF(_S362.value, 0.0f, n_i_dot_v_6, alpha_14, lobes_10, eta_i_12, eta_o_12);
+    sample_1.pdf = _S369;
     return sample_1;
 }
 
-fn refractSample( ggx_n_1 : vec3<f32>,  n_i_9 : vec3<f32>,  n_i_dot_v_7 : f32,  alpha_15 : f32,  material_15 : Material,  lobes_11 : HalfTerms,  eta_i_13 : f32,  eta_o_13 : f32,  random_state_8 : u32) -> SampleBSDF
+fn refractSample( ggx_n_3 : vec3<f32>,  n_i_9 : vec3<f32>,  n_i_dot_v_7 : f32,  alpha_15 : f32,  material_15 : Material,  lobes_11 : HalfTerms,  eta_i_13 : f32,  eta_o_13 : f32,  random_state_8 : u32) -> SampleBSDF
 {
-    var _S368 : vec3<f32> = vec3<f32>(1.0f);
-    var _S369 : SampleBSDF = SampleBSDF_x24init_0(_S368, _S368, u32(0), false, u32(0), 0.0f);
-    var sample_2 : SampleBSDF = _S369;
+    var _S370 : vec3<f32> = vec3<f32>(1.0f);
+    var _S371 : SampleBSDF = SampleBSDF_x24init_0(_S370, _S370, u32(0), false, u32(0), 0.0f);
+    var sample_2 : SampleBSDF = _S371;
     sample_2.unit_direction = lobes_11.refracted;
     sample_2.random_state = random_state_8;
     sample_2.refracted = true;
     sample_2.lobe = u32(1);
-    var _S370 : vec3<f32> = refractBSDF(sample_2.unit_direction, n_i_9, alpha_15, material_15, lobes_11);
-    sample_2.throughput = _S370;
-    var _S371 : f32 = refractPDF(0.0f, dot(sample_2.unit_direction, ggx_n_1), n_i_dot_v_7, alpha_15, lobes_11, eta_i_13, eta_o_13);
-    sample_2.pdf = _S371;
+    var _S372 : vec3<f32> = refractBSDF(sample_2.unit_direction, n_i_9, alpha_15, material_15, lobes_11);
+    sample_2.throughput = _S372;
+    var _S373 : f32 = refractPDF(0.0f, dot(sample_2.unit_direction, ggx_n_3), n_i_dot_v_7, alpha_15, lobes_11, eta_i_13, eta_o_13);
+    sample_2.pdf = _S373;
     return sample_2;
 }
 
-fn reflectSample( in_dir_8 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_10 : vec3<f32>,  n_i_dot_v_8 : f32,  alpha_16 : f32,  material_16 : Material,  lobes_12 : HalfTerms,  eta_i_14 : f32,  eta_o_14 : f32,  random_state_9 : u32) -> SampleBSDF
+fn reflectSample( in_dir_8 : vec3<f32>,  ggx_n_4 : vec3<f32>,  n_i_10 : vec3<f32>,  n_i_dot_v_8 : f32,  alpha_16 : f32,  material_16 : Material,  lobes_12 : HalfTerms,  eta_i_14 : f32,  eta_o_14 : f32,  random_state_9 : u32) -> SampleBSDF
 {
-    var _S372 : vec3<f32> = vec3<f32>(1.0f);
-    var _S373 : SampleBSDF = SampleBSDF_x24init_0(_S372, _S372, u32(0), false, u32(0), 0.0f);
-    var sample_3 : SampleBSDF = _S373;
-    var _S374 : vec3<f32> = (normalize((reflect(in_dir_8, ggx_n_2))));
-    sample_3.unit_direction = _S374;
+    var _S374 : vec3<f32> = vec3<f32>(1.0f);
+    var _S375 : SampleBSDF = SampleBSDF_x24init_0(_S374, _S374, u32(0), false, u32(0), 0.0f);
+    var sample_3 : SampleBSDF = _S375;
+    var _S376 : vec3<f32> = (normalize((reflect(in_dir_8, ggx_n_4))));
+    sample_3.unit_direction = _S376;
     sample_3.random_state = random_state_9;
     sample_3.lobe = u32(2);
-    var _S375 : vec3<f32> = reflectBSDF(sample_3.unit_direction, n_i_10, alpha_16, material_16, lobes_12);
-    sample_3.throughput = _S375;
-    var _S376 : f32 = reflectPDF(0.0f, 0.0f, n_i_dot_v_8, alpha_16, lobes_12, eta_i_14, eta_o_14);
-    sample_3.pdf = _S376;
+    var _S377 : vec3<f32> = reflectBSDF(sample_3.unit_direction, n_i_10, alpha_16, material_16, lobes_12);
+    sample_3.throughput = _S377;
+    var _S378 : f32 = reflectPDF(0.0f, 0.0f, n_i_dot_v_8, alpha_16, lobes_12, eta_i_14, eta_o_14);
+    sample_3.pdf = _S378;
     return sample_3;
 }
 
 fn sampleBSDF( in_dir_9 : vec3<f32>,  n_10 : vec3<f32>,  material_17 : Material,  eta_i_15 : f32,  eta_o_15 : f32,  random_init_0 : u32,  screen_space_0 : vec2<f32>,  terms_4 : MaterialTerms,  view_terms_4 : ViewTerms) -> SampleBSDF
 {
     var random_state_10 : u32 = random_init_0;
-    var _S377 : vec3<f32> = ((-(in_dir_9)));
-    var _S378 : f32 = dot(n_10, _S377);
-    var _S379 : f32 = (sign((_S378)));
-    var n_i_11 : vec3<f32> = n_10 * vec3<f32>(_S379);
-    var _S380 : f32 = abs(_S378);
-    var _S381 : f32 = material_17.roughness;
-    var _S382 : f32 = _S381 * _S381;
-    var _S383 : vec3<f32> = sampleHalfVector(_S377, n_i_11, _S382, view_terms_4.frame, &(random_state_10));
-    var _S384 : HalfTerms = precomputeHalf(in_dir_9, _S383, material_17, eta_i_15, eta_o_15, terms_4, view_terms_4);
-    var _S385 : Random = pcg(random_state_10);
-    random_state_10 = _S385.state;
-    var _S386 : bool = (_S385.value) < (_S384.p_sheen_velvet);
-    if(_S386)
+    var _S379 : vec3<f32> = ((-(in_dir_9)));
+    var _S380 : f32 = dot(n_10, _S379);
+    var _S381 : f32 = (sign((_S380)));
+    var n_i_11 : vec3<f32> = n_10 * vec3<f32>(_S381);
+    var _S382 : f32 = abs(_S380);
+    var _S383 : f32 = material_17.roughness;
+    var _S384 : f32 = _S383 * _S383;
+    var _S385 : vec3<f32> = sampleHalfVector(_S379, n_i_11, _S384, view_terms_4.frame, &(random_state_10));
+    var _S386 : HalfTerms = precomputeHalf(in_dir_9, _S385, material_17, eta_i_15, eta_o_15, terms_4, view_terms_4);
+    var _S387 : Random = pcg(random_state_10);
+    random_state_10 = _S387.state;
+    var _S388 : bool = (_S387.value) < (_S386.p_sheen_velvet);
+    if(_S388)
     {
-        var _S387 : SampleBSDF = sheenVelvetSample(n_i_11, _S380, _S382, material_17, _S384, eta_i_15, eta_o_15, random_state_10);
-        return _S387;
+        var _S389 : SampleBSDF = sheenVelvetSample(n_i_11, _S382, _S384, material_17, _S386, eta_i_15, eta_o_15, random_state_10);
+        return _S389;
     }
-    var _S388 : f32 = _S385.value - _S384.p_sheen_velvet;
-    var _S389 : bool = _S388 < (_S384.p_diffuse);
-    if(_S389)
-    {
-        var _S390 : SampleBSDF = diffuseSample(_S388, n_i_11, _S380, _S382, material_17, _S384, eta_i_15, eta_o_15, random_state_10);
-        return _S390;
-    }
-    var _S391 : bool = _S388 < (_S384.p_diffuse + _S384.p_refract);
+    var _S390 : f32 = _S387.value - _S386.p_sheen_velvet;
+    var _S391 : bool = _S390 < (_S386.p_diffuse);
     if(_S391)
     {
-        var _S392 : SampleBSDF = refractSample(_S383, n_i_11, _S380, _S382, material_17, _S384, eta_i_15, eta_o_15, random_state_10);
+        var _S392 : SampleBSDF = diffuseSample(_S390, n_i_11, _S382, _S384, material_17, _S386, eta_i_15, eta_o_15, random_state_10);
         return _S392;
     }
-    var _S393 : SampleBSDF = reflectSample(in_dir_9, _S383, n_i_11, _S380, _S382, material_17, _S384, eta_i_15, eta_o_15, random_state_10);
-    return _S393;
+    var _S393 : bool = _S390 < (_S386.p_diffuse + _S386.p_refract);
+    if(_S393)
+    {
+        var _S394 : SampleBSDF = refractSample(_S385, n_i_11, _S382, _S384, material_17, _S386, eta_i_15, eta_o_15, random_state_10);
+        return _S394;
+    }
+    var _S395 : SampleBSDF = reflectSample(in_dir_9, _S385, n_i_11, _S382, _S384, material_17, _S386, eta_i_15, eta_o_15, random_state_10);
+    return _S395;
 }
 
 fn pointLightRadiance( color_0 : vec3<f32>,  intensity_0 : f32,  radius_0 : f32) -> vec3<f32>
@@ -1156,50 +1179,50 @@ fn pointLightRadiance( color_0 : vec3<f32>,  intensity_0 : f32,  radius_0 : f32)
 
 fn beerLambert( distance_0 : f32,  absorption_0 : vec3<f32>) -> vec3<f32>
 {
-    var _S394 : vec3<f32> = max(absorption_0, vec3<f32>(0.0000152587890625f));
-    return exp(vec3<f32>(distance_0) * log(_S394));
+    var _S396 : vec3<f32> = max(absorption_0, vec3<f32>(0.0000152587890625f));
+    return exp(vec3<f32>(distance_0) * log(_S396));
 }
 
 fn vertexEta( material_18 : Material,  n_dot_v_0 : f32) -> vec2<f32>
 {
-    var _S395 : bool = n_dot_v_0 < 0.0f;
-    var _S396 : f32 = select(1.0f, material_18.ior, _S395);
-    var _S397 : f32 = select(material_18.ior, 1.0f, _S395);
-    return vec2<f32>(_S396, _S397);
+    var _S397 : bool = n_dot_v_0 < 0.0f;
+    var _S398 : f32 = select(1.0f, material_18.ior, _S397);
+    var _S399 : f32 = select(material_18.ior, 1.0f, _S397);
+    return vec2<f32>(_S398, _S399);
 }
 
 fn dispersive( material_19 : Material) -> bool
 {
-    var _S398 : bool = (material_19.dispersion) > 0.0f;
-    var _S399 : bool;
-    if(_S398)
+    var _S400 : bool = (material_19.dispersion) > 0.0f;
+    var _S401 : bool;
+    if(_S400)
     {
-        _S399 = (material_19.ior) != 1.0f;
+        _S401 = (material_19.ior) != 1.0f;
     }
     else
     {
-        _S399 = false;
+        _S401 = false;
     }
-    return _S399;
+    return _S401;
 }
 
 fn dispersedIor( ior_0 : f32,  dispersion_0 : f32,  wavelength_0 : f32) -> f32
 {
-    var _S400 : f32 = (ior_0 - 1.0f) * dispersion_0 / 1.90962409973144531f;
-    var _S401 : f32 = _S400 * (1.0f / (wavelength_0 * wavelength_0) - 2.89662933349609375f);
-    var _S402 : bool = dispersion_0 > 0.0f;
-    var _S403 : f32 = select(0.0f, _S401, _S402);
-    return ior_0 + _S403;
+    var _S402 : f32 = (ior_0 - 1.0f) * dispersion_0 / 1.90962409973144531f;
+    var _S403 : f32 = _S402 * (1.0f / (wavelength_0 * wavelength_0) - 2.89662933349609375f);
+    var _S404 : bool = dispersion_0 > 0.0f;
+    var _S405 : f32 = select(0.0f, _S403, _S404);
+    return ior_0 + _S405;
 }
 
 fn wavelengthWeights( wavelength_1 : f32) -> vec3<f32>
 {
-    var _S404 : f32 = clamp((wavelength_1 - 0.37999999523162842f) / 0.00499999988824129f, 0.0f, 80.0f);
-    var _S405 : u32 = min(u32(_S404), u32(79));
-    var _S406 : u32 = u32(3) * _S405;
-    var _S407 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S406], WAVELENGTH_WEIGHTS_0[_S406 + u32(1)], WAVELENGTH_WEIGHTS_0[_S406 + u32(2)]);
-    var _S408 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S406 + u32(3)], WAVELENGTH_WEIGHTS_0[_S406 + u32(4)], WAVELENGTH_WEIGHTS_0[_S406 + u32(5)]);
-    return _S407 + (_S408 - _S407) * vec3<f32>((_S404 - f32(_S405)));
+    var _S406 : f32 = clamp((wavelength_1 - 0.37999999523162842f) / 0.00499999988824129f, 0.0f, 80.0f);
+    var _S407 : u32 = min(u32(_S406), u32(79));
+    var _S408 : u32 = u32(3) * _S407;
+    var _S409 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S408], WAVELENGTH_WEIGHTS_0[_S408 + u32(1)], WAVELENGTH_WEIGHTS_0[_S408 + u32(2)]);
+    var _S410 : vec3<f32> = vec3<f32>(WAVELENGTH_WEIGHTS_0[_S408 + u32(3)], WAVELENGTH_WEIGHTS_0[_S408 + u32(4)], WAVELENGTH_WEIGHTS_0[_S408 + u32(5)]);
+    return _S409 + (_S410 - _S409) * vec3<f32>((_S406 - f32(_S407)));
 }
 
 fn sampleWavelength( u_1 : f32) -> vec2<f32>
@@ -1215,128 +1238,144 @@ fn sampleWavelength( u_1 : f32) -> vec2<f32>
         {
             break;
         }
-        var _S409 : u32 = (low_0 + high_0 + u32(1)) / u32(2);
-        var _S410 : bool = (WAVELENGTH_CDF_0[_S409]) <= u_1;
-        if(_S410)
+        var _S411 : u32 = (low_0 + high_0 + u32(1)) / u32(2);
+        var _S412 : bool = (WAVELENGTH_CDF_0[_S411]) <= u_1;
+        if(_S412)
         {
-            low_0 = _S409;
+            low_0 = _S411;
         }
         else
         {
-            var _S411 : u32 = _S409 - u32(1);
-            high_0 = _S411;
+            var _S413 : u32 = _S411 - u32(1);
+            high_0 = _S413;
         }
     }
-    var _S412 : u32 = low_0;
-    var _S413 : f32 = WAVELENGTH_CDF_0[low_0 + u32(1)] - WAVELENGTH_CDF_0[low_0];
-    return vec2<f32>(0.37999999523162842f + 0.00499999988824129f * (f32(low_0) + (u_1 - WAVELENGTH_CDF_0[_S412]) / _S413), _S413 / 0.00499999988824129f);
+    var _S414 : u32 = low_0;
+    var _S415 : f32 = WAVELENGTH_CDF_0[low_0 + u32(1)] - WAVELENGTH_CDF_0[low_0];
+    return vec2<f32>(0.37999999523162842f + 0.00499999988824129f * (f32(low_0) + (u_1 - WAVELENGTH_CDF_0[_S414]) / _S415), _S415 / 0.00499999988824129f);
 }
 
 fn upsample( rgb_1 : vec3<f32>,  wavelength_2 : f32) -> f32
 {
-    var _S414 : f32 = dot(vec3<f32>(-0.08011700212955475f, 1.08901798725128174f, -0.00889899954199791f), rgb_1);
-    var _S415 : f32 = dot(vec3<f32>(0.12177000194787979f, -1.22903203964233398f, 1.10724997520446777f), rgb_1);
-    var _S416 : f32 = dot(vec3<f32>(1.17252397537231445f, -1.21603405475616455f, 0.04350199922919273f), rgb_1);
-    var _S417 : vec3<f32> = vec3<f32>(_S414, _S415, _S416);
-    var _S418 : f32 = (wavelength_2 - 0.44999998807907104f) / 0.02999999932944775f;
-    var _S419 : f32 = (wavelength_2 - 0.63999998569488525f) / 0.03999999910593033f;
-    return _S414 + _S415 * exp(-0.5f * _S418 * _S418) + _S416 * exp(-0.5f * _S419 * _S419);
+    var _S416 : f32 = dot(vec3<f32>(-0.08011700212955475f, 1.08901798725128174f, -0.00889899954199791f), rgb_1);
+    var _S417 : f32 = dot(vec3<f32>(0.12177000194787979f, -1.22903203964233398f, 1.10724997520446777f), rgb_1);
+    var _S418 : f32 = dot(vec3<f32>(1.17252397537231445f, -1.21603405475616455f, 0.04350199922919273f), rgb_1);
+    var _S419 : vec3<f32> = vec3<f32>(_S416, _S417, _S418);
+    var _S420 : f32 = (wavelength_2 - 0.44999998807907104f) / 0.02999999932944775f;
+    var _S421 : f32 = (wavelength_2 - 0.63999998569488525f) / 0.03999999910593033f;
+    return _S416 + _S417 * exp(-0.5f * _S420 * _S420) + _S418 * exp(-0.5f * _S421 * _S421);
 }
 
 fn atWavelength( material_20 : Material,  wavelength_3 : f32) -> Material
 {
     var at_0 : Material = material_20;
-    var _S420 : f32 = upsample(material_20.albedo, wavelength_3);
-    var _S421 : vec3<f32> = vec3<f32>(_S420);
-    at_0.albedo = _S421;
-    var _S422 : f32 = upsample(material_20.emissive, wavelength_3);
+    var _S422 : f32 = upsample(material_20.albedo, wavelength_3);
     var _S423 : vec3<f32> = vec3<f32>(_S422);
-    at_0.emissive = _S423;
-    var _S424 : f32 = upsample(material_20.absorption, wavelength_3);
+    at_0.albedo = _S423;
+    var _S424 : f32 = upsample(material_20.emissive, wavelength_3);
     var _S425 : vec3<f32> = vec3<f32>(_S424);
-    at_0.absorption = _S425;
-    var _S426 : f32 = upsample(material_20.specular_tint, wavelength_3);
+    at_0.emissive = _S425;
+    var _S426 : f32 = upsample(material_20.absorption, wavelength_3);
     var _S427 : vec3<f32> = vec3<f32>(_S426);
-    at_0.specular_tint = _S427;
-    var _S428 : f32 = upsample(material_20.translucent, wavelength_3);
+    at_0.absorption = _S427;
+    var _S428 : f32 = upsample(material_20.specular_tint, wavelength_3);
     var _S429 : vec3<f32> = vec3<f32>(_S428);
-    at_0.translucent = _S429;
-    var _S430 : f32 = upsample(material_20.sheen, wavelength_3);
+    at_0.specular_tint = _S429;
+    var _S430 : f32 = upsample(material_20.translucent, wavelength_3);
     var _S431 : vec3<f32> = vec3<f32>(_S430);
-    at_0.sheen = _S431;
+    at_0.translucent = _S431;
+    var _S432 : f32 = upsample(material_20.sheen, wavelength_3);
+    var _S433 : vec3<f32> = vec3<f32>(_S432);
+    at_0.sheen = _S433;
     return at_0;
 }
 
 fn wavelengthEta( material_21 : Material,  n_dot_v_1 : f32,  wavelength_4 : f32) -> vec2<f32>
 {
     var refractive_0 : Material = material_21;
-    var _S432 : f32 = dispersedIor(material_21.ior, material_21.dispersion, wavelength_4);
-    var _S433 : bool = wavelength_4 > 0.0f;
-    var _S434 : f32 = select(material_21.ior, _S432, _S433);
-    refractive_0.ior = _S434;
-    var _S435 : vec2<f32> = vertexEta(refractive_0, n_dot_v_1);
-    return _S435;
+    var _S434 : f32 = dispersedIor(material_21.ior, material_21.dispersion, wavelength_4);
+    var _S435 : bool = wavelength_4 > 0.0f;
+    var _S436 : f32 = select(material_21.ior, _S434, _S435);
+    refractive_0.ior = _S436;
+    var _S437 : vec2<f32> = vertexEta(refractive_0, n_dot_v_1);
+    return _S437;
 }
 
 fn pathColor( f_2 : vec3<f32>,  weight_0 : vec3<f32>,  wavelength_5 : f32) -> vec3<f32>
 {
-    var _S436 : vec3<f32>;
+    var _S438 : vec3<f32>;
     if(wavelength_5 > 0.0f)
     {
-        var _S437 : f32 = upsample(f_2, wavelength_5);
-        _S436 = weight_0 * vec3<f32>(_S437);
+        var _S439 : f32 = upsample(f_2, wavelength_5);
+        _S438 = weight_0 * vec3<f32>(_S439);
     }
     else
     {
-        _S436 = f_2;
+        _S438 = f_2;
     }
-    return _S436;
+    return _S438;
 }
 
 fn neeDecision( material_22 : Material,  n_dot_v_2 : f32,  eta_i_16 : f32,  eta_o_16 : f32) -> bool
 {
-    var _S438 : f32 = fresnel(abs(n_dot_v_2), eta_i_16, eta_o_16);
-    var _S439 : vec3<f32> = (mix((vec3<f32>(_S438)), (material_22.albedo), (material_22.metallic)));
-    var _S440 : f32 = rgb_to_greyscale(_S439);
-    var _S441 : f32 = max((1.0f - _S440) * (1.0f - material_22.metallic) * (1.0f - material_22.transmission), 0.0f);
-    var _S442 : bool = _S441 > 0.03999999910593033f;
-    var _S443 : bool;
-    if(_S442)
+    var _S440 : f32 = fresnel(abs(n_dot_v_2), eta_i_16, eta_o_16);
+    var _S441 : vec3<f32> = (mix((vec3<f32>(_S440)), (material_22.albedo), (material_22.metallic)));
+    var _S442 : f32 = rgb_to_greyscale(_S441);
+    var _S443 : f32 = max((1.0f - _S442) * (1.0f - material_22.metallic) * (1.0f - material_22.transmission), 0.0f);
+    var _S444 : bool = _S443 > 0.03999999910593033f;
+    var _S445 : bool;
+    if(_S444)
     {
-        _S443 = true;
+        _S445 = true;
     }
     else
     {
-        _S443 = (material_22.roughness) > 0.20000000298023224f;
+        _S445 = (material_22.roughness) > 0.20000000298023224f;
     }
-    return _S443;
+    return _S445;
 }
 
 fn misWeighted( throughput_2 : vec3<f32>,  lobe_pdf_0 : f32,  pdf_2 : f32,  power_0 : bool) -> vec3<f32>
 {
     if(power_0)
     {
-        var _S444 : f32 = lobe_pdf_0 / pdf_2;
-        return throughput_2 * vec3<f32>(lobe_pdf_0) / vec3<f32>((pdf_2 * (1.0f + _S444 * _S444)));
+        var _S446 : f32 = lobe_pdf_0 / pdf_2;
+        return throughput_2 * vec3<f32>(lobe_pdf_0) / vec3<f32>((pdf_2 * (1.0f + _S446 * _S446)));
     }
     return throughput_2 * vec3<f32>(lobe_pdf_0) / vec3<f32>((lobe_pdf_0 + pdf_2));
 }
 
-fn neeLobes_0( in_dir_10 : vec3<f32>,  dir_0 : vec3<f32>,  n_11 : vec3<f32>,  material_23 : Material,  eta_i_17 : f32,  eta_o_17 : f32,  refracted_2 : bool,  pdf_3 : f32,  power_1 : bool,  random_state_11 : u32,  terms_5 : MaterialTerms,  view_terms_5 : ViewTerms,  seen_0 : array<vec3<f32>, i32(5)>) -> vec3<f32>
+fn neeLobes_0( in_dir_10 : vec3<f32>,  dir_0 : vec3<f32>,  n_11 : vec3<f32>,  material_23 : Material,  eta_i_17 : f32,  eta_o_17 : f32,  refracted_2 : bool,  pdf_3 : f32,  power_1 : bool,  random_state_11 : u32,  terms_5 : MaterialTerms,  view_terms_5 : ViewTerms,  each_0 : ptr<function, array<vec3<f32>, i32(5)>>,  reached_0 : ptr<function, u32>) -> vec3<f32>
 {
-    var _S445 : vec3<f32> = ((-(in_dir_10)));
-    var _S446 : f32 = dot(n_11, _S445);
-    var _S447 : f32 = (sign((_S446)));
-    var _S448 : vec3<f32> = n_11 * vec3<f32>(_S447);
-    var _S449 : f32 = dot(_S448, dir_0);
-    var _S450 : f32 = material_23.roughness;
-    var _S451 : f32 = _S450 * _S450;
-    var _S452 : vec3<f32> = sampledHalf(in_dir_10, n_11, material_23, random_state_11, view_terms_5);
-    var _S453 : vec3<f32> = reflectedHalf(in_dir_10, dir_0);
-    var _S454 : vec3<f32> = refractedHalf(in_dir_10, dir_0, n_11, eta_i_17, eta_o_17);
-    var _S455 : vec3<f32> = vec3<f32>(0.0f);
+    var _S447 : vec3<f32> = ((-(in_dir_10)));
+    var _S448 : f32 = dot(n_11, _S447);
+    var _S449 : f32 = (sign((_S448)));
+    var _S450 : vec3<f32> = n_11 * vec3<f32>(_S449);
+    var _S451 : f32 = dot(_S450, dir_0);
+    var _S452 : f32 = material_23.roughness;
+    var _S453 : f32 = _S452 * _S452;
+    var _S454 : vec3<f32> = vec3<f32>(0.0f);
+    (*reached_0) = u32(0);
+    var _S455 : HalfTerms = HalfTerms_x24init_0(0.0f, 0.0f, _S454, _S454, 0.0f, 0.0f, _S454, _S454, 0.0f, 0.0f, 0.0f, 0.0f, _S454, 0.0f, _S454, _S454, vec2<f32>(0.0f), 0.0f);
     var i_2 : u32 = u32(0);
-    var f_3 : vec3<f32> = _S455;
+    loop
+    {
+        if(i_2 < u32(5))
+        {
+        }
+        else
+        {
+            break;
+        }
+        (*each_0)[i_2] = _S454;
+        var i_3 : u32 = i_2 + u32(1);
+        i_2 = i_3;
+    }
+    var half_of_1 : u32 = u32(4294967295);
+    var lobe_terms_1 : HalfTerms = _S455;
+    var ggx_n_5 : vec3<f32> = _S454;
+    i_2 = u32(0);
+    var f_3 : vec3<f32> = _S454;
     loop
     {
         if(i_2 < u32(4))
@@ -1387,114 +1426,150 @@ fn neeLobes_0( in_dir_10 : vec3<f32>,  dir_0 : vec3<f32>,  n_11 : vec3<f32>,  ma
         {
             _S460 = (_S456 == u32(1)) == refracted_2;
         }
+        var ggx_n_6 : vec3<f32>;
         if(_S460)
         {
-            var _S463 : vec3<f32>;
-            if(_S456 == u32(1))
+            var _S463 : u32;
+            if(_S456 == u32(6))
             {
-                _S463 = _S454;
+                _S463 = u32(0);
             }
             else
             {
-                var _S464 : bool;
-                if(_S457)
+                if(_S456 == u32(4))
                 {
-                    _S464 = true;
+                    _S463 = u32(2);
                 }
                 else
                 {
-                    _S464 = _S456 == u32(6);
-                }
-                if(_S464)
-                {
-                    _S463 = _S452;
-                }
-                else
-                {
-                    _S463 = _S453;
+                    _S463 = _S456;
                 }
             }
-            var _S465 : HalfTerms = precomputeHalf(in_dir_10, _S463, material_23, eta_i_17, eta_o_17, terms_5, view_terms_5);
+            var _S464 : bool = _S463 != half_of_1;
+            var half_of_2 : u32;
+            var lobe_terms_2 : HalfTerms;
+            if(_S464)
+            {
+                var _S465 : bool = _S463 == u32(0);
+                if(_S465)
+                {
+                    var _S466 : vec3<f32> = sampledHalf(in_dir_10, n_11, material_23, random_state_11, view_terms_5);
+                    ggx_n_6 = _S466;
+                }
+                else
+                {
+                    var _S467 : bool = _S463 == u32(1);
+                    if(_S467)
+                    {
+                        var _S468 : vec3<f32> = refractedHalf(in_dir_10, dir_0, n_11, eta_i_17, eta_o_17);
+                        ggx_n_6 = _S468;
+                    }
+                    else
+                    {
+                        var _S469 : vec3<f32> = reflectedHalf(in_dir_10, dir_0);
+                        ggx_n_6 = _S469;
+                    }
+                }
+                var _S470 : HalfTerms = precomputeHalf(in_dir_10, ggx_n_6, material_23, eta_i_17, eta_o_17, terms_5, view_terms_5);
+                lobe_terms_2 = _S470;
+                half_of_2 = _S463;
+            }
+            else
+            {
+                lobe_terms_2 = lobe_terms_1;
+                ggx_n_6 = ggx_n_5;
+                half_of_2 = half_of_1;
+            }
             var throughput_3 : vec3<f32>;
             var lobe_pdf_1 : f32;
             switch(_S456)
             {
             case u32(0):
                 {
-                    var _S466 : f32 = diffusePDF(_S449, 0.0f, abs(_S446), _S451, _S465, eta_i_17, eta_o_17);
-                    var _S467 : vec3<f32> = diffuseBSDF(dir_0, _S448, _S451, material_23, _S465);
-                    lobe_pdf_1 = _S466;
-                    throughput_3 = _S467;
+                    var _S471 : f32 = diffusePDF(_S451, 0.0f, abs(_S448), _S453, lobe_terms_2, eta_i_17, eta_o_17);
+                    var _S472 : vec3<f32> = diffuseBSDF(dir_0, _S450, _S453, material_23, lobe_terms_2);
+                    lobe_pdf_1 = _S471;
+                    throughput_3 = _S472;
                 }
             case u32(1):
                 {
-                    var _S468 : f32 = refractPDF(_S449, dot(dir_0, _S463), abs(_S446), _S451, _S465, eta_i_17, eta_o_17);
-                    var _S469 : vec3<f32> = refractBSDF(dir_0, _S448, _S451, material_23, _S465);
-                    lobe_pdf_1 = _S468;
-                    throughput_3 = _S469;
+                    var _S473 : f32 = refractPDF(_S451, dot(dir_0, ggx_n_6), abs(_S448), _S453, lobe_terms_2, eta_i_17, eta_o_17);
+                    var _S474 : vec3<f32> = refractBSDF(dir_0, _S450, _S453, material_23, lobe_terms_2);
+                    lobe_pdf_1 = _S473;
+                    throughput_3 = _S474;
                 }
             case u32(4):
                 {
-                    var _S470 : f32 = sheenVelvetPDF(_S449, 0.0f, abs(_S446), _S451, _S465, eta_i_17, eta_o_17);
-                    var _S471 : vec3<f32> = sheenVelvetBSDF(dir_0, _S448, _S451, material_23, _S465);
-                    lobe_pdf_1 = _S470;
-                    throughput_3 = _S471;
+                    var _S475 : f32 = sheenVelvetPDF(_S451, 0.0f, abs(_S448), _S453, lobe_terms_2, eta_i_17, eta_o_17);
+                    var _S476 : vec3<f32> = sheenVelvetBSDF(dir_0, _S450, _S453, material_23, lobe_terms_2);
+                    lobe_pdf_1 = _S475;
+                    throughput_3 = _S476;
                 }
             default :
                 {
-                    var _S472 : f32 = reflectPDF(_S449, 0.0f, abs(_S446), _S451, _S465, eta_i_17, eta_o_17);
-                    var _S473 : vec3<f32> = reflectBSDF(dir_0, _S448, _S451, material_23, _S465);
-                    lobe_pdf_1 = _S472;
-                    throughput_3 = _S473;
+                    var _S477 : f32 = reflectPDF(_S451, 0.0f, abs(_S448), _S453, lobe_terms_2, eta_i_17, eta_o_17);
+                    var _S478 : vec3<f32> = reflectBSDF(dir_0, _S450, _S453, material_23, lobe_terms_2);
+                    lobe_pdf_1 = _S477;
+                    throughput_3 = _S478;
                 }
             }
-            var _S474 : bool = lobe_pdf_1 > 0.0f;
+            var _S479 : bool = lobe_pdf_1 > 0.0f;
             var f_4 : vec3<f32>;
-            if(_S474)
+            if(_S479)
             {
-                var _S475 : vec3<f32> = misWeighted(throughput_3, lobe_pdf_1, pdf_3, power_1);
-                var f_5 : vec3<f32> = f_3 + _S475 * seen_0[i_2];
+                var _S480 : vec3<f32> = misWeighted(throughput_3, lobe_pdf_1, pdf_3, power_1);
+                (*each_0)[i_2] = _S480;
+                var _S481 : u32 = ((*reached_0) | (((u32(1) << (i_2)))));
+                (*reached_0) = _S481;
+                var f_5 : vec3<f32> = f_3 + (*each_0)[i_2];
                 f_4 = f_5;
             }
             else
             {
                 f_4 = f_3;
             }
+            half_of_1 = half_of_2;
+            lobe_terms_1 = lobe_terms_2;
             f_3 = f_4;
         }
-        var i_3 : u32 = i_2 + u32(1);
-        i_2 = i_3;
+        else
+        {
+            ggx_n_6 = ggx_n_5;
+        }
+        var i_4 : u32 = i_2 + u32(1);
+        ggx_n_5 = ggx_n_6;
+        i_2 = i_4;
     }
     return f_3;
 }
 
 fn neeBSDF( in_dir_11 : vec3<f32>,  dir_1 : vec3<f32>,  n_12 : vec3<f32>,  material_24 : Material,  eta_i_18 : f32,  eta_o_18 : f32,  refracted_3 : bool,  pdf_4 : f32,  power_2 : bool,  random_state_12 : u32,  terms_6 : MaterialTerms,  view_terms_6 : ViewTerms) -> vec3<f32>
 {
-    var _S476 : vec3<f32> = vec3<f32>(1.0f);
-    var _S477 : array<vec3<f32>, i32(5)> = array<vec3<f32>, i32(5)>( _S476, _S476, _S476, _S476, _S476 );
-    var _S478 : vec3<f32> = neeLobes_0(in_dir_11, dir_1, n_12, material_24, eta_i_18, eta_o_18, refracted_3, pdf_4, power_2, random_state_12, terms_6, view_terms_6, _S477);
-    return _S478;
+    var reached_1 : u32 = u32(0);
+    var each_1 : array<vec3<f32>, i32(5)>;
+    var _S482 : vec3<f32> = neeLobes_0(in_dir_11, dir_1, n_12, material_24, eta_i_18, eta_o_18, refracted_3, pdf_4, power_2, random_state_12, terms_6, view_terms_6, &(each_1), &(reached_1));
+    return _S482;
 }
 
 fn straightThrough( dir_2 : vec3<f32>,  n_13 : vec3<f32>,  material_25 : Material) -> vec3<f32>
 {
-    var _S479 : vec3<f32> = ((-(dir_2)));
-    var _S480 : f32 = (sign((dot(n_13, _S479))));
-    var _S481 : vec3<f32> = n_13 * vec3<f32>(_S480);
-    var _S482 : AnisotropicFrame = anisotropicFrame(material_25, _S481);
-    var _S483 : bool = (_S482.alphas.x) > 0.0f;
-    if(_S483)
+    var _S483 : vec3<f32> = ((-(dir_2)));
+    var _S484 : f32 = (sign((dot(n_13, _S483))));
+    var _S485 : vec3<f32> = n_13 * vec3<f32>(_S484);
+    var _S486 : AnisotropicFrame = anisotropicFrame(material_25, _S485);
+    var _S487 : bool = (_S486.alphas.x) > 0.0f;
+    if(_S487)
     {
-        var _S484 : f32 = material_25.transmission * (1.0f - material_25.metallic);
-        var _S485 : vec3<f32> = ((-(_S481)));
-        var _S486 : vec3<f32> = anisotropicLocal(dir_2, _S482.tangent, _S485);
-        var _S487 : f32 = anisotropicG1(_S486, _S482.alphas);
-        return vec3<f32>((_S484 * _S487)) * material_25.albedo;
+        var _S488 : f32 = material_25.transmission * (1.0f - material_25.metallic);
+        var _S489 : vec3<f32> = ((-(_S485)));
+        var _S490 : vec3<f32> = anisotropicLocal(dir_2, _S486.tangent, _S489);
+        var _S491 : f32 = anisotropicG1(_S490, _S486.alphas);
+        return vec3<f32>((_S488 * _S491)) * material_25.albedo;
     }
-    var _S488 : f32 = material_25.transmission * (1.0f - material_25.metallic);
-    var _S489 : f32 = material_25.roughness;
-    var _S490 : f32 = smithG1(_S489 * _S489, abs(dot(n_13, dir_2)));
-    return vec3<f32>((_S488 * _S490)) * material_25.albedo;
+    var _S492 : f32 = material_25.transmission * (1.0f - material_25.metallic);
+    var _S493 : f32 = material_25.roughness;
+    var _S494 : f32 = smithG1(_S493 * _S493, abs(dot(n_13, dir_2)));
+    return vec3<f32>((_S492 * _S494)) * material_25.albedo;
 }
 
 fn shadowLength( shadow_0 : vec3<f32>) -> f32
@@ -1504,39 +1579,39 @@ fn shadowLength( shadow_0 : vec3<f32>) -> f32
 
 fn occluderTransmittance( toward_0 : vec3<f32>,  n_14 : vec3<f32>,  material_26 : Material,  coverage_0 : f32) -> vec3<f32>
 {
-    var _S491 : vec3<f32>;
+    var _S495 : vec3<f32>;
     if((material_26.ior) == 1.0f)
     {
-        var _S492 : vec3<f32> = straightThrough(toward_0, n_14, material_26);
-        _S491 = _S492;
+        var _S496 : vec3<f32> = straightThrough(toward_0, n_14, material_26);
+        _S495 = _S496;
     }
     else
     {
-        _S491 = vec3<f32>(0.0f);
+        _S495 = vec3<f32>(0.0f);
     }
-    return _S491 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
+    return _S495 * vec3<f32>(coverage_0) + vec3<f32>((1.0f - coverage_0));
 }
 
 fn stream( seed_0 : u32,  index_0 : u32) -> u32
 {
-    var _S493 : u32 = hash(index_0);
-    var _S494 : u32 = hash((seed_0 ^ (_S493)));
-    return _S494;
+    var _S497 : u32 = hash(index_0);
+    var _S498 : u32 = hash((seed_0 ^ (_S497)));
+    return _S498;
 }
 
 fn safeDivide( a_6 : vec3<f32>,  b_2 : vec3<f32>) -> vec3<f32>
 {
-    var _S495 : vec3<f32> = a_6 / b_2;
-    var _S496 : vec3<f32> = vec3<f32>(0.0f);
-    var _S497 : vec3<bool> = b_2 == _S496;
-    var _S498 : vec3<f32> = select(_S495, _S496, _S497);
-    return _S498;
+    var _S499 : vec3<f32> = a_6 / b_2;
+    var _S500 : vec3<f32> = vec3<f32>(0.0f);
+    var _S501 : vec3<bool> = b_2 == _S500;
+    var _S502 : vec3<f32> = select(_S499, _S500, _S501);
+    return _S502;
 }
 
 fn resamplingTarget( f_6 : vec3<f32>) -> f32
 {
-    var _S499 : f32 = rgb_to_greyscale(abs(f_6));
-    return _S499;
+    var _S503 : f32 = rgb_to_greyscale(abs(f_6));
+    return _S503;
 }
 
 struct Reservoir
@@ -1562,30 +1637,30 @@ struct Selection
 
 fn offer( sel_0 : ptr<function, Selection>,  candidate_0 : Reservoir,  weight_1 : vec3<f32>)
 {
-    var _S500 : f32 = resamplingTarget(weight_1);
-    var _S501 : bool = _S500 > 0.0f;
-    var _S502 : bool;
-    if(_S501)
+    var _S504 : f32 = resamplingTarget(weight_1);
+    var _S505 : bool = _S504 > 0.0f;
+    var _S506 : bool;
+    if(_S505)
     {
-        _S502 = _S500 < 3.00000000549775576e+38f;
+        _S506 = _S504 < 3.00000000549775576e+38f;
     }
     else
     {
-        _S502 = false;
+        _S506 = false;
     }
-    var _S503 : bool = !_S502;
-    if(_S503)
+    var _S507 : bool = !_S506;
+    if(_S507)
     {
         return;
     }
-    var _S504 : f32 = (*sel_0).w_sum + _S500;
-    (*sel_0).w_sum = _S504;
-    var _S505 : vec3<f32> = (*sel_0).color + weight_1;
-    (*sel_0).color = _S505;
-    var _S506 : Random = pcg((*sel_0).random_state);
-    (*sel_0).random_state = _S506.state;
-    var _S507 : bool = (_S506.value * (*sel_0).w_sum) <= _S500;
-    if(_S507)
+    var _S508 : f32 = (*sel_0).w_sum + _S504;
+    (*sel_0).w_sum = _S508;
+    var _S509 : vec3<f32> = (*sel_0).color + weight_1;
+    (*sel_0).color = _S509;
+    var _S510 : Random = pcg((*sel_0).random_state);
+    (*sel_0).random_state = _S510.state;
+    var _S511 : bool = (_S510.value * (*sel_0).w_sum) <= _S504;
+    if(_S511)
     {
         (*sel_0).r = candidate_0;
     }
@@ -1601,10 +1676,10 @@ struct Shift
 fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 : Shift,  mis_0 : f32)
 {
     var candidate_1 : Reservoir = r_0;
-    var _S508 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
-    candidate_1.f = _S508;
-    var _S509 : f32 = r_0.jac * shifted_0.jac;
-    candidate_1.jac = _S509;
+    var _S512 : vec3<f32> = shifted_0.f / vec3<f32>(shifted_0.jac);
+    candidate_1.f = _S512;
+    var _S513 : f32 = r_0.jac * shifted_0.jac;
+    candidate_1.jac = _S513;
     offer(&((*sel_1)), candidate_1, vec3<f32>(mis_0) * shifted_0.f * vec3<f32>(r_0.w));
     return;
 }
@@ -1612,11 +1687,11 @@ fn offerShifted( sel_1 : ptr<function, Selection>,  r_0 : Reservoir,  shifted_0 
 fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 {
     var r_1 : Reservoir = sel_2.r;
-    var _S510 : f32 = resamplingTarget(r_1.f);
-    var _S511 : f32 = sel_2.w_sum / _S510;
-    var _S512 : bool = _S510 > 0.0f;
-    var _S513 : f32 = select(0.0f, _S511, _S512);
-    r_1.w = _S513;
+    var _S514 : f32 = resamplingTarget(r_1.f);
+    var _S515 : f32 = sel_2.w_sum / _S514;
+    var _S516 : bool = _S514 > 0.0f;
+    var _S517 : f32 = select(0.0f, _S515, _S516);
+    r_1.w = _S517;
     r_1.c = c_0;
     return r_1;
 }
@@ -1624,35 +1699,35 @@ fn finalize( sel_2 : Selection,  c_0 : f32) -> Reservoir
 fn withEnd( r_2 : Reservoir,  end_type_0 : u32,  end_0 : u32,  f_7 : vec3<f32>) -> Reservoir
 {
     var candidate_2 : Reservoir = r_2;
-    var _S514 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
-    var _S515 : u32 = (insertBits((_S514), (end_type_0), (u32(12)), (u32(3))));
-    candidate_2.path = _S515;
+    var _S518 : u32 = (insertBits((r_2.path), (end_0), (u32(0)), (u32(5))));
+    var _S519 : u32 = (insertBits((_S518), (end_type_0), (u32(12)), (u32(3))));
+    candidate_2.path = _S519;
     candidate_2.f = f_7;
     return candidate_2;
 }
 
 fn facingSign( transmission_0 : f32,  face_0 : vec3<f32>,  direction_0 : vec3<f32>) -> f32
 {
-    var _S516 : bool = transmission_0 > 0.0f;
-    var _S517 : bool;
-    if(_S516)
+    var _S520 : bool = transmission_0 > 0.0f;
+    var _S521 : bool;
+    if(_S520)
     {
-        _S517 = true;
+        _S521 = true;
     }
     else
     {
-        _S517 = (dot(face_0, direction_0)) < 0.0f;
+        _S521 = (dot(face_0, direction_0)) < 0.0f;
     }
-    var _S518 : f32;
-    if(_S517)
+    var _S522 : f32;
+    if(_S521)
     {
-        _S518 = 1.0f;
+        _S522 = 1.0f;
     }
     else
     {
-        _S518 = -1.0f;
+        _S522 = -1.0f;
     }
-    return _S518;
+    return _S522;
 }
 
 fn geometryDensity( geometry_n_1 : vec3<f32>,  direction_1 : vec3<f32>,  distance_1 : f32) -> f32
@@ -1667,62 +1742,18 @@ fn footprintThreshold( geometry_density_0 : f32) -> f32
 
 fn withinFootprint( open_0 : bool,  prev_rough_0 : bool,  prev_pdf_0 : f32,  geometry_density_1 : f32,  threshold_0 : f32) -> bool
 {
-    var _S519 : bool;
+    var _S523 : bool;
     if(open_0)
     {
-        _S519 = prev_rough_0;
+        _S523 = prev_rough_0;
     }
     else
     {
-        _S519 = false;
+        _S523 = false;
     }
-    if(_S519)
+    if(_S523)
     {
-        _S519 = (prev_pdf_0 * geometry_density_1 * threshold_0) <= 1.0f;
-    }
-    else
-    {
-        _S519 = false;
-    }
-    return _S519;
-}
-
-fn withinInverseFootprint( pdf_5 : f32,  diffuse_0 : bool,  prev_cos_0 : f32,  distance_2 : f32,  threshold_1 : f32) -> bool
-{
-    var _S520 : bool = pdf_5 > 0.0f;
-    var _S521 : bool;
-    if(_S520)
-    {
-        if(diffuse_0)
-        {
-            _S521 = true;
-        }
-        else
-        {
-            _S521 = (pdf_5 * prev_cos_0 / (distance_2 * distance_2) * threshold_1) <= 1.0f;
-        }
-    }
-    else
-    {
-        _S521 = false;
-    }
-    return _S521;
-}
-
-fn roughLobe( pdf_6 : f32,  diffuse_1 : bool,  roughness_0 : f32) -> bool
-{
-    var _S522 : bool = pdf_6 > 0.0f;
-    var _S523 : bool;
-    if(_S522)
-    {
-        if(diffuse_1)
-        {
-            _S523 = true;
-        }
-        else
-        {
-            _S523 = roughness_0 >= 0.20000000298023224f;
-        }
+        _S523 = (prev_pdf_0 * geometry_density_1 * threshold_0) <= 1.0f;
     }
     else
     {
@@ -1731,23 +1762,67 @@ fn roughLobe( pdf_6 : f32,  diffuse_1 : bool,  roughness_0 : f32) -> bool
     return _S523;
 }
 
+fn withinInverseFootprint( pdf_5 : f32,  diffuse_0 : bool,  prev_cos_0 : f32,  distance_2 : f32,  threshold_1 : f32) -> bool
+{
+    var _S524 : bool = pdf_5 > 0.0f;
+    var _S525 : bool;
+    if(_S524)
+    {
+        if(diffuse_0)
+        {
+            _S525 = true;
+        }
+        else
+        {
+            _S525 = (pdf_5 * prev_cos_0 / (distance_2 * distance_2) * threshold_1) <= 1.0f;
+        }
+    }
+    else
+    {
+        _S525 = false;
+    }
+    return _S525;
+}
+
+fn roughLobe( pdf_6 : f32,  diffuse_1 : bool,  roughness_0 : f32) -> bool
+{
+    var _S526 : bool = pdf_6 > 0.0f;
+    var _S527 : bool;
+    if(_S526)
+    {
+        if(diffuse_1)
+        {
+            _S527 = true;
+        }
+        else
+        {
+            _S527 = roughness_0 >= 0.20000000298023224f;
+        }
+    }
+    else
+    {
+        _S527 = false;
+    }
+    return _S527;
+}
+
 fn survivalProbability( throughput_4 : vec3<f32>,  density_0 : f32) -> f32
 {
-    var _S524 : vec3<f32> = throughput_4 / vec3<f32>(density_0);
-    return clamp(max(_S524.x, max(_S524.y, _S524.z)), 0.0f, 1.0f);
+    var _S528 : vec3<f32> = throughput_4 / vec3<f32>(density_0);
+    return clamp(max(_S528.x, max(_S528.y, _S528.z)), 0.0f, 1.0f);
 }
 
 fn confidenceCap( duplicated_0 : f32) -> f32
 {
-    var _S525 : f32 = (mix((20.0f), (1.0f), (pow(duplicated_0, 0.10000000149011612f))));
-    return _S525;
+    var _S529 : f32 = (mix((20.0f), (1.0f), (pow(duplicated_0, 0.10000000149011612f))));
+    return _S529;
 }
 
 fn temporalWeights( c_1 : f32,  p_c_0 : f32,  c_t_0 : f32,  p_t_0 : f32,  g_previous_0 : f32,  g_current_0 : f32) -> vec2<f32>
 {
-    var _S526 : f32 = c_1 * p_c_0;
-    var _S527 : f32 = c_t_0 * p_t_0;
-    return vec2<f32>(_S526 / (_S526 + c_t_0 * g_previous_0), _S527 / (_S527 + c_1 * g_current_0));
+    var _S530 : f32 = c_1 * p_c_0;
+    var _S531 : f32 = c_t_0 * p_t_0;
+    return vec2<f32>(_S530 / (_S530 + c_t_0 * g_previous_0), _S531 / (_S531 + c_1 * g_current_0));
 }
 
 fn pairShare( c_n_0 : f32,  c_pair_0 : f32,  c_sum_0 : f32) -> f32
@@ -1767,18 +1842,18 @@ fn canonicalWeight( share_1 : f32,  c_pair_2 : f32,  p_c_1 : f32,  c_n_2 : f32, 
 
 fn cosSubClamped( sin_a_0 : f32,  cos_a_0 : f32,  sin_b_0 : f32,  cos_b_0 : f32) -> f32
 {
-    var _S528 : f32 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
-    var _S529 : bool = cos_a_0 > cos_b_0;
-    var _S530 : f32 = select(_S528, 1.0f, _S529);
-    return _S530;
+    var _S532 : f32 = cos_a_0 * cos_b_0 + sin_a_0 * sin_b_0;
+    var _S533 : bool = cos_a_0 > cos_b_0;
+    var _S534 : f32 = select(_S532, 1.0f, _S533);
+    return _S534;
 }
 
 fn sinSubClamped( sin_a_1 : f32,  cos_a_1 : f32,  sin_b_1 : f32,  cos_b_1 : f32) -> f32
 {
-    var _S531 : f32 = sin_a_1 * cos_b_1 - cos_a_1 * sin_b_1;
-    var _S532 : bool = cos_a_1 > cos_b_1;
-    var _S533 : f32 = select(_S531, 0.0f, _S532);
-    return _S533;
+    var _S535 : f32 = sin_a_1 * cos_b_1 - cos_a_1 * sin_b_1;
+    var _S536 : bool = cos_a_1 > cos_b_1;
+    var _S537 : f32 = select(_S535, 0.0f, _S536);
+    return _S537;
 }
 
 fn sine( c_2 : f32) -> f32
@@ -1797,35 +1872,35 @@ struct LightBounds
 
 fn importance( node_0 : LightBounds,  p_0 : vec3<f32>,  normal_0 : vec3<f32>) -> f32
 {
-    var _S534 : vec3<f32> = (node_0.low + node_0.high) * vec3<f32>(0.5f);
-    var _S535 : vec3<f32> = node_0.high - node_0.low;
-    var _S536 : vec3<f32> = p_0 - _S534;
-    var _S537 : vec3<f32> = (normalize((_S536)));
-    var _S538 : f32 = dot(_S536, _S536);
-    var _S539 : f32 = dot(_S535, _S535) / 4.0f;
-    var _S540 : f32 = abs(dot(node_0.w, _S537));
-    var _S541 : f32 = sine(node_0.cos_theta_o);
-    var _S542 : f32 = sqrt(max(1.0f - _S539 / _S538, 0.0f));
-    var _S543 : bool = _S538 < _S539;
-    var _S544 : f32 = select(_S542, -1.0f, _S543);
-    var _S545 : f32 = sine(_S544);
-    var _S546 : f32 = sine(_S540);
-    var _S547 : f32 = cosSubClamped(_S546, _S540, _S541, node_0.cos_theta_o);
-    var _S548 : f32 = sine(_S540);
-    var _S549 : f32 = sinSubClamped(_S548, _S540, _S541, node_0.cos_theta_o);
-    var _S550 : f32 = cosSubClamped(_S549, _S547, _S545, _S544);
-    var _S551 : bool = _S550 <= 0.0f;
-    if(_S551)
+    var _S538 : vec3<f32> = (node_0.low + node_0.high) * vec3<f32>(0.5f);
+    var _S539 : vec3<f32> = node_0.high - node_0.low;
+    var _S540 : vec3<f32> = p_0 - _S538;
+    var _S541 : vec3<f32> = (normalize((_S540)));
+    var _S542 : f32 = dot(_S540, _S540);
+    var _S543 : f32 = dot(_S539, _S539) / 4.0f;
+    var _S544 : f32 = abs(dot(node_0.w, _S541));
+    var _S545 : f32 = sine(node_0.cos_theta_o);
+    var _S546 : f32 = sqrt(max(1.0f - _S543 / _S542, 0.0f));
+    var _S547 : bool = _S542 < _S543;
+    var _S548 : f32 = select(_S546, -1.0f, _S547);
+    var _S549 : f32 = sine(_S548);
+    var _S550 : f32 = sine(_S544);
+    var _S551 : f32 = cosSubClamped(_S550, _S544, _S545, node_0.cos_theta_o);
+    var _S552 : f32 = sine(_S544);
+    var _S553 : f32 = sinSubClamped(_S552, _S544, _S545, node_0.cos_theta_o);
+    var _S554 : f32 = cosSubClamped(_S553, _S551, _S549, _S548);
+    var _S555 : bool = _S554 <= 0.0f;
+    if(_S555)
     {
         return 0.0f;
     }
-    var _S552 : f32 = - dot(_S537, normal_0);
-    var _S553 : f32 = node_0.phi * _S550 / max(_S538, length(_S535) / 2.0f);
-    var _S554 : f32 = sine(_S552);
-    var _S555 : f32 = cosSubClamped(_S554, _S552, _S545, _S544);
-    var _S556 : bool = (dot(normal_0, normal_0)) == 0.0f;
-    var _S557 : f32 = select(_S555, 1.0f, _S556);
-    return max(_S553 * _S557, 0.0f);
+    var _S556 : f32 = - dot(_S541, normal_0);
+    var _S557 : f32 = node_0.phi * _S554 / max(_S542, length(_S539) / 2.0f);
+    var _S558 : f32 = sine(_S556);
+    var _S559 : f32 = cosSubClamped(_S558, _S556, _S549, _S548);
+    var _S560 : bool = (dot(normal_0, normal_0)) == 0.0f;
+    var _S561 : f32 = select(_S559, 1.0f, _S560);
+    return max(_S557 * _S561, 0.0f);
 }
 
 fn solidAngle( probability_0 : f32,  normal_1 : vec3<f32>,  toward_1 : vec3<f32>) -> f32
@@ -1835,85 +1910,85 @@ fn solidAngle( probability_0 : f32,  normal_1 : vec3<f32>,  toward_1 : vec3<f32>
 
 fn pickChild( first_0 : LightBounds,  second_0 : LightBounds,  p_1 : vec3<f32>,  normal_2 : vec3<f32>,  pick_0 : ptr<function, f32>,  probability_1 : ptr<function, f32>) -> u32
 {
-    var _S558 : f32 = importance(first_0, p_1, normal_2);
-    var _S559 : f32 = importance(second_0, p_1, normal_2);
-    var _S560 : vec2<f32> = vec2<f32>(_S558, _S559);
-    var _S561 : bool = _S558 == 0.0f;
-    var _S562 : bool;
-    if(_S561)
+    var _S562 : f32 = importance(first_0, p_1, normal_2);
+    var _S563 : f32 = importance(second_0, p_1, normal_2);
+    var _S564 : vec2<f32> = vec2<f32>(_S562, _S563);
+    var _S565 : bool = _S562 == 0.0f;
+    var _S566 : bool;
+    if(_S565)
     {
-        _S562 = _S559 == 0.0f;
+        _S566 = _S563 == 0.0f;
     }
     else
     {
-        _S562 = false;
+        _S566 = false;
     }
-    if(_S562)
+    if(_S566)
     {
         return u32(2);
     }
-    var _S563 : f32 = _S558 + _S559;
-    var _S564 : bool = _S559 > 0.0f;
-    if(_S564)
+    var _S567 : f32 = _S562 + _S563;
+    var _S568 : bool = _S563 > 0.0f;
+    if(_S568)
     {
-        _S562 = ((*pick_0) * _S563) >= _S558;
+        _S566 = ((*pick_0) * _S567) >= _S562;
     }
     else
     {
-        _S562 = false;
+        _S566 = false;
     }
-    var _S565 : u32 = select(u32(0), u32(1), _S562);
-    var _S566 : f32 = min(((*pick_0) * _S563 - f32(_S565) * _S558) / _S560[_S565], 0.99999994039535522f);
-    (*pick_0) = _S566;
-    var _S567 : f32 = (*probability_1) * (_S560[_S565] / _S563);
-    (*probability_1) = _S567;
-    return _S565;
+    var _S569 : u32 = select(u32(0), u32(1), _S566);
+    var _S570 : f32 = min(((*pick_0) * _S567 - f32(_S569) * _S562) / _S564[_S569], 0.99999994039535522f);
+    (*pick_0) = _S570;
+    var _S571 : f32 = (*probability_1) * (_S564[_S569] / _S567);
+    (*probability_1) = _S571;
+    return _S569;
 }
 
 fn childShare( first_1 : LightBounds,  second_1 : LightBounds,  p_2 : vec3<f32>,  normal_3 : vec3<f32>,  child_0 : u32) -> f32
 {
-    var _S568 : f32 = importance(first_1, p_2, normal_3);
-    var _S569 : f32 = importance(second_1, p_2, normal_3);
-    var _S570 : vec2<f32> = vec2<f32>(_S568, _S569);
-    var _S571 : f32 = _S570[child_0] / (_S568 + _S569);
-    var _S572 : bool = (_S570[child_0]) > 0.0f;
-    var _S573 : f32 = select(0.0f, _S571, _S572);
-    return _S573;
+    var _S572 : f32 = importance(first_1, p_2, normal_3);
+    var _S573 : f32 = importance(second_1, p_2, normal_3);
+    var _S574 : vec2<f32> = vec2<f32>(_S572, _S573);
+    var _S575 : f32 = _S574[child_0] / (_S572 + _S573);
+    var _S576 : bool = (_S574[child_0]) > 0.0f;
+    var _S577 : f32 = select(0.0f, _S575, _S576);
+    return _S577;
 }
 
 fn powerHeuristic( a_7 : f32,  b_3 : f32) -> f32
 {
-    var _S574 : f32 = 1.0f / (1.0f + b_3 / a_7 * (b_3 / a_7));
-    var _S575 : bool = b_3 > 0.0f;
-    var _S576 : f32 = select(1.0f, _S574, _S575);
-    return _S576;
+    var _S578 : f32 = 1.0f / (1.0f + b_3 / a_7 * (b_3 / a_7));
+    var _S579 : bool = b_3 > 0.0f;
+    var _S580 : f32 = select(1.0f, _S578, _S579);
+    return _S580;
 }
 
 fn sphereDensity( center_0 : vec3<f32>,  radius_1 : f32,  p_3 : vec3<f32>) -> f32
 {
-    var _S577 : vec3<f32> = center_0 - p_3;
-    var _S578 : f32 = radius_1 * radius_1 / dot(_S577, _S577);
-    var _S579 : bool = _S578 >= 1.0f;
-    if(_S579)
+    var _S581 : vec3<f32> = center_0 - p_3;
+    var _S582 : f32 = radius_1 * radius_1 / dot(_S581, _S581);
+    var _S583 : bool = _S582 >= 1.0f;
+    if(_S583)
     {
         return 0.07957746833562851f;
     }
-    return (1.0f + sqrt(1.0f - _S578)) / (6.28318548202514648f * _S578);
+    return (1.0f + sqrt(1.0f - _S582)) / (6.28318548202514648f * _S582);
 }
 
 fn sampleSphere( center_1 : vec3<f32>,  radius_2 : f32,  p_4 : vec3<f32>,  u1_0 : f32,  u2_0 : f32) -> vec3<f32>
 {
-    var _S580 : vec3<f32> = center_1 - p_4;
-    var _S581 : f32 = radius_2 * radius_2 / dot(_S580, _S580);
-    var _S582 : f32 = u1_0 * _S581 / (1.0f + sqrt(max(1.0f - _S581, 0.0f)));
-    var _S583 : f32 = 2.0f * u1_0;
-    var _S584 : bool = _S581 >= 1.0f;
-    var _S585 : f32 = select(_S582, _S583, _S584);
-    var _S586 : f32 = sqrt(max(_S585 * (2.0f - _S585), 0.0f));
-    var _S587 : f32 = 6.28318548202514648f * u2_0;
-    var _S588 : vec3<f32> = vec3<f32>(_S586 * cos(_S587), 1.0f - _S585, _S586 * sin(_S587));
-    var _S589 : vec3<f32> = (normalize((_S580)));
-    var _S590 : vec3<f32> = tangentToWorld(_S588, _S589);
-    return _S590;
+    var _S584 : vec3<f32> = center_1 - p_4;
+    var _S585 : f32 = radius_2 * radius_2 / dot(_S584, _S584);
+    var _S586 : f32 = u1_0 * _S585 / (1.0f + sqrt(max(1.0f - _S585, 0.0f)));
+    var _S587 : f32 = 2.0f * u1_0;
+    var _S588 : bool = _S585 >= 1.0f;
+    var _S589 : f32 = select(_S586, _S587, _S588);
+    var _S590 : f32 = sqrt(max(_S589 * (2.0f - _S589), 0.0f));
+    var _S591 : f32 = 6.28318548202514648f * u2_0;
+    var _S592 : vec3<f32> = vec3<f32>(_S590 * cos(_S591), 1.0f - _S589, _S590 * sin(_S591));
+    var _S593 : vec3<f32> = (normalize((_S584)));
+    var _S594 : vec3<f32> = tangentToWorld(_S592, _S593);
+    return _S594;
 }
 
