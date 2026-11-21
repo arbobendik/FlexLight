@@ -60,6 +60,8 @@ struct Material {
     // Whether the tangent is the UV map's over Blender's default
     float tangent_source;
     vec3 tangent;
+    // FlexKernels' dispersion of the index of refraction, none at 0, which no material of FlexLight's carries yet
+    float dispersion;
 };
 
 struct Light {
@@ -170,7 +172,7 @@ Material access_instance_material(uint index) {
     vec4 m7 = texelFetch(instance_material, buffer_position(offset + 7u), 0);
     // Without a translucent, sheen or anisotropic material in the scene, none, which compiles it out
     return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m4.xyz, m4.w, SHEEN ? m6.xyz : vec3(0.0), m6.w, m5.w, TRANSLUCENT ? m5.xyz : vec3(0.0),
-        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0));
+        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0), 0.0);
 }
 
 // Position, is area light | color, intensity | variance, pad
