@@ -700,7 +700,7 @@ void main() {
         final_color *= 1.0 / float(samples);
         // Clamp color to 16 bit float
         // Maximal representable number in f16 is 65520
-        final_color = clamp(final_color, vec3(0.0), vec3(65519.0));
+        final_color = clamp(final_color, vec3(-65519.0), vec3(65519.0));
     }
     // Average with previous frames while camera is still, skip read on reset to not carry over invalid values
     if (accumulation_count > 0.0) {
