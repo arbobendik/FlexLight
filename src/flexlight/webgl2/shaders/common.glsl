@@ -60,7 +60,7 @@ struct Material {
     // Whether the tangent is the UV map's over Blender's default
     float tangent_source;
     vec3 tangent;
-    // FlexKernels' dispersion of the index of refraction, none at 0, which no material of FlexLight's carries yet
+    // FlexKernels' dispersion of the index of refraction, the reciprocal of the Abbe number, none at 0
     float dispersion;
 };
 
@@ -170,9 +170,11 @@ Material access_instance_material(uint index) {
     vec4 m5 = texelFetch(instance_material, buffer_position(offset + 5u), 0);
     vec4 m6 = texelFetch(instance_material, buffer_position(offset + 6u), 0);
     vec4 m7 = texelFetch(instance_material, buffer_position(offset + 7u), 0);
+    // The dispersion in the tangent's padding, which WebGL2 computes itself
+    float dispersion = texelFetch(instance_material, buffer_position(offset + 8u), 0).w;
     // Without a translucent, sheen or anisotropic material in the scene, none, which compiles it out
     return Material(m0.xyz, m1.xyz, m1.w, m2.x, m2.y, m2.z, m3.xyz, m4.xyz, m4.w, SHEEN ? m6.xyz : vec3(0.0), m6.w, m5.w, TRANSLUCENT ? m5.xyz : vec3(0.0),
-        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0), 0.0);
+        ANISOTROPY ? m7.x : 0.0, m7.y, m7.z, vec3(0.0), dispersion);
 }
 
 // Position, is area light | color, intensity | variance, pad
