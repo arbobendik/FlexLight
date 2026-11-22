@@ -28,8 +28,12 @@ export class Material {
     anisotropicRotation: number;
     // The tangent anisotropy turns about: Blender's default, radial about the object's z, or the UV map's
     tangentSource: "radial" | "uv";
+    // Blender's dispersion, the reciprocal of the Abbe number, which FlexKernels' spectral walk takes, none at 0:
+    // V = (n_d - 1) / (n_F - n_C), the spread of the IOR between the F and C lines over its excess at the d line
+    // => n_F - n_C = (n_d - 1) / V = (n_d - 1) dispersion, dispersion = 1 / V
+    dispersion: number;
 
-    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial", velvet: boolean = false) {
+    constructor(color: Vector<3> = new Vector(1, 1, 1), emissive: Vector<3> = new Vector(0, 0, 0), roughness: number = 0.5, metallic: number = 0, transmission: number = 0, ior: number = 1.5, absorption: Vector<3> = new Vector(1, 1, 1), specularTint: Vector<3> = new Vector(1, 1, 1), specularLevel: number = 1, translucent: Vector<3> = new Vector(0, 0, 0), sheen: Vector<3> = new Vector(0, 0, 0), sheenRoughness: number = 0.5, anisotropy: number = 0, anisotropicRotation: number = 0, tangentSource: "radial" | "uv" = "radial", velvet: boolean = false, dispersion: number = 0) {
         this.color = color;
         this.emissive = emissive;
         this.roughness = roughness;
@@ -46,11 +50,21 @@ export class Material {
         this.anisotropicRotation = anisotropicRotation;
         this.tangentSource = tangentSource;
         this.velvet = velvet;
+        this.dispersion = dispersion;
+    }
+
+    // The Abbe number V = 1 / dispersion, infinite for none
+    set abbeNumber(abbeNumber: number) {
+        this.dispersion = 1 / abbeNumber;
+    }
+
+    get abbeNumber(): number {
+        return 1 / this.dispersion;
     }
 }
 
 export class InstanceMaterial implements Material {
-    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, Velvet (0 Microfiber, 1 Ashikhmin), SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), and the tangent surfaceAt writes once anisotropy shades
+    // ColorR, ColorG, ColorB, EmissiveR, EmissiveG, EmissiveB, Roughness, Metallic, Transmission, IOR, AbsorptionR, AbsorptionG, AbsorptionB, SpecularTintR, SpecularTintG, SpecularTintB, SpecularLevel, TranslucentR, TranslucentG, TranslucentB, Velvet (0 Microfiber, 1 Ashikhmin), SheenR, SheenG, SheenB, SheenRoughness, Anisotropy, AnisotropicRotation, TangentSource (0 radial, 1 UV), the tangent surfaceAt writes once anisotropy shades and Dispersion
     private readonly _materialFloatManager: BufferManager<Float32Array>;
     readonly materialArray: TypedArrayView<Float32Array>;
 
@@ -93,7 +107,9 @@ export class InstanceMaterial implements Material {
             // Anisotropy and its rotation
             material.anisotropy, material.anisotropicRotation, Number(material.tangentSource === "uv"), 0,
             // Tangent
-            0, 0, 0, 0
+            0, 0, 0,
+            // Dispersion
+            material.dispersion
         ]);
     }
 
@@ -271,5 +287,24 @@ export class InstanceMaterial implements Material {
 
     get velvet(): boolean {
         return this.materialArray[23] === 1;
+    }
+
+    set dispersion(dispersion: number) {
+        this.materialArray[35] = dispersion;
+        // Update gpu buffer if it exists
+        this._materialFloatManager.gpuBufferManager?.update(this.materialArray.byteOffset + 35 * this.materialArray.BYTES_PER_ELEMENT, 1);
+    }
+
+    get dispersion(): number {
+        return this.materialArray[35] ?? 0;
+    }
+
+    // The Abbe number V = 1 / dispersion, infinite for none
+    set abbeNumber(abbeNumber: number) {
+        this.dispersion = 1 / abbeNumber;
+    }
+
+    get abbeNumber(): number {
+        return 1 / this.dispersion;
     }
 }
