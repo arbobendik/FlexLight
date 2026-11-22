@@ -435,6 +435,10 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
 
     random_state = light_offset_sphere.state;
     bool direct_light_emission = true;
+    // The path's wavelength, 0 while it is RGB, and its colour weight w_c(λ) / p(λ) once spectral, as FlexKernels'
+    // walk keeps them
+    float wavelength = 0.0;
+    vec3 spectral_weight = vec3(1.0);
     // Iterate over each bounce and modify color accordingly
     while (true) {
         float geometry_offset = 0.0;
@@ -502,7 +506,9 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
             // If the ray is inside a medium, apply Beer's law for absorption.
             if (is_inside) {
                 // The amount of light transmitted is T = exp(-sigma_a * d).
-                vec3 absorption_coefficient = max(material.absorption, vec3(BIAS));
+                vec3 absorption = material.absorption;
+                if (wavelength > 0.0) absorption = vec3(upsample(absorption, wavelength));
+                vec3 absorption_coefficient = max(absorption, vec3(BIAS));
                 vec3 transmittance = exp(hit.dist * log(absorption_coefficient));
                 importancy_factor *= transmittance;
             }
@@ -551,16 +557,30 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                 // Determine local color considering PBR attributes and lighting
                 // Hybrid method
                 if (current_direct_light_emission) {
-                    final_color += material.emissive * importancy_factor * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0);
+                    final_color += pathColor(material.emissive * importancy_factor, spectral_weight, wavelength)
+                        * max(sign(dot(- ray.unit_direction, smooth_n)), 0.0);
                     direct_light_emission = false;
                 }
+                // First dispersive hit: λ drawn, which the rest of the path keeps, as FlexKernels' walk does
+                // f_c = integral w_c(λ) f(λ) dλ ≈ w_c(λ) / p(λ) * f(λ)
+                if (wavelength == 0.0 && dispersive(material)) {
+                    Random random_wavelength = pcg(random_state);
+                    random_state = random_wavelength.state;
+                    vec2 drawn = sampleWavelength(random_wavelength.value);
+                    wavelength = drawn.x;
+                    // Spectral from here: the colour weight aside, the RGB throughput so far a reflectance at λ
+                    spectral_weight = wavelengthWeights(drawn.x) / drawn.y;
+                    importancy_factor = vec3(upsample(importancy_factor, wavelength));
+                }
+                // The material's colours at the path's wavelength past its first dispersive hit
+                if (wavelength > 0.0) material = atWavelength(material, wavelength);
                 // Surfaces transmitting nothing face the ray with both normals once they emitted, as in flex-cuda-pt's walk and Cycles
                 float facing = material.transmission > 0.0 || dot(geometry_n, ray.unit_direction) < 0.0 ? 1.0 : -1.0;
                 smooth_n *= facing;
                 geometry_n *= facing;
 
                 float n_dot_v = dot(smooth_n, - ray.unit_direction);
-                vec2 eta = vertexEta(material, n_dot_v);
+                vec2 eta = wavelengthEta(material, n_dot_v, wavelength);
                 float eta_i = eta.x;
                 float eta_o = eta.y;
                 // The material's and the view's terms of FlexKernels' BSDF, once per vertex
@@ -571,7 +591,7 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
                     // Do NEE
                     SampledColor local_sampled = reservoirSample(material, eta_i, eta_o, ray, random_state, smooth_n, geometry_n, geometry_offset, light_offset_dir, terms, view_terms);
                     random_state = local_sampled.random_state;
-                    final_color += local_sampled.color * importancy_factor;
+                    final_color += pathColor(local_sampled.color * importancy_factor, spectral_weight, wavelength);
                 } else {
                     // Sample directly next round
                     direct_light_emission = true;
@@ -633,7 +653,8 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
         importancy_factor /= survival_probability;
 
         if (point_light_lighting && !skip_hit) {
-            final_color += importancy_factor * calculatePointLightContrib(hit.instance_index);
+            vec3 point_light = calculatePointLightContrib(hit.instance_index);
+            final_color += pathColor(importancy_factor * point_light, spectral_weight, wavelength);
             direct_light_emission = false;
         }
         // Increment hit iterator
@@ -651,10 +672,11 @@ SampledColor lightTrace(Hit init_hit, vec3 origin, vec3 camera, uint init_random
     // Sample environment map if present
     if (add_ambient) {
         if (environment_map_size.x > 1u && environment_map_size.y > 1u) {
-            final_color += importancy_factor * env_map_sample(ray.unit_direction);
+            final_color += pathColor(importancy_factor * env_map_sample(ray.unit_direction), spectral_weight,
+                wavelength);
         } else {
             // If no environment map is present, use ambient color
-            final_color += importancy_factor * ambient;
+            final_color += pathColor(importancy_factor * ambient, spectral_weight, wavelength);
         }
     }
     // Return final pixel color

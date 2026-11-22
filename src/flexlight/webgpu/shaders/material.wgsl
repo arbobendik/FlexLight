@@ -22,7 +22,7 @@ struct Material {
     anisotropic_rotation: f32,
     tangent_source: f32,
     tangent: vec3<f32>,
-    // FlexKernels' dispersion of the index of refraction, none at 0, in the tangent's padding (byte 140), which the
-    // upload leaves 0
+    // FlexKernels' dispersion of the index of refraction, the reciprocal of the Abbe number, none at 0, in the
+    // tangent's padding (byte 140)
     dispersion: f32
 };

@@ -21,6 +21,7 @@ interface Gltf {
         extensions?: {
             KHR_materials_specular?: { specularFactor?: number; specularColorFactor?: [number, number, number] };
             KHR_materials_anisotropy?: { anisotropyStrength?: number; anisotropyRotation?: number };
+            KHR_materials_dispersion?: { dispersion?: number };
         };
     }[];
     accessors: {
@@ -169,6 +170,10 @@ export class GltfParser extends Parser {
                 material.anisotropicRotation = (anisotropy?.anisotropyRotation ?? 0) / (2 * Math.PI);
                 material.tangentSource = "uv";
             }
+            // The extension's dispersion is 20 / V, Blender's 1 / V
+            // => dispersion = extension's dispersion / 20
+            const dispersion = mat.extensions?.KHR_materials_dispersion?.dispersion;
+            if (dispersion !== undefined) material.dispersion = dispersion / 20;
             console.log(`Created material ${i}:`, material);
             return material;
         });
