@@ -1,3 +1,7 @@
+// FlexKernels' blue-noise tensor, not bound in FlexLight yet: every draw takes its white noise
+fn fkBlueNoise(x: u32, y: u32, t: u32) -> u32 { return 4294967295u; }
+fn fkBlueNoiseSize() -> u32 { return 512u; }
+
 const TRIANGLE_SIZE: u32 = 6u;
 
 const INSTANCE_UINT_SIZE: u32 = 9u;
