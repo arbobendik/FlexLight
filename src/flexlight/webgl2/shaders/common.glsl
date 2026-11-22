@@ -7,6 +7,10 @@ precision highp usampler2D;
 precision highp sampler2DArray;
 precision highp usampler2DArray;
 
+// FlexKernels' blue-noise tensor, not bound in FlexLight yet: every draw takes its white noise
+uint fkBlueNoise(uint x, uint y, uint t) { return 4294967295u; }
+uint fkBlueNoiseSize() { return 512u; }
+
 const uint TRIANGLE_SIZE = 6u;
 
 const uint INSTANCE_UINT_SIZE = 9u;
