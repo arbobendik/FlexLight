@@ -18,7 +18,10 @@
 // under the white light. furnace.mjs's closed slab whose hidden face alone emits (argument hidden) leaves the wall it
 // hides that face from black, light sampling's shadow rays ending at the sampled point: a mean under 1e-4, at most 1%
 // of its pixels lit. furnace.mjs's glossy metal in that box emitting a half (argument glossy), its albedo 0.9986 times
-// a half, within the 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it. The page posts
+// a half, within the 8-bit canvas's rounding where that passes 0.5%, as the square's pixels share it. The furnace's
+// sheet of glass of IOR 1.5 dispersing, of Abbe number 20 (argument dispersive), returns a half at every wavelength its
+// path draws, the channels' weights each integrating to one over the spectrum: each channel's mean a half within four
+// standard errors of its pixels. The page posts
 // what it read back to the server that serves it; CHROMIUM names the browser, chromium by default.
 import { createServer } from "node:http";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -30,7 +33,7 @@ import { deviation } from "./cylinder.mjs";
 const SIZE = 64, FRAMES = 1364, S = 2 / Math.hypot(2, 0.25), [CASE = "backlit"] = process.argv.slice(2);
 const ANISO = { aniso: 0.7077, anisoturned: 0.6464, anisolimit: 0.9722, sheen: 0.2671, velvet: 0.2800 }[CASE];
 const HIDDEN = CASE === "hidden", SQUARE = CASE === "scaled" || CASE === "rasterscaled" || ANISO !== undefined, RASTER = CASE === "rasterscaled";
-const GLOSSY = CASE === "glossy";
+const GLOSSY = CASE === "glossy", DISPERSIVE = CASE === "dispersive";
 const FURNACE = CASE !== "backlit" && !SQUARE && !HIDDEN, [LEFT, RIGHT] = SQUARE ? [0.9 * (ANISO ?? 0.9722), 0.9 * (ANISO ?? 0.9722)] : FURNACE ? [0.5, 0.5].map((k) => GLOSSY ? 0.9986 * k : k) : [2, 1].map((k) => 1 / Math.PI * k * S * Math.atan(S));
 const PAGE = `<!doctype html><style>canvas { width: ${SIZE}px; height: ${SIZE}px }</style><canvas></canvas><script type="module">
 // The drawing buffer is kept for the readback after the last frame, of the canvas WebGL2 replaces the page's with,
@@ -103,6 +106,13 @@ if (${HIDDEN}) {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: square(0, [1, 1, 1]), material: new F.Material(new F.Vector(1, 1, 1),
     new F.Vector(0, 0, 0), 0.15, 1, 0), label: "glossy" }));
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5), label: "lamp" }));
+} else if (${DISPERSIVE}) {
+  const glass = Object.assign(new F.Material(new F.Vector(1, 1, 1), new F.Vector(0, 0, 0), 0, 0, 1, 1.5),
+    { abbeNumber: 20 });
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: [...half(-3), ...half(3)], material: glass,
+    label: "glass" }));
+  engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: lamp, material: material(0, 0, 0.5),
+    label: "lamp" }));
 } else {
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(-3), material: material(${CASE === "diffuse" ? "1, 0" : "0, 1"}), label: "translucent" }));
   engine.scene.instance(await F.Prototype.fromTriangleArray({ triangles: half(3), material: material(${CASE === "diffuse" ? "1, 0" : "0.5, 0.5"}), label: "mix" }));
@@ -142,9 +152,17 @@ const server = createServer((req, res) => {
       if (RASTER) console.log(`halves differ by ${difference.toFixed(4)} ± ${differenceError.toFixed(4)}`);
       if (CASE === "cylinder") console.log(`columns within ${(100 * deviation(value, SIZE)).toFixed(2)}% of their mirror images`);
       const lit = Array.from({ length: SIZE * SIZE }, (_, p) => value(p)), mean = lit.reduce((a, b) => a + b) / lit.length;
+      // Each channel's mean over the image and its standard error
+      const channels = [0, 1, 2].map((k) => {
+        const v = Array.from({ length: SIZE * SIZE }, (_, p) => pixels[4 * p + k] / 255);
+        const m = v.reduce((a, b) => a + b) / v.length;
+        return [m, Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / v.length / v.length)]; });
+      if (DISPERSIVE) console.log(`channels ${channels.map(([m, e]) => `${m.toFixed(4)} ± ${e.toFixed(4)}`).join(", ")}`
+        + " of 0.5");
       if (HIDDEN) console.log(`wall mean ${mean.toExponential(2)}, ${lit.filter((v) => v > 0).length} of ${lit.length} pixels lit`);
       const within = (v, error, truth) => FURNACE && !GLOSSY ? Math.abs(v - truth) < 4 * error : Math.abs(v / truth - 1) < (SQUARE || GLOSSY ? Math.max(0.005, 0.5 / 255 / truth) : 0.02);
       finish(/SwiftShader/.test(renderer) && (HIDDEN ? mean < 1e-4 && lit.filter((v) => v > 0).length <= 0.01 * lit.length : CASE === "cylinder" ? deviation(value, SIZE) < 0.02 : RASTER ? Math.abs(difference) < 4 * differenceError
+        : DISPERSIVE ? channels.every(([m, e]) => Math.abs(m - 0.5) < 4 * e)
         : within(left, leftError, LEFT) && within(right, rightError, RIGHT)) ? 0 : 1);
     });
     return;
