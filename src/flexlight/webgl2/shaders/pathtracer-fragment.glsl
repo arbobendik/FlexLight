@@ -361,13 +361,16 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         vec3 l = dir / len;
         // Apply inverse square law
         vec3 brightness = light.color * intensity / max(len * len, BIAS);
-        // Calculate BSDF for light, its visible normal from a stream of its own, apart from the selection's numbers
+        // Calculate BSDF for light: each lobe's throughput times its PDF_lobe, the lobes that don't reach it left out
         // The light across the face by the geometry normal reaches the lobes that refract or, translucent, pass through
         bool refracted = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0;
         vec3 throughputs[6];
         float pdfs[6];
-        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, material, eta_i, eta_o, refracted,
-            stream(random_state, 1u), throughputs, pdfs);
+        BSDF(camera_ray.unit_direction, l, smooth_n, material, eta_i, eta_o, refracted, throughputs, pdfs);
+        vec3 color_with_smooth = vec3(0.0);
+        for (int i = 0; i < 6; i++) {
+            if (pdfs[i] > 0.0) color_with_smooth += throughputs[i] * pdfs[i];
+        }
         vec3 color_for_light = color_with_smooth * brightness;
         float w_i = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small

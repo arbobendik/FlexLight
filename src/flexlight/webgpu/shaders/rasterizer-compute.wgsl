@@ -105,6 +105,17 @@ fn fresnelSchlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
 }
 
+// BSDF * n_dot_l toward a light: each lobe's throughput times its PDF_lobe, the lobes that don't reach it left out
+fn lobeSum(throughputs: ptr<function, array<vec3<f32>, 6>>, pdfs: ptr<function, array<f32, 6>>) -> vec3<f32> {
+    var f: vec3<f32> = vec3<f32>(0.0f);
+    for (var i: u32 = 0u; i < 6u; i++) {
+        if ((*pdfs)[i] > 0.0f) {
+            f += (*throughputs)[i] * (*pdfs)[i];
+        }
+    }
+    return f;
+}
+
 struct SampledColor {
     color: vec3<f32>,
     random_state: u32
@@ -126,7 +137,7 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
     let front: bool = dot(camera_ray.unit_direction, smooth_n) < 0.0f;
     let eta_i: f32 = select(material.ior, 1.0f, front);
     let eta_o: f32 = select(1.0f, material.ior, front);
-    // Each lobe's throughput and PDF toward a light, which the rasterizer's lights leave unused
+    // Each lobe's throughput and PDF toward a light
     var throughputs: array<vec3<f32>, 6>;
     var pdfs: array<f32, 6>;
 
@@ -200,8 +211,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate BSDF for light
             // The light across the face by the geometry normal reaches the lobes that refract or pass through
             let refracted: bool = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0f;
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
-                random_state, &throughputs, &pdfs) * brightness;
+            BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted, &throughputs, &pdfs);
+            color_for_light = lobeSum(&throughputs, &pdfs) * brightness;
             light_dir = dir;
         } else if (light.is_area_light == 0.0f) {
             // CASE 1: Point light
@@ -218,8 +229,8 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate BSDF for light
             // The light across the face by the geometry normal reaches the lobes that refract or pass through
             let refracted: bool = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0f;
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
-                random_state, &throughputs, &pdfs) * brightness;
+            BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted, &throughputs, &pdfs);
+            color_for_light = lobeSum(&throughputs, &pdfs) * brightness;
             light_dir = dir;
         }
 
