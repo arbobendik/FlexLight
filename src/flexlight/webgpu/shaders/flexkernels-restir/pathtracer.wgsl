@@ -1678,7 +1678,7 @@ fn coatBSDF( w_12 : Weights) -> vec3<f32>
     return w_12.coat / vec3<f32>(w_12.p_coat);
 }
 
-fn BSDF( in_dir_2 : vec3<f32>,  out_dir_0 : vec3<f32>,  n_4 : vec3<f32>,  material_12 : Material,  eta_i_4 : f32,  eta_o_3 : f32,  refracted_2 : bool,  random_state_0 : u32,  throughputs_0 : ptr<function, array<vec3<f32>, i32(6)>>,  pdfs_0 : ptr<function, array<f32, i32(6)>>)
+fn BSDF( in_dir_2 : vec3<f32>,  out_dir_0 : vec3<f32>,  n_4 : vec3<f32>,  material_12 : Material,  eta_i_4 : f32,  eta_o_3 : f32,  refracted_2 : bool,  throughputs_0 : ptr<function, array<vec3<f32>, i32(6)>>,  pdfs_0 : ptr<function, array<f32, i32(6)>>)
 {
     var _S534 : vec3<f32> = ((-(in_dir_2)));
     var _S535 : f32 = dot(n_4, _S534);
@@ -1774,10 +1774,10 @@ fn BSDF( in_dir_2 : vec3<f32>,  out_dir_0 : vec3<f32>,  n_4 : vec3<f32>,  materi
     return;
 }
 
-fn skyLobes_0( in_dir_3 : vec3<f32>,  dir_4 : vec3<f32>,  surface_1 : Surface,  material_13 : Material,  eta_0 : vec2<f32>,  is_inside_2 : bool,  pdf_0 : f32,  random_state_1 : u32,  terms_0 : ptr<function, array<vec3<f32>, i32(6)>>,  pdfs_1 : ptr<function, array<f32, i32(6)>>) -> vec3<f32>
+fn skyLobes_0( in_dir_3 : vec3<f32>,  dir_4 : vec3<f32>,  surface_1 : Surface,  material_13 : Material,  eta_0 : vec2<f32>,  is_inside_2 : bool,  pdf_0 : f32,  terms_0 : ptr<function, array<vec3<f32>, i32(6)>>,  pdfs_1 : ptr<function, array<f32, i32(6)>>) -> vec3<f32>
 {
     var _S575 : bool = wrongSide_0(is_inside_2, false, dir_4, surface_1.geometry_n);
-    BSDF(in_dir_3, dir_4, surface_1.smooth_n, material_13, eta_0.x, eta_0.y, _S575, random_state_1, &((*terms_0)), &((*pdfs_1)));
+    BSDF(in_dir_3, dir_4, surface_1.smooth_n, material_13, eta_0.x, eta_0.y, _S575, &((*terms_0)), &((*pdfs_1)));
     var _S576 : vec3<f32> = vec3<f32>(0.0f);
     var i_0 : u32 = u32(0);
     var f_2 : vec3<f32> = _S576;
@@ -1804,17 +1804,17 @@ fn skyLobes_0( in_dir_3 : vec3<f32>,  dir_4 : vec3<f32>,  surface_1 : Surface,  
     return f_2;
 }
 
-fn SkySample_x24init_0( dir_5 : vec3<f32>,  radiance_1 : vec3<f32>,  color_0 : vec3<f32>,  random_state_2 : u32) -> SkySample
+fn SkySample_x24init_0( dir_5 : vec3<f32>,  radiance_1 : vec3<f32>,  color_0 : vec3<f32>,  random_state_0 : u32) -> SkySample
 {
     var _S579 : SkySample;
     _S579.dir = dir_5;
     _S579.radiance = radiance_1;
     _S579.color = color_0;
-    _S579.random_state = random_state_2;
+    _S579.random_state = random_state_0;
     return _S579;
 }
 
-fn sampleSky_0( ray_0 : Ray,  surface_2 : Surface,  wavelength_3 : f32,  eta_1 : vec2<f32>,  is_inside_3 : bool,  init_random_state_0 : u32,  lobe_state_0 : u32) -> SkySample
+fn sampleSky_0( ray_0 : Ray,  surface_2 : Surface,  wavelength_3 : f32,  eta_1 : vec2<f32>,  is_inside_3 : bool,  init_random_state_0 : u32) -> SkySample
 {
     var _S580 : vec2<u32> = (textureDimensions(environment_cdf));
     const _S581 : vec2<u32> = vec2<u32>(u32(1), u32(0));
@@ -1835,7 +1835,7 @@ fn sampleSky_0( ray_0 : Ray,  surface_2 : Surface,  wavelength_3 : f32,  eta_1 :
     var _S596 : Material = pathMaterial(surface_2.material, wavelength_3);
     var terms_1 : array<vec3<f32>, i32(6)>;
     var pdfs_2 : array<f32, i32(6)>;
-    var _S597 : vec3<f32> = skyLobes_0(ray_0.unit_direction, _S594, surface_2, _S596, eta_1, is_inside_3, _S595, lobe_state_0, &(terms_1), &(pdfs_2));
+    var _S597 : vec3<f32> = skyLobes_0(ray_0.unit_direction, _S594, surface_2, _S596, eta_1, is_inside_3, _S595, &(terms_1), &(pdfs_2));
     var _S598 : bool = !(_S595 > 0.0f);
     var _S599 : bool;
     if(_S598)
@@ -1863,13 +1863,13 @@ struct TreeSample
      random_state : u32,
 };
 
-fn TreeSample_x24init_0( dir_6 : vec3<f32>,  radiance_2 : vec3<f32>,  density_0 : f32,  random_state_3 : u32) -> TreeSample
+fn TreeSample_x24init_0( dir_6 : vec3<f32>,  radiance_2 : vec3<f32>,  density_0 : f32,  random_state_1 : u32) -> TreeSample
 {
     var _S602 : TreeSample;
     _S602.dir = dir_6;
     _S602.radiance = radiance_2;
     _S602.density = density_0;
-    _S602.random_state = random_state_3;
+    _S602.random_state = random_state_1;
     return _S602;
 }
 
@@ -2315,13 +2315,13 @@ struct Selection
      random_state : u32,
 };
 
-fn Selection_x24init_0( r_2 : Reservoir,  w_sum_0 : f32,  color_2 : vec3<f32>,  random_state_4 : u32) -> Selection
+fn Selection_x24init_0( r_2 : Reservoir,  w_sum_0 : f32,  color_2 : vec3<f32>,  random_state_2 : u32) -> Selection
 {
     var _S733 : Selection;
     _S733.r = r_2;
     _S733.w_sum = w_sum_0;
     _S733.color = color_2;
-    _S733.random_state = random_state_4;
+    _S733.random_state = random_state_2;
     return _S733;
 }
 
@@ -2604,7 +2604,7 @@ fn Material_x24init_0( albedo_1 : vec3<f32>,  emissive_0 : vec3<f32>,  roughness
     return _S808;
 }
 
-fn Surface_x24init_0( smooth_n_4 : vec3<f32>,  geometry_n_2 : vec3<f32>,  geometry_offset_2 : f32,  material_14 : Material,  skip_0 : bool,  random_state_5 : u32) -> Surface
+fn Surface_x24init_0( smooth_n_4 : vec3<f32>,  geometry_n_2 : vec3<f32>,  geometry_offset_2 : f32,  material_14 : Material,  skip_0 : bool,  random_state_3 : u32) -> Surface
 {
     var _S809 : Surface;
     _S809.smooth_n = smooth_n_4;
@@ -2612,7 +2612,7 @@ fn Surface_x24init_0( smooth_n_4 : vec3<f32>,  geometry_n_2 : vec3<f32>,  geomet
     _S809.geometry_offset = geometry_offset_2;
     _S809.material = material_14;
     _S809.skip = skip_0;
-    _S809.random_state = random_state_5;
+    _S809.random_state = random_state_3;
     return _S809;
 }
 
@@ -2818,12 +2818,12 @@ fn isTranslucent_0( material_19 : Material) -> bool
     return _S851 > 0.0f;
 }
 
-fn lightBSDF_0( in_dir_4 : vec3<f32>,  light_0 : TreeSample,  smooth_n_5 : vec3<f32>,  geometry_n_4 : vec3<f32>,  material_20 : Material,  eta_i_6 : f32,  eta_o_5 : f32,  competing_0 : bool,  random_state_6 : u32) -> vec3<f32>
+fn lightBSDF_0( in_dir_4 : vec3<f32>,  light_0 : TreeSample,  smooth_n_5 : vec3<f32>,  geometry_n_4 : vec3<f32>,  material_20 : Material,  eta_i_6 : f32,  eta_o_5 : f32,  competing_0 : bool) -> vec3<f32>
 {
     var _S852 : bool = (dot(geometry_n_4, (vec3<f32>(0) - in_dir_4)) * dot(geometry_n_4, light_0.dir)) <= 0.0f;
     var throughputs_1 : array<vec3<f32>, i32(6)>;
     var pdfs_3 : array<f32, i32(6)>;
-    BSDF(in_dir_4, light_0.dir, smooth_n_5, material_20, eta_i_6, eta_o_5, _S852, random_state_6, &(throughputs_1), &(pdfs_3));
+    BSDF(in_dir_4, light_0.dir, smooth_n_5, material_20, eta_i_6, eta_o_5, _S852, &(throughputs_1), &(pdfs_3));
     var _S853 : bool;
     if(competing_0)
     {
@@ -2876,11 +2876,11 @@ fn lightBSDF_0( in_dir_4 : vec3<f32>,  light_0 : TreeSample,  smooth_n_5 : vec3<
     return f_7;
 }
 
-fn skyBSDF( in_dir_5 : vec3<f32>,  dir_10 : vec3<f32>,  surface_4 : Surface,  material_21 : Material,  eta_2 : vec2<f32>,  is_inside_4 : bool,  pdf_4 : f32,  random_state_7 : u32) -> vec3<f32>
+fn skyBSDF( in_dir_5 : vec3<f32>,  dir_10 : vec3<f32>,  surface_4 : Surface,  material_21 : Material,  eta_2 : vec2<f32>,  is_inside_4 : bool,  pdf_4 : f32) -> vec3<f32>
 {
     var terms_2 : array<vec3<f32>, i32(6)>;
     var pdfs_4 : array<f32, i32(6)>;
-    var _S857 : vec3<f32> = skyLobes_0(in_dir_5, dir_10, surface_4, material_21, eta_2, is_inside_4, pdf_4, random_state_7, &(terms_2), &(pdfs_4));
+    var _S857 : vec3<f32> = skyLobes_0(in_dir_5, dir_10, surface_4, material_21, eta_2, is_inside_4, pdf_4, &(terms_2), &(pdfs_4));
     return _S857;
 }
 
@@ -2913,12 +2913,12 @@ struct SampleBSDF
      pdf : f32,
 };
 
-fn SampleBSDF_x24init_0( unit_direction_1 : vec3<f32>,  throughput_0 : vec3<f32>,  random_state_8 : u32,  refracted_3 : bool,  lobe_1 : u32,  pdf_5 : f32) -> SampleBSDF
+fn SampleBSDF_x24init_0( unit_direction_1 : vec3<f32>,  throughput_0 : vec3<f32>,  random_state_4 : u32,  refracted_3 : bool,  lobe_1 : u32,  pdf_5 : f32) -> SampleBSDF
 {
     var _S864 : SampleBSDF;
     _S864.unit_direction = unit_direction_1;
     _S864.throughput = throughput_0;
-    _S864.random_state = random_state_8;
+    _S864.random_state = random_state_4;
     _S864.refracted = refracted_3;
     _S864.lobe = lobe_1;
     _S864.pdf = pdf_5;
@@ -2971,11 +2971,11 @@ fn worldToTangent( v_7 : vec3<f32>,  n_6 : vec3<f32>) -> vec3<f32>
     return vec3<f32>(dot(v_7, _S887), dot(v_7, n_6), dot(v_7, _S888));
 }
 
-fn sampleHalfVector( v_8 : vec3<f32>,  n_i_8 : vec3<f32>,  alpha_7 : f32,  frame_5 : AnisotropicFrame,  random_state_9 : ptr<function, u32>,  first_2 : u32) -> vec3<f32>
+fn sampleHalfVector( v_8 : vec3<f32>,  n_i_8 : vec3<f32>,  alpha_7 : f32,  frame_5 : AnisotropicFrame,  random_state_5 : ptr<function, u32>,  first_2 : u32) -> vec3<f32>
 {
-    var _S889 : Random = draw((*random_state_9), first_2);
-    var _S890 : Random = draw((*random_state_9), (first_2 | (u32(2147483648))));
-    (*random_state_9) = _S890.state;
+    var _S889 : Random = draw((*random_state_5), first_2);
+    var _S890 : Random = draw((*random_state_5), (first_2 | (u32(2147483648))));
+    (*random_state_5) = _S890.state;
     var _S891 : f32 = frame_5.alphas.x;
     var _S892 : bool = _S891 > 0.0f;
     if(_S892)
@@ -2994,25 +2994,25 @@ fn sampleHalfVector( v_8 : vec3<f32>,  n_i_8 : vec3<f32>,  alpha_7 : f32,  frame
     return _S901;
 }
 
-fn coatHalf( v_9 : vec3<f32>,  coat_frame_4 : CoatFrame,  random_state_10 : u32) -> vec3<f32>
+fn coatHalf( v_9 : vec3<f32>,  coat_frame_4 : CoatFrame,  random_state_6 : u32) -> vec3<f32>
 {
     var _S902 : bool = !((dot(coat_frame_4.normal, v_9)) > 0.0f);
     if(_S902)
     {
         return vec3<f32>(0.0f);
     }
-    var state_2 : u32 = random_state_10;
+    var state_2 : u32 = random_state_6;
     var _S903 : vec3<f32> = sampleHalfVector(v_9, coat_frame_4.normal, coat_frame_4.alpha, AnisotropicFrame_x24init_0(vec3<f32>(0.0f), vec2<f32>(0.0f)), &(state_2), u32(1));
     return _S903;
 }
 
-fn sheenVelvetSample( v_10 : vec3<f32>,  n_i_9 : vec3<f32>,  n_i_dot_v_3 : f32,  material_22 : Material,  w_13 : Weights,  random_state_11 : u32) -> SampleBSDF
+fn sheenVelvetSample( v_10 : vec3<f32>,  n_i_9 : vec3<f32>,  n_i_dot_v_3 : f32,  material_22 : Material,  w_13 : Weights,  random_state_7 : u32) -> SampleBSDF
 {
     var _S904 : vec3<f32> = vec3<f32>(1.0f);
     var _S905 : SampleBSDF = SampleBSDF_x24init_0(_S904, _S904, u32(0), false, u32(0), 0.0f);
     var sample_1 : SampleBSDF = _S905;
-    var _S906 : Random = draw(random_state_11, u32(3));
-    var _S907 : Random = draw(random_state_11, u32(2147483651));
+    var _S906 : Random = draw(random_state_7, u32(3));
+    var _S907 : Random = draw(random_state_7, u32(2147483651));
     sample_1.random_state = _S907.state;
     var _S908 : f32 = _S906.value;
     var _S909 : f32 = sqrt(max(0.0f, 1.0f - _S908 * _S908));
@@ -3027,14 +3027,14 @@ fn sheenVelvetSample( v_10 : vec3<f32>,  n_i_9 : vec3<f32>,  n_i_dot_v_3 : f32, 
     return sample_1;
 }
 
-fn coatSample( in_dir_6 : vec3<f32>,  v_11 : vec3<f32>,  coat_h_3 : vec3<f32>,  coat_frame_5 : CoatFrame,  w_14 : Weights,  random_state_12 : u32) -> SampleBSDF
+fn coatSample( in_dir_6 : vec3<f32>,  v_11 : vec3<f32>,  coat_h_3 : vec3<f32>,  coat_frame_5 : CoatFrame,  w_14 : Weights,  random_state_8 : u32) -> SampleBSDF
 {
     var _S914 : vec3<f32> = vec3<f32>(1.0f);
     var _S915 : SampleBSDF = SampleBSDF_x24init_0(_S914, _S914, u32(0), false, u32(0), 0.0f);
     var sample_2 : SampleBSDF = _S915;
     var _S916 : vec3<f32> = (normalize((reflect(in_dir_6, coat_h_3))));
     sample_2.unit_direction = _S916;
-    sample_2.random_state = random_state_12;
+    sample_2.random_state = random_state_8;
     sample_2.lobe = u32(5);
     var _S917 : vec3<f32> = coatBSDF(w_14);
     sample_2.throughput = _S917;
@@ -3053,13 +3053,13 @@ fn sampleCosWeightedHemisphere( random_1_0 : f32,  random_2_0 : f32) -> vec3<f32
     return vec3<f32>(_S921, _S923, _S922);
 }
 
-fn diffuseSample( u_2 : f32,  n_i_10 : vec3<f32>,  n_i_dot_v_4 : f32,  material_23 : Material,  w_15 : Weights,  random_state_13 : u32) -> SampleBSDF
+fn diffuseSample( u_2 : f32,  n_i_10 : vec3<f32>,  n_i_dot_v_4 : f32,  material_23 : Material,  w_15 : Weights,  random_state_9 : u32) -> SampleBSDF
 {
     var _S924 : vec3<f32> = vec3<f32>(1.0f);
     var _S925 : SampleBSDF = SampleBSDF_x24init_0(_S924, _S924, u32(0), false, u32(0), 0.0f);
     var sample_3 : SampleBSDF = _S925;
-    var _S926 : Random = draw(random_state_13, u32(3));
-    var _S927 : Random = draw(random_state_13, u32(2147483651));
+    var _S926 : Random = draw(random_state_9, u32(3));
+    var _S927 : Random = draw(random_state_9, u32(2147483651));
     sample_3.random_state = _S927.state;
     var _S928 : vec3<f32> = sampleCosWeightedHemisphere(_S926.value, _S927.value);
     var _S929 : f32 = translucentShare(material_23);
@@ -3078,13 +3078,13 @@ fn diffuseSample( u_2 : f32,  n_i_10 : vec3<f32>,  n_i_dot_v_4 : f32,  material_
     return sample_3;
 }
 
-fn refractSample( ggx_n_1 : vec3<f32>,  n_i_11 : vec3<f32>,  alpha_8 : f32,  frame_6 : AnisotropicFrame,  material_24 : Material,  w_16 : Weights,  pdf_h_3 : f32,  eta_i_7 : f32,  eta_o_6 : f32,  random_state_14 : u32) -> SampleBSDF
+fn refractSample( ggx_n_1 : vec3<f32>,  n_i_11 : vec3<f32>,  alpha_8 : f32,  frame_6 : AnisotropicFrame,  material_24 : Material,  w_16 : Weights,  pdf_h_3 : f32,  eta_i_7 : f32,  eta_o_6 : f32,  random_state_10 : u32) -> SampleBSDF
 {
     var _S937 : vec3<f32> = vec3<f32>(1.0f);
     var _S938 : SampleBSDF = SampleBSDF_x24init_0(_S937, _S937, u32(0), false, u32(0), 0.0f);
     var sample_4 : SampleBSDF = _S938;
     sample_4.unit_direction = w_16.refracted;
-    sample_4.random_state = random_state_14;
+    sample_4.random_state = random_state_10;
     sample_4.refracted = true;
     sample_4.lobe = u32(1);
     var _S939 : vec3<f32> = refractBSDF(sample_4.unit_direction, n_i_11, alpha_8, frame_6, material_24, w_16);
@@ -3094,14 +3094,14 @@ fn refractSample( ggx_n_1 : vec3<f32>,  n_i_11 : vec3<f32>,  alpha_8 : f32,  fra
     return sample_4;
 }
 
-fn reflectSample( in_dir_7 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_12 : vec3<f32>,  alpha_9 : f32,  frame_7 : AnisotropicFrame,  w_17 : Weights,  pdf_h_4 : f32,  random_state_15 : u32) -> SampleBSDF
+fn reflectSample( in_dir_7 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_12 : vec3<f32>,  alpha_9 : f32,  frame_7 : AnisotropicFrame,  w_17 : Weights,  pdf_h_4 : f32,  random_state_11 : u32) -> SampleBSDF
 {
     var _S941 : vec3<f32> = vec3<f32>(1.0f);
     var _S942 : SampleBSDF = SampleBSDF_x24init_0(_S941, _S941, u32(0), false, u32(0), 0.0f);
     var sample_5 : SampleBSDF = _S942;
     var _S943 : vec3<f32> = (normalize((reflect(in_dir_7, ggx_n_2))));
     sample_5.unit_direction = _S943;
-    sample_5.random_state = random_state_15;
+    sample_5.random_state = random_state_11;
     sample_5.lobe = u32(2);
     var _S944 : vec3<f32> = reflectBSDF(sample_5.unit_direction, n_i_12, alpha_9, frame_7, w_17);
     sample_5.throughput = _S944;
@@ -3112,7 +3112,7 @@ fn reflectSample( in_dir_7 : vec3<f32>,  ggx_n_2 : vec3<f32>,  n_i_12 : vec3<f32
 
 fn sampleBSDF( in_dir_8 : vec3<f32>,  n_7 : vec3<f32>,  material_25 : Material,  eta_i_8 : f32,  eta_o_7 : f32,  random_init_0 : u32,  screen_space_0 : vec2<f32>) -> SampleBSDF
 {
-    var random_state_16 : u32 = random_init_0;
+    var random_state_12 : u32 = random_init_0;
     var _S946 : vec3<f32> = ((-(in_dir_8)));
     var _S947 : f32 = dot(n_7, _S946);
     var _S948 : f32 = (sign((_S947)));
@@ -3124,39 +3124,39 @@ fn sampleBSDF( in_dir_8 : vec3<f32>,  n_7 : vec3<f32>,  material_25 : Material, 
     var _S953 : SheenProfile = sheenProfile(_S946, n_i_13, material_25);
     var _S954 : CoatFrame = coatFrame(material_25, n_i_13);
     var _S955 : vec3<f32> = coatSeries(_S954, material_25);
-    var _S956 : vec3<f32> = sampleHalfVector(_S946, n_i_13, _S951, _S952, &(random_state_16), u32(0));
+    var _S956 : vec3<f32> = sampleHalfVector(_S946, n_i_13, _S951, _S952, &(random_state_12), u32(0));
     var _S957 : vec3<f32> = coatHalf(_S946, _S954, random_init_0);
     var _S958 : Weights = lobeWeights(in_dir_8, _S946, n_i_13, _S956, _S957, _S952, _S953, _S954, _S955, material_25, eta_i_8, eta_o_7);
-    var _S959 : Random = draw(random_state_16, u32(2));
-    random_state_16 = _S959.state;
+    var _S959 : Random = draw(random_state_12, u32(2));
+    random_state_12 = _S959.state;
     var _S960 : bool = (_S959.value) < (_S958.p_sheen_velvet);
     if(_S960)
     {
-        var _S961 : SampleBSDF = sheenVelvetSample(_S946, n_i_13, _S949, material_25, _S958, random_state_16);
+        var _S961 : SampleBSDF = sheenVelvetSample(_S946, n_i_13, _S949, material_25, _S958, random_state_12);
         return _S961;
     }
     var _S962 : f32 = _S959.value - _S958.p_sheen_velvet;
     var _S963 : bool = _S962 < (_S958.p_coat);
     if(_S963)
     {
-        var _S964 : SampleBSDF = coatSample(in_dir_8, _S946, _S957, _S954, _S958, random_state_16);
+        var _S964 : SampleBSDF = coatSample(in_dir_8, _S946, _S957, _S954, _S958, random_state_12);
         return _S964;
     }
     var _S965 : f32 = _S962 - _S958.p_coat;
     var _S966 : bool = _S965 < (_S958.p_diffuse);
     if(_S966)
     {
-        var _S967 : SampleBSDF = diffuseSample(_S965, n_i_13, _S949, material_25, _S958, random_state_16);
+        var _S967 : SampleBSDF = diffuseSample(_S965, n_i_13, _S949, material_25, _S958, random_state_12);
         return _S967;
     }
     var _S968 : f32 = vndfPDF(_S946, _S956, n_i_13, _S949, _S951, _S952, _S958.v_dot_h);
     var _S969 : bool = _S965 < (_S958.p_diffuse + _S958.p_refract);
     if(_S969)
     {
-        var _S970 : SampleBSDF = refractSample(_S956, n_i_13, _S951, _S952, material_25, _S958, _S968, eta_i_8, eta_o_7, random_state_16);
+        var _S970 : SampleBSDF = refractSample(_S956, n_i_13, _S951, _S952, material_25, _S958, _S968, eta_i_8, eta_o_7, random_state_12);
         return _S970;
     }
-    var _S971 : SampleBSDF = reflectSample(in_dir_8, _S956, n_i_13, _S951, _S952, _S958, _S968, random_state_16);
+    var _S971 : SampleBSDF = reflectSample(in_dir_8, _S956, n_i_13, _S951, _S952, _S958, _S968, random_state_12);
     return _S971;
 }
 
@@ -3177,9 +3177,9 @@ fn refractedHalf( in_dir_10 : vec3<f32>,  out_dir_2 : vec3<f32>,  n_8 : vec3<f32
     return _S976 * vec3<f32>(_S978);
 }
 
-fn sampledHalf( v_12 : vec3<f32>,  n_i_14 : vec3<f32>,  alpha_10 : f32,  frame_8 : AnisotropicFrame,  random_state_17 : u32) -> vec3<f32>
+fn sampledHalf( v_12 : vec3<f32>,  n_i_14 : vec3<f32>,  alpha_10 : f32,  frame_8 : AnisotropicFrame,  random_state_13 : u32) -> vec3<f32>
 {
-    var state_3 : u32 = random_state_17;
+    var state_3 : u32 = random_state_13;
     var _S979 : vec3<f32> = sampleHalfVector(v_12, n_i_14, alpha_10, frame_8, &(state_3), u32(0));
     return _S979;
 }
@@ -3714,7 +3714,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 var _S1110 : f32 = _S1056.x;
                 var _S1111 : f32 = _S1056.y;
                 var _S1112 : u32 = (uniforms_uint.max_bounces);
-                var _S1113 : vec3<f32> = lightBSDF_0(ray_2.unit_direction, _S1108, _S1032.smooth_n, _S1105.geometry_n, _S1055, _S1110, _S1111, b_3 < _S1112, surface_5.random_state);
+                var _S1113 : vec3<f32> = lightBSDF_0(ray_2.unit_direction, _S1108, _S1032.smooth_n, _S1105.geometry_n, _S1055, _S1110, _S1111, b_3 < _S1112);
                 lit_0 = _S1113;
             }
             else
@@ -3806,7 +3806,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                     return _S986;
                 }
                 var _S1125 : f32 = environmentPdf_0(r_6.dir);
-                var _S1126 : vec3<f32> = skyBSDF(ray_2.unit_direction, r_6.dir, surface_5, _S1055, _S1056, is_inside_5, _S1125, surface_5.random_state);
+                var _S1126 : vec3<f32> = skyBSDF(ray_2.unit_direction, r_6.dir, surface_5, _S1055, _S1056, is_inside_5, _S1125);
                 var _S1127 : vec3<f32> = pathColor(throughput_6 * _S1126 * r_6.radiance, spectral_weight_0, wavelength_8);
                 return Shift_x24init_0(_S1127 / vec3<f32>(r_6.jac), density_4 / r_6.jac);
             }
@@ -3883,7 +3883,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                 if(_S1011)
                 {
                     var _S1133 : u32 = noiseAddress(r_6.seed, b_3);
-                    var _S1134 : SkySample = sampleSky_0(ray_2, surface_5, wavelength_8, _S1056, is_inside_5, _S1133, surface_5.random_state);
+                    var _S1134 : SkySample = sampleSky_0(ray_2, surface_5, wavelength_8, _S1056, is_inside_5, _S1133);
                     var _S1135 : vec3<f32> = pathColor(throughput_4 * _S1134.color, spectral_weight_0, wavelength_8);
                     return Shift_x24init_0(_S1135, 1.0f);
                 }
@@ -4048,7 +4048,7 @@ fn walk_0( dom_4 : Domain,  r_6 : Reservoir,  replay_0 : bool,  scale_1 : f32,  
                     if(_S1116)
                     {
                         var _S1153 : u32 = noiseAddress(r_6.seed, b_3);
-                        var _S1154 : SkySample = sampleSky_0(ray_2, surface_5, wavelength_8, _S1056, is_inside_5, _S1153, surface_5.random_state);
+                        var _S1154 : SkySample = sampleSky_0(ray_2, surface_5, wavelength_8, _S1056, is_inside_5, _S1153);
                         var _S1155 : vec3<f32> = pathColor(throughput_4 * _S1154.color, spectral_weight_0, wavelength_8);
                         var candidate_5 : Reservoir = chain_0;
                         if(_S1075)

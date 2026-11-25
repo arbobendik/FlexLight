@@ -971,7 +971,7 @@ vec3 coatBSDF(Weights w_11)
     return w_11.coat / w_11.p_coat;
 }
 
-void BSDF(vec3 in_dir_2, vec3 out_dir_0, vec3 n_5, Material material_10, float eta_i_4, float eta_o_3, bool refracted_1, uint random_state_0, out vec3  throughputs_0[6], out float  pdfs_0[6])
+void BSDF(vec3 in_dir_2, vec3 out_dir_0, vec3 n_5, Material material_10, float eta_i_4, float eta_o_3, bool refracted_1, out vec3  throughputs_0[6], out float  pdfs_0[6])
 {
     vec3 _S330 = negate_0(in_dir_2);
     float _S331 = dot(n_5, _S330);
@@ -1134,11 +1134,11 @@ Random draw(uint address_0, uint variable_0)
     return Random_x24init_0(address_0, _S389);
 }
 
-vec3 sampleHalfVector(vec3 v_9, vec3 n_i_8, float alpha_7, AnisotropicFrame frame_5, inout uint random_state_1, uint first_0)
+vec3 sampleHalfVector(vec3 v_9, vec3 n_i_8, float alpha_7, AnisotropicFrame frame_5, inout uint random_state_0, uint first_0)
 {
-    Random _S392 = draw(random_state_1, first_0);
-    Random _S393 = draw(random_state_1, first_0 | 2147483648U);
-    random_state_1 = _S393.state;
+    Random _S392 = draw(random_state_0, first_0);
+    Random _S393 = draw(random_state_0, first_0 | 2147483648U);
+    random_state_0 = _S393.state;
     float _S394 = frame_5.alphas.x;
     bool _S395 = _S394 > 0.0;
     if(_S395)
@@ -1167,25 +1167,25 @@ struct SampleBSDF
     float pdf;
 };
 
-SampleBSDF SampleBSDF_x24init_0(vec3 unit_direction_0, vec3 throughput_0, uint random_state_2, bool refracted_2, uint lobe_0, float pdf_0)
+SampleBSDF SampleBSDF_x24init_0(vec3 unit_direction_0, vec3 throughput_0, uint random_state_1, bool refracted_2, uint lobe_0, float pdf_0)
 {
     SampleBSDF _S405;
     _S405.unit_direction = unit_direction_0;
     _S405.throughput = throughput_0;
-    _S405.random_state = random_state_2;
+    _S405.random_state = random_state_1;
     _S405.refracted = refracted_2;
     _S405.lobe = lobe_0;
     _S405.pdf = pdf_0;
     return _S405;
 }
 
-SampleBSDF diffuseSample(float u_0, vec3 n_i_9, float n_i_dot_v_3, Material material_11, Weights w_12, uint random_state_3)
+SampleBSDF diffuseSample(float u_0, vec3 n_i_9, float n_i_dot_v_3, Material material_11, Weights w_12, uint random_state_2)
 {
     const vec3 _S406 = vec3(1.0);
     SampleBSDF _S407 = SampleBSDF_x24init_0(_S406, _S406, 0U, false, 0U, 0.0);
     SampleBSDF sample_0 = _S407;
-    Random _S408 = draw(random_state_3, 3U);
-    Random _S409 = draw(random_state_3, 2147483651U);
+    Random _S408 = draw(random_state_2, 3U);
+    Random _S409 = draw(random_state_2, 2147483651U);
     sample_0.random_state = _S409.state;
     vec3 _S410 = sampleCosWeightedHemisphere(_S408.value, _S409.value);
     float _S411 = translucentShare(material_11);
@@ -1204,13 +1204,13 @@ SampleBSDF diffuseSample(float u_0, vec3 n_i_9, float n_i_dot_v_3, Material mate
     return sample_0;
 }
 
-SampleBSDF sheenVelvetSample(vec3 v_10, vec3 n_i_10, float n_i_dot_v_4, Material material_12, Weights w_13, uint random_state_4)
+SampleBSDF sheenVelvetSample(vec3 v_10, vec3 n_i_10, float n_i_dot_v_4, Material material_12, Weights w_13, uint random_state_3)
 {
     const vec3 _S419 = vec3(1.0);
     SampleBSDF _S420 = SampleBSDF_x24init_0(_S419, _S419, 0U, false, 0U, 0.0);
     SampleBSDF sample_1 = _S420;
-    Random _S421 = draw(random_state_4, 3U);
-    Random _S422 = draw(random_state_4, 2147483651U);
+    Random _S421 = draw(random_state_3, 3U);
+    Random _S422 = draw(random_state_3, 2147483651U);
     sample_1.random_state = _S422.state;
     float _S423 = _S421.value;
     float _S424 = sqrt(max(0.0, 1.0 - _S423 * _S423));
@@ -1225,14 +1225,14 @@ SampleBSDF sheenVelvetSample(vec3 v_10, vec3 n_i_10, float n_i_dot_v_4, Material
     return sample_1;
 }
 
-SampleBSDF coatSample(vec3 in_dir_3, vec3 v_11, vec3 coat_h_3, CoatFrame coat_frame_4, Weights w_14, uint random_state_5)
+SampleBSDF coatSample(vec3 in_dir_3, vec3 v_11, vec3 coat_h_3, CoatFrame coat_frame_4, Weights w_14, uint random_state_4)
 {
     const vec3 _S429 = vec3(1.0);
     SampleBSDF _S430 = SampleBSDF_x24init_0(_S429, _S429, 0U, false, 0U, 0.0);
     SampleBSDF sample_2 = _S430;
     vec3 _S431 = normalize_0(reflect(in_dir_3, coat_h_3));
     sample_2.unit_direction = _S431;
-    sample_2.random_state = random_state_5;
+    sample_2.random_state = random_state_4;
     sample_2.lobe = 5U;
     vec3 _S432 = coatBSDF(w_14);
     sample_2.throughput = _S432;
@@ -1241,13 +1241,13 @@ SampleBSDF coatSample(vec3 in_dir_3, vec3 v_11, vec3 coat_h_3, CoatFrame coat_fr
     return sample_2;
 }
 
-SampleBSDF refractSample(vec3 ggx_n_1, vec3 n_i_11, float alpha_8, AnisotropicFrame frame_6, Material material_13, Weights w_15, float pdf_h_3, float eta_i_5, float eta_o_4, uint random_state_6)
+SampleBSDF refractSample(vec3 ggx_n_1, vec3 n_i_11, float alpha_8, AnisotropicFrame frame_6, Material material_13, Weights w_15, float pdf_h_3, float eta_i_5, float eta_o_4, uint random_state_5)
 {
     const vec3 _S434 = vec3(1.0);
     SampleBSDF _S435 = SampleBSDF_x24init_0(_S434, _S434, 0U, false, 0U, 0.0);
     SampleBSDF sample_3 = _S435;
     sample_3.unit_direction = w_15.refracted;
-    sample_3.random_state = random_state_6;
+    sample_3.random_state = random_state_5;
     sample_3.refracted = true;
     sample_3.lobe = 1U;
     vec3 _S436 = refractBSDF(sample_3.unit_direction, n_i_11, alpha_8, frame_6, material_13, w_15);
@@ -1257,14 +1257,14 @@ SampleBSDF refractSample(vec3 ggx_n_1, vec3 n_i_11, float alpha_8, AnisotropicFr
     return sample_3;
 }
 
-SampleBSDF reflectSample(vec3 in_dir_4, vec3 ggx_n_2, vec3 n_i_12, float alpha_9, AnisotropicFrame frame_7, Weights w_16, float pdf_h_4, uint random_state_7)
+SampleBSDF reflectSample(vec3 in_dir_4, vec3 ggx_n_2, vec3 n_i_12, float alpha_9, AnisotropicFrame frame_7, Weights w_16, float pdf_h_4, uint random_state_6)
 {
     const vec3 _S438 = vec3(1.0);
     SampleBSDF _S439 = SampleBSDF_x24init_0(_S438, _S438, 0U, false, 0U, 0.0);
     SampleBSDF sample_4 = _S439;
     vec3 _S440 = normalize_0(reflect(in_dir_4, ggx_n_2));
     sample_4.unit_direction = _S440;
-    sample_4.random_state = random_state_7;
+    sample_4.random_state = random_state_6;
     sample_4.lobe = 2U;
     vec3 _S441 = reflectBSDF(sample_4.unit_direction, n_i_12, alpha_9, frame_7, w_16);
     sample_4.throughput = _S441;
@@ -1273,21 +1273,21 @@ SampleBSDF reflectSample(vec3 in_dir_4, vec3 ggx_n_2, vec3 n_i_12, float alpha_9
     return sample_4;
 }
 
-vec3 coatHalf(vec3 v_12, CoatFrame coat_frame_5, uint random_state_8)
+vec3 coatHalf(vec3 v_12, CoatFrame coat_frame_5, uint random_state_7)
 {
     bool _S443 = !((dot(coat_frame_5.normal, v_12)) > 0.0);
     if(_S443)
     {
         return vec3(0.0);
     }
-    uint state_5 = random_state_8;
+    uint state_5 = random_state_7;
     vec3 _S444 = sampleHalfVector(v_12, coat_frame_5.normal, coat_frame_5.alpha, AnisotropicFrame_x24init_0(vec3(0.0), vec2(0.0)), state_5, 1U);
     return _S444;
 }
 
 SampleBSDF sampleBSDF(vec3 in_dir_5, vec3 n_6, Material material_14, float eta_i_6, float eta_o_5, uint random_init_0, vec2 screen_space_0)
 {
-    uint random_state_9 = random_init_0;
+    uint random_state_8 = random_init_0;
     vec3 _S445 = negate_0(in_dir_5);
     float _S446 = dot(n_6, _S445);
     float _S447 = sign_0(_S446);
@@ -1299,45 +1299,45 @@ SampleBSDF sampleBSDF(vec3 in_dir_5, vec3 n_6, Material material_14, float eta_i
     SheenProfile _S452 = sheenProfile(_S445, n_i_13, material_14);
     CoatFrame _S453 = coatFrame(material_14, n_i_13);
     vec3 _S454 = coatSeries(_S453, material_14);
-    vec3 _S455 = sampleHalfVector(_S445, n_i_13, _S450, _S451, random_state_9, 0U);
+    vec3 _S455 = sampleHalfVector(_S445, n_i_13, _S450, _S451, random_state_8, 0U);
     vec3 _S456 = coatHalf(_S445, _S453, random_init_0);
     Weights _S457 = lobeWeights(in_dir_5, _S445, n_i_13, _S455, _S456, _S451, _S452, _S453, _S454, material_14, eta_i_6, eta_o_5);
-    Random _S458 = draw(random_state_9, 2U);
-    random_state_9 = _S458.state;
+    Random _S458 = draw(random_state_8, 2U);
+    random_state_8 = _S458.state;
     bool _S459 = (_S458.value) < (_S457.p_sheen_velvet);
     if(_S459)
     {
-        SampleBSDF _S460 = sheenVelvetSample(_S445, n_i_13, _S448, material_14, _S457, random_state_9);
+        SampleBSDF _S460 = sheenVelvetSample(_S445, n_i_13, _S448, material_14, _S457, random_state_8);
         return _S460;
     }
     float _S461 = _S458.value - _S457.p_sheen_velvet;
     bool _S462 = _S461 < (_S457.p_coat);
     if(_S462)
     {
-        SampleBSDF _S463 = coatSample(in_dir_5, _S445, _S456, _S453, _S457, random_state_9);
+        SampleBSDF _S463 = coatSample(in_dir_5, _S445, _S456, _S453, _S457, random_state_8);
         return _S463;
     }
     float _S464 = _S461 - _S457.p_coat;
     bool _S465 = _S464 < (_S457.p_diffuse);
     if(_S465)
     {
-        SampleBSDF _S466 = diffuseSample(_S464, n_i_13, _S448, material_14, _S457, random_state_9);
+        SampleBSDF _S466 = diffuseSample(_S464, n_i_13, _S448, material_14, _S457, random_state_8);
         return _S466;
     }
     float _S467 = vndfPDF(_S445, _S455, n_i_13, _S448, _S450, _S451, _S457.v_dot_h);
     bool _S468 = _S464 < (_S457.p_diffuse + _S457.p_refract);
     if(_S468)
     {
-        SampleBSDF _S469 = refractSample(_S455, n_i_13, _S450, _S451, material_14, _S457, _S467, eta_i_6, eta_o_5, random_state_9);
+        SampleBSDF _S469 = refractSample(_S455, n_i_13, _S450, _S451, material_14, _S457, _S467, eta_i_6, eta_o_5, random_state_8);
         return _S469;
     }
-    SampleBSDF _S470 = reflectSample(in_dir_5, _S455, n_i_13, _S450, _S451, _S457, _S467, random_state_9);
+    SampleBSDF _S470 = reflectSample(in_dir_5, _S455, n_i_13, _S450, _S451, _S457, _S467, random_state_8);
     return _S470;
 }
 
-vec3 sampledHalf(vec3 v_13, vec3 n_i_14, float alpha_10, AnisotropicFrame frame_8, uint random_state_10)
+vec3 sampledHalf(vec3 v_13, vec3 n_i_14, float alpha_10, AnisotropicFrame frame_8, uint random_state_9)
 {
-    uint state_6 = random_state_10;
+    uint state_6 = random_state_9;
     vec3 _S471 = sampleHalfVector(v_13, n_i_14, alpha_10, frame_8, state_6, 0U);
     return _S471;
 }
