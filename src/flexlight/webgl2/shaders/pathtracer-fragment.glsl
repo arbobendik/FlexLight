@@ -366,8 +366,14 @@ SampledColor reservoirSample(Material material, float eta_i, float eta_o, Ray ca
         bool refracted = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0;
         vec3 throughputs[6];
         float pdfs[6];
-        vec3 color_with_smooth = BSDF(camera_ray.unit_direction, l, smooth_n, material, eta_i, eta_o, refracted,
+        BSDF(camera_ray.unit_direction, l, smooth_n, material, eta_i, eta_o, refracted,
             stream(random_state, 1u), throughputs, pdfs);
+        vec3 color_with_smooth = vec3(0.0);
+        for (int i = 0; i < 6; i++) {
+            if (pdfs[i] > 0.0) {
+                color_with_smooth += throughputs[i] * pdfs[i];
+            }
+        }
         vec3 color_for_light = color_with_smooth * brightness;
         float w_i = rgb_to_greyscale(color_for_light);
         // Skip light if its contribution is too small

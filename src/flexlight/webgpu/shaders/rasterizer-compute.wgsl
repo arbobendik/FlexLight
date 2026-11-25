@@ -200,8 +200,15 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate BSDF for light
             // The light across the face by the geometry normal reaches the lobes that refract or pass through
             let refracted: bool = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0f;
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
-                random_state, &throughputs, &pdfs) * brightness;
+            BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
+                random_state, &throughputs, &pdfs);
+            color_for_light = vec3<f32>(0.0f);
+            for (var i: i32 = 0; i < 6; i++) {
+                if (pdfs[i] > 0.0f) {
+                    color_for_light += throughputs[i] * pdfs[i];
+                }
+            }
+            color_for_light *= brightness;
             light_dir = dir;
         } else if (light.is_area_light == 0.0f) {
             // CASE 1: Point light
@@ -218,8 +225,15 @@ fn sample(material: Material, camera_ray: Ray, init_random_state: u32, smooth_n:
             // Calculate BSDF for light
             // The light across the face by the geometry normal reaches the lobes that refract or pass through
             let refracted: bool = dot(geometry_n, - camera_ray.unit_direction) * dot(geometry_n, l) <= 0.0f;
-            color_for_light = BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
-                random_state, &throughputs, &pdfs) * brightness;
+            BSDF(camera_ray.unit_direction, l, smooth_n, shaded, eta_i, eta_o, refracted,
+                random_state, &throughputs, &pdfs);
+            color_for_light = vec3<f32>(0.0f);
+            for (var i: i32 = 0; i < 6; i++) {
+                if (pdfs[i] > 0.0f) {
+                    color_for_light += throughputs[i] * pdfs[i];
+                }
+            }
+            color_for_light *= brightness;
             light_dir = dir;
         }
 
