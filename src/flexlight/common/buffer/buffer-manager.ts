@@ -119,16 +119,6 @@ export class BufferManager<T extends TypedArray> {
         if (this._gpuBuffer) this._gpuBuffer.reconstruct();
     }
 
-    // Free all buffers and clear instances set
-    freeAll() {
-        // this._buffer.resize(0);
-        this.instances.clear();
-        // Update length
-        this._length = 0;
-        // Reconstruct GPUBuffer if it exists due to resize
-        if (this._gpuBuffer) this._gpuBuffer.reconstruct();
-    }
-
     overwriteAll(array: T | Array<number>) {
         // if (array.length == 22) console.log("OVERWRITE ALL", array);
         const BYTES_PER_ELEMENT = this._viewConstructor.prototype.BYTES_PER_ELEMENT;

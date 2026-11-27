@@ -94,12 +94,6 @@ struct Hit {
 
 
 
-/*
-fn smith(alpha: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
-    return schlickBeckmann(alpha, n_dot_v) * schlickBeckmann(alpha, n_dot_l);
-}
-*/
-
 fn fresnelSchlick(f0: vec3<f32>, cos_theta: f32) -> vec3<f32> {
     // Use Schlick approximation
     return f0 + (1.0f - f0) * pow(1.0f - cos_theta, 5.0f);
